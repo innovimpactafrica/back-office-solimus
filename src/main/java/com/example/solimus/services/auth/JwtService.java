@@ -1,0 +1,55 @@
+package com.example.solimus.services.auth;
+
+import java.util.Date;
+
+/**
+ * Contrat de service pour les opérations sur les tokens JWT.
+ * Définit les méthodes essentielles pour la gestion du cycle de vie des tokens.
+ */
+public interface JwtService {
+
+    /**
+     * Génère un nouveau token JWT avec les informations utilisateur.
+     */
+    String generateToken(String email, String role, Long id);
+
+    /**
+     * Extrait l'email (subject) du token.
+     */
+    String extractEmail(String token);
+
+    /**
+     * Extrait le rôle utilisateur depuis les claims du token.
+     */
+    String extractRole(String token);
+
+    /**
+     * Extrait l'identifiant unique de l'utilisateur.
+     */
+    Long extractUserId(String token);
+
+    /**
+     * Extrait le nom d'utilisateur (alias pour l'email).
+     */
+    String extractUsername(String token);
+
+    /**
+     * Vérifie si le token a expiré.
+     */
+    Boolean isTokenExpired(String token);
+
+    /**
+     * Valide le token pour un utilisateur spécifique.
+     */
+    Boolean validateToken(String token, String email);
+
+    /**
+     * Vérifie la validité générale du token.
+     */
+    Boolean isTokenValid(String token);
+
+    /**
+     * Extrait la date d'expiration d'un token.
+     */
+    Date extractExpiration(String token);
+}

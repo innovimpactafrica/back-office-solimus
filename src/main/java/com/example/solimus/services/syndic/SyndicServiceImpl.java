@@ -1,0 +1,755 @@
+package com.example.solimus.services.syndic;
+
+import com.example.solimus.dtos.intervention.CreateInterventionRequestDTO;
+import com.example.solimus.dtos.intervention.InterventionRequestDTO;
+import com.example.solimus.dtos.intervention.InterventionStatusHistoryDTO;
+import com.example.solimus.dtos.intervention.WorkflowStepDTO;
+import com.example.solimus.dtos.intervention.NearbyProviderDTO;
+import com.example.solimus.dtos.intervention.SyndicQuoteDTO;
+import com.example.solimus.dtos.property.CreatePropertyDTO;
+import com.example.solimus.dtos.property.PropertyDTO;
+import com.example.solimus.dtos.residence.CreateResidenceDTO;
+import com.example.solimus.dtos.residence.ResidenceDTO;
+import com.example.solimus.dtos.syndic.CreateCoOwnerDTO;
+import com.example.solimus.entities.InterventionRequest;
+import com.example.solimus.entities.Property;
+import com.example.solimus.entities.Quote;
+import com.example.solimus.entities.Residence;
+import com.example.solimus.entities.Role;
+import com.example.solimus.entities.Specialty;
+import com.example.solimus.entities.User;
+import com.example.solimus.enums.ERole;
+import com.example.solimus.enums.InterventionStatus;
+import com.example.solimus.enums.QuoteStatus;
+import com.example.solimus.enums.UserStatus;
+import com.example.solimus.enums.SubscriptionPlan;
+import com.example.solimus.enums.SubscriptionStatus;
+import com.example.solimus.exceptions.BadRequestException;
+import com.example.solimus.exceptions.ForbiddenException;
+import com.example.solimus.exceptions.ResourceNotFoundException;
+import com.example.solimus.repositories.*;
+import com.example.solimus.services.auth.ActivationCodeService;
+import com.example.solimus.services.auth.EmailService;
+import com.example.solimus.services.geolocation.GeolocationService;
+import com.example.solimus.services.minio.MinioService;
+import com.example.solimus.services.provider.ProviderService;
+import com.example.solimus.repositories.PaymentRepository;
+import com.example.solimus.entities.Payment;
+import com.example.solimus.enums.PaymentType;
+import com.example.solimus.enums.PaymentStatus;
+import com.example.solimus.dtos.syndic.PayerAcompteDTO;
+import com.example.solimus.dtos.syndic.PaymentDTO;
+import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+/**
+ * Implémentation du service destiné aux actions du Syndic.
+ * Gère les résidences, les biens, les copropriétaires et le cycle de vie des interventions.
+ */
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class SyndicServiceImpl implements SyndicService {
+
+    private final ResidenceRepository residenceRepository;
+    private final PropertyRepository propertyRepository;
+    private final UserRepository userRepository;
+    private final SpecialtyRepository specialtyRepository;
+    private final InterventionRequestRepository interventionRepository;
+    private final QuoteRepository quoteRepository;
+    private final ProviderRatingRepository providerRatingRepository;
+    private final RoleRepository roleRepository;
+    private final ActivationCodeService activationCodeService;
+    private final EmailService emailService;
+    private final GeolocationService geolocationService;
+    private final PaymentRepository paymentRepository;
+    private final ProviderService providerService;
+    private final SubscriptionRepository subscriptionRepository;
+
+    @Value("${solimus.geolocation.search-radius-km:30.0}")
+    private double searchRadiusKm;
+
+    // =========================================================================
+    // GESTION DES RÉSIDENCES
+    // =========================================================================
+
+    /**
+     * Crée une nouvelle résidence rattachée au syndic actuellement connecté.
+     */
+    @Override
+    @Transactional
+    public ResidenceDTO createResidence(CreateResidenceDTO dto) {
+        User currentSyndic = getCurrentUser();
+        Residence residence = new Residence();
+        residence.setName(dto.getName());
+        residence.setFullAddress(dto.getFullAddress());
+        residence.setLatitude(dto.getLatitude());
+        residence.setLongitude(dto.getLongitude());
+        residence.setFloorCount(dto.getFloorCount());
+        residence.setApartmentCount(dto.getApartmentCount());
+        residence.setSyndic(currentSyndic);
+        return mapToResidenceDTO(residenceRepository.save(residence));
+    }
+
+    /**
+     * Récupère la liste de toutes les résidences gérées par le syndic connecté.
+     */
+    @Override
+    public List<ResidenceDTO> getMyResidences() {
+        User currentSyndic = getCurrentUser();
+        return residenceRepository.findAllBySyndic(currentSyndic).stream()
+                .map(this::mapToResidenceDTO)
+                .collect(Collectors.toList());
+    }
+
+    // =========================================================================
+    // GESTION DES BIENS (PROPERTIES)
+    // =========================================================================
+
+    /**
+     * Enregistre un nouveau bien (appartement, parking, etc.) dans une résidence.
+     */
+    @Override
+    @Transactional
+    public PropertyDTO createProperty(CreatePropertyDTO dto) {
+        // Vérification de l'unicité de la référence dans la même résidence
+        if (propertyRepository.existsByReferenceAndResidenceId(dto.getReference(), dto.getResidenceId())) {
+            throw new BadRequestException("Un bien avec la référence '" + dto.getReference() + "' existe déjà dans cette résidence.");
+        }
+
+        Residence residence = residenceRepository.findById(dto.getResidenceId())
+                .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+
+        Property property = new Property();
+        property.setReference(dto.getReference());
+        property.setFloor(dto.getFloor());
+        property.setArea(dto.getArea());
+        property.setType(dto.getType());
+        property.setResidence(residence);
+
+        // Si un propriétaire est déjà désigné à la création
+        if (dto.getOwnerId() != null) {
+            User owner = userRepository.findById(dto.getOwnerId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Propriétaire introuvable"));
+            if (owner.getRole() == null || !owner.getRole().getName().equals(ERole.ROLE_COPROPRIETAIRE)) {
+                throw new BadRequestException("Seul un utilisateur avec le rôle COPROPRIETAIRE peut posséder un bien.");
+            }
+            property.setOwner(owner);
+        }
+        return mapToPropertyDTO(propertyRepository.save(property));
+    }
+
+    /**
+     * Assigne un copropriétaire à un bien existant.
+     */
+    @Override
+    @Transactional
+    public PropertyDTO addOwner(Long propertyId, Long userId) {
+        User currentSyndic = getCurrentUser();
+        Property property = propertyRepository.findById(propertyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Bien introuvable"));
+
+        // Sécurité : Vérifier que le syndic gère bien la résidence du bien
+        if (!property.getResidence().getSyndic().equals(currentSyndic)) {
+            throw new BadRequestException("Vous n'êtes pas autorisé à modifier ce bien.");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
+
+        if (user.getRole() == null || !user.getRole().getName().equals(ERole.ROLE_COPROPRIETAIRE)) {
+            throw new BadRequestException("Seul un utilisateur avec le rôle COPROPRIETAIRE peut posséder un bien.");
+        }
+
+        property.setOwner(user);
+        return mapToPropertyDTO(propertyRepository.save(property));
+    }
+
+    // =========================================================================
+    // GESTION DES INTERVENTIONS
+    // =========================================================================
+
+    /**
+     * Recherche les prestataires situés à proximité d'une résidence pour une spécialité donnée.
+     * Utilise le calcul de distance Haversine en SQL.
+     */
+    @Override
+    public List<NearbyProviderDTO> findNearbyProviders(Long residenceId, Long specialtyId) {
+        Residence residence = residenceRepository.findById(residenceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+
+        // Appel SQL natif pour filtrer les prestataires par distance (30km par défaut)
+        List<User> providers = userRepository.findNearbyProviders(
+                residence.getLatitude().doubleValue(),
+                residence.getLongitude().doubleValue(),
+                specialtyId,
+                searchRadiusKm
+        );
+
+        // Transformation en DTO avec calcul fin de la distance pour l'affichage
+        return providers.stream().map(provider -> {
+            double distance = geolocationService.calculateDistance(
+                    residence.getLatitude().doubleValue(),
+                    residence.getLongitude().doubleValue(),
+                    provider.getLatitude().doubleValue(),
+                    provider.getLongitude().doubleValue()
+            );
+
+            boolean isPremium = subscriptionRepository.findByProviderId(provider.getId())
+                    .map(sub -> sub.getPlan() == SubscriptionPlan.PREMIUM && sub.getStatus() == SubscriptionStatus.ACTIVE)
+                    .orElse(false);
+
+            return NearbyProviderDTO.builder()
+                    .id(provider.getId())
+                    .firstName(provider.getFirstName())
+                    .lastName(provider.getLastName())
+                    .companyName(provider.getCompanyName())
+                    .specialtyName(provider.getSpecialty() != null ? provider.getSpecialty().getName() : "N/A")
+                    .distanceKm(Math.round(distance * 10.0) / 10.0) // Arrondi à 1 décimale
+                    .premium(isPremium)
+                    .build();
+        }).collect(Collectors.toList());
+    }
+
+    /**
+     * Crée une demande d'intervention et notifie les prestataires sélectionnés par email.
+     */
+    @Override
+    @Transactional
+    public InterventionRequestDTO createInterventionRequest(CreateInterventionRequestDTO dto) {
+        User currentSyndic = getCurrentUser();
+        
+        Residence residence = residenceRepository.findById(dto.getResidenceId())
+                .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+        Property property = propertyRepository.findById(dto.getPropertyId())
+                .orElseThrow(() -> new ResourceNotFoundException("Bien introuvable"));
+        Specialty specialty = specialtyRepository.findById(dto.getSpecialtyId())
+                .orElseThrow(() -> new ResourceNotFoundException("Spécialité introuvable"));
+
+        InterventionRequest request = new InterventionRequest();
+        request.setTitle(dto.getTitle());
+        request.setDescription(dto.getDescription());
+        request.addStatusHistory(InterventionStatus.PENDING, currentSyndic);
+        request.setSyndic(currentSyndic);
+        request.setResidence(residence);
+        request.setProperty(property);
+        request.setSpecialty(specialty);
+        request.setPhotoUrls(dto.getPhotoUrls());
+
+        // Notification des prestataires sélectionnés
+        if (dto.getTargetProviderIds() != null && !dto.getTargetProviderIds().isEmpty()) {
+            List<User> selectedProviders = userRepository.findAllById(dto.getTargetProviderIds());
+            request.setNotifiedProviders(selectedProviders);
+
+            selectedProviders.forEach(provider -> {
+                try {
+                    emailService.sendInterventionNotification(
+                            provider.getEmail(),
+                            provider.getFirstName(),
+                            request.getTitle(),
+                            residence.getName()
+                    );
+                } catch (Exception e) {
+                    log.error("Erreur lors de l'envoi de notification email à {}", provider.getEmail());
+                }
+            });
+        } else {
+            throw new BadRequestException("Vous devez sélectionner au moins un prestataire.");
+        }
+
+        return mapToInterventionDTO(interventionRepository.save(request));
+    }
+
+    /**
+     * Accepte un devis et rejette automatiquement tous les autres devis en attente pour la même demande.
+     */
+    @Override
+    @Transactional
+    public void acceptQuote(Long requestId, Long quoteId) {
+        // 1. Récupérer la demande
+        InterventionRequest request = interventionRepository.findById(requestId)
+                .orElseThrow(() -> new ResourceNotFoundException("Demande introuvable"));
+
+        // 2. Vérifier que c'est bien LE syndic qui a créé cette demande
+        // Un syndic ne peut pas accepter un devis sur la demande d'un autre syndic
+        if (!request.getSyndic().getId().equals(getCurrentUser().getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accepter un devis sur cette demande");
+        }
+
+        // 3. Vérifier que la demande est encore en attente de décision
+        if (request.getStatus() != InterventionStatus.PENDING && request.getStatus() != InterventionStatus.QUOTE_SENT) {
+            throw new BadRequestException("Cette demande ne peut plus accepter de devis");
+        }
+
+        // 4. Récupérer le devis à accepter
+        Quote acceptedQuote = quoteRepository.findById(quoteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Devis introuvable"));
+
+        // 5. Accepter ce devis
+        acceptedQuote.setStatus(QuoteStatus.ACCEPTED);
+        quoteRepository.save(acceptedQuote);
+
+        // 6. Refuser automatiquement tous les autres devis concurrents
+        List<Quote> otherQuotes = quoteRepository.findAllByInterventionRequestOrderByTotalAmountAsc(request);
+        otherQuotes.stream()
+                .filter(q -> !q.getId().equals(quoteId))
+                .forEach(q -> {
+                    q.setStatus(QuoteStatus.REJECTED);
+                    quoteRepository.save(q);
+                });
+
+        // 7. Finaliser la demande : assignation du prestataire, montant et changement de statut
+        request.setSelectedProvider(acceptedQuote.getProvider());
+        request.setTotalAmount(acceptedQuote.getTotalAmount());
+        request.addStatusHistory(InterventionStatus.SYNDIC_VALIDATED, getCurrentUser());
+        interventionRepository.save(request);
+    }
+
+    /**
+     * Récupère toutes les demandes d'intervention créées par le syndic connecté.
+     */
+    @Override
+    public List<InterventionRequestDTO> getMyInterventionRequests() {
+        return interventionRepository.findAllBySyndic(getCurrentUser()).stream()
+                .map(this::mapToInterventionDTO)
+                .collect(Collectors.toList());
+    }
+    /**
+     * Récupère la liste des devis reçus pour une demande d'intervention spécifique.
+     * Les devis sont triés par prix croissant (du moins cher au plus cher).
+     */
+    @Override
+    public List<SyndicQuoteDTO> getQuotesByInterventionRequest(Long requestId) {
+
+        // Vérifier que la demande existe
+        InterventionRequest request = interventionRepository.findById(requestId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "Demande d'intervention introuvable"));
+
+        // 1. Récupérer les devis triés du moins cher au plus cher
+        List<Quote> quotes = quoteRepository
+            .findAllByInterventionRequestOrderByTotalAmountAsc(request);
+
+        // Si aucun devis reçu on retourne une liste vide
+        if (quotes.isEmpty()) return List.of();
+
+        // 2. Récupérer le prix le plus élevé pour normaliser les scores
+        double maxAmount = quotes.stream()
+            .mapToDouble(q -> q.getTotalAmount().doubleValue())
+            .max()
+            .orElse(1.0);
+
+        // 3. Mapper chaque devis avec son score qualité/prix
+        List<SyndicQuoteDTO> dtos = quotes.stream()
+            .map(quote -> {
+
+                // Note moyenne réelle du prestataire
+                Double noteMoyenne = providerRatingRepository
+                    .calculerNoteMoyenne(quote.getProvider().getId());
+
+                // Si le prestataire n'a jamais été noté → 0.0 par défaut
+                double rating = noteMoyenne != null ? noteMoyenne : 0.0;
+
+                // Score prix : moins c'est cher mieux c'est
+                // Ex: 135 000 / 160 000 = 0.84 → 1 - 0.84 = 0.16
+                double scorePrix = 1.0 - (quote.getTotalAmount()
+                    .doubleValue() / maxAmount);
+
+                // Score note : plus c'est élevé mieux c'est
+                // Ex: 4.4 / 5 = 0.88
+                double scoreNote = rating / 5.0;
+
+                // Score délai : moins c'est long mieux c'est
+                // Ex: 1 jour → 1 - (1/30) = 0.97
+                double scoreDelai = 1.0 - (quote.getEstimatedDelay().getDays() / 30.0);
+
+                // Score final : prix 40% + note 40% + délai 20%
+                double scoreFinal = (scorePrix * 0.40)
+                                  + (scoreNote * 0.40)
+                                  + (scoreDelai * 0.20);
+
+                // Convertir en pourcentage lisible pour le front
+                // Ex: 0.74 → 74%
+                int scoreQualitePrix = (int) Math.round(scoreFinal * 100);
+
+                return SyndicQuoteDTO.builder()
+                    .id(quote.getId())
+                    .providerId(quote.getProvider().getId())
+                    .providerName(quote.getProvider().getFirstName()
+                        + " " + quote.getProvider().getLastName())
+                    .companyName(quote.getProvider().getCompanyName())
+                    .laborTotalAmount(quote.getLaborTotalAmount())
+                    .materialTotalAmount(quote.getMaterialTotalAmount())
+                    .totalAmount(quote.getTotalAmount())
+                    .estimatedDelayLabel(quote.getEstimatedDelay() != null
+                        ? quote.getEstimatedDelay().getLabel() : "N/A")
+                    .additionalComments(quote.getAdditionalComments())
+                    .status(quote.getStatus())
+                    .providerRating(rating)
+                    .scoreFinal(scoreFinal)
+                    .scoreQualitePrix(scoreQualitePrix)
+                    .isBestOffer(false) // on définit après
+                    .createdAt(quote.getCreatedAt())
+                    .build();
+            })
+            .collect(Collectors.toList());
+
+        // 4. Trouver le devis avec le meilleur score
+        // et lui mettre isBestOffer = true
+        dtos.stream()
+            .max(Comparator.comparingDouble(SyndicQuoteDTO::getScoreFinal))
+            .ifPresent(best -> best.setBestOffer(true));
+
+        return dtos;
+    }
+
+    // =========================================================================
+    // GESTION DES COPROPRIÉTAIRES
+    // =========================================================================
+
+    /**
+     * Ajoute un nouveau copropriétaire et lui envoie un code d'activation par email.
+     */
+    @Override
+    @Transactional
+    public void addCoOwner(CreateCoOwnerDTO dto) {
+        if (userRepository.existsByEmail(dto.getEmail())) throw new BadRequestException("Email déjà utilisé.");
+        
+        Role role = roleRepository.findByName(ERole.ROLE_COPROPRIETAIRE).get();
+        User user = new User();
+        user.setFirstName(dto.getFirstName());
+        user.setLastName(dto.getLastName());
+        user.setEmail(dto.getEmail());
+        user.setPhone(dto.getPhone());
+        user.setRole(role);
+        user.setStatus(UserStatus.PENDING);
+        
+        User saved = userRepository.save(user);
+        
+        // Génération du code d'activation mobile et envoi email
+        String code = activationCodeService.generateAndStoreCodeMobile(saved);
+        emailService.sendActivationCode(saved.getEmail(), code, saved.getFirstName());
+    }
+
+     // ================================================
+    // ACOMPTE — versé avant ou au début des travaux
+    // ================================================
+    @Override
+    @Transactional
+    public PaymentDTO payerAcompte(Long requestId, PayerAcompteDTO dto) {
+        User currentSyndic = getCurrentUser();
+
+        InterventionRequest request = interventionRepository
+            .findById(requestId)
+            .orElseThrow(() -> new ResourceNotFoundException("Demande introuvable"));
+
+        // Vérifier que c'est bien le syndic de cette demande
+        if (!request.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new BadRequestException("Vous n'êtes pas autorisé à payer pour cette demande.");
+        }
+
+        // Vérifier qu'aucun acompte n'a déjà été versé
+        boolean acompteDejaVerse = paymentRepository
+            .existsByInterventionRequestIdAndType(requestId, PaymentType.ACOMPTE);
+
+        if (acompteDejaVerse) {
+            throw new BadRequestException("Un acompte a déjà été versé pour cette intervention");
+        }
+
+        // Vérifier qu'un prestataire est sélectionné
+        if (request.getSelectedProvider() == null) {
+            throw new BadRequestException("Aucun prestataire n'est sélectionné pour cette demande.");
+        }
+
+        // Créer le paiement acompte
+        Payment payment = Payment.builder()
+            .reference(genererReference("PAY"))           // Génère une référence unique (ex: PAY-123456)
+            .interventionRequest(request)                 // Lie ce paiement à la demande d'intervention
+            .provider(request.getSelectedProvider())      // Définit le prestataire qui va recevoir l'argent
+            .syndic(currentSyndic)                        // Définit le syndic qui effectue le paiement
+            .amount(dto.getMontant())                     // Le montant de l'acompte à payer
+            .type(PaymentType.ACOMPTE)                    // Spécifie que c'est un acompte (et non le solde final)
+            .method(dto.getMethode())                     // La méthode choisie (WAVE, ORANGE_MONEY, etc.)
+            .status(PaymentStatus.COMPLETED)              // Statut "COMPLETED" car l'acompte a été versé avec succès
+            .paidAt(LocalDateTime.now())                  // Enregistre la date et l'heure exactes du paiement
+            .build();
+
+        paymentRepository.save(payment);
+
+        // Créditer immédiatement le Wallet du prestataire du montant de l'acompte
+        providerService.crediterWallet(request.getSelectedProvider().getId(), dto.getMontant());
+
+        // Mettre à jour la demande 
+        request.setDepositAmount(dto.getMontant());//montant deja versé
+        // Si le montant total du devis est bien renseigné...
+        if (request.getTotalAmount() != null) {
+            // ... on calcule le nouveau reste à payer : Montant Total - Acompte
+            request.setRemainingAmount(request.getTotalAmount().subtract(dto.getMontant()));
+        } else {
+            // Sinon par sécurité on met le reste à payer à 0
+            request.setRemainingAmount(BigDecimal.ZERO);
+        }
+        // Enfin, on sauvegarde la demande d'intervention avec ces nouvelles valeurs financières
+        interventionRepository.save(request);
+
+        // TODO: Notifier le prestataire
+        // notificationService.notifierAcompteRecu(request.getSelectedProvider(), payment);
+
+        return toDTO(payment);
+    }
+
+    private String genererReference(String prefix) {
+        return prefix + "-" + (int)(Math.random() * 900000 + 100000);
+    }
+
+    // ================================================
+    // VALIDATION + PAIEMENT SOLDE — après les travaux
+    // ================================================
+    @Override
+    @Transactional
+    public PaymentDTO validerEtPayerSolde(Long requestId, ValiderTravauxDTO dto) {
+        User currentSyndic = getCurrentUser();
+
+        InterventionRequest request = interventionRepository
+            .findById(requestId)
+            .orElseThrow(() -> new ResourceNotFoundException("Demande introuvable"));
+
+        // Vérifier que le statut est FINISHED
+        if (request.getStatus() != InterventionStatus.FINISHED) {
+            throw new BadRequestException("Les travaux ne sont pas encore terminés");
+        }
+
+        // Vérifier que c'est le bon syndic
+        if (!request.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Non autorisé");
+        }
+
+        // 1. Valider les travaux
+        request.addStatusHistory(InterventionStatus.FINAL_VALIDATION, currentSyndic);
+        request.setValidatedAt(LocalDateTime.now());
+
+        // 2. Récupérer le solde restant à payer
+        BigDecimal solde = request.getRemainingAmount() != null 
+            ? request.getRemainingAmount() 
+            : BigDecimal.ZERO;
+
+        // 3. Créer le paiement du solde
+        Payment payment = Payment.builder()
+            .reference(genererReference("SOL"))           // Génère une référence spécifique (ex: SOL-987654)
+            .interventionRequest(request)                 // Rattache le paiement à la demande d'intervention
+            .provider(request.getSelectedProvider())      // Prestataire bénéficiaire du paiement
+            .syndic(currentSyndic)                        // Syndic qui effectue la transaction
+            .amount(solde)                                // Le montant exact restant à payer
+            .type(PaymentType.SOLDE)                      // Spécifie qu'il s'agit d'un paiement final (SOLDE)
+            .method(dto.getMethode())                     // Moyen de paiement (WAVE, ORANGE_MONEY...)
+            .status(PaymentStatus.COMPLETED)              // Statut complété une fois le paiement réussi
+            .paidAt(LocalDateTime.now())                  // Horodatage du paiement
+            .build();
+
+        paymentRepository.save(payment);
+
+        // Créditer immédiatement le Wallet du prestataire du montant du solde restant
+        providerService.crediterWallet(request.getSelectedProvider().getId(), solde);
+
+        // 4. Mettre à jour le solde restant à 0
+        request.setRemainingAmount(BigDecimal.ZERO);
+        interventionRepository.save(request);
+
+        // 5. TODO: Notifier le prestataire
+        // notificationService.notifierSoldeRecu(request.getSelectedProvider(), payment);
+
+        return toDTO(payment);
+    }
+
+    // =========================================================================
+    // UTILITAIRES ET MAPPERS
+    // =========================================================================
+
+    /**
+     * Récupère l'utilisateur actuellement authentifié via le SecurityContext.
+     */
+    private User getCurrentUser() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
+    }
+
+    /**
+     * Mappe une entité Residence vers son DTO.
+     */
+    private ResidenceDTO mapToResidenceDTO(Residence res) {
+        return ResidenceDTO.builder()
+                .id(res.getId())
+                .name(res.getName())
+                .fullAddress(res.getFullAddress())
+                .latitude(res.getLatitude())
+                .longitude(res.getLongitude())
+                .floorCount(res.getFloorCount())
+                .apartmentCount(res.getApartmentCount())
+                .syndicId(res.getSyndic() != null ? res.getSyndic().getId() : null)
+                .syndicName(res.getSyndic() != null ? res.getSyndic().getFirstName() + " " + res.getSyndic().getLastName() : null)
+                .createdAt(res.getCreatedAt())
+                .build();
+    }
+
+    /**
+     * Mappe une entité Property vers son DTO.
+     */
+    private PropertyDTO mapToPropertyDTO(Property p) {
+        return PropertyDTO.builder()
+                .id(p.getId())
+                .reference(p.getReference())
+                .floor(p.getFloor())
+                .area(p.getArea())
+                .type(p.getType())
+                .residenceId(p.getResidence() != null ? p.getResidence().getId() : null)
+                .residenceName(p.getResidence() != null ? p.getResidence().getName() : null)
+                .ownerId(p.getOwner() != null ? p.getOwner().getId() : null)
+                .ownerName(p.getOwner() != null ? p.getOwner().getFirstName() + " " + p.getOwner().getLastName() : null)
+                .build();
+    }
+
+    /**
+     * Mappe une entité InterventionRequest vers le DTO de détail simplifié.
+     */
+    private InterventionRequestDTO mapToInterventionDTO(InterventionRequest request) {
+        String residentPhone = "N/A";
+        String residentEmail = "N/A";
+        
+        // Extraction des contacts du résident via le bien concerné
+        if (request.getProperty() != null && request.getProperty().getOwner() != null) {
+            User owner = request.getProperty().getOwner();
+            residentPhone = owner.getPhone();
+            residentEmail = owner.getEmail();
+        }
+        
+        List<InterventionStatusHistoryDTO> historyDTOs = request.getHistory() != null 
+            ? request.getHistory().stream().map(h -> InterventionStatusHistoryDTO.builder()
+                .id(h.getId())
+                .status(h.getStatus())
+                .createdAt(h.getCreatedAt())
+                .build()).collect(Collectors.toList())
+            : new ArrayList<>();
+
+        return InterventionRequestDTO.builder()
+                .id(request.getId())
+                .title(request.getTitle())
+                .description(request.getDescription())
+                .status(request.getStatus())
+                .residenceName(request.getResidence() != null ? request.getResidence().getName() : "N/A")
+                .residentPhone(residentPhone)
+                .residentEmail(residentEmail)
+                .photoUrls(request.getPhotoUrls())
+                .history(historyDTOs)
+                .workflowSteps(buildWorkflow(request))
+                .createdAt(request.getCreatedAt())
+                .startedAt(request.getStartedAt())
+                .finishedAt(request.getFinishedAt())
+                .build();
+    }
+
+    private List<WorkflowStepDTO> buildWorkflow(InterventionRequest request) {
+        InterventionStatus statut = request.getStatus();
+
+        Function<InterventionStatus, LocalDateTime> findDate = (s) ->
+            request.getHistory() != null ? request.getHistory().stream()
+                   .filter(h -> h.getStatus() == s)
+                   .map(h -> h.getCreatedAt())
+                   .findFirst()
+                   .orElse(null) : null;
+
+        return List.of(
+            WorkflowStepDTO.builder()
+                .label("Demande reçue")
+                .completed(true)
+                .date(request.getCreatedAt())
+                .build(),
+
+            WorkflowStepDTO.builder()
+                .label("Devis envoyé")
+                .completed(statut != InterventionStatus.PENDING)
+                .date(findDate.apply(InterventionStatus.QUOTE_SENT))
+                .build(),
+
+            WorkflowStepDTO.builder()
+                .label("Validation syndic")
+                .completed(statut == InterventionStatus.SYNDIC_VALIDATED
+                        || statut == InterventionStatus.STARTED
+                        || statut == InterventionStatus.FINISHED
+                        || statut == InterventionStatus.FINAL_VALIDATION)
+                .date(findDate.apply(InterventionStatus.SYNDIC_VALIDATED))
+                .build(),
+
+            WorkflowStepDTO.builder()
+                .label("Intervention démarrée")
+                .completed(statut == InterventionStatus.STARTED
+                        || statut == InterventionStatus.FINISHED
+                        || statut == InterventionStatus.FINAL_VALIDATION)
+                .date(findDate.apply(InterventionStatus.STARTED))
+                .build(),
+
+            WorkflowStepDTO.builder()
+                .label("Travail terminé")
+                .completed(statut == InterventionStatus.FINISHED
+                        || statut == InterventionStatus.FINAL_VALIDATION)
+                .date(findDate.apply(InterventionStatus.FINISHED))
+                .build(),
+
+            WorkflowStepDTO.builder()
+                .label("Validation finale")
+                .completed(statut == InterventionStatus.FINAL_VALIDATION)
+                .date(findDate.apply(InterventionStatus.FINAL_VALIDATION))
+                .build()
+        );
+    }
+
+    /**
+     * Mappe une entité Quote vers le DTO SyndicQuoteDTO (comparaison).
+     */
+    private SyndicQuoteDTO mapToSyndicQuoteDTO(Quote quote) {
+        Double noteMoyenne = providerRatingRepository.calculerNoteMoyenne(quote.getProvider().getId());
+        double rating = noteMoyenne != null ? noteMoyenne : 0.0;
+
+        return SyndicQuoteDTO.builder()
+                .id(quote.getId())
+                .providerId(quote.getProvider().getId())
+                .providerName(quote.getProvider().getFirstName() + " " + quote.getProvider().getLastName())
+                .companyName(quote.getProvider().getCompanyName())
+                .laborTotalAmount(quote.getLaborTotalAmount())
+                .materialTotalAmount(quote.getMaterialTotalAmount())
+                .totalAmount(quote.getTotalAmount())
+                .estimatedDelayLabel(quote.getEstimatedDelay() != null ? quote.getEstimatedDelay().getLabel() : "N/A")
+                .additionalComments(quote.getAdditionalComments())
+                .status(quote.getStatus())
+                .providerRating(rating)
+                .createdAt(quote.getCreatedAt())
+                .build();
+    }
+
+   
+
+    private PaymentDTO toDTO(Payment payment) {
+        return PaymentDTO.builder()
+                .id(payment.getId())
+                .reference(payment.getReference())
+                .amount(payment.getAmount())
+                .type(payment.getType())
+                .method(payment.getMethod())
+                .status(payment.getStatus())
+                .createdAt(payment.getCreatedAt())
+                .paidAt(payment.getPaidAt())
+                .build();
+    }
+}

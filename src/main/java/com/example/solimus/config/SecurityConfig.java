@@ -1,0 +1,85 @@
+package com.example.solimus.config;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+
+/**
+ * Configuration de la sécurité Spring Security pour SOLIMUS.
+ */
+@Configuration
+@EnableWebSecurity
+@RequiredArgsConstructor
+public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        // Routes d'authentification publiques (Inscription, OTP, Login...)
+                        // /api/auth/me et /api/auth/logout seront protégés par le filtre
+                        .requestMatchers("/api/auth/me/**").authenticated()
+                        .requestMatchers("/api/auth/logout").authenticated()
+                        .requestMatchers("/api/auth/**").permitAll()
+
+                        // Ressources publiques pour l'inscription
+                        .requestMatchers(HttpMethod.GET, "/api/admin/specialties", "/api/admin/intervention-zones").permitAll()
+
+                        // Documentation
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+
+                        // Zones Admin : Seuls les utilisateurs avec le rôle ADMIN peuvent effectuer ces actions
+                        .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN")
+                        
+                        // Zones Syndic : Seuls les utilisateurs avec le rôle SYNDIC peuvent effectuer ces actions
+                        .requestMatchers("/api/syndic/**").hasAnyAuthority("ROLE_SYNDIC")
+
+                        // Tout le reste nécessite une authentification
+                        .anyRequest().authenticated()
+                )
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(Arrays.asList(
+                "http://localhost:4200", 
+                "http://localhost:8080",
+                "https://solimus.innovimpactdev.cloud"
+        ));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
+}
