@@ -65,12 +65,19 @@ public class AuthController {
         return ResponseEntity.ok("Si l'email existe, un code de réinitialisation a été envoyé.");
     }
 
+    @Operation(summary = "Vérifier le code de réinitialisation mobile (OTP)", description = "Étape 2 : Vérifie le code OTP à 4 chiffres et retourne un token UUID pour l'étape finale.")
+    @PostMapping("/verify-reset-code")
+    public ResponseEntity<ForgotPasswordVerifyResponseDTO> verifyResetCode(@RequestBody @Valid VerifyForgotPasswordCodeRequestDTO dto) {
+        return ResponseEntity.ok(authService.verifyForgotPasswordCode(dto));
+    }
+
     @Operation(summary = "Réinitialiser le mot de passe", description = "Définit un nouveau mot de passe via un token.")
     @PostMapping("/reset-password")
     public ResponseEntity<String> resetPassword(@RequestBody @Valid ResetPasswordRequestDTO dto) {
         authService.resetPassword(dto);
         return ResponseEntity.ok("Mot de passe réinitialisé avec succès.");
     }
+
 
     // ============================================================================
     // 🔑 ACTIVATION DE COMPTE (créé par ADMIN)

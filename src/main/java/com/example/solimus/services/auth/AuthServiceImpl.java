@@ -22,6 +22,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.Optional;
+
 
 /**
  * Service gérant la logique d'authentification et de création de compte selon le flux simplifié (V1) :
@@ -212,9 +214,10 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void forgotPassword(ForgotPasswordRequestDTO dto) {
-        // 1. Vérifier si l'utilisateur existe
-        User user = userRepository.findByEmail(dto.getEmail())
-                .orElseThrow(() -> new ResourceNotFoundException("Aucun compte n'est associé à cette adresse e-mail."));
+        // 1. Trouver l'utilisateur par e-mail ou téléphone
+        User user = userRepository.findByEmail(dto.getEmailOrPhone())
+                .or(() -> userRepository.findByPhone(dto.getEmailOrPhone()))
+                .orElseThrow(() -> new ResourceNotFoundException("Aucun compte n'est associé à cet identifiant (email ou téléphone)."));
 
         // 2. Bloquer si le compte est désactivé
         if (user.getStatus() == UserStatus.DISABLED) {
@@ -226,13 +229,55 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException("Ce compte n'est pas encore actif. Veuillez d'abord valider votre inscription.");
         }
 
-        // 4. Générer un token unique (UUID) pour la réinitialisation
-        String resetToken = activationCodeService.generateAndStoreResetToken(user);
+        // 4. Générer le code/token en fonction du rôle (Mobile vs Web)
+        String resetToken;
+        ERole userRole = user.getRole().getName();
+        if (userRole == ERole.ROLE_PRESTATAIRE || userRole == ERole.ROLE_COPROPRIETAIRE) {
+            // Code à 4 chiffres pour le mobile
+            resetToken = activationCodeService.generateAndStoreResetCodeMobile(user);
+        } else {
+            // Token UUID pour le web
+            resetToken = activationCodeService.generateAndStoreResetToken(user);
+        }
         
         // 5. Envoyer l'email avec le lien/code
         emailService.sendPasswordResetCode(user.getEmail(), resetToken, user.getFirstName());
         log.info("Processus de réinitialisation initié pour : {}", user.getEmail());
     }
+
+    @Override
+    @Transactional
+    public ForgotPasswordVerifyResponseDTO verifyForgotPasswordCode(VerifyForgotPasswordCodeRequestDTO dto) {
+        // 1. Trouver l'utilisateur par e-mail ou téléphone
+        User user = userRepository.findByEmail(dto.getEmailOrPhone())
+                .or(() -> userRepository.findByPhone(dto.getEmailOrPhone()))
+                .orElseThrow(() -> new ResourceNotFoundException("Aucun compte n'est associé à cet identifiant."));
+
+        // 2. Récupérer le code de type PASSWORD_RESET
+        ActivationCode activationCode = activationCodeRepository.findByCodeAndUser(dto.getCode(), user)
+                .filter(ac -> ac.getType() == CodeType.PASSWORD_RESET)
+                .orElseThrow(() -> new BadRequestException("Code de réinitialisation invalide."));
+
+        // 3. Vérifier s'il est expiré ou déjà utilisé
+        if (activationCode.isUsed()) {
+            throw new BadRequestException("Ce code a déjà été utilisé.");
+        }
+        if (activationCode.isExpired()) {
+            throw new BadRequestException("Ce code a expiré. Veuillez refaire une demande.");
+        }
+
+        // 4. Invalider le code à 4 chiffres (usage unique)
+        activationCode.setUsed(true);
+        activationCodeRepository.save(activationCode);
+
+        // 5. Générer un token UUID pour l'étape suivante (reset-password)
+        String finalResetToken = activationCodeService.generateAndStoreResetToken(user);
+
+        return ForgotPasswordVerifyResponseDTO.builder()
+                .token(finalResetToken)
+                .build();
+    }
+
 
     @Override
     @Transactional
@@ -318,21 +363,39 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException("Ce compte est déjà actif.");
         }
 
-        // 2. Vérifier le cooldown (délai entre deux envois)
-        long cooldown = activationCodeService.getRemainingCooldownSecond(user, CodeType.ACCOUNT_ACTIVATION);
-        if (cooldown > 0) {
-            throw new BadRequestException("Veuillez attendre " + cooldown + " secondes avant de demander un nouveau lien.");
+        // 2. Déterminer si c'est un utilisateur mobile ou web
+        ERole userRole = user.getRole().getName();
+        boolean isMobile = (userRole == ERole.ROLE_PRESTATAIRE || userRole == ERole.ROLE_COPROPRIETAIRE);
+
+        // 3. Déterminer le type de code (ACTIVATION ou ACCOUNT_ACTIVATION)
+        CodeType type = CodeType.ACCOUNT_ACTIVATION;
+        if (isMobile) {
+            // Pour le mobile, on regarde s'il y a un code ACCOUNT_ACTIVATION existant, sinon on utilise ACTIVATION
+            Optional<ActivationCode> existingCode = activationCodeRepository.findByUserAndType(user, CodeType.ACCOUNT_ACTIVATION);
+            if (existingCode.isEmpty()) {
+                type = CodeType.ACTIVATION;
+            }
         }
 
-        // 3. Invalider l'ancien token (en supprimant ou marquant comme utilisé)
-        // La méthode generateAndStoreAccountActivationToken s'occupe déjà de supprimer l'ancien
-        String newToken = activationCodeService.generateAndStoreAccountActivationToken(user);
+        // 4. Vérifier le cooldown (délai entre deux envois)
+        long cooldown = activationCodeService.getRemainingCooldownSecond(user, type);
+        if (cooldown > 0) {
+            String unit = isMobile ? "code" : "lien";
+            throw new BadRequestException("Veuillez attendre " + cooldown + " secondes avant de demander un nouveau " + unit + ".");
+        }
 
-        // 4. Renvoyer l'email
-        emailService.sendUserActivationLink(user.getEmail(), newToken, user.getFirstName());
-
-        log.info("Nouveau lien d'activation renvoyé pour l'utilisateur : {}", email);
+        // 5. Invalider l'ancien et renvoyer
+        if (isMobile) {
+            String newCode = activationCodeService.generateAndStoreCodeMobileWithType(user, type);
+            emailService.sendActivationCode(user.getEmail(), newCode, user.getFirstName());
+            log.info("Nouveau code d'activation (4 chiffres) renvoyé pour l'utilisateur mobile : {}", email);
+        } else {
+            String newToken = activationCodeService.generateAndStoreAccountActivationToken(user);
+            emailService.sendUserActivationLink(user.getEmail(), newToken, user.getFirstName());
+            log.info("Nouveau lien d'activation (UUID) renvoyé pour l'utilisateur : {}", email);
+        }
     }
+
 
     /**
      * Étape 2 : L'utilisateur définit son mot de passe.

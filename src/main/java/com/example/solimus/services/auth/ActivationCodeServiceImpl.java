@@ -97,6 +97,33 @@ public class ActivationCodeServiceImpl implements ActivationCodeService {
 
     @Override
     @Transactional
+    public String generateAndStoreResetCodeMobile(User user) {
+        // Pour le reset mobile, on utilise un code à 4 chiffres
+        activationCodeRepository.deleteByUserAndType(user, CodeType.PASSWORD_RESET);
+        activationCodeRepository.flush();
+
+        String code = generateActivationCodeMobile();
+        saveCode(user, code, CodeType.PASSWORD_RESET, EXPIRATION_MINUTES);
+        log.info("Code mobile de réinitialisation (4 chiffres) généré pour : {}", user.getEmail());
+        return code;
+    }
+
+
+    @Override
+    @Transactional
+    public String generateAndStoreCodeMobileWithType(User user, CodeType type) {
+        activationCodeRepository.deleteByUserAndType(user, type);
+        activationCodeRepository.flush();
+
+        String code = generateActivationCodeMobile();
+        int expMinutes = (type == CodeType.ACCOUNT_ACTIVATION) ? ACCOUNT_ACTIVATION_EXPIRATION_MINUTES : EXPIRATION_MINUTES;
+        saveCode(user, code, type, expMinutes);
+        log.info("Code mobile d'activation ({}) à 4 chiffres généré pour : {}", type, user.getEmail());
+        return code;
+    }
+
+    @Override
+    @Transactional
     public String generateAndStoreAccountActivationToken(User user) {
         // Supprimer tout token ACCOUNT_ACTIVATION existant pour éviter les doublons
         activationCodeRepository.deleteByUserAndType(user, CodeType.ACCOUNT_ACTIVATION);

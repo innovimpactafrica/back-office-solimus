@@ -47,6 +47,12 @@ public interface AuthService {
      */
     void resetPassword(ResetPasswordRequestDTO dto);
 
+    /**
+     * Vérification du code OTP de réinitialisation mobile.
+     */
+    ForgotPasswordVerifyResponseDTO verifyForgotPasswordCode(VerifyForgotPasswordCodeRequestDTO dto);
+
+
     // ============================================================================
     // 🔑 ACTIVATION DE COMPTE SYNDIC (créé par ADMIN)
     // ============================================================================
@@ -58,7 +64,7 @@ public interface AuthService {
      * @param token Le token UUID reçu dans le lien d'email.
      * @return Les informations de l'utilisateur (prénom, nom, email, téléphone).
      */
-    com.example.solimus.dtos.auth.AccountActivationInfoDTO validateActivationToken(String token);
+    AccountActivationInfoDTO validateActivationToken(String token);
 
     /**
      * Renvoie un nouveau lien d'activation à l'utilisateur.

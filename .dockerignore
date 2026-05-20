@@ -1,0 +1,21 @@
+# Exclure les dossiers de build et les fichiers temporaires
+target/
+*.class
+
+# Exclure l'historique Git
+.git
+.gitignore
+
+# Exclure les fichiers de configuration de l'éditeur (IntelliJ, VS Code...)
+.idea/
+*.iml
+.vscode/
+
+# Exclure le wrapper Maven local
+.mvn/
+mvnw
+mvnw.cmd
+
+# Exclure la documentation et les fichiers Markdown
+HELP.md
+README.md

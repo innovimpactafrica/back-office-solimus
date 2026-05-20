@@ -37,6 +37,23 @@ public interface ActivationCodeService {
     String generateAndStoreResetToken(User user);
 
     /**
+     * Génère un code de réinitialisation mobile à 4 chiffres (OTP).
+     * @param user L'utilisateur concerné.
+     * @return Le code généré et stocké.
+     */
+    String generateAndStoreResetCodeMobile(User user);
+
+    /**
+     * Génère un code d'activation mobile à 4 chiffres (OTP) avec un type spécifique.
+     * @param user L'utilisateur concerné.
+     * @param type Le type de code (ACTIVATION ou ACCOUNT_ACTIVATION).
+     * @return Le code généré et stocké.
+     */
+    String generateAndStoreCodeMobileWithType(User user, com.example.solimus.enums.CodeType type);
+
+
+
+    /**
      * Génère un token UUID sécurisé pour l'activation de compte (créé par l'admin).
      * Ce token expire après 60 minutes et est lié au compte utilisateur.
      * @param user L'utilisateur dont le compte doit être activé.
