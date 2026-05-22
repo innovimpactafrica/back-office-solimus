@@ -284,8 +284,11 @@ public class SyndicServiceImpl implements SyndicService {
     @Override
     @Transactional
     public void acceptQuote(Long requestId, Long quoteId) {
-        // 1. Récupérer la demande
-        InterventionRequest request = interventionRepository.findById(requestId)
+        // 1. Récupérer la demande avec un verrou d'écriture.
+        // findByIdForUpdate bloque temporairement cette demande pendant la transaction
+        // pour éviter qu'une autre requête l'accepte ou la modifie en même temps.
+        // À la fin de la méthode, @Transactional fait le COMMIT et MySQL libère le verrou.
+        InterventionRequest request = interventionRepository.findByIdForUpdate(requestId)
                 .orElseThrow(() -> new ResourceNotFoundException("Demande introuvable"));
 
         // 2. Vérifier que c'est bien LE syndic qui a créé cette demande
@@ -314,23 +317,18 @@ public class SyndicServiceImpl implements SyndicService {
 
         // 5. Accepter ce devis
         acceptedQuote.setStatus(QuoteStatus.ACCEPTED);
-        quoteRepository.save(acceptedQuote);
 
         // 6. Refuser automatiquement tous les autres devis concurrents
         List<Quote> otherQuotes = quoteRepository.findAllByInterventionRequestOrderByTotalAmountAsc(request);
         otherQuotes.stream()
                 .filter(q -> !q.getId().equals(quoteId))
                 .filter(q -> q.getStatus() == QuoteStatus.SENT)
-                .forEach(q -> {
-                    q.setStatus(QuoteStatus.REJECTED);
-                    quoteRepository.save(q);
-                });
+                .forEach(q -> q.setStatus(QuoteStatus.REJECTED));
 
         // 7. Finaliser la demande : assignation du prestataire, montant et changement de statut
         request.setSelectedProvider(acceptedQuote.getProvider());
         request.setTotalAmount(acceptedQuote.getTotalAmount());
         request.addStatusHistory(InterventionStatus.SYNDIC_VALIDATED, getCurrentUser());
-        interventionRepository.save(request);
     }
 
     /**

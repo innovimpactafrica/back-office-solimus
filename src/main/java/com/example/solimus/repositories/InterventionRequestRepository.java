@@ -3,9 +3,11 @@ package com.example.solimus.repositories;
 import com.example.solimus.entities.InterventionRequest;
 import com.example.solimus.entities.User;
 import com.example.solimus.enums.InterventionStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -20,6 +22,12 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
     
     // Lister les demandes créées par un syndic précis
     List<InterventionRequest> findAllBySyndic(User syndic);
+
+    // Récupère une demande en la verrouillant en écriture jusqu'à la fin de la transaction.
+    // Utilisé lors de l'acceptation d'un devis pour éviter deux validations concurrentes.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT ir FROM InterventionRequest ir WHERE ir.id = :id")
+    Optional<InterventionRequest> findByIdForUpdate(@Param("id") Long id);
     
     // Lister les demandes assignées à un prestataire précis
     List<InterventionRequest> findAllBySelectedProvider(User provider);
