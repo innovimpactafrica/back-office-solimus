@@ -112,6 +112,7 @@ public class SyndicServiceImpl implements SyndicService {
      * Récupère la liste de toutes les résidences gérées par le syndic connecté.
      */
     @Override
+    @Transactional(readOnly = true)
     public List<ResidenceDTO> getMyResidences() {
         User currentSyndic = getCurrentUser();
         return residenceRepository.findAllBySyndic(currentSyndic).stream()
@@ -326,6 +327,7 @@ public class SyndicServiceImpl implements SyndicService {
      * Récupère toutes les demandes d'intervention créées par le syndic connecté.
      */
     @Override
+    @Transactional(readOnly = true)
     public List<InterventionRequestDTO> getMyInterventionRequests() {
         return interventionRepository.findAllBySyndic(getCurrentUser()).stream()
                 .map(this::mapToInterventionDTO)
@@ -336,6 +338,7 @@ public class SyndicServiceImpl implements SyndicService {
      * Les devis sont triés par prix croissant (du moins cher au plus cher).
      */
     @Override
+    @Transactional(readOnly = true)
     public List<SyndicQuoteDTO> getQuotesByInterventionRequest(Long requestId) {
 
         // Vérifier que la demande existe
@@ -378,7 +381,9 @@ public class SyndicServiceImpl implements SyndicService {
 
                 // Score délai : moins c'est long mieux c'est
                 // Ex: 1 jour → 1 - (1/30) = 0.97
-                double scoreDelai = 1.0 - (quote.getEstimatedDelay().getDays() / 30.0);
+                double scoreDelai = quote.getEstimatedDelay() != null
+                    ? 1.0 - (quote.getEstimatedDelay().getDays() / 30.0)
+                    : 0.0;
 
                 // Score final : prix 40% + note 40% + délai 20%
                 double scoreFinal = (scorePrix * 0.40)
