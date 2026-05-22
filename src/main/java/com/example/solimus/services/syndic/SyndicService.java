@@ -10,6 +10,7 @@ import com.example.solimus.dtos.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.CreateCoOwnerDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
 import com.example.solimus.dtos.syndic.PaymentDTO;
+import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
 
 import java.util.List;
@@ -29,7 +30,7 @@ public interface SyndicService {
     // ================================================
     // ACOMPTE — versé avant ou au début des travaux
     // ================================================
-    PaymentDTO payerAcompte(Long requestId, PayerAcompteDTO dto);
+    PaymentResponseDTO payerAcompte(Long requestId, PayerAcompteDTO dto);
 
     // ================================================
     // VALIDATION + PAIEMENT SOLDE — après les travaux

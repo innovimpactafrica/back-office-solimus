@@ -10,10 +10,13 @@ import java.time.LocalDate;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Optional;
+
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
     boolean existsByInterventionRequestIdAndType(Long requestId, PaymentType type);
     java.util.List<Payment> findAllByProviderIdOrderByCreatedAtDesc(Long providerId);
+    Optional<Payment> findByReference(String reference);
 
     /**
      * Calcule le total des paiements validés reçus par un prestataire pour une date précise.

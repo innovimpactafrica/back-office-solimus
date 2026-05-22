@@ -75,11 +75,13 @@ public class ProviderServiceImpl implements ProviderService {
      * Utilise le summary DTO (plus léger).
      */
     @Override
+    @Transactional(readOnly = true)
     public Page<InterventionRequestSummaryDTO> getAvailableRequests(String search, InterventionStatus status,
             Pageable pageable) {
         User currentProvider = getCurrentUser();
+        String normalizedSearch = (search == null || search.isBlank()) ? null : search.trim();
 
-        return interventionRepository.findFilteredRequests(currentProvider.getId(), search, status, pageable)
+        return interventionRepository.findFilteredRequests(currentProvider.getId(), normalizedSearch, status, pageable)
                 .map(this::mapToSummaryDTO);
     }
 
@@ -96,6 +98,7 @@ public class ProviderServiceImpl implements ProviderService {
      * Détails complets d'une demande pour l'affichage de la fiche.
      */
     @Override
+    @Transactional(readOnly = true)
     public InterventionRequestDTO getRequestDetails(Long id) {
         User currentProvider = getCurrentUser();
         
@@ -451,6 +454,7 @@ public class ProviderServiceImpl implements ProviderService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public QuoteDetailDTO getQuoteDetails(Long quoteId) {
         User currentProvider = getCurrentUser();
 

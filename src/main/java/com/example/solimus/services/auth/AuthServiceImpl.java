@@ -81,7 +81,6 @@ public class AuthServiceImpl implements AuthService {
         user.setPhone(dto.getPhone());
         user.setRole(role);
         user.setStatus(UserStatus.PENDING);
-        user.setProfilePhotoUrl(dto.getProfilePhotoUrl());
 
         if (dto.getRole() == ERole.ROLE_PRESTATAIRE) {
             validateAndSetProviderInfo(user, dto);

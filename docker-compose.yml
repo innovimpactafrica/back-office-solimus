@@ -22,7 +22,9 @@ services:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 15
+      start_period: 30s
+
 
   # ==========================================
   # SERVICE 2 : L'APPLICATION SPRING BOOT
@@ -59,9 +61,9 @@ services:
       MINIO_BUCKET: ${MINIO_BUCKET}
       
     ports:
-      # Expose le port 8085 en externe (pour correspondre à vos tests locaux)
+      # Expose le port 8086 en externe (pour éviter les conflits avec l'IDE local sur 8085)
       # et le redirige vers le port interne 8082 configuré dans le conteneur.
-      - "8085:8082"
+      - "8086:8082"
     restart: unless-stopped
 
 # ==========================================

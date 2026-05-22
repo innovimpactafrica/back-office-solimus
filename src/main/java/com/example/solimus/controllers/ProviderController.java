@@ -3,9 +3,9 @@ package com.example.solimus.controllers;
 import com.example.solimus.dtos.intervention.CreateQuoteDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestSummaryDTO;
-import com.example.solimus.dtos.provider.ProviderProfileDTO;
-import com.example.solimus.dtos.provider.ProviderDashboardDTO;
+import com.example.solimus.dtos.provider.*;
 import com.example.solimus.enums.InterventionStatus;
+import com.example.solimus.enums.QuoteStatus;
 import com.example.solimus.services.provider.ProviderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -109,7 +109,7 @@ public class ProviderController {
 
     @Operation(summary = "Récupérer les informations personnelles (Édition profil)")
     @GetMapping("/profile/personal-info")
-    public ResponseEntity<com.example.solimus.dtos.provider.UpdateProviderProfileDTO> getPersonalInformation() {
+    public ResponseEntity<UpdateProviderProfileDTO> getPersonalInformation() {
         return ResponseEntity.ok(providerService.getPersonalInformation());
     }
 
@@ -126,8 +126,8 @@ public class ProviderController {
             @RequestParam(value = "longitude", required = false) java.math.BigDecimal longitude,
             @RequestParam(value = "photo", required = false) MultipartFile photo) {
         
-        com.example.solimus.dtos.provider.UpdateProviderProfileDTO dto = 
-            com.example.solimus.dtos.provider.UpdateProviderProfileDTO.builder()
+       UpdateProviderProfileDTO dto =
+            UpdateProviderProfileDTO.builder()
                 .companyName(companyName)
                 .firstName(firstName)
                 .lastName(lastName)
@@ -148,8 +148,8 @@ public class ProviderController {
 
     @Operation(summary = "Récupérer la liste des devis (avec filtres et pagination)")
     @GetMapping("/quotes")
-    public ResponseEntity<com.example.solimus.dtos.provider.ProviderQuoteListDTO> getMesDevis(
-            @RequestParam(required = false) com.example.solimus.enums.QuoteStatus statut,
+    public ResponseEntity<ProviderQuoteListDTO> getMesDevis(
+            @RequestParam(required = false) QuoteStatus statut,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
@@ -158,7 +158,7 @@ public class ProviderController {
 
     @Operation(summary = "Récupérer le détail d'un devis")
     @GetMapping("/quotes/{id}")
-    public ResponseEntity<com.example.solimus.dtos.provider.QuoteDetailDTO> getQuoteDetails(@PathVariable Long id) {
+    public ResponseEntity<QuoteDetailDTO> getQuoteDetails(@PathVariable Long id) {
         return ResponseEntity.ok(providerService.getQuoteDetails(id));
     }
 
@@ -168,14 +168,14 @@ public class ProviderController {
 
     @Operation(summary = "Récupérer les informations du portefeuille (Wallet)")
     @GetMapping("/wallet")
-    public ResponseEntity<com.example.solimus.dtos.provider.WalletDTO> getMonWallet() {
+    public ResponseEntity<WalletDTO> getMonWallet() {
         return ResponseEntity.ok(providerService.getMonWallet());
     }
 
     @Operation(summary = "Demander un versement (Wave, Orange Money)")
     @PostMapping("/wallet/withdraw")
-    public ResponseEntity<com.example.solimus.dtos.provider.WithdrawalRequestDTO> demanderVersement(
-            @RequestBody @Valid com.example.solimus.dtos.provider.DemanderVersementDTO dto) {
+    public ResponseEntity<WithdrawalRequestDTO> demanderVersement(
+            @RequestBody @Valid DemanderVersementDTO dto) {
         return ResponseEntity.ok(providerService.demanderVersement(dto));
     }
 

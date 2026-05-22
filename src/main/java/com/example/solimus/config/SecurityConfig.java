@@ -45,6 +45,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/logout").authenticated()
                         .requestMatchers("/api/auth/**").permitAll()
 
+                        // Paiements (Callbacks InTouch et Bridge public pour TouchPay)
+                        .requestMatchers("/api/payments/bridge/**", "/api/payments/intouch/**").permitAll()
+
                         // Ressources publiques pour l'inscription
                         .requestMatchers(HttpMethod.GET, "/api/admin/specialties", "/api/admin/intervention-zones").permitAll()
 

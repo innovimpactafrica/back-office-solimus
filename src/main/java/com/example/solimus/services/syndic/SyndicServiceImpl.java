@@ -39,6 +39,7 @@ import com.example.solimus.enums.PaymentType;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
 import com.example.solimus.dtos.syndic.PaymentDTO;
+import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -81,6 +82,9 @@ public class SyndicServiceImpl implements SyndicService {
 
     @Value("${solimus.geolocation.search-radius-km:30.0}")
     private double searchRadiusKm;
+
+    @Value("${app.touchpay.bridge-url}")
+    private String touchPayBridgeUrlTemplate;
 
     // =========================================================================
     // GESTION DES RÉSIDENCES
@@ -449,19 +453,20 @@ public class SyndicServiceImpl implements SyndicService {
     // ================================================
     @Override
     @Transactional
-    public PaymentDTO payerAcompte(Long requestId, PayerAcompteDTO dto) {
+    public PaymentResponseDTO payerAcompte(Long requestId, PayerAcompteDTO dto) {
         User currentSyndic = getCurrentUser();
 
+        // 1. Vérifier si la demande d'intervention existe
         InterventionRequest request = interventionRepository
             .findById(requestId)
             .orElseThrow(() -> new ResourceNotFoundException("Demande introuvable"));
 
-        // Vérifier que c'est bien le syndic de cette demande
+        // 2. Vérifier que c'est bien le syndic assigné à cette demande qui initie le paiement
         if (!request.getSyndic().getId().equals(currentSyndic.getId())) {
             throw new BadRequestException("Vous n'êtes pas autorisé à payer pour cette demande.");
         }
 
-        // Vérifier qu'aucun acompte n'a déjà été versé
+        // 3. Vérifier qu'aucun acompte n'a déjà été versé pour cette intervention
         boolean acompteDejaVerse = paymentRepository
             .existsByInterventionRequestIdAndType(requestId, PaymentType.ACOMPTE);
 
@@ -469,46 +474,40 @@ public class SyndicServiceImpl implements SyndicService {
             throw new BadRequestException("Un acompte a déjà été versé pour cette intervention");
         }
 
-        // Vérifier qu'un prestataire est sélectionné
+        // 4. Vérifier qu'un prestataire a été sélectionné pour cette demande
         if (request.getSelectedProvider() == null) {
             throw new BadRequestException("Aucun prestataire n'est sélectionné pour cette demande.");
         }
 
-        // Créer le paiement acompte
+        // 5. Générer une référence unique de transaction
+        String transactionRef = genererReference("PAY");
+
+        // 6. Enregistrer le paiement en statut PENDING (en attente du retour de TouchPay)
         Payment payment = Payment.builder()
-            .reference(genererReference("PAY"))           // Génère une référence unique (ex: PAY-123456)
-            .interventionRequest(request)                 // Lie ce paiement à la demande d'intervention
-            .provider(request.getSelectedProvider())      // Définit le prestataire qui va recevoir l'argent
-            .syndic(currentSyndic)                        // Définit le syndic qui effectue le paiement
-            .amount(dto.getMontant())                     // Le montant de l'acompte à payer
-            .type(PaymentType.ACOMPTE)                    // Spécifie que c'est un acompte (et non le solde final)
-            .method(dto.getMethode())                     // La méthode choisie (WAVE, ORANGE_MONEY, etc.)
-            .status(PaymentStatus.COMPLETED)              // Statut "COMPLETED" car l'acompte a été versé avec succès
-            .paidAt(LocalDateTime.now())                  // Enregistre la date et l'heure exactes du paiement
+            .reference(transactionRef)                       // Référence unique générée pour InTouch/TouchPay
+            .interventionRequest(request)                     // Demande d'intervention liée à ce paiement
+            .provider(request.getSelectedProvider())          // Prestataire qui doit recevoir l'argent
+            .syndic(currentSyndic)                            // Syndic qui effectue le paiement
+            .amount(dto.getMontant())                         // Montant de l'acompte à payer
+            .type(PaymentType.ACOMPTE)                        // Spécifie qu'il s'agit d'un acompte
+            .method(dto.getMethode())                         // Méthode choisie (ex: WAVE, ORANGE_MONEY, etc.)
+            .status(PaymentStatus.PENDING)                    // Statut temporaire en attente du callback TouchPay
             .build();
 
-        paymentRepository.save(payment);
+        paymentRepository.save(payment);                      // Sauvegarde du paiement temporaire en base
 
-        // Créditer immédiatement le Wallet du prestataire du montant de l'acompte
-        providerService.crediterWallet(request.getSelectedProvider().getId(), dto.getMontant());
+        // 7. Construire l'URL de redirection de la WebView TouchPay
+        // Le template contient des paramètres pour le bridge TouchPay avec la référence
+        String bridgeUrl = String.format(touchPayBridgeUrlTemplate, transactionRef);
 
-        // Mettre à jour la demande 
-        request.setDepositAmount(dto.getMontant());//montant deja versé
-        // Si le montant total du devis est bien renseigné...
-        if (request.getTotalAmount() != null) {
-            // ... on calcule le nouveau reste à payer : Montant Total - Acompte
-            request.setRemainingAmount(request.getTotalAmount().subtract(dto.getMontant()));
-        } else {
-            // Sinon par sécurité on met le reste à payer à 0
-            request.setRemainingAmount(BigDecimal.ZERO);
-        }
-        // Enfin, on sauvegarde la demande d'intervention avec ces nouvelles valeurs financières
-        interventionRepository.save(request);
-
-        // TODO: Notifier le prestataire
-        // notificationService.notifierAcompteRecu(request.getSelectedProvider(), payment);
-
-        return toDTO(payment);
+        // 8. Retourner les détails au frontend pour charger la WebView
+        return PaymentResponseDTO.builder()
+            .success(true)                                    // Succès de l'initiation
+            .message("Paiement initié. Veuillez compléter via TouchPay.")
+            .transactionReference(transactionRef)             // Référence de transaction à suivre
+            .amountToPay(dto.getMontant())                     // Montant exact à payer
+            .paymentUrl(bridgeUrl)                            // URL de redirection vers le bridge TouchPay
+            .build();
     }
 
     private String genererReference(String prefix) {
