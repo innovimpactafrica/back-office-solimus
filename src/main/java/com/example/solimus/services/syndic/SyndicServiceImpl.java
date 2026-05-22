@@ -303,6 +303,15 @@ public class SyndicServiceImpl implements SyndicService {
         Quote acceptedQuote = quoteRepository.findById(quoteId)
                 .orElseThrow(() -> new ResourceNotFoundException("Devis introuvable"));
 
+        if (acceptedQuote.getInterventionRequest() == null
+                || !acceptedQuote.getInterventionRequest().getId().equals(request.getId())) {
+            throw new BadRequestException("Ce devis n'appartient pas à cette demande d'intervention.");
+        }
+
+        if (acceptedQuote.getStatus() != QuoteStatus.SENT) {
+            throw new BadRequestException("Seul un devis envoyé et en attente peut être accepté.");
+        }
+
         // 5. Accepter ce devis
         acceptedQuote.setStatus(QuoteStatus.ACCEPTED);
         quoteRepository.save(acceptedQuote);
@@ -311,6 +320,7 @@ public class SyndicServiceImpl implements SyndicService {
         List<Quote> otherQuotes = quoteRepository.findAllByInterventionRequestOrderByTotalAmountAsc(request);
         otherQuotes.stream()
                 .filter(q -> !q.getId().equals(quoteId))
+                .filter(q -> q.getStatus() == QuoteStatus.SENT)
                 .forEach(q -> {
                     q.setStatus(QuoteStatus.REJECTED);
                     quoteRepository.save(q);
