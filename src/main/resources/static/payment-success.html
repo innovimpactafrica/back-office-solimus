@@ -4,11 +4,60 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SOLIMUS — Paiement réussi</title>
+    <script>
+        async function confirmerPaiement() {
+            const params = new URLSearchParams(window.location.search);
+
+            // TouchPay renvoie notre référence interne dans num_command.
+            // Exemple réel : num_command=PAY-615939
+            const reference = params.get('num_command') || params.get('ref');
+
+            // TouchPay renvoie son identifiant transaction dans num_transaction_from_gu.
+            const guTransactionId = params.get('num_transaction_from_gu') || `SIMULE-${Date.now()}`;
+
+            // Le montant est utilisé pour compléter le payload envoyé au callback.
+            const amount = Number(params.get('amount') || 0);
+
+            // apiBaseUrl permet de tester localement ou en production avec la même page.
+            const apiBaseUrl = params.get('apiBaseUrl') || 'https://api.solimus.innovimpactdev.cloud';
+
+            if (!reference) {
+                document.getElementById('message').innerText =
+                    "Paiement réussi, mais référence introuvable. Impossible de confirmer automatiquement.";
+                return;
+            }
+
+            try {
+                // Simulation provisoire du callback InTouch.
+                // À remplacer par le vrai callback serveur-à-serveur quand il sera configuré.
+                const response = await fetch(`${apiBaseUrl}/api/payments/intouch/callback`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        partner_transaction_id: reference,
+                        gu_transaction_id: guTransactionId,
+                        status: 'SUCCESSFUL',
+                        message: 'Transaction successful from TouchPay redirect',
+                        amount: amount
+                    })
+                });
+
+                document.getElementById('message').innerText = response.ok
+                    ? "Votre paiement a bien été confirmé."
+                    : "Paiement réussi, mais la confirmation backend a échoué.";
+            } catch (error) {
+                document.getElementById('message').innerText =
+                    "Paiement réussi, mais impossible de contacter le backend.";
+            }
+        }
+
+        window.addEventListener('load', confirmerPaiement);
+    </script>
 </head>
 <body>
     <main style="font-family: Arial, sans-serif; text-align: center; padding: 60px 20px;">
         <h1 style="color: #0f8a3b;">Paiement réussi</h1>
-        <p>Votre paiement a bien été pris en compte.</p>
+        <p id="message">Confirmation du paiement en cours...</p>
     </main>
 </body>
 </html>

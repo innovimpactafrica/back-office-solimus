@@ -4,11 +4,60 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SOLIMUS — Paiement échoué</title>
+    <script>
+        async function signalerEchecPaiement() {
+            const params = new URLSearchParams(window.location.search);
+
+            // TouchPay peut renvoyer notre référence interne dans num_command.
+            // Si elle est absente, on tente aussi ref pour les tests manuels.
+            const reference = params.get('num_command') || params.get('ref');
+
+            // Identifiant transaction TouchPay si disponible, sinon valeur simulée.
+            const guTransactionId = params.get('num_transaction_from_gu') || `SIMULE-${Date.now()}`;
+
+            // Le montant est utilisé pour compléter le payload envoyé au callback.
+            const amount = Number(params.get('amount') || 0);
+
+            // apiBaseUrl permet de tester localement ou en production avec la même page.
+            const apiBaseUrl = params.get('apiBaseUrl') || 'https://api.solimus.innovimpactdev.cloud';
+
+            if (!reference) {
+                document.getElementById('message').innerText =
+                    "Paiement échoué, mais référence introuvable. Impossible de mettre à jour automatiquement.";
+                return;
+            }
+
+            try {
+                // Simulation provisoire du callback InTouch.
+                // À remplacer par le vrai callback serveur-à-serveur quand il sera configuré.
+                const response = await fetch(`${apiBaseUrl}/api/payments/intouch/callback`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        partner_transaction_id: reference,
+                        gu_transaction_id: guTransactionId,
+                        status: 'FAILED',
+                        message: 'Transaction failed from TouchPay redirect',
+                        amount: amount
+                    })
+                });
+
+                document.getElementById('message').innerText = response.ok
+                    ? "Le paiement a été marqué comme échoué."
+                    : "Paiement échoué, mais la mise à jour backend a échoué.";
+            } catch (error) {
+                document.getElementById('message').innerText =
+                    "Paiement échoué, mais impossible de contacter le backend.";
+            }
+        }
+
+        window.addEventListener('load', signalerEchecPaiement);
+    </script>
 </head>
 <body>
     <main style="font-family: Arial, sans-serif; text-align: center; padding: 60px 20px;">
         <h1 style="color: #c62828;">Paiement échoué</h1>
-        <p>Votre paiement n'a pas pu être finalisé. Veuillez réessayer.</p>
+        <p id="message">Mise à jour du paiement en cours...</p>
     </main>
 </body>
 </html>
