@@ -110,4 +110,14 @@ public class AuthController {
         authService.resendUserActivationLink(dto.getEmail());
         return ResponseEntity.ok("Un nouveau lien d'activation a été envoyé à votre adresse email.");
     }
+
+    @Operation(
+        summary = "Renvoyer le code OTP d'activation",
+        description = "Renvoie un nouveau code OTP d'activation par email. Soumis à un cooldown de 60s."
+    )
+    @PostMapping("/resend-activation-code")
+    public ResponseEntity<String> resendActivationCode(@RequestBody @Valid ResendActivationRequestDTO dto) {
+        authService.resendActivationCode(dto.getEmail());
+        return ResponseEntity.ok("Un nouveau code d'activation a été envoyé à votre adresse email.");
+    }
 }

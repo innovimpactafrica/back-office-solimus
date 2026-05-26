@@ -100,6 +100,13 @@ public class ProviderServiceImpl implements ProviderService {
     @Override
     @Transactional(readOnly = true)
     public InterventionRequestDTO getRequestDetails(Long id) {
+        if (SecurityContextHolder.getContext().getAuthentication() == null
+                || "anonymousUser".equals(SecurityContextHolder.getContext().getAuthentication().getName())) {
+            InterventionRequest request = interventionRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Demande introuvable"));
+            return mapToDTO(request);
+        }
+
         User currentProvider = getCurrentUser();
         
         // 1. Récupérer la demande si le prestataire a été notifié
@@ -679,6 +686,8 @@ public class ProviderServiceImpl implements ProviderService {
                 .createdAt(c.getCreatedAt())
                 .build()).collect(Collectors.toList())
                 : new ArrayList<>();
+        List<String> photoUrls = request.getPhotoUrls() != null ? new ArrayList<>(request.getPhotoUrls()) : new ArrayList<>();
+        List<String> workPhotoUrls = request.getWorkPhotoUrls() != null ? new ArrayList<>(request.getWorkPhotoUrls()) : new ArrayList<>();
 
         return InterventionRequestDTO.builder()
                 .id(request.getId())
@@ -689,8 +698,8 @@ public class ProviderServiceImpl implements ProviderService {
                 .residenceName(request.getResidence() != null ? request.getResidence().getName() : "N/A")
                 .residentPhone(residentPhone)
                 .residentEmail(residentEmail)
-                .photoUrls(request.getPhotoUrls())
-                .workPhotoUrls(request.getWorkPhotoUrls())
+                .photoUrls(photoUrls)
+                .workPhotoUrls(workPhotoUrls)
                 .comments(commentsDTOs)
                 // Ajout de l'historique (la timeline) dans la réponse
                 .history(historyDTOs)

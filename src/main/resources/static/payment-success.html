@@ -4,23 +4,37 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SOLIMUS — Paiement réussi</title>
+
     <script>
+        // =========================================
+        // CONFIRMATION DU PAIEMENT
+        // Cette fonction s'exécute automatiquement
+        // quand la page se charge
+        // =========================================
         async function confirmerPaiement() {
+
+            // 📥 Récupère les paramètres dans l'URL
+            // Exemple : ?num_command=PAY-123&amount=5000
             const params = new URLSearchParams(window.location.search);
 
-            // TouchPay renvoie notre référence interne dans num_command.
-            // Exemple réel : num_command=PAY-615939
+            // 🔎 Référence de paiement (notre ID interne)
+            // TouchPay peut envoyer num_command ou ref
             const reference = params.get('num_command') || params.get('ref');
 
-            // TouchPay renvoie son identifiant transaction dans num_transaction_from_gu.
-            const guTransactionId = params.get('num_transaction_from_gu') || `SIMULE-${Date.now()}`;
+            // 🆔 ID de transaction TouchPay
+            // Si absent → on génère une valeur temporaire (pour tests)
+            const guTransactionId = params.get('num_transaction_from_gu')
+                || `SIMULE-${Date.now()}`;
 
-            // Le montant est utilisé pour compléter le payload envoyé au callback.
+            // 💰 Montant payé
             const amount = Number(params.get('amount') || 0);
 
-            // apiBaseUrl permet de tester localement ou en production avec la même page.
-            const apiBaseUrl = params.get('apiBaseUrl') || 'https://api.solimus.innovimpactdev.cloud';
+            // 🌍 URL du backend (API)
+            // Si absente → on utilise la production
+            const apiBaseUrl = params.get('apiBaseUrl')
+                || 'https://api.solimus.innovimpactdev.cloud';
 
+            // ❌ Si aucune référence, on ne peut pas continuer
             if (!reference) {
                 document.getElementById('message').innerText =
                     "Paiement réussi, mais référence introuvable. Impossible de confirmer automatiquement.";
@@ -28,36 +42,50 @@
             }
 
             try {
-                // Simulation provisoire du callback InTouch.
-                // À remplacer par le vrai callback serveur-à-serveur quand il sera configuré.
-                const response = await fetch(`${apiBaseUrl}/api/payments/intouch/callback`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        partner_transaction_id: reference,
-                        gu_transaction_id: guTransactionId,
-                        status: 'SUCCESSFUL',
-                        message: 'Transaction successful from TouchPay redirect',
-                        amount: amount
-                    })
-                });
+                // 📡 Envoi des données au backend pour confirmer le paiement
+                const response = await fetch(
+                    `${apiBaseUrl}/api/payments/intouch/callback`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            partner_transaction_id: reference, // PAY-xxx
+                            gu_transaction_id: guTransactionId, // ID TouchPay
+                            status: 'SUCCESSFUL', // paiement réussi
+                            message: 'Transaction successful from TouchPay redirect',
+                            amount: amount
+                        })
+                    }
+                );
 
+                // 🟢 Affichage du résultat utilisateur
                 document.getElementById('message').innerText = response.ok
                     ? "Votre paiement a bien été confirmé."
                     : "Paiement réussi, mais la confirmation backend a échoué.";
+
             } catch (error) {
+                // 🔴 Erreur réseau ou backend inaccessible
                 document.getElementById('message').innerText =
                     "Paiement réussi, mais impossible de contacter le backend.";
             }
         }
 
+        // 🚀 Exécution automatique au chargement de la page
         window.addEventListener('load', confirmerPaiement);
     </script>
 </head>
+
 <body>
-    <main style="font-family: Arial, sans-serif; text-align: center; padding: 60px 20px;">
-        <h1 style="color: #0f8a3b;">Paiement réussi</h1>
-        <p id="message">Confirmation du paiement en cours...</p>
-    </main>
+<main style="font-family: Arial, sans-serif; text-align: center; padding: 60px 20px;">
+
+    <!-- 🟢 Titre de confirmation -->
+    <h1 style="color: #0f8a3b;">Paiement réussi</h1>
+
+    <!-- 🧾 Message dynamique (modifié par JavaScript) -->
+    <p id="message">Confirmation du paiement en cours...</p>
+
+</main>
 </body>
 </html>

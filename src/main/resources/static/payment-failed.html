@@ -4,23 +4,32 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SOLIMUS — Paiement échoué</title>
+
     <script>
+        // =========================================
+        // 🔴 SIGNALER UN ÉCHEC DE PAIEMENT
+        // =========================================
         async function signalerEchecPaiement() {
+
+            // 📥 Récupération des paramètres URL après redirection TouchPay
             const params = new URLSearchParams(window.location.search);
 
-            // TouchPay peut renvoyer notre référence interne dans num_command.
-            // Si elle est absente, on tente aussi ref pour les tests manuels.
+            // 🔎 Référence du paiement (PAY-xxx)
             const reference = params.get('num_command') || params.get('ref');
 
-            // Identifiant transaction TouchPay si disponible, sinon valeur simulée.
-            const guTransactionId = params.get('num_transaction_from_gu') || `SIMULE-${Date.now()}`;
+            // 🆔 ID transaction TouchPay (ou valeur simulée si absent)
+            const guTransactionId = params.get('num_transaction_from_gu')
+                || `SIMULE-${Date.now()}`;
 
-            // Le montant est utilisé pour compléter le payload envoyé au callback.
+            // 💰 Montant du paiement
             const amount = Number(params.get('amount') || 0);
 
-            // apiBaseUrl permet de tester localement ou en production avec la même page.
-            const apiBaseUrl = params.get('apiBaseUrl') || 'https://api.solimus.innovimpactdev.cloud';
+            // 🌍 URL du backend
+            // Si absente → on utilise la production
+            const apiBaseUrl = params.get('apiBaseUrl')
+                || 'https://api.solimus.innovimpactdev.cloud';
 
+            // ❌ Si pas de référence → impossible de traiter
             if (!reference) {
                 document.getElementById('message').innerText =
                     "Paiement échoué, mais référence introuvable. Impossible de mettre à jour automatiquement.";
@@ -28,36 +37,50 @@
             }
 
             try {
-                // Simulation provisoire du callback InTouch.
-                // À remplacer par le vrai callback serveur-à-serveur quand il sera configuré.
-                const response = await fetch(`${apiBaseUrl}/api/payments/intouch/callback`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        partner_transaction_id: reference,
-                        gu_transaction_id: guTransactionId,
-                        status: 'FAILED',
-                        message: 'Transaction failed from TouchPay redirect',
-                        amount: amount
-                    })
-                });
+                // 📡 Envoi de l'information "FAILED" au backend
+                const response = await fetch(
+                    `${apiBaseUrl}/api/payments/intouch/callback`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            partner_transaction_id: reference, // PAY-xxx
+                            gu_transaction_id: guTransactionId, // ID TouchPay
+                            status: 'FAILED', // ❌ statut échec
+                            message: 'Transaction failed from TouchPay redirect',
+                            amount: amount
+                        })
+                    }
+                );
 
+                // 🟢 Message utilisateur selon résultat backend
                 document.getElementById('message').innerText = response.ok
                     ? "Le paiement a été marqué comme échoué."
                     : "Paiement échoué, mais la mise à jour backend a échoué.";
+
             } catch (error) {
+                // 🔴 Erreur réseau / backend inaccessible
                 document.getElementById('message').innerText =
                     "Paiement échoué, mais impossible de contacter le backend.";
             }
         }
 
+        // 🚀 Exécution automatique au chargement de la page
         window.addEventListener('load', signalerEchecPaiement);
     </script>
 </head>
+
 <body>
-    <main style="font-family: Arial, sans-serif; text-align: center; padding: 60px 20px;">
-        <h1 style="color: #c62828;">Paiement échoué</h1>
-        <p id="message">Mise à jour du paiement en cours...</p>
-    </main>
+<main style="font-family: Arial, sans-serif; text-align: center; padding: 60px 20px;">
+
+    <!-- 🔴 Titre échec -->
+    <h1 style="color: #c62828;">Paiement échoué</h1>
+
+    <!-- 🧾 Message dynamique -->
+    <p id="message">Mise à jour du paiement en cours...</p>
+
+</main>
 </body>
 </html>

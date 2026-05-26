@@ -395,6 +395,47 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
+    /**
+     * Renvoie un nouveau code OTP d'activation à un utilisateur mobile.
+     * Cet endpoint est séparé du renvoi de lien pour clarifier l'usage côté mobile.
+     */
+    @Override
+    @Transactional
+    public void resendActivationCode(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable avec cet email : " + email));
+
+        // 1. Vérifier si le compte est déjà actif
+        if (user.getStatus() == UserStatus.ACTIVE) {
+            throw new BadRequestException("Ce compte est déjà actif.");
+        }
+
+        // 2. Ce endpoint est dédié aux comptes mobiles
+        ERole userRole = user.getRole().getName();
+        boolean isMobile = (userRole == ERole.ROLE_PRESTATAIRE || userRole == ERole.ROLE_COPROPRIETAIRE);
+        if (!isMobile) {
+            throw new BadRequestException("Ce compte utilise un lien d'activation, pas un code OTP.");
+        }
+
+        // 3. Déterminer le type de code à renouveler
+        CodeType type = CodeType.ACCOUNT_ACTIVATION;
+        Optional<ActivationCode> existingCode = activationCodeRepository.findByUserAndType(user, CodeType.ACCOUNT_ACTIVATION);
+        if (existingCode.isEmpty()) {
+            type = CodeType.ACTIVATION;
+        }
+
+        // 4. Vérifier le cooldown
+        long cooldown = activationCodeService.getRemainingCooldownSecond(user, type);
+        if (cooldown > 0) {
+            throw new BadRequestException("Veuillez attendre " + cooldown + " secondes avant de demander un nouveau code.");
+        }
+
+        // 5. Invalider l'ancien code et renvoyer un nouveau code OTP
+        String newCode = activationCodeService.generateAndStoreCodeMobileWithType(user, type);
+        emailService.sendActivationCode(user.getEmail(), newCode, user.getFirstName());
+        log.info("Nouveau code d'activation (4 chiffres) renvoyé pour l'utilisateur mobile : {}", email);
+    }
+
 
     /**
      * Étape 2 : L'utilisateur définit son mot de passe.

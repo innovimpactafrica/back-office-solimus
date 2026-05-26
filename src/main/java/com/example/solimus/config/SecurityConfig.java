@@ -51,6 +51,7 @@ public class SecurityConfig {
 
                         // Ressources publiques pour l'inscription
                         .requestMatchers(HttpMethod.GET, "/api/admin/specialties", "/api/admin/intervention-zones").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/provider/requests/*").permitAll()
 
                         // Documentation
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()

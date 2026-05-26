@@ -5,44 +5,59 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SOLIMUS — Paiement</title>
 
-    <!-- Script officiel TouchPay -->
+    <!-- 📌 Script officiel TouchPay  -->
     <script src="https://touchpay.gutouch.net/touchpayv2/script/touchpaynr/prod_touchpay-0.0.1.js"
             type="text/javascript"></script>
 
     <script type="text/javascript">
 
-        // Variables globales — remplies dynamiquement depuis le back
-        let dynamicTransactionRef = '';
-        let dynamicAmount = 0;
-        let dynamicAgencyCode = '';
-        let dynamicServiceId = '';
-        let dynamicMerchantToken = '';
-        let dynamicEmail = '';
-        let dynamicFirstName = '';
-        let dynamicLastName = '';
-        let dynamicPhone = '';
-        let dynamicSuccessUrl = '';
-        let dynamicFailedUrl = '';
+        // =========================================
+        // 🧠 VARIABLES GLOBALES (remplies plus tard)
+        // =========================================
+        // Elles vont recevoir les infos venant du backend
+        let dynamicTransactionRef = '';   // référence du paiement (PAY-123)
+        let dynamicAmount = 0;            // montant à payer
+        let dynamicAgencyCode = '';       // code agence TouchPay
+        let dynamicServiceId = '';       // service TouchPay
+        let dynamicMerchantToken = '';   // token de sécurité
+        let dynamicEmail = '';           // email client
+        let dynamicFirstName = '';       // prénom client
+        let dynamicLastName = '';        // nom client
+        let dynamicPhone = '';           // téléphone client
+        let dynamicSuccessUrl = '';      // redirection succès
+        let dynamicFailedUrl = '';       // redirection échec
 
-        // Récupère la référence depuis l'URL (?ref=PAY-123456)
+
+        // =========================================
+        //  Récupérer la référence dans l’URL
+        // Exemple : ?ref=PAY-123456
+        // =========================================
         function getRef() {
             const params = new URLSearchParams(window.location.search);
             return params.get('ref');
         }
 
-        // Récupère l'URL de base de l'API (?apiBaseUrl=http://localhost:8080)
+
+        // =========================================
+        //Récupérer l’URL du backend
+        // Exemple : ?apiBaseUrl=http://localhost:8585
+        // =========================================
         function getApiBaseUrl() {
             const params = new URLSearchParams(window.location.search);
             const apiBaseUrl = params.get('apiBaseUrl');
+
             return apiBaseUrl && apiBaseUrl.trim()
                 ? apiBaseUrl.trim().replace(/\/+$/, '')
-                : window.location.origin;
+                : window.location.origin; // fallback
         }
 
-        // Détermine le bon endpoint selon le préfixe de la référence
-        // PAY- ou SOL- → paiement syndic
-        // SUB-          → abonnement prestataire
-        // WIT-          → retrait wallet
+
+        // =========================================
+        // 🧭 Construire l’URL API selon le type de paiement
+        // =========================================
+        // PAY- / SOL- → paiement normal
+        // SUB- → abonnement
+        // WIT- → retrait wallet
         function getApiUrl(ref, apiBaseUrl) {
             if (ref.startsWith('PAY-') || ref.startsWith('SOL-')) {
                 return `${apiBaseUrl}/api/payments/bridge/payment/${ref}`;
@@ -51,18 +66,25 @@
             } else if (ref.startsWith('WIT-')) {
                 return `${apiBaseUrl}/api/payments/bridge/withdrawal/${ref}`;
             }
+
+            // si format inconnu
             return null;
         }
 
-        // Charge les données depuis le back et prépare TouchPay
+
+        // =========================================
+        // Charger les données depuis le backend
+        // =========================================
         async function loadPaymentData() {
-            const ref = getRef();
-            const apiBaseUrl = getApiBaseUrl();
+
+            const ref = getRef();                 // récupérer PAY-xxx
+            const apiBaseUrl = getApiBaseUrl();   // récupérer backend
+
             const loading = document.getElementById('loading');
             const errorBox = document.getElementById('errorBox');
             const btn = document.getElementById('btnContinuer');
 
-            // Vérifier que la référence est présente dans l'URL
+            // si pas de référence dans l’URL
             if (!ref) {
                 loading.style.display = 'none';
                 errorBox.style.display = 'block';
@@ -70,8 +92,9 @@
                 return;
             }
 
-            // Déterminer l'URL de l'API selon le type de paiement
+            // construire l’URL API
             const apiUrl = getApiUrl(ref, apiBaseUrl);
+
             if (!apiUrl) {
                 loading.style.display = 'none';
                 errorBox.style.display = 'block';
@@ -80,7 +103,7 @@
             }
 
             try {
-                // Appel GET vers le back pour récupérer les paramètres TouchPay
+                // 📡 appel backend pour récupérer les infos de paiement
                 const res = await fetch(apiUrl, {
                     method: 'GET',
                     headers: { 'Accept': 'application/json' }
@@ -92,6 +115,7 @@
                     throw new Error(`Erreur serveur (${res.status}): ${text}`);
                 }
 
+                // 🔄 convertir réponse en JSON
                 let data;
                 try {
                     data = JSON.parse(text);
@@ -99,7 +123,7 @@
                     throw new Error('Réponse invalide du serveur.');
                 }
 
-                // Remplir les variables globales avec les données du back
+                // 🧠 remplir les variables globales avec les données backend
                 dynamicTransactionRef = String(data.transactionReference || '');
                 dynamicAmount         = Number(data.amount || 0);
                 dynamicAgencyCode     = String(data.agencyCode || '');
@@ -111,33 +135,40 @@
                 dynamicSuccessUrl     = String(data.successRedirectUrl || '');
                 dynamicFailedUrl      = String(data.failedRedirectUrl || '');
 
-                // Nettoyage du téléphone (garder uniquement chiffres et +)
+                // 📞 nettoyage du téléphone (garder uniquement chiffres +)
                 let rawPhone = data.customerPhone || '';
                 dynamicPhone = String(rawPhone).replace(/[^\d+]/g, '');
 
-                // Tout est prêt — afficher le bouton
+                // ✅ cacher loading et afficher bouton
                 loading.style.display = 'none';
                 btn.style.display = 'inline-block';
 
             } catch (error) {
+                // ❌ en cas d’erreur backend
                 loading.style.display = 'none';
                 errorBox.style.display = 'block';
                 errorBox.innerText = `Erreur : ${error.message}`;
             }
         }
 
-        // Déclenche le paiement TouchPay
+
+        // =========================================
+        // 💳 Lancer le paiement TouchPay
+        // =========================================
         function calltouchpay() {
+
+            // ❌ sécurité : vérifier que les données sont chargées
             if (!dynamicTransactionRef || dynamicAmount === 0) {
                 alert('Erreur : les informations de paiement ne sont pas chargées.');
                 return;
             }
 
+            // 🚀 appel du script TouchPay (fourni par leur SDK)
             sendPaymentInfos(
-                dynamicTransactionRef,  // référence unique (PAY-123456)
-                dynamicAgencyCode,      // SOLI26685
-                dynamicMerchantToken,   // token sécurisé
-                dynamicServiceId,       // TouchPay
+                dynamicTransactionRef,  // référence paiement
+                dynamicAgencyCode,      // code agence
+                dynamicMerchantToken,   // token sécurité
+                dynamicServiceId,       // service TouchPay
                 dynamicSuccessUrl,      // URL succès
                 dynamicFailedUrl,       // URL échec
                 dynamicAmount,          // montant
@@ -149,22 +180,31 @@
             );
         }
 
-        // Charger les données dès l'ouverture de la page
+
+        // =========================================
+        // 🚀 exécution automatique au chargement page
+        // =========================================
         window.onload = () => {
             setTimeout(loadPaymentData, 100);
         };
+
     </script>
 </head>
+
 <body>
 
-    <div id="loading">Chargement du paiement...</div>
-    <div id="errorBox" style="display:none; color:red;"></div>
+<!-- ⏳ affiché pendant chargement -->
+<div id="loading">Chargement du paiement...</div>
 
-    <input type="button"
-           id="btnContinuer"
-           onclick="calltouchpay()"
-           value="Continuer"
-           style="display:none;
+<!-- ❌ affichage des erreurs -->
+<div id="errorBox" style="display:none; color:red;"></div>
+
+<!-- 🔘 bouton paiement -->
+<input type="button"
+       id="btnContinuer"
+       onclick="calltouchpay()"
+       value="Continuer"
+       style="display:none;
                   background-color: rgb(42, 83, 139);
                   color: white;
                   border-radius: 8px;

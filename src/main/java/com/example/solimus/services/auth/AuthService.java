@@ -74,6 +74,13 @@ public interface AuthService {
     void resendUserActivationLink(String email);
 
     /**
+     * Renvoie un nouveau code OTP d'activation à l'utilisateur mobile.
+     * Inclut un cooldown pour limiter la fréquence des envois.
+     * @param email L'email de l'utilisateur concerné.
+     */
+    void resendActivationCode(String email);
+
+    /**
      * Finalise l'activation du compte.
      * @param dto Contient le token et le mot de passe.
      * @return Un message de confirmation de succès.
