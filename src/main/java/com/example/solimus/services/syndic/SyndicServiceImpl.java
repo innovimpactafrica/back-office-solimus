@@ -356,7 +356,10 @@ public class SyndicServiceImpl implements SyndicService {
 
         // 1. Récupérer les devis triés du moins cher au plus cher
         List<Quote> quotes = quoteRepository
-            .findAllByInterventionRequestOrderByTotalAmountAsc(request);
+            .findAllByInterventionRequestOrderByTotalAmountAsc(request)
+            .stream()
+            .filter(quote -> quote.getStatus() != QuoteStatus.DRAFT)
+            .collect(Collectors.toList());
 
         // Si aucun devis reçu on retourne une liste vide
         if (quotes.isEmpty()) return List.of();
@@ -532,58 +535,49 @@ public class SyndicServiceImpl implements SyndicService {
     // ================================================
     @Override
     @Transactional
-    public PaymentDTO validerEtPayerSolde(Long requestId, ValiderTravauxDTO dto) {
+    public PaymentResponseDTO validerEtPayerSolde(Long requestId, ValiderTravauxDTO dto) {
         User currentSyndic = getCurrentUser();
 
         InterventionRequest request = interventionRepository
             .findById(requestId)
             .orElseThrow(() -> new ResourceNotFoundException("Demande introuvable"));
 
-        // Vérifier que le statut est FINISHED
         if (request.getStatus() != InterventionStatus.FINISHED) {
             throw new BadRequestException("Les travaux ne sont pas encore terminés");
         }
 
-        // Vérifier que c'est le bon syndic
         if (!request.getSyndic().getId().equals(currentSyndic.getId())) {
             throw new ForbiddenException("Non autorisé");
         }
 
-        // 1. Valider les travaux
-        request.addStatusHistory(InterventionStatus.FINAL_VALIDATION, currentSyndic);
-        request.setValidatedAt(LocalDateTime.now());
-
-        // 2. Récupérer le solde restant à payer
-        BigDecimal solde = request.getRemainingAmount() != null 
-            ? request.getRemainingAmount() 
+        BigDecimal solde = request.getRemainingAmount() != null
+            ? request.getRemainingAmount()
             : BigDecimal.ZERO;
 
-        // 3. Créer le paiement du solde
+        String transactionRef = genererReference("SOL");
+
         Payment payment = Payment.builder()
-            .reference(genererReference("SOL"))           // Génère une référence spécifique (ex: SOL-987654)
-            .interventionRequest(request)                 // Rattache le paiement à la demande d'intervention
-            .provider(request.getSelectedProvider())      // Prestataire bénéficiaire du paiement
-            .syndic(currentSyndic)                        // Syndic qui effectue la transaction
-            .amount(solde)                                // Le montant exact restant à payer
-            .type(PaymentType.SOLDE)                      // Spécifie qu'il s'agit d'un paiement final (SOLDE)
-            .method(dto.getMethode())                     // Moyen de paiement (WAVE, ORANGE_MONEY...)
-            .status(PaymentStatus.COMPLETED)              // Statut complété une fois le paiement réussi
-            .paidAt(LocalDateTime.now())                  // Horodatage du paiement
+            .reference(transactionRef)
+            .interventionRequest(request)
+            .provider(request.getSelectedProvider())
+            .syndic(currentSyndic)
+            .amount(solde)
+            .type(PaymentType.SOLDE)
+            .method(dto.getMethode())
+            .status(PaymentStatus.PENDING)
             .build();
 
         paymentRepository.save(payment);
 
-        // Créditer immédiatement le Wallet du prestataire du montant du solde restant
-        providerService.crediterWallet(request.getSelectedProvider().getId(), solde);
+        String bridgeUrl = String.format(touchPayBridgeUrlTemplate, transactionRef);
 
-        // 4. Mettre à jour le solde restant à 0
-        request.setRemainingAmount(BigDecimal.ZERO);
-        interventionRepository.save(request);
-
-        // 5. TODO: Notifier le prestataire
-        // notificationService.notifierSoldeRecu(request.getSelectedProvider(), payment);
-
-        return toDTO(payment);
+        return PaymentResponseDTO.builder()
+            .success(true)
+            .message("Paiement du solde initié. Veuillez compléter via TouchPay.")
+            .transactionReference(transactionRef)
+            .amountToPay(solde)
+            .paymentUrl(bridgeUrl)
+            .build();
     }
 
     // =========================================================================
@@ -655,6 +649,10 @@ public class SyndicServiceImpl implements SyndicService {
                 .build()).collect(Collectors.toList())
             : new ArrayList<>();
 
+        List<String> photoUrls = request.getPhotoUrls() != null
+            ? new ArrayList<>(request.getPhotoUrls())
+            : new ArrayList<>();
+
         return InterventionRequestDTO.builder()
                 .id(request.getId())
                 .title(request.getTitle())
@@ -663,7 +661,7 @@ public class SyndicServiceImpl implements SyndicService {
                 .residenceName(request.getResidence() != null ? request.getResidence().getName() : "N/A")
                 .residentPhone(residentPhone)
                 .residentEmail(residentEmail)
-                .photoUrls(request.getPhotoUrls())
+                .photoUrls(photoUrls)
                 .history(historyDTOs)
                 .workflowSteps(buildWorkflow(request))
                 .createdAt(request.getCreatedAt())

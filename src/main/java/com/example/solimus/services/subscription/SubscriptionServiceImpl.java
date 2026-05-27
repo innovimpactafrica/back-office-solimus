@@ -3,6 +3,7 @@ package com.example.solimus.services.subscription;
 import com.example.solimus.dtos.subscription.SouscrirePremiumDTO;
 import com.example.solimus.dtos.subscription.SubscriptionDTO;
 import com.example.solimus.dtos.subscription.SubscriptionPaymentDTO;
+import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.entities.Subscription;
 import com.example.solimus.entities.SubscriptionPayment;
 import com.example.solimus.entities.User;
@@ -43,6 +44,9 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     @Value("${solimus.subscription.premium.price}")
     private BigDecimal premiumPrice;
 
+    @Value("${app.touchpay.bridge-url}")
+    private String touchPayBridgeUrlTemplate;
+
     /**
      * Initialise un abonnement de niveau GRATUIT (par défaut) lors de l'inscription du prestataire.
      */
@@ -69,54 +73,38 @@ public class SubscriptionServiceImpl implements SubscriptionService {
      */
     @Override
     @Transactional
-    public SubscriptionDTO passerEnPremium(Long providerId, SouscrirePremiumDTO dto) {
+    public PaymentResponseDTO passerEnPremium(Long providerId, SouscrirePremiumDTO dto) {
         Subscription subscription = subscriptionRepository
                 .findByProviderId(providerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Abonnement introuvable pour ce prestataire"));
 
-        // 1. Simuler le paiement (Wave ou Orange Money)
-        // En production → appel API Wave ou Orange Money ici
-        boolean paiementReussi = true; // simulé
-
-        if (!paiementReussi) {
-            throw new BadRequestException("Paiement échoué. Veuillez réessayer.");
+        if (subscription.getPlan() == SubscriptionPlan.PREMIUM
+                && subscription.getStatus() == SubscriptionStatus.ACTIVE) {
+            throw new BadRequestException("Vous avez déjà un abonnement Premium actif.");
         }
 
-        // 2. Enregistrer le paiement dans l'historique
-        String reference = genererReference();
+        String reference = genererReference("SUB");
         SubscriptionPayment paiement = SubscriptionPayment.builder()
                 .reference(reference)
                 .subscription(subscription)
                 .montant(premiumPrice)
                 .moyenPaiement(dto.getMoyenPaiement())
-                .statut(SubscriptionPaymentStatus.PAYE)
+                .statut(SubscriptionPaymentStatus.EN_ATTENTE)
+                .renouvellementAuto(dto.isRenouvellementAuto())
                 .periode(LocalDate.now().getMonth().getDisplayName(TextStyle.FULL, Locale.FRENCH) + " " + LocalDate.now().getYear())
                 .build();
 
         subscriptionPaymentRepository.save(paiement);
 
-        // 3. Activer le plan Premium
-        subscription.setPlan(SubscriptionPlan.PREMIUM);
-        subscription.setStatus(SubscriptionStatus.ACTIVE);
-        subscription.setDateActivation(LocalDate.now());
-        subscription.setDateExpiration(LocalDate.now().plusMonths(1));
-        subscription.setRenouvellementAuto(dto.isRenouvellementAuto());
-        subscription.setMoyenPaiement(dto.getMoyenPaiement());
+        String bridgeUrl = String.format(touchPayBridgeUrlTemplate, reference);
 
-        subscriptionRepository.save(subscription);
-
-        // 4. Notifier le prestataire par email
-        String formattedExpirationDate = subscription.getDateExpiration().format(DATE_FORMATTER);
-        emailService.sendSubscriptionPremiumNotification(
-                subscription.getProvider().getEmail(),
-                subscription.getProvider().getFirstName(),
-                subscription.getPlan().name(),
-                formattedExpirationDate
-        );
-
-        log.info("Abonnement PREMIUM activé pour le prestataire ID : {}", providerId);
-
-        return toDTO(subscription);
+        return PaymentResponseDTO.builder()
+                .success(true)
+                .message("Paiement initié. Veuillez compléter via TouchPay.")
+                .transactionReference(reference)
+                .amountToPay(premiumPrice)
+                .paymentUrl(bridgeUrl)
+                .build();
     }
 
     /**
@@ -245,6 +233,10 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     private String genererReference() {
         return "PAY-" + LocalDate.now().getYear() + "-" + String.format("%02d", LocalDate.now().getMonthValue()) + "-" + (int)(Math.random() * 900000 + 100000);
+    }
+
+    private String genererReference(String prefix) {
+        return prefix + "-" + (int)(Math.random() * 900000 + 100000);
     }
 
     private SubscriptionDTO toDTO(Subscription sub) {

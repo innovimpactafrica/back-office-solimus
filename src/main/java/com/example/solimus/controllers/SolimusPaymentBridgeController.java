@@ -27,6 +27,8 @@ public class SolimusPaymentBridgeController {
 
     // Référentiel des paiements (syndic -> prestataire)
     private final PaymentRepository paymentRepository;
+    private final SubscriptionPaymentRepository subscriptionPaymentRepository;
+    private final WithdrawalRequestRepository withdrawalRequestRepository;
 
     // URL du script hébergé TouchPay (géré par InTouch)
     @Value("${touchpay.hosted.script-url}")
@@ -96,6 +98,34 @@ public class SolimusPaymentBridgeController {
             .customerPhone(syndic.getPhone())                                   // Téléphone du client
             .build();
     }
+    // ================================================
+    // BRIDGE — Abonnement Premium prestataire
+    // ================================================
+    @GetMapping("/subscription/{transactionRef}")
+    public PaymentBridgeDTO getBridgeSubscription(@PathVariable String transactionRef) {
+        SubscriptionPayment paiement = subscriptionPaymentRepository
+            .findByReference(transactionRef)
+            .orElseThrow(() -> new ResourceNotFoundException("Paiement abonnement introuvable"));
+
+        User provider = paiement.getSubscription().getProvider();
+
+        return PaymentBridgeDTO.builder()
+            .merchantToken(touchPaySecureCode)
+            .transactionReference(transactionRef)
+            .agencyCode(touchPayAgencyCode)
+            .serviceId(touchPayDomainName)
+            .hostedScriptUrl(touchPayHostedScriptUrl)
+            .amount(paiement.getMontant())
+            .city(touchPayDefaultCity)
+            .successRedirectUrl(touchPaySuccessRedirectUrl)
+            .failedRedirectUrl(touchPayFailedRedirectUrl)
+            .customerEmail(provider.getEmail())
+            .customerFirstName(provider.getFirstName())
+            .customerLastName(provider.getLastName())
+            .customerPhone(provider.getPhone())
+            .build();
+    }
+
 
 
 }

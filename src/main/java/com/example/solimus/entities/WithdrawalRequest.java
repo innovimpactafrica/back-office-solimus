@@ -56,4 +56,7 @@ public class WithdrawalRequest {
 
     @Column(name = "processed_at")
     private LocalDateTime processedAt;
+
+    @Column(name = "motif_refus")
+    private String motifRefus;
 }

@@ -1,5 +1,6 @@
 package com.example.solimus.services.provider;
 
+import com.example.solimus.dtos.admin.EstimatedDelayDTO;
 import com.example.solimus.dtos.intervention.*;
 import com.example.solimus.dtos.provider.*;
 import com.example.solimus.entities.*;
@@ -224,6 +225,18 @@ public class ProviderServiceImpl implements ProviderService {
         quoteRepository.save(quote);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<EstimatedDelayDTO> getEstimatedDelays() {
+        return estimatedDelayRepository.findAll().stream()
+                .map(delay -> EstimatedDelayDTO.builder()
+                        .id(delay.getId())
+                        .label(delay.getLabel())
+                        .days(delay.getDays())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
     /**
      * Permet au prestataire de signaler qu'il a commencé les travaux.
      * Le statut passe de SYNDIC_VALIDATED à STARTED.
@@ -430,6 +443,7 @@ public class ProviderServiceImpl implements ProviderService {
     // MES DEVIS
     // =========================================================================
     @Override
+    @Transactional(readOnly = true)
     public ProviderQuoteListDTO getMesDevis(QuoteStatus statut, String search, int page, int size) {
         User currentProvider = getCurrentUser();
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());

@@ -11,7 +11,6 @@ import com.example.solimus.dtos.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.CreateCoOwnerDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
-import com.example.solimus.dtos.syndic.PaymentDTO;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.syndic.SyndicService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -195,7 +194,7 @@ public class SyndicController {
 
     @Operation(summary = "Valider les travaux et payer le solde")
     @PostMapping("/interventions/{id}/valider-solde")
-    public ResponseEntity<PaymentDTO> validerEtPayerSolde(
+    public ResponseEntity<PaymentResponseDTO> validerEtPayerSolde(
             @PathVariable Long id,
             @RequestBody @Valid com.example.solimus.dtos.syndic.ValiderTravauxDTO dto) {
         return ResponseEntity.ok(syndicService.validerEtPayerSolde(id, dto));

@@ -42,7 +42,9 @@ public class SubscriptionPayment {
 
     // Statut
     @Enumerated(EnumType.STRING)
-    private SubscriptionPaymentStatus statut; // PAYE, ECHOUE
+    private SubscriptionPaymentStatus statut; // EN_ATTENTE, PAYE, ECHOUE
+
+    private boolean renouvellementAuto;
 
     // Période concernée : "Mai 2026"
     private String periode;

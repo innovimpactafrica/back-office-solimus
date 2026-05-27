@@ -1,5 +1,6 @@
 package com.example.solimus.controllers;
 
+import com.example.solimus.dtos.admin.EstimatedDelayDTO;
 import com.example.solimus.dtos.intervention.CreateQuoteDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestSummaryDTO;
@@ -17,6 +18,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/provider")
@@ -54,6 +57,12 @@ public class ProviderController {
     public ResponseEntity<String> createQuote(@RequestBody @Valid CreateQuoteDTO dto) {
         providerService.createQuote(dto);
         return ResponseEntity.status(HttpStatus.CREATED).body("Devis enregistré avec succès.");
+    }
+
+    @Operation(summary = "Lister les délais d'estimation disponibles")
+    @GetMapping("/estimated-delays")
+    public ResponseEntity<List<EstimatedDelayDTO>> getEstimatedDelays() {
+        return ResponseEntity.ok(providerService.getEstimatedDelays());
     }
 
     @Operation(summary = "Démarrer une intervention (Prestataire)")

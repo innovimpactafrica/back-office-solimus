@@ -2,23 +2,23 @@ package com.example.solimus.controllers;
 
 import com.example.solimus.entities.InterventionRequest;
 import com.example.solimus.entities.InTouchCallbackRequest;
-import com.example.solimus.enums.InterventionStatus;
-import com.example.solimus.enums.PaymentStatus;
-import com.example.solimus.enums.PaymentType;
-import com.example.solimus.repositories.InterventionRequestRepository;
-import com.example.solimus.repositories.PaymentRepository;
+import com.example.solimus.entities.Subscription;
+import com.example.solimus.entities.SubscriptionPayment;
+import com.example.solimus.enums.*;
+import com.example.solimus.repositories.*;
+import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.provider.ProviderService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.Map;
 
 @RestController
@@ -27,25 +27,43 @@ import java.util.Map;
 @Slf4j
 public class SolimusCallbackController {
 
-    // Repository des paiements d'intervention : acompte PAY-* et solde SOL-*.
+    // Repository des paiements d'intervention : acompte PAY-* et solde SOL-*
     private final PaymentRepository paymentRepository;
 
-    // Repository de la demande d'intervention liée au paiement.
+    // Repository de la demande d'intervention liée au paiement
     private final InterventionRequestRepository interventionRepository;
 
-    // Service utilisé pour créditer le wallet du prestataire après confirmation InTouch.
+    // Repository des paiements d'abonnement Premium : SUB-*
+    private final SubscriptionPaymentRepository subscriptionPaymentRepository;
+
+    // Repository des abonnements prestataires
+    private final SubscriptionRepository subscriptionRepository;
+
+    // Service utilisé pour créditer le wallet du prestataire après confirmation InTouch
     private final ProviderService providerService;
 
-    // Endpoint appelé automatiquement par InTouch après le traitement du paiement TouchPay.
+    // Service email pour notifier le prestataire après activation Premium
+    private final EmailService emailService;
+
+    // Formateur de date pour l'email de confirmation Premium (ex: "01 Janvier 2026")
+    private static final DateTimeFormatter DATE_FORMATTER =
+            DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.FRENCH);
+
+    // =========================================================================
+    // ENDPOINT PRINCIPAL — Appelé automatiquement par InTouch après paiement
+    // =========================================================================
     @PostMapping("/callback")
     @Transactional
     public ResponseEntity<Map<String, Object>> handleCallback(
             @RequestBody InTouchCallbackRequest request) {
 
         log.info("InTouch callback reçu: partnerTx={}, guTx={}, status={}",
-                request.getPartnerTransactionId(), request.getGuTransactionId(), request.getStatus());
+                request.getPartnerTransactionId(),
+                request.getGuTransactionId(),
+                request.getStatus());
 
-        // partner_transaction_id correspond à notre référence interne : PAY-xxxxxx ou SOL-xxxxxx.
+        // partner_transaction_id = notre référence interne
+        // PAY-xxxxxx = acompte, SOL-xxxxxx = solde, SUB-xxxxxx = abonnement
         String ref = request.getPartnerTransactionId();
         if (ref == null || ref.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -54,27 +72,40 @@ public class SolimusCallbackController {
             ));
         }
 
-        // InTouch renvoie SUCCESSFUL quand le paiement est réellement confirmé.
+        // InTouch renvoie SUCCESSFUL quand le paiement est réellement confirmé
         String status = request.getStatus() != null
                 ? request.getStatus().trim().toUpperCase() : "";
         boolean succes = "SUCCESSFUL".equals(status);
 
-        // Pour l'instant, ce callback gère uniquement les paiements d'intervention.
+        // Routing selon le préfixe de la référence
         if (ref.startsWith("PAY-") || ref.startsWith("SOL-")) {
+            // Paiement intervention : acompte ou solde
             return handleInterventionPaymentCallback(ref, succes);
         }
 
+        if (ref.startsWith("SUB-")) {
+            // Paiement abonnement Premium prestataire
+            return handleSubscriptionCallback(ref, succes);
+        }
+
+        // Référence non reconnue
         return ResponseEntity.badRequest().body(Map.of(
                 "success", false,
-                "message", "Type de référence non supporté"
+                "message", "Type de référence non supporté : " + ref
         ));
     }
 
-    private ResponseEntity<Map<String, Object>> handleInterventionPaymentCallback(String ref, boolean succes) {
-        // On retrouve le paiement PENDING créé avant l'ouverture de la WebView TouchPay.
+    // =========================================================================
+    // CAS 1 — Paiement intervention (PAY- = acompte, SOL- = solde)
+    // =========================================================================
+    private ResponseEntity<Map<String, Object>> handleInterventionPaymentCallback(
+            String ref, boolean succes) {
+
         return paymentRepository.findByReference(ref)
                 .map(payment -> {
-                    // Sécurité anti-double callback : InTouch peut parfois rappeler plusieurs fois.
+
+                    // Sécurité anti-double callback
+                    // InTouch peut parfois rappeler plusieurs fois le même callback
                     if (payment.getStatus() == PaymentStatus.COMPLETED) {
                         return ResponseEntity.ok(Map.<String, Object>of(
                                 "success", true,
@@ -82,10 +113,13 @@ public class SolimusCallbackController {
                         ));
                     }
 
-                    // Si InTouch indique un échec, on ne crédite pas le wallet et on ne modifie pas les montants.
+                    // Paiement échoué → on ne crédite pas le wallet
+                    // Les montants de la demande restent inchangés
                     if (!succes) {
                         payment.setStatus(PaymentStatus.FAILED);
                         paymentRepository.save(payment);
+
+                        log.warn("Paiement intervention échoué pour ref : {}", ref);
 
                         return ResponseEntity.ok(Map.<String, Object>of(
                                 "success", true,
@@ -93,45 +127,48 @@ public class SolimusCallbackController {
                         ));
                     }
 
-                    // À partir d'ici, InTouch a confirmé le paiement : on marque donc le paiement comme validé.
+                    // Paiement confirmé par InTouch → on met à jour le statut
                     payment.setStatus(PaymentStatus.COMPLETED);
                     payment.setPaidAt(LocalDateTime.now());
                     paymentRepository.save(payment);
 
-                    // Le prestataire reçoit l'argent seulement après confirmation réelle du paiement.
+                    // Le prestataire reçoit l'argent uniquement après confirmation réelle
                     providerService.crediterWallet(
                             payment.getProvider().getId(),
                             payment.getAmount()
                     );
 
-                    // On récupère la demande d'intervention pour synchroniser sa partie financière.
+                    // Synchronisation financière de la demande d'intervention
                     InterventionRequest req = payment.getInterventionRequest();
 
                     if (payment.getType() == PaymentType.ACOMPTE) {
-                        // Ici depositAmount veut dire "montant déjà payé au total" sur la demande.
-                        // Après un acompte, le seul montant déjà payé est justement cet acompte.
+                        // Après acompte : depositAmount = montant acompte versé
+                        // remainingAmount = totalAmount - acompte
                         req.setDepositAmount(payment.getAmount());
+                        req.setRemainingAmount(
+                                req.getTotalAmount().subtract(payment.getAmount()));
 
-                        // Le solde restant devient totalAmount - acompte.
-                        // Attention : InterventionRequest.@PreUpdate recalcule aussi ce champ à la sauvegarde.
-                        req.setRemainingAmount(req.getTotalAmount().subtract(payment.getAmount()));
+                        log.info("Acompte {} confirmé — reste à payer : {} FCFA",
+                                ref, req.getRemainingAmount());
+
                     } else if (payment.getType() == PaymentType.SOLDE) {
-                        // Ici le syndic vient compléter le reste à payer.
-                        // Même si payment.getAmount() contient seulement le solde payé maintenant,
-                        // après ce paiement la demande est payée entièrement.
-                        // Donc le "montant déjà payé au total" devient le montant total du devis.
-                        // Pour que le solde reste à 0 après @PreUpdate, depositAmount doit égaler totalAmount.
-                        req.setDepositAmount(req.getTotalAmount() != null ? req.getTotalAmount() : BigDecimal.ZERO);
-
-                        // Valeur explicite pour le code métier et la lisibilité avant sauvegarde.
+                        // Après solde : tout est payé
+                        // depositAmount = totalAmount pour que remainingAmount = 0 après @PreUpdate
+                        req.setDepositAmount(
+                                req.getTotalAmount() != null
+                                        ? req.getTotalAmount()
+                                        : BigDecimal.ZERO);
                         req.setRemainingAmount(BigDecimal.ZERO);
 
-                        // Le paiement du solde clôture financièrement et valide définitivement l'intervention.
-                        req.setStatus(InterventionStatus.FINAL_VALIDATION);
+                        // Le paiement du solde valide définitivement l'intervention
+                        req.addStatusHistory(InterventionStatus.FINAL_VALIDATION, payment.getSyndic());
                         req.setValidatedAt(LocalDateTime.now());
+
+                        log.info("Solde {} confirmé — intervention {} clôturée",
+                                ref, req.getId());
                     }
 
-                    // Sauvegarde finale de la demande : déclenche aussi @PreUpdate dans InterventionRequest.
+                    // Sauvegarde finale — déclenche aussi @PreUpdate dans InterventionRequest
                     interventionRepository.save(req);
 
                     return ResponseEntity.ok(Map.<String, Object>of(
@@ -139,9 +176,81 @@ public class SolimusCallbackController {
                             "message", "Callback traité avec succès"
                     ));
                 })
-                .orElseGet(() -> ResponseEntity.badRequest().body(Map.<String, Object>of(
-                        "success", false,
-                        "message", "Paiement introuvable"
-                )));
+                .orElseGet(() -> ResponseEntity.badRequest().body(
+                        Map.<String, Object>of(
+                                "success", false,
+                                "message", "Paiement introuvable pour la référence : " + ref
+                        )
+                ));
+    }
+
+    // =========================================================================
+    // CAS 2 — Paiement abonnement Premium (SUB-)
+    // =========================================================================
+    private ResponseEntity<Map<String, Object>> handleSubscriptionCallback(
+            String ref, boolean succes) {
+
+        return subscriptionPaymentRepository.findByReference(ref)
+                .map(paiement -> {
+
+                    // Sécurité anti-double callback
+                    if (paiement.getStatut() == SubscriptionPaymentStatus.PAYE) {
+                        return ResponseEntity.ok(Map.<String, Object>of(
+                                "success", true,
+                                "message", "Abonnement déjà activé"
+                        ));
+                    }
+
+                    // Paiement échoué → le prestataire reste sur son plan actuel
+                    if (!succes) {
+                        paiement.setStatut(SubscriptionPaymentStatus.ECHOUE);
+                        subscriptionPaymentRepository.save(paiement);
+
+                        log.warn("Paiement abonnement échoué pour ref : {}", ref);
+
+                        return ResponseEntity.ok(Map.<String, Object>of(
+                                "success", true,
+                                "message", "Paiement abonnement marqué comme échoué"
+                        ));
+                    }
+
+                    // Paiement confirmé → marquer comme payé
+                    paiement.setStatut(SubscriptionPaymentStatus.PAYE);
+                    subscriptionPaymentRepository.save(paiement);
+
+                    // Activer le plan Premium pour 1 mois
+                    Subscription subscription = paiement.getSubscription();
+                    subscription.setPlan(SubscriptionPlan.PREMIUM);
+                    subscription.setStatus(SubscriptionStatus.ACTIVE);
+                    subscription.setDateActivation(LocalDate.now());
+                    subscription.setDateExpiration(LocalDate.now().plusMonths(1));
+                    subscription.setRenouvellementAuto(paiement.isRenouvellementAuto());
+                    subscription.setMoyenPaiement(paiement.getMoyenPaiement());
+                    subscriptionRepository.save(subscription);
+
+                    // Notifier le prestataire par email
+                    String formattedDate = subscription.getDateExpiration()
+                            .format(DATE_FORMATTER);
+                    emailService.sendSubscriptionPremiumNotification(
+                            subscription.getProvider().getEmail(),
+                            subscription.getProvider().getFirstName(),
+                            subscription.getPlan().name(),
+                            formattedDate
+                    );
+
+                    log.info("Premium activé via callback pour prestataire ID : {}",
+                            subscription.getProvider().getId());
+
+                    return ResponseEntity.ok(Map.<String, Object>of(
+                            "success", true,
+                            "message", "Abonnement Premium activé avec succès"
+                    ));
+                })
+                .orElseGet(() -> ResponseEntity.badRequest().body(
+                        Map.<String, Object>of(
+                                "success", false,
+                                "message", "Paiement abonnement introuvable pour la référence : " + ref
+                        )
+                ));
     }
 }

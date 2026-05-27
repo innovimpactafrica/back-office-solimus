@@ -2,6 +2,7 @@ package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.subscription.SouscrirePremiumDTO;
 import com.example.solimus.dtos.subscription.SubscriptionDTO;
+import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.entities.User;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.UserRepository;
@@ -32,7 +33,7 @@ public class SubscriptionController {
 
     @Operation(summary = "Passer à l'abonnement Premium")
     @PostMapping("/premium")
-    public ResponseEntity<SubscriptionDTO> passerEnPremium(@RequestBody @Valid SouscrirePremiumDTO dto) {
+    public ResponseEntity<PaymentResponseDTO> passerEnPremium(@RequestBody @Valid SouscrirePremiumDTO dto) {
         User user = getCurrentUser();
         return ResponseEntity.ok(subscriptionService.passerEnPremium(user.getId(), dto));
     }

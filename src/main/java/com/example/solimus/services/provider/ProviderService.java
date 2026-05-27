@@ -3,6 +3,7 @@ package com.example.solimus.services.provider;
 import com.example.solimus.dtos.intervention.CreateQuoteDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestSummaryDTO;
+import com.example.solimus.dtos.admin.EstimatedDelayDTO;
 import com.example.solimus.dtos.provider.*;
 import com.example.solimus.enums.InterventionStatus;
 import org.springframework.data.domain.Page;
@@ -25,6 +26,8 @@ public interface ProviderService {
     List<InterventionRequestDTO> getMyInterventions();
 
     void createQuote(CreateQuoteDTO dto);
+
+    List<EstimatedDelayDTO> getEstimatedDelays();
 
     // Démarrer une intervention (Prestataire)
     void startIntervention(Long requestId);

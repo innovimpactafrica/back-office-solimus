@@ -35,5 +35,5 @@ public interface SyndicService {
     // ================================================
     // VALIDATION + PAIEMENT SOLDE — après les travaux
     // ================================================
-   PaymentDTO validerEtPayerSolde(Long requestId, ValiderTravauxDTO dto);
+   PaymentResponseDTO validerEtPayerSolde(Long requestId, ValiderTravauxDTO dto);
 }
