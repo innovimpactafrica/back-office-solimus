@@ -455,9 +455,11 @@ public class ProviderServiceImpl implements ProviderService {
                 .reference(quote.getReference())
                 .titre(quote.getInterventionRequest().getTitle())
                 .residenceName(quote.getInterventionRequest().getResidence().getName())
+                .appartement(quote.getInterventionRequest().getProperty() != null ? quote.getInterventionRequest().getProperty().getReference() : null)
                 .date(quote.getCreatedAt().toLocalDate())
                 .montant(quote.getTotalAmount())
                 .statut(quote.getStatus())
+                .estimatedDelayLabel(quote.getEstimatedDelay() != null ? quote.getEstimatedDelay().getLabel() : null)
                 .build()
         ).collect(Collectors.toList());
 
@@ -537,6 +539,7 @@ public class ProviderServiceImpl implements ProviderService {
                 .sousTotalMainOeuvre(quote.getLaborTotalAmount())
                 .totalTTC(quote.getTotalAmount())
                 .notes(quote.getAdditionalComments())
+                .estimatedDelayLabel(quote.getEstimatedDelay() != null ? quote.getEstimatedDelay().getLabel() : null)
                 .build();
     }
     // =========================================================================

@@ -41,6 +41,9 @@ public class RegisterRequestDTO {
     private String companyName;
     private Long specialtyId;
 
+    // Champs spécifiques au copropriétaire (obligatoires si role == ROLE_COPROPRIETAIRE)
+    private Long residenceId;
+    private Long propertyId;
 
     // Photo de profil optionnelle dès l'inscription
     private String profilePhotoUrl;

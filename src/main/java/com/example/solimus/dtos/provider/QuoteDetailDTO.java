@@ -47,4 +47,7 @@ public class QuoteDetailDTO {
 
     // Notes
     private String notes;
+
+    // Délai estimé
+    private String estimatedDelayLabel; // "1-2 jours", "3-5 jours", etc.
 }

@@ -12,6 +12,7 @@ import com.example.solimus.repositories.WithdrawalRequestRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -70,6 +71,7 @@ public class SolimusPaymentBridgeController {
      * @return DTO contenant tous les paramètres requis pour initialiser l'interface TouchPay
      */
     @GetMapping("/payment/{transactionRef}")
+    @Transactional(readOnly = true)
     public PaymentBridgeDTO getBridgePayment(@PathVariable String transactionRef) {
         log.info("🌉 Requête Bridge reçue pour le paiement d'intervention avec la référence : {}", transactionRef);
 
@@ -102,6 +104,7 @@ public class SolimusPaymentBridgeController {
     // BRIDGE — Abonnement Premium prestataire
     // ================================================
     @GetMapping("/subscription/{transactionRef}")
+    @Transactional(readOnly = true)
     public PaymentBridgeDTO getBridgeSubscription(@PathVariable String transactionRef) {
         SubscriptionPayment paiement = subscriptionPaymentRepository
             .findByReference(transactionRef)

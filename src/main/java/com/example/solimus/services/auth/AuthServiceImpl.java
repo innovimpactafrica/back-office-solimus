@@ -13,6 +13,8 @@ import com.example.solimus.exceptions.PhoneAlreadyExistsException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.ActivationCodeRepository;
 
+import com.example.solimus.repositories.PropertyRepository;
+import com.example.solimus.repositories.ResidenceRepository;
 import com.example.solimus.repositories.RoleRepository;
 import com.example.solimus.repositories.SpecialtyRepository;
 import com.example.solimus.repositories.UserRepository;
@@ -42,6 +44,8 @@ public class AuthServiceImpl implements AuthService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final SpecialtyRepository specialtyRepository;
+    private final ResidenceRepository residenceRepository;
+    private final PropertyRepository propertyRepository;
 
     private final ActivationCodeService activationCodeService;
     private final ActivationCodeRepository activationCodeRepository;
@@ -65,10 +69,10 @@ public class AuthServiceImpl implements AuthService {
             throw new PhoneAlreadyExistsException("Ce numéro de téléphone est déjà utilisé.");
         }
 
-        // SÉCURITÉ : Seul le rôle PRESTATAIRE est autorisé à s'auto-inscrire via ce endpoint public.
-        // Les Syndics sont créés par l'Admin, et les Copropriétaires par le Syndic.
-        if (dto.getRole() != ERole.ROLE_PRESTATAIRE) {
-            throw new BadRequestException("Action non autorisée : Seuls les prestataires peuvent s'auto-inscrire.");
+        // SÉCURITÉ : Seuls les rôles PRESTATAIRE et COPROPRIETAIRE sont autorisés à s'auto-inscrire via ce endpoint public.
+        // Les Syndics sont créés par l'Admin.
+        if (dto.getRole() != ERole.ROLE_PRESTATAIRE && dto.getRole() != ERole.ROLE_COPROPRIETAIRE) {
+            throw new BadRequestException("Action non autorisée : Seuls les prestataires et copropriétaires peuvent s'auto-inscrire.");
         }
 
         Role role = roleRepository.findByName(dto.getRole())
@@ -84,6 +88,8 @@ public class AuthServiceImpl implements AuthService {
 
         if (dto.getRole() == ERole.ROLE_PRESTATAIRE) {
             validateAndSetProviderInfo(user, dto);
+        } else if (dto.getRole() == ERole.ROLE_COPROPRIETAIRE) {
+            validateAndSetCoOwnerInfo(user, dto);
         }
 
         User savedUser = userRepository.save(user);
@@ -495,10 +501,35 @@ public class AuthServiceImpl implements AuthService {
         user.setCompanyName(dto.getCompanyName());
         user.setSpecialty(specialtyRepository.findById(dto.getSpecialtyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Spécialité non trouvée")));
-        
+
         // On enregistre sa position de base pour le matching 30km
         user.setLatitude(dto.getLatitude());
         user.setLongitude(dto.getLongitude());
+    }
+
+    private void validateAndSetCoOwnerInfo(User user, RegisterRequestDTO dto) {
+        if (dto.getResidenceId() == null) {
+            throw new BadRequestException("La résidence est obligatoire pour un copropriétaire");
+        }
+        if (dto.getPropertyId() == null) {
+            throw new BadRequestException("L'appartement est obligatoire pour un copropriétaire");
+        }
+
+        // Vérifier que la résidence existe
+        residenceRepository.findById(dto.getResidenceId())
+                .orElseThrow(() -> new ResourceNotFoundException("Résidence non trouvée"));
+
+        // Vérifier que le bien existe et appartient à la résidence
+        com.example.solimus.entities.Property property = propertyRepository.findById(dto.getPropertyId())
+                .orElseThrow(() -> new ResourceNotFoundException("Appartement non trouvé"));
+
+        if (!property.getResidence().getId().equals(dto.getResidenceId())) {
+            throw new BadRequestException("L'appartement n'appartient pas à cette résidence");
+        }
+
+        // Lier l'utilisateur au bien (propriétaire)
+        property.setOwner(user);
+        propertyRepository.save(property);
     }
 
     /**

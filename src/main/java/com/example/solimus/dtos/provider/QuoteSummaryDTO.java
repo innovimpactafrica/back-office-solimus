@@ -24,4 +24,5 @@ public class QuoteSummaryDTO {
     private LocalDate date;
     private BigDecimal montant;
     private QuoteStatus statut;     // ACCEPTE, EN_ATTENTE, REFUSE
+    private String estimatedDelayLabel; // "1-2 jours", "3-5 jours", etc.
 }

@@ -122,7 +122,7 @@ CREATE TABLE `intervention_comments` (
   KEY `FK3hbv4wsqg5lq4gnntftho4to7` (`intervention_id`),
   CONSTRAINT `FK3hbv4wsqg5lq4gnntftho4to7` FOREIGN KEY (`intervention_id`) REFERENCES `intervention_requests` (`id`),
   CONSTRAINT `FKma89d2jvip8uql9o6r74cxb4y` FOREIGN KEY (`author_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -131,7 +131,7 @@ CREATE TABLE `intervention_comments` (
 
 LOCK TABLES `intervention_comments` WRITE;
 /*!40000 ALTER TABLE `intervention_comments` DISABLE KEYS */;
-INSERT INTO `intervention_comments` VALUES (1,'Les travaux sont bien démarrés','2026-05-18 16:10:20.433069',8,2),(2,'on finira bientôt','2026-05-18 16:44:02.951175',8,2);
+INSERT INTO `intervention_comments` VALUES (1,'Les travaux sont bien démarrés','2026-05-18 16:10:20.433069',8,2),(2,'on finira bientôt','2026-05-18 16:44:02.951175',8,2),(3,'MERCI','2026-05-26 16:16:42.734496',8,3);
 /*!40000 ALTER TABLE `intervention_comments` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -158,7 +158,7 @@ CREATE TABLE `intervention_notified_providers` (
 
 LOCK TABLES `intervention_notified_providers` WRITE;
 /*!40000 ALTER TABLE `intervention_notified_providers` DISABLE KEYS */;
-INSERT INTO `intervention_notified_providers` VALUES (2,8),(2,9),(3,8),(3,13),(3,22);
+INSERT INTO `intervention_notified_providers` VALUES (2,8),(2,9),(3,8),(3,13),(3,22),(4,8),(5,8);
 /*!40000 ALTER TABLE `intervention_notified_providers` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -183,7 +183,7 @@ CREATE TABLE `intervention_photos` (
 
 LOCK TABLES `intervention_photos` WRITE;
 /*!40000 ALTER TABLE `intervention_photos` DISABLE KEYS */;
-INSERT INTO `intervention_photos` VALUES (2,'59e18f13-ca80-4e01-a460-10fb3e0b0d78.png'),(3,'https://minio.innovimpactafrica.cloud/solimus/6ab05cea-451c-4146-a3ad-0cd4c4f0e224.png');
+INSERT INTO `intervention_photos` VALUES (2,'59e18f13-ca80-4e01-a460-10fb3e0b0d78.png'),(3,'https://minio.innovimpactafrica.cloud/solimus/6ab05cea-451c-4146-a3ad-0cd4c4f0e224.png'),(4,'https://minio.innovimpactafrica.cloud/solimus/b259d6b0-575e-48c2-8470-1141d0f37b3b.jpg'),(5,'https://minio.innovimpactafrica.cloud/solimus/70f3b152-af5d-4c0b-9986-00e0b2006ac8.png');
 /*!40000 ALTER TABLE `intervention_photos` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -222,7 +222,7 @@ CREATE TABLE `intervention_requests` (
   CONSTRAINT `FKlrbqqa6reoas1mjvthevpdwvn` FOREIGN KEY (`syndic_id`) REFERENCES `users` (`id`),
   CONSTRAINT `FKped0hvreeboe36d5c9n0bag9r` FOREIGN KEY (`selected_provider_id`) REFERENCES `users` (`id`),
   CONSTRAINT `FKtncm3sqi1qnufai75490kn329` FOREIGN KEY (`property_id`) REFERENCES `properties` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=latin1;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -231,7 +231,7 @@ CREATE TABLE `intervention_requests` (
 
 LOCK TABLES `intervention_requests` WRITE;
 /*!40000 ALTER TABLE `intervention_requests` DISABLE KEYS */;
-INSERT INTO `intervention_requests` VALUES (2,'2026-05-15 11:57:46.378270','De l’eau s’écoule en continu sous l’évier de la cuisine. Le robinet semble fonctionnel, mais il y a une fuite au niveau du tuyau de raccordement. L’eau commence à s’accumuler au sol.','FINAL_VALIDATION','Fuite d’eau cuisine',5,1,8,1,2,3000.00,'2026-05-18 16:45:17.103809',0.00,'2026-05-18 16:09:11.797331',94000.00,'2026-05-19 15:29:18.739203'),(3,'2026-05-22 09:14:42.033281','Fuite d\'eau au niveau du groupe de sécurité du chauffe-eau. L\'eau coule en continu dans la cuvette de vidange. Le chauffe-eau a 8 ans. Appartement inondé sur 5m². Intervention urgente demandée.','SYNDIC_VALIDATED','Fuite d\'eau sur chauffe-eau',5,2,8,1,2,0.00,NULL,27000.00,NULL,27000.00,NULL);
+INSERT INTO `intervention_requests` VALUES (2,'2026-05-15 11:57:46.378270','De l’eau s’écoule en continu sous l’évier de la cuisine. Le robinet semble fonctionnel, mais il y a une fuite au niveau du tuyau de raccordement. L’eau commence à s’accumuler au sol.','FINAL_VALIDATION','Fuite d’eau cuisine',5,1,8,1,2,3000.00,'2026-05-18 16:45:17.103809',0.00,'2026-05-18 16:09:11.797331',94000.00,'2026-05-19 15:29:18.739203'),(3,'2026-05-22 09:14:42.033281','Fuite d\'eau au niveau du groupe de sécurité du chauffe-eau. L\'eau coule en continu dans la cuvette de vidange. Le chauffe-eau a 8 ans. Appartement inondé sur 5m². Intervention urgente demandée.','FINISHED','Fuite d\'eau sur chauffe-eau',5,2,8,1,2,0.00,'2026-05-26 16:16:43.368775',27000.00,'2026-05-26 16:05:42.801721',27000.00,NULL),(4,'2026-05-27 12:28:10.300038','Les prises et les luminaires du salon ne fonctionnent plus depuis hier soir. Une odeur de brûlé a été signalée près du tableau électrique.','QUOTE_SENT','Panne électrique salon',4,2,NULL,1,2,0.00,NULL,0.00,NULL,0.00,NULL),(5,'2026-05-27 12:29:57.143663','Une fuite importante a été détectée sous l’évier de la cuisine. L’eau commence à se répandre dans le couloir et risque d’endommager le sol.','PENDING','Fuite d’eau cuisine',4,2,NULL,1,2,0.00,NULL,0.00,NULL,0.00,NULL);
 /*!40000 ALTER TABLE `intervention_requests` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -253,7 +253,7 @@ CREATE TABLE `intervention_status_history` (
   KEY `FK657e5hrnpg844os3hykm7ef4o` (`intervention_id`),
   CONSTRAINT `FK657e5hrnpg844os3hykm7ef4o` FOREIGN KEY (`intervention_id`) REFERENCES `intervention_requests` (`id`),
   CONSTRAINT `FKmvu6gr57rhwpa7s82snxb6eb5` FOREIGN KEY (`changed_by_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=16 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -262,7 +262,7 @@ CREATE TABLE `intervention_status_history` (
 
 LOCK TABLES `intervention_status_history` WRITE;
 /*!40000 ALTER TABLE `intervention_status_history` DISABLE KEYS */;
-INSERT INTO `intervention_status_history` VALUES (1,'2026-05-18 14:48:06.267350','SYNDIC_VALIDATED',2,2),(2,'2026-05-17 14:00:00.000000','QUOTE_SENT',1,2),(3,'2026-05-18 16:09:11.829388','STARTED',8,2),(4,'2026-05-18 16:45:17.130533','FINISHED',8,2),(5,'2026-05-19 15:29:18.967843','FINAL_VALIDATION',2,2),(6,'2026-05-22 09:14:42.078053','PENDING',2,3),(7,'2026-05-22 09:28:17.314422','QUOTE_SENT',8,3),(8,'2026-05-22 09:30:44.483557','SYNDIC_VALIDATED',2,3),(10,'2026-05-22 10:55:16.662034','SYNDIC_VALIDATED',2,3);
+INSERT INTO `intervention_status_history` VALUES (1,'2026-05-18 14:48:06.267350','SYNDIC_VALIDATED',2,2),(2,'2026-05-17 14:00:00.000000','QUOTE_SENT',1,2),(3,'2026-05-18 16:09:11.829388','STARTED',8,2),(4,'2026-05-18 16:45:17.130533','FINISHED',8,2),(5,'2026-05-19 15:29:18.967843','FINAL_VALIDATION',2,2),(6,'2026-05-22 09:14:42.078053','PENDING',2,3),(7,'2026-05-22 09:28:17.314422','QUOTE_SENT',8,3),(8,'2026-05-22 09:30:44.483557','SYNDIC_VALIDATED',2,3),(10,'2026-05-22 10:55:16.662034','SYNDIC_VALIDATED',2,3),(11,'2026-05-26 16:05:42.818157','STARTED',8,3),(12,'2026-05-26 16:16:43.369410','FINISHED',8,3),(13,'2026-05-27 12:28:10.327900','PENDING',2,4),(14,'2026-05-27 12:29:57.170223','PENDING',2,5),(15,'2026-05-27 21:43:56.142851','QUOTE_SENT',8,4);
 /*!40000 ALTER TABLE `intervention_status_history` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -342,7 +342,7 @@ CREATE TABLE `payments` (
   CONSTRAINT `FK3i9rq3lmwdy2176mcdc9wstvb` FOREIGN KEY (`intervention_request_id`) REFERENCES `intervention_requests` (`id`),
   CONSTRAINT `FK7slfx23dkq5oidu79r8eywt8k` FOREIGN KEY (`syndic_id`) REFERENCES `users` (`id`),
   CONSTRAINT `FK9lvrvodn6mf6kk973hjabsloh` FOREIGN KEY (`provider_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -351,7 +351,7 @@ CREATE TABLE `payments` (
 
 LOCK TABLES `payments` WRITE;
 /*!40000 ALTER TABLE `payments` DISABLE KEYS */;
-INSERT INTO `payments` VALUES (1,3000.00,'2026-05-19 08:29:42.192148','WAVE','2026-05-19 08:29:42.172925','PAY-746952','COMPLETED','ACOMPTE',2,8,2),(2,91000.00,'2026-05-19 15:29:18.788796','WAVE','2026-05-19 15:29:18.750178','SOL-165300','COMPLETED','SOLDE',2,8,2),(3,1.00,'2026-05-22 11:29:19.815490','WAVE',NULL,'PAY-615939','PENDING','ACOMPTE',3,8,2);
+INSERT INTO `payments` VALUES (1,3000.00,'2026-05-19 08:29:42.192148','WAVE','2026-05-19 08:29:42.172925','PAY-746952','COMPLETED','ACOMPTE',2,8,2),(2,91000.00,'2026-05-19 15:29:18.788796','WAVE','2026-05-19 15:29:18.750178','SOL-165300','COMPLETED','SOLDE',2,8,2);
 /*!40000 ALTER TABLE `payments` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -440,7 +440,7 @@ CREATE TABLE `quote_items` (
   PRIMARY KEY (`id`),
   KEY `FKrvsmoef7yontnlu1lwxrb0g3g` (`quote_id`),
   CONSTRAINT `FKrvsmoef7yontnlu1lwxrb0g3g` FOREIGN KEY (`quote_id`) REFERENCES `quotes` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=latin1;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -449,7 +449,7 @@ CREATE TABLE `quote_items` (
 
 LOCK TABLES `quote_items` WRITE;
 /*!40000 ALTER TABLE `quote_items` DISABLE KEYS */;
-INSERT INTO `quote_items` VALUES (1,'Tuyaux PVC 32mm',4,'MATERIAL',8500.00,1),(2,'Raccords et joints',1,'MATERIAL',15000.00,1),(3,'Main d\'œuvre plomberie',1,'LABOR',45000.00,1),(4,'Kit complet robinetterie haut de gamme',2,'MATERIAL',75000.00,2),(5,'Tuyauterie renforcée',6,'MATERIAL',18000.00,2),(6,'Main d\'œuvre spécialisée plomberie',1,'LABOR',95000.00,2),(7,'Test de pression et vérification finale',1,'LABOR',25000.00,2),(8,'Robinet de cuisine en acier inoxydable',1,'MATERIAL',12000.00,3),(9,'Installation et remplacement du robinet',1,'LABOR',15000.00,3);
+INSERT INTO `quote_items` VALUES (1,'Tuyaux PVC 32mm',4,'MATERIAL',8500.00,1),(2,'Raccords et joints',1,'MATERIAL',15000.00,1),(3,'Main d\'œuvre plomberie',1,'LABOR',45000.00,1),(4,'Kit complet robinetterie haut de gamme',2,'MATERIAL',75000.00,2),(5,'Tuyauterie renforcée',6,'MATERIAL',18000.00,2),(6,'Main d\'œuvre spécialisée plomberie',1,'LABOR',95000.00,2),(7,'Test de pression et vérification finale',1,'LABOR',25000.00,2),(8,'Robinet de cuisine en acier inoxydable',1,'MATERIAL',12000.00,3),(9,'Installation et remplacement du robinet',1,'LABOR',15000.00,3),(10,'Test matériel',1,'MATERIAL',1.00,4),(11,'Test main d’œuvre',1,'LABOR',1.00,4);
 /*!40000 ALTER TABLE `quote_items` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -479,7 +479,7 @@ CREATE TABLE `quotes` (
   CONSTRAINT `FK2vy80xh9n8smpamiarf4opf5c` FOREIGN KEY (`estimated_delay_id`) REFERENCES `estimated_delays` (`id`),
   CONSTRAINT `FK614b2bnunk5d2bjfk7jcj1ipl` FOREIGN KEY (`provider_id`) REFERENCES `users` (`id`),
   CONSTRAINT `FKfrs9hf93863t0uccsbsw08fg9` FOREIGN KEY (`intervention_request_id`) REFERENCES `intervention_requests` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=latin1;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=latin1;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -488,7 +488,7 @@ CREATE TABLE `quotes` (
 
 LOCK TABLES `quotes` WRITE;
 /*!40000 ALTER TABLE `quotes` DISABLE KEYS */;
-INSERT INTO `quotes` VALUES (1,'Intervention possible dès demain matin. Le matériel sera acheté après validation du devis.','2026-05-15 15:53:47.621422',45000.00,49000.00,'ACCEPTED',94000.00,2,8,2,'DEV-235512'),(2,'Intervention premium avec remplacement complet des équipements défectueux et garantie de 6 mois.','2026-05-15 15:58:50.675006',120000.00,258000.00,'REJECTED',378000.00,2,9,3,''),(3,'Nous pouvons commencer les travaux demain matin.','2026-05-22 09:28:17.347176',15000.00,12000.00,'ACCEPTED',27000.00,3,8,2,'DEV-930487');
+INSERT INTO `quotes` VALUES (1,'Intervention possible dès demain matin. Le matériel sera acheté après validation du devis.','2026-05-15 15:53:47.621422',45000.00,49000.00,'ACCEPTED',94000.00,2,8,2,'DEV-235512'),(2,'Intervention premium avec remplacement complet des équipements défectueux et garantie de 6 mois.','2026-05-15 15:58:50.675006',120000.00,258000.00,'REJECTED',378000.00,2,9,3,''),(3,'Nous pouvons commencer les travaux demain matin.','2026-05-22 09:28:17.347176',15000.00,12000.00,'ACCEPTED',27000.00,3,8,2,'DEV-930487'),(4,'Devis de test pour validation du paiement Wave.','2026-05-27 21:43:56.175275',1.00,1.00,'SENT',2.00,4,8,2,'DEV-373097');
 /*!40000 ALTER TABLE `quotes` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -592,6 +592,7 @@ CREATE TABLE `subscription_payments` (
   `reference` varchar(255) NOT NULL,
   `statut` enum('ECHOUE','PAYE') DEFAULT NULL,
   `subscription_id` bigint NOT NULL,
+  `renouvellement_auto` bit(1) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UKe9owuc4v5qpx2lhlylt31vcya` (`reference`),
   KEY `FK9note178r84igupsnxsuireyy` (`subscription_id`),
@@ -605,7 +606,7 @@ CREATE TABLE `subscription_payments` (
 
 LOCK TABLES `subscription_payments` WRITE;
 /*!40000 ALTER TABLE `subscription_payments` DISABLE KEYS */;
-INSERT INTO `subscription_payments` VALUES (1,'2026-05-19 15:07:05.858367',35000.00,'WAVE','mai 2026','PAY-2026-05-656061','PAYE',7),(2,'2026-05-19 15:27:38.190286',35000.00,'ORANGE_MONEY','mai 2026','PAY-2026-05-857928','PAYE',5);
+INSERT INTO `subscription_payments` VALUES (1,'2026-05-19 15:07:05.858367',35000.00,'WAVE','mai 2026','PAY-2026-05-656061','PAYE',7,_binary '\0'),(2,'2026-05-19 15:27:38.190286',35000.00,'ORANGE_MONEY','mai 2026','PAY-2026-05-857928','PAYE',5,_binary '\0');
 /*!40000 ALTER TABLE `subscription_payments` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -710,7 +711,7 @@ CREATE TABLE `users` (
 
 LOCK TABLES `users` WRITE;
 /*!40000 ALTER TABLE `users` DISABLE KEYS */;
-INSERT INTO `users` VALUES (1,'Admin','Solimus','adminsolimus@yopmail.com','+221770000000','$2a$10$U5Njkw7vJtKbU9ysqwXVieYnwCGTgTxhKFxxxq0vTd.A6Ob3XDgXK',NULL,'ACTIVE',NULL,'2026-05-12 16:51:16.874127',5,NULL,'2026-05-12 16:51:16.874127',NULL,NULL,NULL,NULL,_binary '\0'),(2,'Mariétou ','Diallo','sdfaye@innovimpactafrica.com','781883729','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e',NULL,'ACTIVE',NULL,'2026-05-13 13:54:40.210349',6,NULL,'2026-05-13 13:58:00.206529',NULL,NULL,NULL,NULL,_binary '\0'),(3,'Aminata ','Dème','syndic2@yopmail.com','774535665','$2a$10$wujFxPJUiMaHzJBZ094.7ufwjw23LW6ah0LdeayMAtKxLvzxO7ZvW',NULL,'ACTIVE',NULL,'2026-05-13 14:41:04.521835',6,NULL,'2026-05-13 14:43:05.936547',NULL,NULL,NULL,NULL,_binary '\0'),(4,'nata ','Kâ','syndic3@yopmail.com','774235665','$2a$10$JRm4H0frSlm/W9NB5ug4Fe8i3kMUPS1i7HQXWEgQaf/xMGbn8Sb4i',NULL,'ACTIVE',NULL,'2026-05-13 15:23:17.294783',6,NULL,'2026-05-13 15:24:47.814496',NULL,NULL,NULL,NULL,_binary '\0'),(5,'Birame',' DaSilva','coop1@yopmail.com','775676778',NULL,NULL,'PENDING',NULL,'2026-05-15 08:11:55.845008',8,NULL,'2026-05-15 08:11:55.845008',NULL,NULL,NULL,NULL,_binary '\0'),(6,'Marie',' Claire Diop','coop2@yopmail.com','775276778',NULL,NULL,'PENDING',NULL,'2026-05-15 08:16:34.325121',8,NULL,'2026-05-15 08:16:34.325121',NULL,NULL,NULL,NULL,_binary '\0'),(7,'Samba','  Diop','coop3@yopmail.com','755276778',NULL,NULL,'PENDING',NULL,'2026-05-15 08:26:44.772219',8,NULL,'2026-05-15 08:26:44.772219',NULL,NULL,NULL,NULL,_binary '\0'),(8,'Moussa','Ndiaye','fayesokhnadiarra51@gmail.com','776723124','$2a$10$b7FMCtycvX8r/n19prKoGuzlBICdJ45xe/mdV1I/3C05HVjdbj.32','SEN Plomberie','ACTIVE','https://minio.innovimpactafrica.cloud/solimus/b54e4e3d-a1a5-4cb7-b130-d7ddc10fe27a.png','2026-05-15 09:41:44.760047',7,1,'2026-05-22 08:28:52.762853',14.7410000,-17.5089000,NULL,NULL,_binary ''),(9,'Aminata','Fall','pres2@yopmail.com','76 445 88 12','\\/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Electro Dakar Services','ACTIVE',NULL,'2026-05-15 09:51:09.835358',7,1,'2026-05-15 09:53:03.646252',14.7305000,-17.4950000,NULL,NULL,_binary '\0'),(10,'Cheikh','Ba','pres3@yopmail.com','78 990 11 22','\\/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Rapid Maintenance','ACTIVE',NULL,'2026-05-15 09:54:33.370255',7,1,'2026-05-15 09:55:54.210171',14.7886000,-16.9245000,NULL,NULL,_binary '\0'),(11,'Ibrahima','Diop','pres4@yopmail.com','70 112 33 44','\\/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Rufisque Tech','ACTIVE',NULL,'2026-05-15 09:56:48.986980',7,2,'2026-05-15 09:58:09.953743',14.7160000,-17.2730000,NULL,NULL,_binary '\0'),(12,'Fatou','Sarr','pres5@yopmail.com','75 221 77 88','\\/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Thiès Maintenance Pro','ACTIVE',NULL,'2026-05-15 09:58:41.902650',7,1,'2026-05-15 10:00:29.551016',14.7886000,-16.9245000,NULL,NULL,_binary '\0'),(13,'Mamadou','Diallo','pres6@yopmail.com','77 123 45 01','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Diallo Services','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.6928000,-17.4467000,NULL,'Plateau',_binary ''),(14,'Awa','Ndiaye','pres7@yopmail.com','77 123 45 02','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Ndiaye Plomberie','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.6760000,-17.4441000,NULL,'M├®dina',_binary ''),(15,'Ibrahima','Sarr','pres8@yopmail.com','77 123 45 03','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Sarr & Fils','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7539000,-17.5350000,NULL,'Almadies',_binary ''),(16,'Fatou','Diop','pres9@yopmail.com','78 456 78 04','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Diop Plomberie Express','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7376000,-17.4856000,NULL,'Ouakam',_binary ''),(17,'Cheikh','Kane','pres10@yopmail.com','78 456 78 05','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Kane Assainissement','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7392000,-17.4912000,NULL,'Yoff',_binary ''),(18,'Ousmane','Fall','pres11@yopmail.com','76 321 54 06','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Fall Plombier Pikine','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7645000,-17.3893000,NULL,'Pikine',_binary ''),(19,'Khadija','Ba','pres12@yopmail.com','76 321 54 07','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Ba Eaux & Plomb','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7708000,-17.4006000,NULL,'Gu├®diawaye',_binary ''),(20,'Serigne','Mbaye','pres13@yopmail.com','70 987 65 08','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Mbaye Depannage','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7151000,-17.2734000,NULL,'Rufisque',_binary ''),(21,'Adama','Sow','pres14@yopmail.com','70 987 65 09','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Sow Plomberie Moderne','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7540000,-17.4530000,NULL,'Parcelles Assainies',_binary ''),(22,'Mariama','Faye','pres15@yopmail.com','77 555 66 10','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Faye Plombier Pro','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7179000,-17.4701000,NULL,'Libert├® 6',_binary ''),(23,'Ibrahima','Ndiaye','daoudadiallo@innovimpactafrica.com','781234567','$2a$10$IRK3XUEeFMb43CzvN8DnWeJydCx81LAFO6TjYSSGiEokFAbP9./N.','IN MultiServices','ACTIVE',NULL,'2026-05-22 16:06:30.297456',7,1,'2026-05-22 16:14:26.970357',14.7167000,-17.4677000,NULL,NULL,_binary ''),(24,'Daouda','Diallo','d02.daouda@gmail.com','+221776723124','$2a$10$nyWnEe/oJnBOm4IlAzJbLOg1TlrKIo5rUdOC1YsqOh6VfdsDuiCSa','SenPlomberie','ACTIVE',NULL,'2026-05-23 11:21:28.172583',7,1,'2026-05-23 12:10:38.666482',14.6937000,-17.4441000,NULL,NULL,_binary ''),(25,'Tra Mamadou','Bodian','bodianm372@gmail.com','780185266','$2a$10$eh.LtDApniURV75WVVXhVudRGFGaUw9Zrub.epAs9sNxah7pLPBDW','SenPlomberie','ACTIVE',NULL,'2026-05-23 12:20:36.793705',7,1,'2026-05-23 12:25:23.041476',14.6937000,-17.4441000,NULL,NULL,_binary '');
+INSERT INTO `users` VALUES (1,'Admin','Solimus','adminsolimus@yopmail.com','+221770000000','$2a$10$U5Njkw7vJtKbU9ysqwXVieYnwCGTgTxhKFxxxq0vTd.A6Ob3XDgXK',NULL,'ACTIVE',NULL,'2026-05-12 16:51:16.874127',5,NULL,'2026-05-12 16:51:16.874127',NULL,NULL,NULL,NULL,_binary '\0'),(2,'Mariétou ','Diallo','sdfaye@innovimpactafrica.com','781883729','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','SEN PLOMBERIE','ACTIVE',NULL,'2026-05-13 13:54:40.210349',6,NULL,'2026-05-27 12:14:49.578141',NULL,NULL,NULL,NULL,_binary '\0'),(3,'Aminata ','Dème','syndic2@yopmail.com','774535665','$2a$10$wujFxPJUiMaHzJBZ094.7ufwjw23LW6ah0LdeayMAtKxLvzxO7ZvW',NULL,'ACTIVE',NULL,'2026-05-13 14:41:04.521835',6,NULL,'2026-05-13 14:43:05.936547',NULL,NULL,NULL,NULL,_binary '\0'),(4,'nata ','Kâ','syndic3@yopmail.com','774235665','$2a$10$JRm4H0frSlm/W9NB5ug4Fe8i3kMUPS1i7HQXWEgQaf/xMGbn8Sb4i',NULL,'ACTIVE',NULL,'2026-05-13 15:23:17.294783',6,NULL,'2026-05-13 15:24:47.814496',NULL,NULL,NULL,NULL,_binary '\0'),(5,'Birame',' DaSilva','coop1@yopmail.com','775676778',NULL,NULL,'PENDING',NULL,'2026-05-15 08:11:55.845008',8,NULL,'2026-05-15 08:11:55.845008',NULL,NULL,NULL,NULL,_binary '\0'),(6,'Marie',' Claire Diop','coop2@yopmail.com','775276778',NULL,NULL,'PENDING',NULL,'2026-05-15 08:16:34.325121',8,NULL,'2026-05-15 08:16:34.325121',NULL,NULL,NULL,NULL,_binary '\0'),(7,'Samba','  Diop','coop3@yopmail.com','755276778',NULL,NULL,'PENDING',NULL,'2026-05-15 08:26:44.772219',8,NULL,'2026-05-15 08:26:44.772219',NULL,NULL,NULL,NULL,_binary '\0'),(8,'sokhna','faye','fayesokhnadiarra51@gmail.com','775642332','$2a$10$b7FMCtycvX8r/n19prKoGuzlBICdJ45xe/mdV1I/3C05HVjdbj.32','SEN PLOMBERIE','ACTIVE','https://minio.innovimpactafrica.cloud/solimus/b54e4e3d-a1a5-4cb7-b130-d7ddc10fe27a.png','2026-05-15 09:41:44.760047',7,1,'2026-05-27 14:55:30.998151',14.7410000,-17.5089000,NULL,NULL,_binary ''),(9,'Aminata','Fall','pres2@yopmail.com','76 445 88 12','\\/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Electro Dakar Services','ACTIVE',NULL,'2026-05-15 09:51:09.835358',7,1,'2026-05-15 09:53:03.646252',14.7305000,-17.4950000,NULL,NULL,_binary '\0'),(10,'Cheikh','Ba','pres3@yopmail.com','78 990 11 22','\\/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Rapid Maintenance','ACTIVE',NULL,'2026-05-15 09:54:33.370255',7,1,'2026-05-15 09:55:54.210171',14.7886000,-16.9245000,NULL,NULL,_binary '\0'),(11,'Ibrahima','Diop','pres4@yopmail.com','70 112 33 44','\\/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Rufisque Tech','ACTIVE',NULL,'2026-05-15 09:56:48.986980',7,2,'2026-05-15 09:58:09.953743',14.7160000,-17.2730000,NULL,NULL,_binary '\0'),(12,'Fatou','Sarr','pres5@yopmail.com','75 221 77 88','\\/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Thiès Maintenance Pro','ACTIVE',NULL,'2026-05-15 09:58:41.902650',7,1,'2026-05-15 10:00:29.551016',14.7886000,-16.9245000,NULL,NULL,_binary '\0'),(13,'Mamadou','Diallo','pres6@yopmail.com','77 123 45 01','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Diallo Services','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.6928000,-17.4467000,NULL,'Plateau',_binary ''),(14,'Awa','Ndiaye','pres7@yopmail.com','77 123 45 02','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Ndiaye Plomberie','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.6760000,-17.4441000,NULL,'M├®dina',_binary ''),(15,'Ibrahima','Sarr','pres8@yopmail.com','77 123 45 03','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Sarr & Fils','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7539000,-17.5350000,NULL,'Almadies',_binary ''),(16,'Fatou','Diop','pres9@yopmail.com','78 456 78 04','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Diop Plomberie Express','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7376000,-17.4856000,NULL,'Ouakam',_binary ''),(17,'Cheikh','Kane','pres10@yopmail.com','78 456 78 05','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Kane Assainissement','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7392000,-17.4912000,NULL,'Yoff',_binary ''),(18,'Ousmane','Fall','pres11@yopmail.com','76 321 54 06','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Fall Plombier Pikine','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7645000,-17.3893000,NULL,'Pikine',_binary ''),(19,'Khadija','Ba','pres12@yopmail.com','76 321 54 07','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Ba Eaux & Plomb','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7708000,-17.4006000,NULL,'Gu├®diawaye',_binary ''),(20,'Serigne','Mbaye','pres13@yopmail.com','70 987 65 08','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Mbaye Depannage','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7151000,-17.2734000,NULL,'Rufisque',_binary ''),(21,'Adama','Sow','pres14@yopmail.com','70 987 65 09','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Sow Plomberie Moderne','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7540000,-17.4530000,NULL,'Parcelles Assainies',_binary ''),(22,'Mariama','Faye','pres15@yopmail.com','77 555 66 10','$2a$10$APdVZ/mVe1JRyfiQHb41se.KZ.xb/s8ASpEPRfjkqpZT96d1tHj3e','Faye Plombier Pro','ACTIVE',NULL,'2026-05-19 12:42:35.000000',7,1,'2026-05-19 12:42:35.000000',14.7179000,-17.4701000,NULL,'Libert├® 6',_binary ''),(23,'Ibrahima','Ndiaye','daoudadiallo@innovimpactafrica.com','781234567','$2a$10$IRK3XUEeFMb43CzvN8DnWeJydCx81LAFO6TjYSSGiEokFAbP9./N.','IN MultiServices','ACTIVE',NULL,'2026-05-22 16:06:30.297456',7,1,'2026-05-22 16:14:26.970357',14.7167000,-17.4677000,NULL,NULL,_binary ''),(24,'Daouda','Diallo','d02.daouda@gmail.com','+221776723124','$2a$10$nyWnEe/oJnBOm4IlAzJbLOg1TlrKIo5rUdOC1YsqOh6VfdsDuiCSa','SenPlomberie','ACTIVE',NULL,'2026-05-23 11:21:28.172583',7,1,'2026-05-23 12:10:38.666482',14.6937000,-17.4441000,NULL,NULL,_binary ''),(25,'Tra Mamadou','Bodian','bodianm372@gmail.com','780185266','$2a$10$eh.LtDApniURV75WVVXhVudRGFGaUw9Zrub.epAs9sNxah7pLPBDW','SenPlomberie','ACTIVE',NULL,'2026-05-23 12:20:36.793705',7,1,'2026-05-23 12:25:23.041476',14.6937000,-17.4441000,NULL,NULL,_binary '');
 /*!40000 ALTER TABLE `users` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -740,7 +741,7 @@ CREATE TABLE `wallets` (
 
 LOCK TABLES `wallets` WRITE;
 /*!40000 ALTER TABLE `wallets` DISABLE KEYS */;
-INSERT INTO `wallets` VALUES (1,92000.00,0.00,94000.00,'2026-05-19 15:29:19.687943',8),(2,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',17),(3,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',18),(4,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',19),(5,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',20),(6,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',21),(7,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',22),(8,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',13),(9,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',14),(10,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',15),(11,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',16),(17,0.00,0.00,0.00,'2026-05-22 16:27:43.605206',23);
+INSERT INTO `wallets` VALUES (1,67000.00,0.00,94000.00,'2026-05-26 17:01:08.428486',8),(2,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',17),(3,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',18),(4,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',19),(5,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',20),(6,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',21),(7,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',22),(8,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',13),(9,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',14),(10,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',15),(11,0.00,0.00,0.00,'2026-05-19 12:42:36.000000',16),(17,0.00,0.00,0.00,'2026-05-22 16:27:43.605206',23);
 /*!40000 ALTER TABLE `wallets` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -761,11 +762,12 @@ CREATE TABLE `withdrawal_requests` (
   `reference` varchar(255) NOT NULL,
   `status` enum('COMPLETED','PENDING','REJECTED') DEFAULT NULL,
   `provider_id` bigint NOT NULL,
+  `motif_refus` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UKim14eek991nwga51pv46rskcu` (`reference`),
   KEY `FK84miuymrpxsfmjlvdpuyivt0u` (`provider_id`),
   CONSTRAINT `FK84miuymrpxsfmjlvdpuyivt0u` FOREIGN KEY (`provider_id`) REFERENCES `users` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -774,7 +776,7 @@ CREATE TABLE `withdrawal_requests` (
 
 LOCK TABLES `withdrawal_requests` WRITE;
 /*!40000 ALTER TABLE `withdrawal_requests` DISABLE KEYS */;
-INSERT INTO `withdrawal_requests` VALUES (1,2000.00,'2026-05-19 10:47:03.362883','WAVE','781883729',NULL,'WIT-228872','PENDING',8);
+INSERT INTO `withdrawal_requests` VALUES (1,2000.00,'2026-05-19 10:47:03.362883','WAVE','781883729',NULL,'WIT-228872','PENDING',8,NULL),(2,25000.00,'2026-05-26 17:01:08.400126','WAVE','776723124',NULL,'WIT-946284','PENDING',8,NULL);
 /*!40000 ALTER TABLE `withdrawal_requests` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -787,4 +789,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-05-26  7:16:47
+-- Dump completed on 2026-05-27 22:48:59
