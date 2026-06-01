@@ -1,5 +1,9 @@
 package com.example.solimus.services.syndic;
 
+import com.example.solimus.dtos.charge.ChargeLineDTO;
+import com.example.solimus.dtos.charge.ChargeResponseDTO;
+import com.example.solimus.dtos.charge.CreateChargeDTO;
+import com.example.solimus.dtos.charge.CreateChargeLineDTO;
 import com.example.solimus.dtos.intervention.CreateInterventionRequestDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestDTO;
 import com.example.solimus.dtos.intervention.InterventionStatusHistoryDTO;
@@ -11,6 +15,9 @@ import com.example.solimus.dtos.property.PropertyDTO;
 import com.example.solimus.dtos.residence.CreateResidenceDTO;
 import com.example.solimus.dtos.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.CreateCoOwnerDTO;
+import com.example.solimus.entities.Charge;
+import com.example.solimus.entities.ChargeAllocation;
+import com.example.solimus.entities.ChargeLine;
 import com.example.solimus.entities.InterventionRequest;
 import com.example.solimus.entities.Property;
 import com.example.solimus.entities.Quote;
@@ -18,7 +25,9 @@ import com.example.solimus.entities.Residence;
 import com.example.solimus.entities.Role;
 import com.example.solimus.entities.Specialty;
 import com.example.solimus.entities.User;
+import com.example.solimus.enums.ChargeStatus;
 import com.example.solimus.enums.ERole;
+import com.example.solimus.enums.InitiatedBy;
 import com.example.solimus.enums.InterventionStatus;
 import com.example.solimus.enums.QuoteStatus;
 import com.example.solimus.enums.UserStatus;
@@ -44,11 +53,14 @@ import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -79,6 +91,9 @@ public class SyndicServiceImpl implements SyndicService {
     private final PaymentRepository paymentRepository;
     private final ProviderService providerService;
     private final SubscriptionRepository subscriptionRepository;
+    private final ChargeRepository chargeRepository;
+    private final ChargeLineRepository chargeLineRepository;
+    private final ChargeAllocationRepository chargeAllocationRepository;
 
     @Value("${solimus.geolocation.search-radius-km:30.0}")
     private double searchRadiusKm;
@@ -130,16 +145,11 @@ public class SyndicServiceImpl implements SyndicService {
     @Override
     @Transactional
     public PropertyDTO createProperty(CreatePropertyDTO dto) {
-        // Vérification de l'unicité de la référence dans la même résidence
-        if (propertyRepository.existsByReferenceAndResidenceId(dto.getReference(), dto.getResidenceId())) {
-            throw new BadRequestException("Un bien avec la référence '" + dto.getReference() + "' existe déjà dans cette résidence.");
-        }
-
         Residence residence = residenceRepository.findById(dto.getResidenceId())
                 .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
 
         Property property = new Property();
-        property.setReference(dto.getReference());
+        property.setReference(genererReferenceBien());
         property.setFloor(dto.getFloor());
         property.setArea(dto.getArea());
         property.setType(dto.getType());
@@ -152,13 +162,169 @@ public class SyndicServiceImpl implements SyndicService {
             if (owner.getRole() == null || !owner.getRole().getName().equals(ERole.ROLE_COPROPRIETAIRE)) {
                 throw new BadRequestException("Seul un utilisateur avec le rôle COPROPRIETAIRE peut posséder un bien.");
             }
+            if (owner.getStatus() != UserStatus.ACTIVE) {
+                throw new BadRequestException("Le compte du copropriétaire doit être actif pour posséder un bien.");
+            }
             property.setOwner(owner);
         }
         return mapToPropertyDTO(propertyRepository.save(property));
     }
 
+    private String genererReferenceBien() {
+        return "PROP-" + (int)(Math.random() * 900000 + 100000);
+    }
+
+    // =========================================================================
+    // CRÉER UNE CHARGE
+    // =========================================================================
+    @Override
+    @Transactional
+    public String createCharge(CreateChargeDTO dto) {
+
+        User currentSyndic = getCurrentUser();
+
+        // 1. Vérifier que la résidence existe et appartient à ce syndic
+        Residence residence = residenceRepository.findById(dto.getResidenceId())
+            .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+
+        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à créer une charge pour cette résidence");
+        }
+
+        // 2. Générer la référence globale : CHG-XXXXXX (préfixe + nombre aléatoire)
+        String reference = "CHG-" + (int)(Math.random() * 900000 + 100000);
+
+        // 3. Créer la charge globale avec les infos du DTO
+        Charge charge = new Charge();
+        charge.setReference(reference);
+        charge.setTitle(dto.getTitle());
+        charge.setDescription(dto.getDescription());
+        charge.setType(dto.getType());
+        charge.setTotalAmount(dto.getTotalAmount());
+        charge.setPeriod(dto.getPeriod());
+        charge.setDueDate(dto.getDueDate());
+        charge.setResidence(residence);
+        charge.setSyndic(currentSyndic);
+        charge.setDocumentUrls(dto.getDocumentUrls() != null ? dto.getDocumentUrls() : new ArrayList<>());
+
+        Charge savedCharge = chargeRepository.save(charge);
+
+        // 4. Ajouter les lignes de répartition des frais (ex: entretien, électricité...)
+        if (dto.getLines() != null && !dto.getLines().isEmpty()) {
+            log.info("Ajout de {} lignes de répartition pour la charge {}", dto.getLines().size(), reference);
+            dto.getLines().forEach(lineDTO -> {
+                ChargeLine line = new ChargeLine();
+                line.setLabel(lineDTO.getLabel());
+                line.setAmount(lineDTO.getAmount());
+                line.setCharge(savedCharge);
+                chargeLineRepository.save(line);
+            });
+        } else {
+            log.warn("Aucune ligne de répartition fournie pour la charge {}", reference);
+        }
+
+        // 5. Récupérer tous les biens avec propriétaire dans cette résidence
+        List<Property> properties = propertyRepository.findByResidenceIdAndOwnerIsNotNull(dto.getResidenceId());
+
+        if (properties.isEmpty()) {
+            throw new BadRequestException("Aucun bien avec copropriétaire dans cette résidence");
+        }
+
+        // 6. Calculer le montant par copropriétaire (répartition égale)
+        BigDecimal montantParCopro = dto.getTotalAmount()
+            .divide(BigDecimal.valueOf(properties.size()), 0, RoundingMode.HALF_UP);
+
+        // 7. Créer une allocation pour chaque copropriétaire
+        // Référence individuelle : CHG-XXXXXX-PROP-YYYYYY
+        properties.forEach(property -> {
+            ChargeAllocation allocation = new ChargeAllocation();
+            allocation.setReference(reference + "-" + property.getReference());
+            allocation.setCharge(savedCharge);
+            allocation.setProperty(property);
+            allocation.setOwner(property.getOwner());
+            allocation.setAmount(montantParCopro);
+            allocation.setStatus(ChargeStatus.EN_ATTENTE);
+            chargeAllocationRepository.save(allocation);
+        });
+
+        log.info("Charge {} créée — {} allocations générées", reference, properties.size());
+
+        return "Charge créée avec succès";
+    }
+
+    // =========================================================================
+    // LISTER LES CHARGES D'UNE RÉSIDENCE
+    // =========================================================================
+    @Override
+    @Transactional(readOnly = true)
+    public List<ChargeResponseDTO> getChargesByResidence(Long residenceId) {
+
+        User currentSyndic = getCurrentUser();
+
+        // Vérifier que la résidence appartient à ce syndic
+        Residence residence = residenceRepository.findById(residenceId)
+            .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+
+        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Accès non autorisé");
+        }
+
+        return chargeRepository
+            .findByResidenceIdOrderByCreatedAtDesc(residenceId)
+            .stream()
+            .map(this::toChargeDTO)
+            .collect(Collectors.toList());
+    }
+
+    // =========================================================================
+    // SUPPRIMER UNE CHARGE
+    // =========================================================================
+    @Override
+    @Transactional
+    public void deleteCharge(Long chargeId) {
+
+        User currentSyndic = getCurrentUser();
+
+        Charge charge = chargeRepository.findById(chargeId)
+            .orElseThrow(() -> new ResourceNotFoundException("Charge introuvable"));
+
+        // Vérifier que la résidence appartient à ce syndic
+        if (!charge.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Accès non autorisé");
+        }
+
+        // Supprimer les allocations associées
+        chargeAllocationRepository.deleteByCharge(charge);
+
+        // Supprimer la charge
+        chargeRepository.delete(charge);
+    }
+
+    // =========================================================================
+    // LISTER LES BIENS D'UNE RÉSIDENCE
+    // =========================================================================
+    @Override
+    @Transactional(readOnly = true)
+    public List<PropertyDTO> getPropertiesByResidence(Long residenceId) {
+
+        User currentSyndic = getCurrentUser();
+
+        // Vérifier que la résidence appartient à ce syndic
+        Residence residence = residenceRepository.findById(residenceId)
+            .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+
+        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Accès non autorisé");
+        }
+
+        return propertyRepository.findByResidenceId(residenceId).stream()
+            .map(this::mapToPropertyDTO)
+            .collect(Collectors.toList());
+    }
+
     /**
      * Assigne un copropriétaire à un bien existant.
+     * Vérifie que le compte est actif avant l'assignation.
      */
     @Override
     @Transactional
@@ -177,6 +343,10 @@ public class SyndicServiceImpl implements SyndicService {
 
         if (user.getRole() == null || !user.getRole().getName().equals(ERole.ROLE_COPROPRIETAIRE)) {
             throw new BadRequestException("Seul un utilisateur avec le rôle COPROPRIETAIRE peut posséder un bien.");
+        }
+
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new BadRequestException("Le compte du copropriétaire doit être actif pour posséder un bien.");
         }
 
         property.setOwner(user);
@@ -248,6 +418,7 @@ public class SyndicServiceImpl implements SyndicService {
         request.setTitle(dto.getTitle());
         request.setDescription(dto.getDescription());
         request.addStatusHistory(InterventionStatus.PENDING, currentSyndic);
+        request.setInitiatedBy(InitiatedBy.SYNDIC);
         request.setSyndic(currentSyndic);
         request.setResidence(residence);
         request.setProperty(property);
@@ -291,9 +462,13 @@ public class SyndicServiceImpl implements SyndicService {
         InterventionRequest request = interventionRepository.findByIdForUpdate(requestId)
                 .orElseThrow(() -> new ResourceNotFoundException("Demande introuvable"));
 
-        // 2. Vérifier que c'est bien LE syndic qui a créé cette demande
-        // Un syndic ne peut pas accepter un devis sur la demande d'un autre syndic
-        if (!request.getSyndic().getId().equals(getCurrentUser().getId())) {
+        // 2. Vérifier que c'est bien LE syndic ou le propriétaire qui a créé cette demande
+        User currentUser = getCurrentUser();
+        boolean isSyndicOwner = request.getSyndic() != null
+            && request.getSyndic().getId().equals(currentUser.getId());
+        boolean isPropertyOwner = request.getOwner() != null
+            && request.getOwner().getId().equals(currentUser.getId());
+        if (!isSyndicOwner && !isPropertyOwner) {
             throw new ForbiddenException("Vous n'êtes pas autorisé à accepter un devis sur cette demande");
         }
 
@@ -761,5 +936,49 @@ public class SyndicServiceImpl implements SyndicService {
                 .createdAt(payment.getCreatedAt())
                 .paidAt(payment.getPaidAt())
                 .build();
+    }
+
+    private ChargeResponseDTO toChargeDTO(Charge charge) {
+        List<ChargeLineDTO> lineDTOs = charge.getLines().stream()
+            .map(line -> ChargeLineDTO.builder()
+                .label(line.getLabel())
+                .amount(line.getAmount())
+                .build())
+            .collect(Collectors.toList());
+
+        return ChargeResponseDTO.builder()
+            .id(charge.getId())
+            .reference(charge.getReference())
+            .title(charge.getTitle())
+            .type(charge.getType())
+            .totalAmount(charge.getTotalAmount())
+            .period(charge.getPeriod())
+            .dueDate(charge.getDueDate())
+            .residenceName(charge.getResidence().getName())
+            .nombreAllocations(charge.getAllocations().size())
+            .lines(lineDTOs)
+            .documentUrls(charge.getDocumentUrls())
+            .createdAt(charge.getCreatedAt())
+            .build();
+    }
+
+    /**
+     * Tâche planifiée exécutée chaque jour à 8h.
+     * Marque automatiquement EN_RETARD les charges dont la date d'échéance est passée.
+     */
+    @Scheduled(cron = "0 0 8 * * *") // chaque jour à 8h
+    @Transactional
+    public void marquerChargesEnRetard() {
+
+        List<ChargeAllocation> enRetard = chargeAllocationRepository
+            .findAllByStatusAndChargeDueDateBefore(
+                ChargeStatus.EN_ATTENTE, LocalDate.now());
+
+        enRetard.forEach(a -> {
+            a.setStatus(ChargeStatus.EN_RETARD);
+            chargeAllocationRepository.save(a);
+        });
+
+        log.info("{} charge(s) passées EN_RETARD", enRetard.size());
     }
 }

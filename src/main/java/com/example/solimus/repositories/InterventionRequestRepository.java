@@ -23,6 +23,9 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
     // Lister les demandes créées par un syndic précis
     List<InterventionRequest> findAllBySyndic(User syndic);
 
+    // Lister les demandes créées par un copropriétaire précis
+    List<InterventionRequest> findAllByOwner(User owner);
+
     // Récupère une demande en la verrouillant en écriture jusqu'à la fin de la transaction.
     // Utilisé lors de l'acceptation d'un devis pour éviter deux validations concurrentes.
     @Lock(LockModeType.PESSIMISTIC_WRITE)

@@ -93,9 +93,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponseDTO> handleGenericException(Exception ex) {
         log.error("Internal Server Error: ", ex);
+        List<String> details = new ArrayList<>();
+        details.add(ex.getMessage());
         ErrorResponseDTO error = new ErrorResponseDTO(
                 "Une erreur inattendue est survenue",
-                null,
+                details,
                 LocalDateTime.now(),
                 HttpStatus.INTERNAL_SERVER_ERROR.value()
         );

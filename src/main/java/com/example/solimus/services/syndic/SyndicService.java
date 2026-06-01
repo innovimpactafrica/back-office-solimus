@@ -1,5 +1,7 @@
 package com.example.solimus.services.syndic;
 
+import com.example.solimus.dtos.charge.ChargeResponseDTO;
+import com.example.solimus.dtos.charge.CreateChargeDTO;
 import com.example.solimus.dtos.intervention.CreateInterventionRequestDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestDTO;
 import com.example.solimus.dtos.intervention.NearbyProviderDTO;
@@ -9,7 +11,6 @@ import com.example.solimus.dtos.residence.CreateResidenceDTO;
 import com.example.solimus.dtos.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.CreateCoOwnerDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
-import com.example.solimus.dtos.syndic.PaymentDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
 
@@ -26,6 +27,18 @@ public interface SyndicService {
     void acceptQuote(Long requestId, Long quoteId);
     List<com.example.solimus.dtos.intervention.SyndicQuoteDTO> getQuotesByInterventionRequest(Long requestId);
     void addCoOwner(CreateCoOwnerDTO dto);
+
+    // ================================================
+    // CHARGES — gestion des charges de copropriété
+    // ================================================
+    String createCharge(CreateChargeDTO dto);
+    List<ChargeResponseDTO> getChargesByResidence(Long residenceId);
+    void deleteCharge(Long chargeId);
+
+    // ================================================
+    // BIENS — gestion des biens d'une résidence
+    // ================================================
+    List<PropertyDTO> getPropertiesByResidence(Long residenceId);
 
     // ================================================
     // ACOMPTE — versé avant ou au début des travaux

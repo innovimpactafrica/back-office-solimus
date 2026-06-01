@@ -12,9 +12,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class CreatePropertyDTO {
 
-    @NotBlank(message = "La référence du bien est obligatoire")
-    private String reference;
-
+    // La référence est auto-générée, plus besoin de la saisir
     private Integer floor;
 
     private Double area;

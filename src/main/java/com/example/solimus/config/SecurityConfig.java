@@ -51,8 +51,8 @@ public class SecurityConfig {
 
                         // Ressources publiques pour l'inscription
                         .requestMatchers(HttpMethod.GET, "/api/admin/specialties", "/api/admin/intervention-zones").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/provider/requests/*").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/coowner/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/coowner/residences").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/coowner/residences/*/properties").permitAll()
 
                         // Documentation
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
@@ -62,6 +62,9 @@ public class SecurityConfig {
                         
                         // Zones Syndic : Seuls les utilisateurs avec le rôle SYNDIC peuvent effectuer ces actions
                         .requestMatchers("/api/syndic/**").hasAnyAuthority("ROLE_SYNDIC")
+
+                        // Zones Copropriétaire : Seuls les utilisateurs avec le rôle COPROPRIETAIRE peuvent effectuer ces actions
+                        .requestMatchers("/api/coOwner/**").hasAnyAuthority("ROLE_COPROPRIETAIRE")
 
                         // Tout le reste nécessite une authentification
                         .anyRequest().authenticated()

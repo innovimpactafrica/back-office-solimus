@@ -1,5 +1,7 @@
 package com.example.solimus.controllers;
 
+import com.example.solimus.entities.ChargeAllocation;
+import com.example.solimus.entities.ChargePayment;
 import com.example.solimus.entities.InterventionRequest;
 import com.example.solimus.entities.InTouchCallbackRequest;
 import com.example.solimus.entities.Subscription;
@@ -38,6 +40,12 @@ public class SolimusCallbackController {
 
     // Repository des abonnements prestataires
     private final SubscriptionRepository subscriptionRepository;
+
+    // Repository des paiements de charges : CPY-*
+    private final ChargePaymentRepository chargePaymentRepository;
+
+    // Repository des allocations de charges
+    private final ChargeAllocationRepository chargeAllocationRepository;
 
     // Service utilisé pour créditer le wallet du prestataire après confirmation InTouch
     private final ProviderService providerService;
@@ -86,6 +94,11 @@ public class SolimusCallbackController {
         if (ref.startsWith("SUB-")) {
             // Paiement abonnement Premium prestataire
             return handleSubscriptionCallback(ref, succes);
+        }
+
+        if (ref.startsWith("CPY-")) {
+            // Paiement charge copropriétaire
+            return handleChargePaymentCallback(ref, succes);
         }
 
         // Référence non reconnue
@@ -252,5 +265,56 @@ public class SolimusCallbackController {
                                 "message", "Paiement abonnement introuvable pour la référence : " + ref
                         )
                 ));
+    }
+
+    // =========================================================================
+    // CAS 3 — Paiement charge copropriétaire (CPY-)
+    // =========================================================================
+    private ResponseEntity<Map<String, Object>> handleChargePaymentCallback(
+            String ref, boolean succes) {
+
+        return chargePaymentRepository.findByReference(ref)
+            .map(paiement -> {
+
+                // Anti-double callback
+                if (paiement.getStatus() == PaymentStatus.COMPLETED) {
+                    return ResponseEntity.ok(Map.<String, Object>of(
+                        "success", true,
+                        "message", "Paiement déjà confirmé"
+                    ));
+                }
+
+                if (!succes) {
+                    paiement.setStatus(PaymentStatus.FAILED);
+                    chargePaymentRepository.save(paiement);
+                    return ResponseEntity.ok(Map.<String, Object>of(
+                        "success", true,
+                        "message", "Paiement marqué comme échoué"
+                    ));
+                }
+
+                // Confirmer le paiement
+                paiement.setStatus(PaymentStatus.COMPLETED);
+                paiement.setPaidAt(LocalDateTime.now());
+                chargePaymentRepository.save(paiement);
+
+                // Marquer l'allocation comme PAYEE
+                ChargeAllocation allocation = paiement.getAllocation();
+                allocation.setStatus(ChargeStatus.PAYEE);
+                chargeAllocationRepository.save(allocation);
+
+                log.info("Charge {} payée avec succès", ref);
+
+                return ResponseEntity.ok(Map.<String, Object>of(
+                    "success", true,
+                    "message", "Paiement charge confirmé"
+                ));
+            })
+            .orElseGet(() -> ResponseEntity.badRequest().body(
+                Map.<String, Object>of(
+                    "success", false,
+                    "message", "Paiement charge introuvable : " + ref
+                )
+            ));
     }
 }

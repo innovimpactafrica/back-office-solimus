@@ -87,10 +87,6 @@ public class User {
     @Column(name = "intervention_zone")
     private String interventionZone;
 
-    // Un copropriétaire peut posséder plusieurs biens
-    @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<Property> ownedProperties = new ArrayList<>();
-
     @JsonFormat(pattern = "dd-MM-yyyy HH:mm:ss")
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

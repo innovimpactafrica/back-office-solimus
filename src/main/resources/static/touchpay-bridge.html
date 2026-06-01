@@ -96,6 +96,7 @@
         // PAY- / SOL- → paiement normal
         // SUB- → abonnement
         // WIT- → retrait wallet
+        // CPY- → paiement charge
         function getApiUrl(ref, apiBaseUrl) {
             if (ref.startsWith('PAY-') || ref.startsWith('SOL-')) {
                 return `${apiBaseUrl}/api/payments/bridge/payment/${ref}`;
@@ -103,6 +104,8 @@
                 return `${apiBaseUrl}/api/payments/bridge/subscription/${ref}`;
             } else if (ref.startsWith('WIT-')) {
                 return `${apiBaseUrl}/api/payments/bridge/withdrawal/${ref}`;
+            } else if (ref.startsWith('CPY-')) {
+                return `${apiBaseUrl}/api/payments/bridge/charge/${ref}`;
             }
 
             // si format inconnu

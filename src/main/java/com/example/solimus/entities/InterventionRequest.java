@@ -1,5 +1,6 @@
 package com.example.solimus.entities;
 
+import com.example.solimus.enums.InitiatedBy;
 import com.example.solimus.enums.InterventionStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -38,9 +39,17 @@ public class InterventionRequest {
     @Column(nullable = false)
     private InterventionStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private InitiatedBy initiatedBy;
+
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "syndic_id", nullable = false)
+    @JoinColumn(name = "syndic_id")
     private User syndic;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id")
+    private User owner;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "residence_id", nullable = false)

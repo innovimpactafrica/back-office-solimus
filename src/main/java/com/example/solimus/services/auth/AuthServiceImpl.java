@@ -1,6 +1,7 @@
 package com.example.solimus.services.auth;
 
 import com.example.solimus.dtos.auth.*;
+import com.example.solimus.entities.Property;
 import com.example.solimus.entities.Role;
 import com.example.solimus.entities.User;
 import com.example.solimus.entities.auth.ActivationCode;
@@ -508,6 +509,17 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private void validateAndSetCoOwnerInfo(User user, RegisterRequestDTO dto) {
+        // Rejeter les champs spécifiques aux prestataires
+        if (dto.getSpecialtyId() != null) {
+            throw new BadRequestException("Le champ specialtyId est réservé aux prestataires");
+        }
+        if (dto.getCompanyName() != null) {
+            throw new BadRequestException("Le champ companyName est réservé aux prestataires");
+        }
+        if (dto.getLatitude() != null || dto.getLongitude() != null) {
+            throw new BadRequestException("Les coordonnées GPS sont réservées aux prestataires");
+        }
+
         if (dto.getResidenceId() == null) {
             throw new BadRequestException("La résidence est obligatoire pour un copropriétaire");
         }
@@ -520,11 +532,19 @@ public class AuthServiceImpl implements AuthService {
                 .orElseThrow(() -> new ResourceNotFoundException("Résidence non trouvée"));
 
         // Vérifier que le bien existe et appartient à la résidence
-        com.example.solimus.entities.Property property = propertyRepository.findById(dto.getPropertyId())
+        Property property = propertyRepository.findById(dto.getPropertyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Appartement non trouvé"));
 
         if (!property.getResidence().getId().equals(dto.getResidenceId())) {
             throw new BadRequestException("L'appartement n'appartient pas à cette résidence");
+        }
+
+        // Vérifier que le bien n'a pas déjà un propriétaire
+        if (property.getOwner() != null) {
+            throw new BadRequestException(
+                "Cet appartement a déjà un propriétaire. " +
+                "Contactez votre syndic pour plus d'informations."
+            );
         }
 
         // Lier l'utilisateur au bien (propriétaire)

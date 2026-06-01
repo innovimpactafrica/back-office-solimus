@@ -1,11 +1,13 @@
 package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.syndic.PaymentBridgeDTO;
+import com.example.solimus.entities.ChargePayment;
 import com.example.solimus.entities.Payment;
 import com.example.solimus.entities.SubscriptionPayment;
 import com.example.solimus.entities.User;
 import com.example.solimus.entities.WithdrawalRequest;
 import com.example.solimus.exceptions.ResourceNotFoundException;
+import com.example.solimus.repositories.ChargePaymentRepository;
 import com.example.solimus.repositories.PaymentRepository;
 import com.example.solimus.repositories.SubscriptionPaymentRepository;
 import com.example.solimus.repositories.WithdrawalRequestRepository;
@@ -30,6 +32,7 @@ public class SolimusPaymentBridgeController {
     private final PaymentRepository paymentRepository;
     private final SubscriptionPaymentRepository subscriptionPaymentRepository;
     private final WithdrawalRequestRepository withdrawalRequestRepository;
+    private final ChargePaymentRepository chargePaymentRepository;
 
     // URL du script hébergé TouchPay (géré par InTouch)
     @Value("${touchpay.hosted.script-url}")
@@ -129,6 +132,33 @@ public class SolimusPaymentBridgeController {
             .build();
     }
 
+    // ================================================
+    // BRIDGE — Paiement charge copropriétaire
+    // ================================================
+    @GetMapping("/charge/{transactionRef}")
+    @Transactional(readOnly = true)
+    public PaymentBridgeDTO getBridgeCharge(@PathVariable String transactionRef) {
+        ChargePayment paiement = chargePaymentRepository
+            .findByReference(transactionRef)
+            .orElseThrow(() -> new ResourceNotFoundException("Paiement charge introuvable"));
 
+        User owner = paiement.getOwner();
+
+        return PaymentBridgeDTO.builder()
+            .merchantToken(touchPaySecureCode)
+            .transactionReference(transactionRef)
+            .agencyCode(touchPayAgencyCode)
+            .serviceId(touchPayDomainName)
+            .hostedScriptUrl(touchPayHostedScriptUrl)
+            .amount(paiement.getAmount())
+            .city(touchPayDefaultCity)
+            .successRedirectUrl(touchPaySuccessRedirectUrl)
+            .failedRedirectUrl(touchPayFailedRedirectUrl)
+            .customerEmail(owner.getEmail())
+            .customerFirstName(owner.getFirstName())
+            .customerLastName(owner.getLastName())
+            .customerPhone(owner.getPhone())
+            .build();
+    }
 
 }

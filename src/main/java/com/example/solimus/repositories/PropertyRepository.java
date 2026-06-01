@@ -12,4 +12,12 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
 
     // Lister les biens d'une résidence
     java.util.List<Property> findByResidenceId(Long residenceId);
+
+    // Lister les biens d'une résidence qui ont un propriétaire
+    java.util.List<Property> findByResidenceIdAndOwnerIsNotNull(Long residenceId);
+
+    /**
+     * Trouve tous les biens d'un propriétaire donné.
+     */
+    java.util.List<Property> findAllByOwnerId(Long ownerId);
 }
