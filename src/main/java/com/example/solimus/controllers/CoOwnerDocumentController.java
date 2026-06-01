@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/coproprietaire/documents")
 @RequiredArgsConstructor
-@Tag(name = "CoOwner - Documents", description = "Consultation des documents du copropriétaire")
+@Tag(name = "CoOwner - Profile", description = "Gestion du profil et des documents du copropriétaire")
 public class CoOwnerDocumentController {
 
     private final CoOwnerDocumentService documentService;

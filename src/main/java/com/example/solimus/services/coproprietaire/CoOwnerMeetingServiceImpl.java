@@ -57,7 +57,7 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
             .orElseThrow(() -> new ResourceNotFoundException("Réunion introuvable"));
 
         boolean isParticipant = meeting.getParticipants().stream()
-            .anyMatch(p -> p.getUser().getId().equals(currentOwner.getId()));
+            .anyMatch(p -> p.getUser() != null && p.getUser().getId().equals(currentOwner.getId()));
 
         if (!isParticipant) {
             throw new ForbiddenException("Accès non autorisé à cette réunion");
@@ -220,7 +220,7 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
 
         // 3. Copropriétaires système — user != null, externalName == null → groupés
         long coproCount = all.stream()
-            .filter(p -> p.getRole() == null && p.getExternalName() == null)
+            .filter(p -> p.getUser() != null && p.getRole() == null && p.getExternalName() == null)
             .count();
 
         if (coproCount > 0) {

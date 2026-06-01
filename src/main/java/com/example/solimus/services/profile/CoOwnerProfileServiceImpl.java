@@ -5,11 +5,13 @@ import com.example.solimus.dtos.profile.UpdateCoOwnerProfileDTO;
 import com.example.solimus.entities.User;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @RequiredArgsConstructor
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class CoOwnerProfileServiceImpl implements CoOwnerProfileService {
 
     private final UserRepository userRepository;
+    private final MinioService minioService;
 
     @Override
     @Transactional(readOnly = true)
@@ -35,12 +38,24 @@ public class CoOwnerProfileServiceImpl implements CoOwnerProfileService {
 
     @Override
     @Transactional
-    public CoOwnerProfileDTO updateProfile(UpdateCoOwnerProfileDTO dto) {
+    public CoOwnerProfileDTO updateProfile(UpdateCoOwnerProfileDTO dto, MultipartFile photo) {
         User currentUser = getCurrentUser();
 
-        currentUser.setFirstName(dto.getFirstName());
-        currentUser.setLastName(dto.getLastName());
-        currentUser.setPhone(dto.getPhone());
+        if (dto.getFirstName() != null) currentUser.setFirstName(dto.getFirstName());
+        if (dto.getLastName() != null) currentUser.setLastName(dto.getLastName());
+        if (dto.getPhone() != null) currentUser.setPhone(dto.getPhone());
+
+        if (photo != null && !photo.isEmpty()) {
+            try {
+                String photoUrl = minioService.uploadFile(photo, "profiles");
+                if (photoUrl != null) {
+                    currentUser.setProfilePhotoUrl(photoUrl);
+                }
+            } catch (Exception e) {
+                log.error("Erreur lors de l'upload de la photo de profil", e);
+                throw new RuntimeException("Erreur lors de l'upload de la photo de profil");
+            }
+        }
 
         userRepository.save(currentUser);
         log.info("Profil mis à jour pour l'utilisateur {}", currentUser.getEmail());
