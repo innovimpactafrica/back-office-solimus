@@ -609,8 +609,9 @@ public class ProviderServiceImpl implements ProviderService {
 
         withdrawalRequestRepository.save(retrait);
 
-        // 3. Déduire immédiatement du solde disponible du Wallet
+        // 3. Déduire immédiatement du solde disponible et mettre le montant en attente
         wallet.setAvailableBalance(wallet.getAvailableBalance().subtract(dto.getMontant()));
+        wallet.setPendingBalance(wallet.getPendingBalance().add(dto.getMontant()));
         walletRepository.save(wallet);
 
         // 4. TODO: Notifier le prestataire

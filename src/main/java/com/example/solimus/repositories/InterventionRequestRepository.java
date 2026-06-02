@@ -23,6 +23,11 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
     // Lister les demandes créées par un syndic précis
     List<InterventionRequest> findAllBySyndic(User syndic);
 
+    // Lister toutes les demandes d'intervention des résidences d'un syndic
+    // (créées par le syndic ou par les copropriétaires de ses résidences)
+    @Query("SELECT ir FROM InterventionRequest ir WHERE ir.residence.syndic = :syndic")
+    List<InterventionRequest> findAllByResidenceSyndic(@Param("syndic") User syndic);
+
     // Lister les demandes créées par un copropriétaire précis
     List<InterventionRequest> findAllByOwner(User owner);
 

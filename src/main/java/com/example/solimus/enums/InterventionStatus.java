@@ -5,6 +5,7 @@ package com.example.solimus.enums;
  */
 public enum InterventionStatus {
     PENDING,            // Demande reçue / En attente
+    SYNDIC_ASSIGNED,    // Pris en charge par le syndic
     QUOTE_SENT,         // Devis envoyé par un prestataire
     SYNDIC_VALIDATED,   // Devis validé par le syndic
     STARTED,            // Intervention démarrée

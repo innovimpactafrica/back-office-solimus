@@ -29,6 +29,11 @@ public interface SyndicService {
     void addCoOwner(CreateCoOwnerDTO dto);
 
     // ================================================
+    // INTERVENTIONS — prise en charge par le syndic
+    // ================================================
+    InterventionRequestDTO assignIntervention(Long requestId);
+
+    // ================================================
     // CHARGES — gestion des charges de copropriété
     // ================================================
     String createCharge(CreateChargeDTO dto);

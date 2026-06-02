@@ -1,8 +1,10 @@
 package com.example.solimus.services.admin;
 
 import com.example.solimus.dtos.admin.*;
+import com.example.solimus.dtos.provider.WithdrawalRequestDTO;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.UserStatus;
+import com.example.solimus.enums.WithdrawalStatus;
 
 import java.util.List;
 
@@ -50,4 +52,10 @@ public interface AdminService {
      */
     com.example.solimus.dtos.admin.CreateUserResponseDTO createUser(
             com.example.solimus.dtos.admin.CreateUserRequestDTO dto);
+
+    List<WithdrawalRequestDTO> getWithdrawalRequests(WithdrawalStatus status);
+
+    WithdrawalRequestDTO confirmWithdrawal(Long withdrawalId);
+
+    WithdrawalRequestDTO rejectWithdrawal(Long withdrawalId, String motifRefus);
 }

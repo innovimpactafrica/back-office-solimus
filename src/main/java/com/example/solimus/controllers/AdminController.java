@@ -9,8 +9,10 @@ import com.example.solimus.dtos.admin.CreateUserResponseDTO;
 import com.example.solimus.dtos.admin.EstimatedDelayDTO;
 import com.example.solimus.dtos.admin.SpecialtyDTO;
 import com.example.solimus.dtos.admin.UserListResponseDTO;
+import com.example.solimus.dtos.provider.WithdrawalRequestDTO;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.UserStatus;
+import com.example.solimus.enums.WithdrawalStatus;
 import com.example.solimus.services.admin.AdminService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -116,5 +118,26 @@ public class AdminController {
             @RequestBody @Valid CreateUserRequestDTO dto) {
         CreateUserResponseDTO response = adminService.createUser(dto);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @Operation(summary = "Lister les demandes de retrait des prestataires")
+    @GetMapping("/withdrawals")
+    public ResponseEntity<List<WithdrawalRequestDTO>> getWithdrawalRequests(
+            @RequestParam(required = false) WithdrawalStatus status) {
+        return ResponseEntity.ok(adminService.getWithdrawalRequests(status));
+    }
+
+    @Operation(summary = "Confirmer une demande de retrait")
+    @PatchMapping("/withdrawals/{id}/confirm")
+    public ResponseEntity<WithdrawalRequestDTO> confirmWithdrawal(@PathVariable Long id) {
+        return ResponseEntity.ok(adminService.confirmWithdrawal(id));
+    }
+
+    @Operation(summary = "Refuser une demande de retrait")
+    @PatchMapping("/withdrawals/{id}/reject")
+    public ResponseEntity<WithdrawalRequestDTO> rejectWithdrawal(
+            @PathVariable Long id,
+            @RequestParam(required = false) String motifRefus) {
+        return ResponseEntity.ok(adminService.rejectWithdrawal(id, motifRefus));
     }
 }

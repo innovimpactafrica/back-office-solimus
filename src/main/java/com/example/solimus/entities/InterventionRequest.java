@@ -1,7 +1,10 @@
 package com.example.solimus.entities;
 
 import com.example.solimus.enums.InitiatedBy;
+import com.example.solimus.enums.IncidentLocationType;
+import com.example.solimus.enums.InterventionManagementMode;
 import com.example.solimus.enums.InterventionStatus;
+import com.example.solimus.enums.UrgencyLevel;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -43,6 +46,18 @@ public class InterventionRequest {
     @Column(nullable = false)
     private InitiatedBy initiatedBy;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "location_type")
+    private IncidentLocationType locationType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "management_mode")
+    private InterventionManagementMode managementMode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "urgency_level")
+    private UrgencyLevel urgencyLevel;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "syndic_id")
     private User syndic;
@@ -56,7 +71,7 @@ public class InterventionRequest {
     private Residence residence;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "property_id", nullable = false)
+    @JoinColumn(name = "property_id")
     private Property property;
 
     @ManyToOne(fetch = FetchType.LAZY)

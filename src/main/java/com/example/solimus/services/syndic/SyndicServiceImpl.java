@@ -425,12 +425,24 @@ public class SyndicServiceImpl implements SyndicService {
         request.setSpecialty(specialty);
         request.setPhotoUrls(dto.getPhotoUrls());
 
-        // Notification des prestataires sélectionnés
-        if (dto.getTargetProviderIds() != null && !dto.getTargetProviderIds().isEmpty()) {
-            List<User> selectedProviders = userRepository.findAllById(dto.getTargetProviderIds());
-            request.setNotifiedProviders(selectedProviders);
+        // Diffusion automatique aux prestataires proches
+        if (residence.getLatitude() == null || residence.getLongitude() == null) {
+            throw new BadRequestException("La résidence n'a pas de coordonnées GPS, impossible de trouver des prestataires proches");
+        }
 
-            selectedProviders.forEach(provider -> {
+        List<User> nearbyProviders = userRepository.findNearbyProviders(
+                residence.getLatitude().doubleValue(),
+                residence.getLongitude().doubleValue(),
+                specialty.getId(),
+                30.0 // rayon de 30 km
+        );
+
+        if (nearbyProviders.isEmpty()) {
+            log.warn("Aucun prestataire trouvé dans un rayon de 30 km pour la résidence {} et la spécialité {}", residence.getName(), specialty.getName());
+        } else {
+            request.setNotifiedProviders(nearbyProviders);
+
+            nearbyProviders.forEach(provider -> {
                 try {
                     emailService.sendInterventionNotification(
                             provider.getEmail(),
@@ -442,8 +454,8 @@ public class SyndicServiceImpl implements SyndicService {
                     log.error("Erreur lors de l'envoi de notification email à {}", provider.getEmail());
                 }
             });
-        } else {
-            throw new BadRequestException("Vous devez sélectionner au moins un prestataire.");
+
+            log.info("Diffusion automatique : {} prestataires notifiés pour l'intervention {}", nearbyProviders.size(), request.getTitle());
         }
 
         return mapToInterventionDTO(interventionRepository.save(request));
@@ -512,9 +524,72 @@ public class SyndicServiceImpl implements SyndicService {
     @Override
     @Transactional(readOnly = true)
     public List<InterventionRequestDTO> getMyInterventionRequests() {
-        return interventionRepository.findAllBySyndic(getCurrentUser()).stream()
+        return interventionRepository.findAllByResidenceSyndic(getCurrentUser()).stream()
                 .map(this::mapToInterventionDTO)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Marque une intervention comme prise en charge par le syndic et diffuse aux prestataires proches.
+     */
+    @Override
+    @Transactional
+    public InterventionRequestDTO assignIntervention(Long requestId) {
+        InterventionRequest request = interventionRepository.findById(requestId)
+                .orElseThrow(() -> new ResourceNotFoundException("Demande d'intervention introuvable"));
+
+        // Vérifier que le syndic est autorisé à gérer cette demande
+        if (request.getSyndic() == null || !request.getSyndic().getId().equals(getCurrentUser().getId())) {
+            throw new BadRequestException("Vous n'êtes pas autorisé à gérer cette demande");
+        }
+
+        // Vérifier que la demande est en attente
+        if (request.getStatus() != InterventionStatus.PENDING) {
+            throw new BadRequestException("Cette demande n'est pas en attente de prise en charge");
+        }
+
+        // Changer le statut à SYNDIC_ASSIGNED
+        request.setStatus(InterventionStatus.SYNDIC_ASSIGNED);
+        request.addStatusHistory(InterventionStatus.SYNDIC_ASSIGNED, getCurrentUser());
+
+        // Diffusion automatique aux prestataires proches
+        if (request.getResidence().getLatitude() == null || request.getResidence().getLongitude() == null) {
+            throw new BadRequestException("La résidence n'a pas de coordonnées GPS, impossible de trouver des prestataires proches");
+        }
+
+        List<User> nearbyProviders = userRepository.findNearbyProviders(
+                request.getResidence().getLatitude().doubleValue(),
+                request.getResidence().getLongitude().doubleValue(),
+                request.getSpecialty().getId(),
+                30.0 // rayon de 30 km
+        );
+
+        if (nearbyProviders.isEmpty()) {
+            log.warn("Aucun prestataire trouvé dans un rayon de 30 km pour la résidence {} et la spécialité {}",
+                    request.getResidence().getName(), request.getSpecialty().getName());
+        } else {
+            request.setNotifiedProviders(nearbyProviders);
+
+            nearbyProviders.forEach(provider -> {
+                try {
+                    emailService.sendInterventionNotification(
+                            provider.getEmail(),
+                            provider.getFirstName(),
+                            request.getTitle(),
+                            request.getResidence().getName()
+                    );
+                } catch (Exception e) {
+                    log.error("Erreur lors de l'envoi de l'email au prestataire {}", provider.getEmail(), e);
+                }
+            });
+
+            log.info("Diffusion automatique : {} prestataires notifiés pour l'intervention {}", nearbyProviders.size(), request.getTitle());
+        }
+
+        InterventionRequest saved = interventionRepository.save(request);
+        log.info("Intervention {} prise en charge par le syndic {}", request.getTitle(), getCurrentUser().getEmail());
+
+        return mapToInterventionDTO(saved);
     }
     /**
      * Récupère la liste des devis reçus pour une demande d'intervention spécifique.
@@ -833,6 +908,10 @@ public class SyndicServiceImpl implements SyndicService {
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .status(request.getStatus())
+                .initiatedBy(request.getInitiatedBy())
+                .locationType(request.getLocationType())
+                .managementMode(request.getManagementMode())
+                .urgencyLevel(request.getUrgencyLevel())
                 .residenceName(request.getResidence() != null ? request.getResidence().getName() : "N/A")
                 .residentPhone(residentPhone)
                 .residentEmail(residentEmail)

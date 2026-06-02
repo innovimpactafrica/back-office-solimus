@@ -1,6 +1,10 @@
 package com.example.solimus.dtos.intervention;
 
+import com.example.solimus.enums.InitiatedBy;
+import com.example.solimus.enums.IncidentLocationType;
+import com.example.solimus.enums.InterventionManagementMode;
 import com.example.solimus.enums.InterventionStatus;
+import com.example.solimus.enums.UrgencyLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,9 +22,13 @@ public class InterventionRequestDTO {
     private String title;
     private String description;
     private InterventionStatus status;
-    
+    private InitiatedBy initiatedBy;
+    private IncidentLocationType locationType;
+    private InterventionManagementMode managementMode;
+    private UrgencyLevel urgencyLevel;
+
     private String residenceName;
-    
+
     // Contact Résident (pour le prestataire)
     private String residentPhone;
     private String residentEmail;

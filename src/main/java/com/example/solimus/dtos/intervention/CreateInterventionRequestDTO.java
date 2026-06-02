@@ -1,5 +1,8 @@
 package com.example.solimus.dtos.intervention;
 
+import com.example.solimus.enums.IncidentLocationType;
+import com.example.solimus.enums.InterventionManagementMode;
+import com.example.solimus.enums.UrgencyLevel;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -22,15 +25,18 @@ public class CreateInterventionRequestDTO {
     @NotNull(message = "La résidence est obligatoire")
     private Long residenceId;
 
-    @NotNull(message = "Le bien est obligatoire")
     private Long propertyId;
 
     @NotNull(message = "La spécialité est obligatoire")
     private Long specialtyId;
 
-    // La liste des prestataires sélectionnés manuellement par le syndic
-    @NotNull(message = "Vous devez sélectionner au moins un prestataire")
-    private List<Long> targetProviderIds;
+    @NotNull(message = "Le type d'incident est obligatoire")
+    private IncidentLocationType locationType;
+
+    private InterventionManagementMode managementMode;
+
+    @NotNull(message = "Le niveau d'urgence est obligatoire")
+    private UrgencyLevel urgencyLevel;
 
     private List<String> photoUrls;
 }

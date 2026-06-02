@@ -5,10 +5,14 @@ import com.example.solimus.dtos.intervention.NearbyProviderDTO;
 import com.example.solimus.dtos.intervention.OwnerInterventionDetailDTO;
 import com.example.solimus.dtos.intervention.OwnerInterventionSummaryDTO;
 import com.example.solimus.dtos.intervention.SyndicQuoteDTO;
+import com.example.solimus.dtos.property.PropertyDTO;
+import com.example.solimus.dtos.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
+import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.services.coproprietaire.OwnerInterventionService;
+import com.example.solimus.services.minio.MinioService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -20,6 +24,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -29,6 +34,21 @@ import java.util.List;
 public class OwnerInterventionController {
 
     private final OwnerInterventionService interventionService;
+    private final MinioService minioService;
+
+    @Operation(summary = "Lister mes résidences pour créer un incident")
+    @GetMapping("/residences")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    public ResponseEntity<List<ResidenceDTO>> getMyResidences() {
+        return ResponseEntity.ok(interventionService.getMyResidences());
+    }
+
+    @Operation(summary = "Lister mes biens dans une résidence pour créer un incident")
+    @GetMapping("/residences/{residenceId}/properties")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    public ResponseEntity<List<PropertyDTO>> getMyPropertiesByResidence(@PathVariable Long residenceId) {
+        return ResponseEntity.ok(interventionService.getMyPropertiesByResidence(residenceId));
+    }
 
     @Operation(summary = "Trouver les prestataires proches de ma résidence")
     @GetMapping("/nearby-providers")
@@ -45,21 +65,40 @@ public class OwnerInterventionController {
     public ResponseEntity<OwnerInterventionDetailDTO> createIntervention(
             @RequestParam("title") String title,
             @RequestParam("description") String description,
+            @RequestParam("residenceId") Long residenceId,
+            @RequestParam(value = "propertyId", required = false) Long propertyId,
             @RequestParam("specialtyId") Long specialtyId,
-            @RequestParam("targetProviderIds") List<Long> targetProviderIds,
+            @RequestParam("locationType") String locationType,
+            @RequestParam(value = "managementMode", required = false) String managementMode,
+            @RequestParam("urgencyLevel") String urgencyLevel,
             @RequestParam(value = "photos", required = false) List<MultipartFile> photos) {
-        
+
         CreateOwnerInterventionRequestDTO dto = CreateOwnerInterventionRequestDTO.builder()
                 .title(title)
                 .description(description)
+                .residenceId(residenceId)
+                .propertyId(propertyId)
                 .specialtyId(specialtyId)
-                .targetProviderIds(targetProviderIds)
+                .locationType(com.example.solimus.enums.IncidentLocationType.valueOf(locationType))
+                .managementMode(managementMode != null ? com.example.solimus.enums.InterventionManagementMode.valueOf(managementMode) : null)
+                .urgencyLevel(com.example.solimus.enums.UrgencyLevel.valueOf(urgencyLevel))
                 .build();
         
-        // Pour les photos, on passera une liste vide pour l'instant
-        // L'upload des photos sera géré séparément ou via MinioService
+        List<String> photoUrls = new ArrayList<>();
+        if (photos != null) {
+            for (MultipartFile photo : photos) {
+                if (photo != null && !photo.isEmpty()) {
+                    String photoUrl = minioService.uploadFile(photo, "interventions");
+                    if (photoUrl == null) {
+                        throw new BadRequestException("Erreur lors de l'upload d'une photo");
+                    }
+                    photoUrls.add(photoUrl);
+                }
+            }
+        }
+
         return ResponseEntity.status(201)
-                .body(interventionService.createIntervention(dto, List.of()));
+                .body(interventionService.createIntervention(dto, photoUrls));
     }
 
     @Operation(summary = "Lister mes interventions")

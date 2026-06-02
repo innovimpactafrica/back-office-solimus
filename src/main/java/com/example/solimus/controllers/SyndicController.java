@@ -104,23 +104,14 @@ public class SyndicController {
             @Parameter(description = "ID de la spécialité requise (Plomberie, Électricité, etc.)")
             @RequestPart("specialtyId") String specialtyId,
 
-            @Parameter(description = "Liste des IDs des prestataires sélectionnés par le syndic")
-            @RequestPart("targetProviderIds") String targetProviderIds,
-
             @Parameter(description = "Photos du problème (JPG, PNG uniquement)")
             @RequestPart(value = "photos", required = false) MultipartFile[] photos) {
-        
+
         try {
             // Conversion manuelle car @RequestPart avec des types simples peut être capricieux selon le client
             Long resId = Long.parseLong(residenceId);
             Long propId = Long.parseLong(propertyId);
             Long specId = Long.parseLong(specialtyId);
-            
-            // Pour la liste d'IDs, on s'attend à une chaîne séparée par des virgules ou du JSON
-            List<Long> providerIds = java.util.Arrays.stream(targetProviderIds.split(","))
-                    .map(String::trim)
-                    .map(Long::parseLong)
-                    .collect(java.util.stream.Collectors.toList());
             List<String> photoNames = new ArrayList<>();
             if (photos != null && photos.length > 0) {
                 for (MultipartFile photo : photos) {
@@ -148,7 +139,6 @@ public class SyndicController {
             dto.setResidenceId(resId);
             dto.setPropertyId(propId);
             dto.setSpecialtyId(specId);
-            dto.setTargetProviderIds(providerIds);
             dto.setPhotoUrls(photoNames);
 
             return ResponseEntity.status(HttpStatus.CREATED).body(syndicService.createInterventionRequest(dto));
@@ -179,6 +169,12 @@ public class SyndicController {
     @GetMapping("/interventions")
     public ResponseEntity<List<InterventionRequestDTO>> getMyInterventions() {
         return ResponseEntity.ok(syndicService.getMyInterventionRequests());
+    }
+
+    @Operation(summary = "Prendre en charge une intervention et diffuser aux prestataires")
+    @PostMapping("/interventions/{requestId}/assign")
+    public ResponseEntity<InterventionRequestDTO> assignIntervention(@PathVariable Long requestId) {
+        return ResponseEntity.ok(syndicService.assignIntervention(requestId));
     }
 
     // --- Gestion Copropriétaires ---

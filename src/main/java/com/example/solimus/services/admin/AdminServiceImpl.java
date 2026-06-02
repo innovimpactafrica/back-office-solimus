@@ -1,12 +1,16 @@
 package com.example.solimus.services.admin;
 
 import com.example.solimus.dtos.admin.*;
+import com.example.solimus.dtos.provider.WithdrawalRequestDTO;
 import com.example.solimus.entities.EstimatedDelay;
 import com.example.solimus.entities.Role;
 import com.example.solimus.entities.Specialty;
 import com.example.solimus.entities.User;
+import com.example.solimus.entities.Wallet;
+import com.example.solimus.entities.WithdrawalRequest;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.UserStatus;
+import com.example.solimus.enums.WithdrawalStatus;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.EmailAlreadyExistsException;
 import com.example.solimus.exceptions.PhoneAlreadyExistsException;
@@ -16,7 +20,8 @@ import com.example.solimus.repositories.EstimatedDelayRepository;
 import com.example.solimus.repositories.RoleRepository;
 import com.example.solimus.repositories.SpecialtyRepository;
 import com.example.solimus.repositories.UserRepository;
-import com.example.solimus.entities.EstimatedDelay;
+import com.example.solimus.repositories.WalletRepository;
+import com.example.solimus.repositories.WithdrawalRequestRepository;
 import com.example.solimus.services.auth.ActivationCodeService;
 import com.example.solimus.services.auth.EmailService;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +31,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -39,6 +46,8 @@ public class AdminServiceImpl implements AdminService {
     private final RoleRepository roleRepository;
     private final ActivationCodeService activationCodeService;
     private final EmailService emailService;
+    private final WithdrawalRequestRepository withdrawalRequestRepository;
+    private final WalletRepository walletRepository;
 
     // ============================================================================
     // 🛠 GESTION DES SPÉCIALITÉS
@@ -205,6 +214,79 @@ public class AdminServiceImpl implements AdminService {
                 .status(savedUser.getStatus())
                 .createdAt(savedUser.getCreatedAt())
                 .message("Compte " + dto.getRole().getLabel() + " créé avec succès. Un email d'activation a été envoyé à " + savedUser.getEmail() + ".")
+                .build();
+    }
+
+    @Override
+    public List<WithdrawalRequestDTO> getWithdrawalRequests(WithdrawalStatus status) {
+        return withdrawalRequestRepository.findAll().stream()
+                .filter(w -> status == null || w.getStatus() == status)
+                .map(this::mapToWithdrawalRequestDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public WithdrawalRequestDTO confirmWithdrawal(Long withdrawalId) {
+        WithdrawalRequest retrait = getPendingWithdrawal(withdrawalId);
+        Wallet wallet = getWithdrawalWallet(retrait);
+
+        wallet.setPendingBalance(safeSubtract(wallet.getPendingBalance(), retrait.getAmount()));
+        retrait.setStatus(WithdrawalStatus.COMPLETED);
+        retrait.setProcessedAt(LocalDateTime.now());
+
+        walletRepository.save(wallet);
+        WithdrawalRequest saved = withdrawalRequestRepository.save(retrait);
+        return mapToWithdrawalRequestDTO(saved);
+    }
+
+    @Override
+    @Transactional
+    public WithdrawalRequestDTO rejectWithdrawal(Long withdrawalId, String motifRefus) {
+        WithdrawalRequest retrait = getPendingWithdrawal(withdrawalId);
+        Wallet wallet = getWithdrawalWallet(retrait);
+
+        wallet.setPendingBalance(safeSubtract(wallet.getPendingBalance(), retrait.getAmount()));
+        wallet.setAvailableBalance(wallet.getAvailableBalance().add(retrait.getAmount()));
+        retrait.setStatus(WithdrawalStatus.REJECTED);
+        retrait.setProcessedAt(LocalDateTime.now());
+        retrait.setMotifRefus(motifRefus);
+
+        walletRepository.save(wallet);
+        WithdrawalRequest saved = withdrawalRequestRepository.save(retrait);
+        return mapToWithdrawalRequestDTO(saved);
+    }
+
+    private WithdrawalRequest getPendingWithdrawal(Long withdrawalId) {
+        WithdrawalRequest retrait = withdrawalRequestRepository.findById(withdrawalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Demande de retrait introuvable"));
+
+        if (retrait.getStatus() != WithdrawalStatus.PENDING) {
+            throw new BadRequestException("Cette demande de retrait a déjà été traitée");
+        }
+
+        return retrait;
+    }
+
+    private Wallet getWithdrawalWallet(WithdrawalRequest retrait) {
+        return walletRepository.findByProviderId(retrait.getProvider().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Wallet prestataire introuvable"));
+    }
+
+    private BigDecimal safeSubtract(BigDecimal currentValue, BigDecimal amount) {
+        BigDecimal result = currentValue.subtract(amount);
+        return result.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : result;
+    }
+
+    private WithdrawalRequestDTO mapToWithdrawalRequestDTO(WithdrawalRequest retrait) {
+        return WithdrawalRequestDTO.builder()
+                .id(retrait.getId())
+                .reference(retrait.getReference())
+                .montant(retrait.getAmount())
+                .methode(retrait.getMethod())
+                .numeroDeTelephone(retrait.getPhoneNumber())
+                .statut(retrait.getStatus())
+                .createdAt(retrait.getCreatedAt())
                 .build();
     }
 }

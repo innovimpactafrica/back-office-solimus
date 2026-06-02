@@ -1,6 +1,8 @@
 package com.example.solimus.services.coproprietaire;
 
 import com.example.solimus.dtos.intervention.*;
+import com.example.solimus.dtos.property.PropertyDTO;
+import com.example.solimus.dtos.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
@@ -10,9 +12,7 @@ import com.example.solimus.entities.Quote;
 import com.example.solimus.entities.Residence;
 import com.example.solimus.entities.Specialty;
 import com.example.solimus.entities.User;
-import com.example.solimus.enums.InitiatedBy;
-import com.example.solimus.enums.InterventionStatus;
-import com.example.solimus.enums.QuoteStatus;
+import com.example.solimus.enums.*;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
@@ -20,6 +20,7 @@ import com.example.solimus.repositories.InterventionRequestRepository;
 import com.example.solimus.repositories.PropertyRepository;
 import com.example.solimus.repositories.ProviderRatingRepository;
 import com.example.solimus.repositories.QuoteRepository;
+import com.example.solimus.repositories.ResidenceRepository;
 import com.example.solimus.repositories.SpecialtyRepository;
 import com.example.solimus.repositories.UserRepository;
 import com.example.solimus.services.auth.EmailService;
@@ -31,8 +32,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
+
+import static com.example.solimus.enums.IncidentLocationType.APPARTEMENT;
 
 @Service
 @RequiredArgsConstructor
@@ -42,11 +46,43 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
     private final UserRepository userRepository;
     private final InterventionRequestRepository interventionRepository;
     private final PropertyRepository propertyRepository;
+    private final ResidenceRepository residenceRepository;
     private final SpecialtyRepository specialtyRepository;
     private final QuoteRepository quoteRepository;
     private final ProviderRatingRepository providerRatingRepository;
     private final EmailService emailService;
     private final GeolocationService geolocationService;
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ResidenceDTO> getMyResidences() {
+        User currentOwner = getCurrentUser();
+
+        return propertyRepository.findAllByOwnerId(currentOwner.getId()).stream()
+                .map(Property::getResidence)
+                .filter(residence -> residence != null)
+                .collect(Collectors.toMap(
+                        Residence::getId,
+                        residence -> residence,
+                        (existing, duplicate) -> existing
+                ))
+                .values()
+                .stream()
+                .sorted(Comparator.comparing(Residence::getName, Comparator.nullsLast(String::compareToIgnoreCase)))
+                .map(this::mapToResidenceDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PropertyDTO> getMyPropertiesByResidence(Long residenceId) {
+        User currentOwner = getCurrentUser();
+
+        return propertyRepository.findAllByOwnerId(currentOwner.getId()).stream()
+                .filter(property -> property.getResidence() != null && property.getResidence().getId().equals(residenceId))
+                .map(this::mapToPropertyDTO)
+                .collect(Collectors.toList());
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -79,47 +115,126 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
     @Transactional
     public OwnerInterventionDetailDTO createIntervention(CreateOwnerInterventionRequestDTO dto, List<String> photoUrls) {
         User currentOwner = getCurrentUser();
-        
-        // Récupérer la propriété et la résidence automatiquement
-        List<Property> properties = propertyRepository.findAllByOwnerId(currentOwner.getId());
-        if (properties.isEmpty()) {
-            throw new ResourceNotFoundException("Aucune propriété trouvée pour ce copropriétaire");
+
+        // Récupérer la résidence
+        Residence residence = residenceRepository.findById(dto.getResidenceId())
+                .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+
+        // Vérifier que le copropriétaire a au moins un bien dans cette résidence
+        List<Property> ownerPropertiesInResidence = propertyRepository.findAllByOwnerId(currentOwner.getId()).stream()
+                .filter(p -> p.getResidence() != null && p.getResidence().getId().equals(dto.getResidenceId()))
+                .toList();
+
+        if (ownerPropertiesInResidence.isEmpty()) {
+            throw new ForbiddenException("Vous n'avez pas de bien dans cette résidence");
         }
-        Property property = properties.get(0);
-        Residence residence = property.getResidence();
-        
+
         Specialty specialty = specialtyRepository.findById(dto.getSpecialtyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Spécialité introuvable"));
-        
+
         InterventionRequest request = new InterventionRequest();
         request.setTitle(dto.getTitle());
         request.setDescription(dto.getDescription());
         request.addStatusHistory(InterventionStatus.PENDING, currentOwner);
         request.setInitiatedBy(InitiatedBy.COPROPRIETAIRE);
         request.setOwner(currentOwner);
-        request.setSyndic(null);
         request.setResidence(residence);
-        request.setProperty(property);
         request.setSpecialty(specialty);
+        request.setLocationType(dto.getLocationType());
+        request.setUrgencyLevel(dto.getUrgencyLevel());
         request.setPhotoUrls(photoUrls != null ? photoUrls : new ArrayList<>());
-        
-        // Notification des prestataires sélectionnés
-        if (dto.getTargetProviderIds() != null && !dto.getTargetProviderIds().isEmpty()) {
-            List<User> selectedProviders = userRepository.findAllById(dto.getTargetProviderIds());
-            request.setNotifiedProviders(selectedProviders);
-            
-            selectedProviders.forEach(provider -> {
-                try {
-                    emailService.sendInterventionNotification(
-                            provider.getEmail(),
-                            provider.getFirstName(),
-                            request.getTitle(),
-                            residence.getName()
-                    );
-                } catch (Exception e) {
-                    log.error("Erreur lors de l'envoi de l'email au prestataire {}", provider.getEmail(), e);
-                }
-            });
+
+        // Règles selon le type d'incident
+        if (dto.getLocationType() == IncidentLocationType.PARTIE_COMMUNE) {
+            // PARTIE_COMMUNE : pas de bien, gestion forcée par syndic
+            if (dto.getPropertyId() != null) {
+                throw new BadRequestException("Pour un incident de type PARTIE_COMMUNE, aucun bien ne doit être spécifié");
+            }
+            request.setProperty(null);
+            request.setManagementMode(InterventionManagementMode.SYNDIC);
+            request.setSyndic(residence.getSyndic());
+        } else if (dto.getLocationType() == APPARTEMENT) {
+            // APPARTEMENT : bien obligatoire
+            if (dto.getPropertyId() == null) {
+                throw new BadRequestException("Pour un incident de type APPARTEMENT, un bien doit être spécifié");
+            }
+
+            // Vérifier que le bien appartient au copropriétaire et à la résidence
+            Property property = ownerPropertiesInResidence.stream()
+                    .filter(p -> p.getId().equals(dto.getPropertyId()))
+                    .findFirst()
+                    .orElseThrow(() -> new ForbiddenException("Ce bien ne vous appartient pas ou n'est pas dans cette résidence"));
+
+            request.setProperty(property);
+
+            // Gestion : OWNER ou SYNDIC
+            if (dto.getManagementMode() == null) {
+                throw new BadRequestException("Le mode de gestion est obligatoire pour un incident APPARTEMENT");
+            }
+
+            request.setManagementMode(dto.getManagementMode());
+
+            if (dto.getManagementMode() == InterventionManagementMode.SYNDIC) {
+                request.setSyndic(residence.getSyndic());
+            } else {
+                // Gestion personnelle : syndic null ou renseigné pour info
+                request.setSyndic(null);
+            }
+        } else {
+            throw new BadRequestException("Type d'incident non reconnu");
+        }
+
+        // Notification du syndic si affecté
+        if (request.getSyndic() != null) {
+            try {
+                emailService.sendInterventionNotification(
+                        request.getSyndic().getEmail(),
+                        request.getSyndic().getFirstName(),
+                        request.getTitle(),
+                        residence.getName()
+                );
+                log.info("Syndic notifié pour l'intervention {} créée par le copropriétaire {}", request.getTitle(), currentOwner.getEmail());
+            } catch (Exception e) {
+                log.error("Erreur lors de l'envoi de l'email au syndic {}", request.getSyndic().getEmail(), e);
+            }
+        }
+
+        // Diffusion automatique aux prestataires proches
+        // Seulement si PAS affecté au syndic (le syndic diffusera après validation)
+        if (request.getSyndic() == null) {
+            if (residence.getLatitude() == null || residence.getLongitude() == null) {
+                throw new BadRequestException("La résidence n'a pas de coordonnées GPS, impossible de trouver des prestataires proches");
+            }
+
+            List<User> nearbyProviders = userRepository.findNearbyProviders(
+                    residence.getLatitude().doubleValue(),
+                    residence.getLongitude().doubleValue(),
+                    specialty.getId(),
+                    30.0 // rayon de 30 km
+            );
+
+            if (nearbyProviders.isEmpty()) {
+                log.warn("Aucun prestataire trouvé dans un rayon de 30 km pour la résidence {} et la spécialité {}", residence.getName(), specialty.getName());
+            } else {
+                request.setNotifiedProviders(nearbyProviders);
+
+                nearbyProviders.forEach(provider -> {
+                    try {
+                        emailService.sendInterventionNotification(
+                                provider.getEmail(),
+                                provider.getFirstName(),
+                                request.getTitle(),
+                                residence.getName()
+                        );
+                    } catch (Exception e) {
+                        log.error("Erreur lors de l'envoi de l'email au prestataire {}", provider.getEmail(), e);
+                    }
+                });
+
+                log.info("Diffusion automatique : {} prestataires notifiés pour l'intervention {}", nearbyProviders.size(), request.getTitle());
+            }
+        } else {
+            log.info("Demande affectée au syndic, diffusion aux prestataires différée après validation syndic");
         }
         
         InterventionRequest saved = interventionRepository.save(request);
@@ -168,6 +283,35 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
                 .companyName(provider.getCompanyName())
                 .specialtyName(provider.getSpecialty() != null ? provider.getSpecialty().getName() : null)
                 .rating(providerRating(provider.getId()))
+                .build();
+    }
+
+    private ResidenceDTO mapToResidenceDTO(Residence residence) {
+        return ResidenceDTO.builder()
+                .id(residence.getId())
+                .name(residence.getName())
+                .fullAddress(residence.getFullAddress())
+                .latitude(residence.getLatitude())
+                .longitude(residence.getLongitude())
+                .floorCount(residence.getFloorCount())
+                .apartmentCount(residence.getApartmentCount())
+                .syndicId(residence.getSyndic() != null ? residence.getSyndic().getId() : null)
+                .syndicName(residence.getSyndic() != null ? residence.getSyndic().getFirstName() + " " + residence.getSyndic().getLastName() : null)
+                .createdAt(residence.getCreatedAt())
+                .build();
+    }
+
+    private PropertyDTO mapToPropertyDTO(Property property) {
+        return PropertyDTO.builder()
+                .id(property.getId())
+                .reference(property.getReference())
+                .floor(property.getFloor())
+                .area(property.getArea())
+                .type(property.getType())
+                .residenceId(property.getResidence() != null ? property.getResidence().getId() : null)
+                .residenceName(property.getResidence() != null ? property.getResidence().getName() : null)
+                .ownerId(property.getOwner() != null ? property.getOwner().getId() : null)
+                .ownerName(property.getOwner() != null ? property.getOwner().getFirstName() + " " + property.getOwner().getLastName() : null)
                 .build();
     }
 
