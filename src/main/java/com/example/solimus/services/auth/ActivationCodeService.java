@@ -4,6 +4,8 @@ import com.example.solimus.entities.User;
 import com.example.solimus.entities.auth.ActivationCode;
 import com.example.solimus.enums.CodeType;
 
+import java.util.Optional;
+
 /**
  * Interface définissant les services de gestion des codes d'activation (OTP).
  * Utilisée pour valider l'identité par email lors de l'inscription ou de la récupération de compte.
@@ -11,24 +13,24 @@ import com.example.solimus.enums.CodeType;
 public interface ActivationCodeService {
     
     /**
-     * Génère un code d'activation aléatoire à 6 chiffres.
+     * Génère un code d'activation aléatoire à 6 chiffres (flux connexion admin).
      * @return Le code généré sous forme de chaîne de caractères.
      */
     String generateActivationCode();
+
+     /**
+     * Génère un nouveau code à 6 chiffres (flux connexion admin), supprime les anciens pour l'utilisateur, et stocke le nouveau.
+     * @param user L'utilisateur concerné.
+     * @return Le code généré et stocké.
+     */
+    String generateAndStoreCode(User user);
 
     /**
      * Génère un code d'activation aléatoire à 4 chiffres (optimisé pour mobile).
      * @return Le code généré sous forme de chaîne de caractères.
      */
     String generateActivationCodeMobile();
-
-    /**
-     * Génère un nouveau code à 6 chiffres, supprime les anciens pour l'utilisateur, et stocke le nouveau.
-     * @param user L'utilisateur concerné.
-     * @return Le code généré et stocké.
-     */
-    String generateAndStoreCode(User user);
-
+  
     /**
      * Génère un token UUID pour la réinitialisation du mot de passe.
      * @param user L'utilisateur concerné.
@@ -55,7 +57,7 @@ public interface ActivationCodeService {
 
     /**
      * Génère un token UUID sécurisé pour l'activation de compte (créé par l'admin).
-     * Ce token expire après 60 minutes et est lié au compte utilisateur.
+     * Ce token expire après 15 minutes et est lié au compte utilisateur.
      * @param user L'utilisateur dont le compte doit être activé.
      * @return Le token UUID généré et stocké.
      */
@@ -66,7 +68,7 @@ public interface ActivationCodeService {
      * @param token Le token UUID à valider.
      * @return L'entité ActivationCode si valide, sinon vide.
      */
-    java.util.Optional<ActivationCode> findValidAccountActivationToken(String token);
+   Optional<ActivationCode> findValidAccountActivationToken(String token);
 
     /**
      * Génère un nouveau code à 4 chiffres (mobile), supprime les anciens pour l'utilisateur, et stocke le nouveau.

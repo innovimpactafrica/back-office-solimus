@@ -94,11 +94,6 @@ public class JwtServiceImpl implements JwtService {
     }
 
     @Override
-    public Long extractUserId(String token) {
-        return extractAllClaims(token).get("id", Long.class);
-    }
-
-    @Override
     public String extractUsername(String token) {
         return extractEmail(token);
     }
@@ -118,15 +113,6 @@ public class JwtServiceImpl implements JwtService {
     @Override
     public Boolean isTokenExpired(String token) {
         return extractExpiration(token).before(new Date());
-    }
-
-    /**
-     * Valide le jeton par rapport à l'email fourni.
-     */
-    @Override
-    public Boolean validateToken(String token, String email) {
-        final String extractedEmail = extractEmail(token);
-        return (extractedEmail.equals(email) && !isTokenExpired(token));
     }
 
     /**

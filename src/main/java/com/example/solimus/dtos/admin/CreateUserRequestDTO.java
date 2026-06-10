@@ -25,6 +25,7 @@ public class CreateUserRequestDTO {
     private String email;
 
     @NotBlank(message = "Le numéro de téléphone est obligatoire")
+    // Autorise un + optionnel au début, les chiffres, espaces, tirets et parenthèses, entre 8 et 25 caractères
     @Pattern(
         regexp = "^[+]?[0-9\\s\\-\\(\\)]{8,25}$",
         message = "Le numéro de téléphone doit être valide"

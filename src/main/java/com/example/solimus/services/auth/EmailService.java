@@ -26,7 +26,7 @@ public interface EmailService {
 
     /**
      * Envoie un lien d'activation de compte à un utilisateur créé par l'admin.
-     * Le lien contient un token UUID sécurisé et expire après 60 minutes.
+     * Le lien contient un token UUID sécurisé et expire après 15 minutes.
      *
      * @param email     L'email de l'utilisateur destinataire.
      * @param token     Le token UUID d'activation.

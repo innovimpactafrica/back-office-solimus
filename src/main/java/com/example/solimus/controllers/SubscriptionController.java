@@ -18,37 +18,43 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/provider/subscription")
 @RequiredArgsConstructor
-@Tag(name = "Provider Subscription", description = "Actions d'abonnement réservées aux Prestataires")
+@Tag(
+        name = "5.a Prestataire - Abonnement",
+        description = "Gestion de l'abonnement Premium. GRATUIT : 3 devis/mois. PREMIUM : 35 000 FCFA/mois, devis illimités, priorité."
+)
 public class SubscriptionController {
 
     private final SubscriptionService subscriptionService;
     private final UserRepository userRepository;
 
-    @Operation(summary = "Consulter les détails de mon abonnement")
+    @Operation(summary = "Voir mon abonnement actuel")
     @GetMapping
     public ResponseEntity<SubscriptionDTO> getMonAbonnement() {
-        User user = getCurrentUser();
-        return ResponseEntity.ok(subscriptionService.getMonAbonnement(user.getId()));
+        return ResponseEntity.ok(subscriptionService.getMonAbonnement(getCurrentUser().getId()));
     }
 
-    @Operation(summary = "Passer à l'abonnement Premium")
+    @Operation(
+            summary = "Passer au plan Premium",
+            description = "Lance le paiement de 35 000 FCFA via TouchPay. Retourne une URL à ouvrir dans une WebView. Le Premium est activé automatiquement après confirmation du paiement."
+    )
     @PostMapping("/premium")
     public ResponseEntity<PaymentResponseDTO> passerEnPremium(@RequestBody @Valid SouscrirePremiumDTO dto) {
-        User user = getCurrentUser();
-        return ResponseEntity.ok(subscriptionService.passerEnPremium(user.getId(), dto));
+        return ResponseEntity.ok(subscriptionService.passerEnPremium(getCurrentUser().getId(), dto));
     }
 
-    @Operation(summary = "Désactiver le renouvellement automatique de l'abonnement")
+    @Operation(
+            summary = "Désactiver le renouvellement automatique",
+            description = "L'abonnement reste actif jusqu'à la date d'expiration. Il ne sera plus renouvelé automatiquement le mois suivant."
+    )
     @PostMapping("/cancel")
     public ResponseEntity<String> annulerAbonnement() {
-        User user = getCurrentUser();
-        subscriptionService.annulerAbonnement(user.getId());
-        return ResponseEntity.ok("Renouvellement automatique désactivé avec succès.");
+        subscriptionService.annulerAbonnement(getCurrentUser().getId());
+        return ResponseEntity.ok("Renouvellement automatique désactivé.");
     }
 
     private User getCurrentUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("Prestataire non trouvé"));
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
     }
 }

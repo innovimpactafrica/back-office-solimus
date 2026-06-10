@@ -19,6 +19,10 @@ public class EmailServiceImpl implements EmailService {
 
     private final JavaMailSender mailSender;
 
+    // =========================================================================
+    // CONFIGURATION EMAIL
+    // =========================================================================
+
     @Value("${mail.from:admincoopachat@yopmail.com}")
     private String mailFrom;
 
@@ -28,6 +32,30 @@ public class EmailServiceImpl implements EmailService {
     @Value("${app.frontend.activation-url:http://localhost:4200/create-password?token=}")
     private String activationUrl;
 
+
+    // =========================================================================
+    // EMAIL GÉNÉRIQUE
+    // =========================================================================
+    @Override
+    public void sendEmail(String to, String subject, String body) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(mailFrom);
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(body != null ? body : "", false);
+            mailSender.send(message);
+            log.info("Email envoyé à: {} (sujet: {})", to, subject);
+        } catch (Exception e) {
+            log.error("Erreur envoi email à {}: {}", to, e.getMessage());
+            throw new RuntimeException("Impossible d'envoyer l'email", e);
+        }
+    }
+
+    // =========================================================================
+    // ACTIVATION ET INSCRIPTION
+    // =========================================================================
     @Override
     public void sendActivationCode(String email, String code, String firstName) {
         try {
@@ -55,6 +83,72 @@ public class EmailServiceImpl implements EmailService {
     }
 
     @Override
+    public void sendUserActivationLink(String email, String token, String firstName) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(mailFrom);
+            helper.setTo(email);
+            helper.setSubject("Activez votre compte - " + appName);
+
+            String activationLink = activationUrl + token;
+
+            String textBody = String.format(
+                    "Bonjour %s,%n%n" +
+                            "L'administrateur %s vous a créé un compte utilisateur.%n%n" +
+                            "Pour activer votre compte et définir votre mot de passe, cliquez sur ce lien :%n" +
+                            "%s%n%n" +
+                            "Ce lien expire dans 15 minutes.%n%n" +
+                            "Si vous n'êtes pas concerné(e), ignorez cet email.%n%n" +
+                            "L'équipe %s",
+                    firstName != null ? firstName : "", appName, activationLink, appName
+            );
+
+            String safeName = org.springframework.web.util.HtmlUtils.htmlEscape(firstName != null ? firstName : "");
+            String safeApp  = org.springframework.web.util.HtmlUtils.htmlEscape(appName);
+            String safeLink = org.springframework.web.util.HtmlUtils.htmlEscape(activationLink);
+
+            String htmlBody = String.format(
+                    "<html><body style=\"font-family:sans-serif;font-size:15px;line-height:1.6;color:#333;\">" +
+                            "<p>Bonjour <strong>%s</strong>,</p>" +
+                            "<p>L'administrateur de la plateforme <strong>%s</strong> vous a créé un compte.</p>" +
+                            "<p>Votre identifiant de connexion : <strong>%s</strong></p>" +
+                            "<p>Pour activer votre compte et définir votre mot de passe, cliquez sur le bouton ci-dessous :</p>" +
+                            "<p style=\"margin:28px 0;\">" +
+                            "  <a href=\"%s\" style=\"display:inline-block;padding:13px 28px;background-color:#1a56db;" +
+                            "     color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;\">" +
+                            "    Activer mon compte" +
+                            "  </a>" +
+                            "</p>" +
+                            "<p style=\"font-size:13px;color:#666;\">Si le bouton ne fonctionne pas, copiez cette adresse dans votre navigateur :</p>" +
+                            "<p style=\"word-break:break-all;font-size:12px;color:#444;\">%s</p>" +
+                            "<p style=\"margin-top:20px;\">Ce lien est valable <strong>15 minutes</strong> à partir de sa réception.</p>" +
+                            "<p>Si vous n'êtes pas concerné(e) par ce message, ignorez cet email.</p>" +
+                            "<p>Cordialement,<br>L'équipe <strong>%s</strong></p>" +
+                            "</body></html>",
+                    safeName,
+                    safeApp,
+                    HtmlUtils.htmlEscape(email),
+                    safeLink,
+                    safeLink,
+                    safeApp
+            );
+
+            helper.setText(textBody, htmlBody);
+            mailSender.send(message);
+            log.info("Lien d'activation utilisateur envoyé avec succès à : {}", email);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de l'envoi du lien d'activation utilisateur à {} : {}", email, e.getMessage(), e);
+            throw new RuntimeException("Impossible d'envoyer l'email d'activation", e);
+        }
+    }
+
+    // =========================================================================
+    // MOT DE PASSE
+    // =========================================================================
+    @Override
     public void sendPasswordResetCode(String email, String code, String firstName) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
@@ -79,86 +173,9 @@ public class EmailServiceImpl implements EmailService {
             throw new RuntimeException("Impossible d'envoyer l'email de réinitialisation", e);
         }
     }
-
-    @Override
-    public void sendEmail(String to, String subject, String body) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(mailFrom);
-            helper.setTo(to);
-            helper.setSubject(subject);
-            helper.setText(body != null ? body : "", false);
-            mailSender.send(message);
-            log.info("Email envoyé à: {} (sujet: {})", to, subject);
-        } catch (Exception e) {
-            log.error("Erreur envoi email à {}: {}", to, e.getMessage());
-            throw new RuntimeException("Impossible d'envoyer l'email", e);
-        }
-    }
-
-    @Override
-    public void sendUserActivationLink(String email, String token, String firstName) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-
-            helper.setFrom(mailFrom);
-            helper.setTo(email);
-            helper.setSubject("Activez votre compte - " + appName);
-
-            String activationLink = activationUrl + token;
-
-            String textBody = String.format(
-                "Bonjour %s,%n%n" +
-                "L'administrateur %s vous a créé un compte utilisateur.%n%n" +
-                "Pour activer votre compte et définir votre mot de passe, cliquez sur ce lien :%n" +
-                "%s%n%n" +
-                "Ce lien expire dans 60 minutes.%n%n" +
-                "Si vous n'êtes pas concerné(e), ignorez cet email.%n%n" +
-                "L'équipe %s",
-                firstName != null ? firstName : "", appName, activationLink, appName
-            );
-
-            String safeName = org.springframework.web.util.HtmlUtils.htmlEscape(firstName != null ? firstName : "");
-            String safeApp  = org.springframework.web.util.HtmlUtils.htmlEscape(appName);
-            String safeLink = org.springframework.web.util.HtmlUtils.htmlEscape(activationLink);
-
-            String htmlBody = String.format(
-                "<html><body style=\"font-family:sans-serif;font-size:15px;line-height:1.6;color:#333;\">" +
-                "<p>Bonjour <strong>%s</strong>,</p>" +
-                "<p>L'administrateur de la plateforme <strong>%s</strong> vous a créé un compte.</p>" +
-                "<p>Votre identifiant de connexion : <strong>%s</strong></p>" +
-                "<p>Pour activer votre compte et définir votre mot de passe, cliquez sur le bouton ci-dessous :</p>" +
-                "<p style=\"margin:28px 0;\">" +
-                "  <a href=\"%s\" style=\"display:inline-block;padding:13px 28px;background-color:#1a56db;" +
-                "     color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;\">" +
-                "    Activer mon compte" +
-                "  </a>" +
-                "</p>" +
-                "<p style=\"font-size:13px;color:#666;\">Si le bouton ne fonctionne pas, copiez cette adresse dans votre navigateur :</p>" +
-                "<p style=\"word-break:break-all;font-size:12px;color:#444;\">%s</p>" +
-                "<p style=\"margin-top:20px;\">Ce lien est valable <strong>60 minutes</strong> à partir de sa réception.</p>" +
-                "<p>Si vous n'êtes pas concerné(e) par ce message, ignorez cet email.</p>" +
-                "<p>Cordialement,<br>L'équipe <strong>%s</strong></p>" +
-                "</body></html>",
-                safeName,
-                safeApp,
-               HtmlUtils.htmlEscape(email),
-                safeLink,
-                safeLink,
-                safeApp
-            );
-
-            helper.setText(textBody, htmlBody);
-            mailSender.send(message);
-            log.info("Lien d'activation utilisateur envoyé avec succès à : {}", email);
-
-        } catch (Exception e) {
-            log.error("Erreur lors de l'envoi du lien d'activation utilisateur à {} : {}", email, e.getMessage(), e);
-            throw new RuntimeException("Impossible d'envoyer l'email d'activation", e);
-        }
-    }
+    // =========================================================================
+    // INTERVENTIONS
+    // =========================================================================
 
     @Override
     public void sendInterventionNotification(String email, String providerName, String title, String residenceName) {
@@ -190,7 +207,9 @@ public class EmailServiceImpl implements EmailService {
             log.error("Erreur lors de l'envoi de la notification d'intervention à {} : {}", email, e.getMessage());
         }
     }
-
+    // =========================================================================
+    // ABONNEMENTS PREMIUM
+    // =========================================================================
     @Override
     public void sendSubscriptionPremiumNotification(String email, String firstName, String planName, String expirationDate) {
         try {

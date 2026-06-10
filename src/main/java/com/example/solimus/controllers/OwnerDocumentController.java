@@ -15,14 +15,14 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/coproprietaire/documents")
+@RequestMapping("/api/coowner/documents")
 @RequiredArgsConstructor
-@Tag(name = "CoOwner - Profile", description = "Gestion du profil et des documents du copropriétaire")
-public class CoOwnerDocumentController {
+@Tag(name = "3.e Copropriétaire - Documents", description = "Tous les documents du copropriétaire : PV de réunion, convocations, factures de charges, rapports.")
+public class OwnerDocumentController {
 
     private final CoOwnerDocumentService documentService;
 
-    @Operation(summary = "Lister tous mes documents (réunions + charges)")
+    @Operation(summary = "Liste de tous mes documents", description = "Agrège les documents des réunions et des charges. Triés par date décroissante.")
     @GetMapping
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     public ResponseEntity<Page<CoOwnerDocumentDTO>> getMesDocuments(
@@ -38,10 +38,10 @@ public class CoOwnerDocumentController {
             @RequestParam(required = false, defaultValue = "5") Integer size,
             @Parameter(description = "Tri (défaut: date,desc)")
             @RequestParam(required = false, defaultValue = "date,desc") String sort) {
-        
+
         // Créer le Pageable avec les valeurs par défaut
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "date"));
-        
+
         return ResponseEntity.ok(documentService.getMesDocuments(search, documentType, source, pageable));
     }
 }

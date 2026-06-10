@@ -23,10 +23,6 @@ public interface JwtService {
      */
     String extractRole(String token);
 
-    /**
-     * Extrait l'identifiant unique de l'utilisateur.
-     */
-    Long extractUserId(String token);
 
     /**
      * Extrait le nom d'utilisateur (alias pour l'email).
@@ -38,10 +34,6 @@ public interface JwtService {
      */
     Boolean isTokenExpired(String token);
 
-    /**
-     * Valide le token pour un utilisateur spécifique.
-     */
-    Boolean validateToken(String token, String email);
 
     /**
      * Vérifie la validité générale du token.

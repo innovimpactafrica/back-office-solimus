@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
+//Entité pour stocker les tokens JWT invalidés (blacklist)
 @Entity
 @Table(name = "token_blacklist")
 @Data

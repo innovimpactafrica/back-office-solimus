@@ -24,7 +24,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/provider")
 @RequiredArgsConstructor
-@Tag(name = "Provider", description = "Actions réservées aux Prestataires")
+@Tag(name = "5. Prestataire", description = "Actions réservées aux Prestataires")
 public class ProviderController {
 
     private final ProviderService providerService;

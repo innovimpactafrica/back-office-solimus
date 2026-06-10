@@ -12,42 +12,44 @@ import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.EmailAlreadyExistsException;
 import com.example.solimus.exceptions.PhoneAlreadyExistsException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
-import com.example.solimus.repositories.ActivationCodeRepository;
-
-import com.example.solimus.repositories.PropertyRepository;
-import com.example.solimus.repositories.ResidenceRepository;
-import com.example.solimus.repositories.RoleRepository;
-import com.example.solimus.repositories.SpecialtyRepository;
-import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.repositories.*;
 import com.example.solimus.services.subscription.SubscriptionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.util.Optional;
 
-
-/**
- * Service gérant la logique d'authentification et de création de compte selon le flux simplifié (V1) :
- * 1. Inscription initiale : Capture des infos de base et stockage en statut PENDING.
- * 2. Validation OTP : Vérification de l'email via un code à 4 ou 6 chiffres (ActivationCodeService).
- * 3. Finalisation : Définition du mot de passe et activation du compte.
- * 
- * Intègre également la gestion de la connexion (JWT), de la déconnexion (Blacklist) 
- * et de la récupération de mot de passe.
- */
+// =============================================================================
+//
+//  AUTH SERVICE — Gestion complète de l'authentification SOLIMUS
+//
+//  Ce service gère tout ce qui concerne les comptes utilisateurs :
+//
+//  1. INSCRIPTION    → Un prestataire ou copropriétaire crée son compte
+//  2. VÉRIFICATION   → Il reçoit un code OTP par email et le valide
+//  3. MOT DE PASSE   → Il définit son mot de passe et son compte est activé
+//  4. CONNEXION      → Il se connecte et reçoit un token JWT
+//  5. DÉCONNEXION    → Son token est mis en blacklist
+//  6. MDP OUBLIÉ     → Il reçoit un code pour réinitialiser son mot de passe
+//  7. ACTIVATION     → Les comptes créés par l'admin sont activés via un lien
+//
+// =============================================================================
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class AuthServiceImpl implements AuthService {
 
+    // -------------------------------------------------------------------------
+    // Dépendances injectées automatiquement par Spring
+    // -------------------------------------------------------------------------
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final SpecialtyRepository specialtyRepository;
     private final ResidenceRepository residenceRepository;
     private final PropertyRepository propertyRepository;
-
     private final ActivationCodeService activationCodeService;
     private final ActivationCodeRepository activationCodeRepository;
     private final EmailService emailService;
@@ -56,13 +58,31 @@ public class AuthServiceImpl implements AuthService {
     private final TokenBlacklistService tokenBlacklistService;
     private final SubscriptionService subscriptionService;
 
-    // ============================================================================
-    // 👤 INSCRIPTION ET ACTIVATION
-    // ============================================================================
+
+    // =========================================================================
+    // PARTIE 1 — INSCRIPTION ET ACTIVATION DU COMPTE
+    // =========================================================================
+    //
+    //  Flux complet pour un nouvel utilisateur :
+    //
+    //  register() ──► verifyCode() ──► setPassword()
+    //
+    //  Étape 1 : register()     → on crée le compte en statut PENDING
+    //                             et on envoie un code OTP par email
+    //  Étape 2 : verifyCode()   → l'utilisateur entre le code reçu
+    //  Étape 3 : setPassword()  → il choisit son mot de passe
+    //                             → compte passe en statut ACTIVE
+    //
+    // =========================================================================
 
     @Override
     @Transactional
     public void register(RegisterRequestDTO dto) {
+
+        // ---------------------------------------------------------------------
+        // Vérifications préliminaires
+        // On s'assure que l'email et le téléphone ne sont pas déjà utilisés
+        // ---------------------------------------------------------------------
         if (userRepository.existsByEmail(dto.getEmail())) {
             throw new EmailAlreadyExistsException("Cet email est déjà utilisé.");
         }
@@ -70,15 +90,28 @@ public class AuthServiceImpl implements AuthService {
             throw new PhoneAlreadyExistsException("Ce numéro de téléphone est déjà utilisé.");
         }
 
-        // SÉCURITÉ : Seuls les rôles PRESTATAIRE et COPROPRIETAIRE sont autorisés à s'auto-inscrire via ce endpoint public.
-        // Les Syndics sont créés par l'Admin.
+        // ---------------------------------------------------------------------
+        // Sécurité : seuls PRESTATAIRE et COPROPRIETAIRE peuvent s'inscrire eux-mêmes
+        // Les comptes SYNDIC et ADMIN sont créés par l'administrateur
+        // ---------------------------------------------------------------------
         if (dto.getRole() != ERole.ROLE_PRESTATAIRE && dto.getRole() != ERole.ROLE_COPROPRIETAIRE) {
-            throw new BadRequestException("Action non autorisée : Seuls les prestataires et copropriétaires peuvent s'auto-inscrire.");
+            throw new BadRequestException(
+                    "Action non autorisée : seuls les prestataires et copropriétaires " +
+                            "peuvent s'auto-inscrire."
+            );
         }
 
+        // ---------------------------------------------------------------------
+        // Récupération du rôle en base de données
+        // ---------------------------------------------------------------------
         Role role = roleRepository.findByName(dto.getRole())
-                .orElseThrow(() -> new ResourceNotFoundException("Rôle non trouvé : " + dto.getRole()));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Rôle non trouvé : " + dto.getRole()));
 
+        // ---------------------------------------------------------------------
+        // Création du compte avec statut PENDING
+        // (le compte ne sera actif qu'après validation du code OTP)
+        // ---------------------------------------------------------------------
         User user = new User();
         user.setFirstName(dto.getFirstName());
         user.setLastName(dto.getLastName());
@@ -87,6 +120,11 @@ public class AuthServiceImpl implements AuthService {
         user.setRole(role);
         user.setStatus(UserStatus.PENDING);
 
+        // ---------------------------------------------------------------------
+        // Informations spécifiques selon le rôle
+        // Prestataire → coordonnées GPS + spécialité + nom d'entreprise
+        // Copropriétaire → résidence + bien
+        // ---------------------------------------------------------------------
         if (dto.getRole() == ERole.ROLE_PRESTATAIRE) {
             validateAndSetProviderInfo(user, dto);
         } else if (dto.getRole() == ERole.ROLE_COPROPRIETAIRE) {
@@ -95,37 +133,116 @@ public class AuthServiceImpl implements AuthService {
 
         User savedUser = userRepository.save(user);
 
-        // Initialisation de l'abonnement par défaut si rôle PRESTATAIRE
+        // ---------------------------------------------------------------------
+        // Pour les prestataires → initialisation de l'abonnement GRATUIT
+        // (ils pourront passer en PREMIUM plus tard)
+        // ---------------------------------------------------------------------
         if (dto.getRole() == ERole.ROLE_PRESTATAIRE) {
             subscriptionService.initialiserAbonnement(savedUser);
         }
 
-        // Génération du code OTP mobile (4 chiffres) pour l'auto-inscription
+        // ---------------------------------------------------------------------
+        // Génération du code OTP à 4 chiffres et envoi par email
+        // Ex : "1234" → l'utilisateur le saisit dans l'app mobile
+        // ---------------------------------------------------------------------
         String code = activationCodeService.generateAndStoreCodeMobile(savedUser);
-
-        // Envoi par email
         emailService.sendActivationCode(user.getEmail(), code, user.getFirstName());
+
         log.info("Inscription réussie. OTP envoyé à : {}", user.getEmail());
+    }
+
+    /**
+     * Renvoie un nouveau code OTP pour les utilisateurs mobiles uniquement.
+     * Endpoint dédié mobile
+     */
+    @Override
+    @Transactional
+    public void resendActivationCode(String email) {
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Utilisateur introuvable avec cet email : " + email));
+
+        if (user.getStatus() == UserStatus.ACTIVE) {
+            throw new BadRequestException("Ce compte est déjà actif.");
+        }
+
+        // ---------------------------------------------------------------------
+        // Cet endpoint est réservé aux utilisateurs mobiles
+        // ---------------------------------------------------------------------
+        ERole userRole = user.getRole().getName();
+        boolean isMobile = (userRole == ERole.ROLE_PRESTATAIRE
+                || userRole == ERole.ROLE_COPROPRIETAIRE);
+        if (!isMobile) {
+            throw new BadRequestException(
+                    "Ce compte utilise un lien d'activation, pas un code OTP.");
+        }
+           
+        CodeType type = CodeType.ACCOUNT_ACTIVATION;
+
+        // On conserve le même type que le code initial.
+        // Si un code ACCOUNT_ACTIVATION existe déjà pour cet utilisateur,
+        // on renvoie un nouveau code ACCOUNT_ACTIVATION.
+        // Sinon, il s'agit d'une inscription classique, donc on renvoie un code ACTIVATION.
+        Optional<ActivationCode> existingCode = activationCodeRepository
+                .findByUserAndType(user, CodeType.ACCOUNT_ACTIVATION);
+        if (existingCode.isEmpty()) {
+            type = CodeType.ACTIVATION;
+        }
+
+        // ---------------------------------------------------------------------
+        // Vérification du cooldown
+        // ---------------------------------------------------------------------
+        long cooldown = activationCodeService.getRemainingCooldownSecond(user, type);
+        if (cooldown > 0) {
+            throw new BadRequestException(
+                    "Veuillez attendre " + cooldown + " secondes " +
+                            "avant de demander un nouveau code.");
+        }
+
+        // ---------------------------------------------------------------------
+        // Génération et envoi du nouveau code OTP
+        // ---------------------------------------------------------------------
+        String newCode = activationCodeService
+                .generateAndStoreCodeMobileWithType(user, type);
+        emailService.sendActivationCode(user.getEmail(), newCode, user.getFirstName());
+
+        log.info("Nouveau code OTP renvoyé à : {}", email);
     }
 
     @Override
     @Transactional
     public void verifyCode(VerifyCodeRequestDTO dto) {
+
+        // ---------------------------------------------------------------------
+        // On cherche l'utilisateur par son email
+        // ---------------------------------------------------------------------
         User user = userRepository.findByEmail(dto.getEmail())
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
 
+        // ---------------------------------------------------------------------
+        // On vérifie le code OTP reçu
+        // S'il est invalide ou expiré → on bloque
+        // ---------------------------------------------------------------------
         if (!activationCodeService.verifyCode(user, dto.getCode())) {
             throw new BadRequestException("Code d'activation invalide ou expiré");
         }
 
+        // ---------------------------------------------------------------------
+        // Code validé → on le supprime pour qu'il ne puisse pas être réutilisé
+        // ---------------------------------------------------------------------
         activationCodeService.deleteCodeByUser(user);
+
         log.info("Code OTP validé avec succès pour : {}", user.getEmail());
     }
 
     @Override
     @Transactional
     public void setPassword(SetPasswordRequestDTO dto) {
-        // 1. Vérifier si les mots de passe correspondent
+
+        // ---------------------------------------------------------------------
+        // Vérification que les deux mots de passe saisis sont identiques
+        // ---------------------------------------------------------------------
         if (!dto.getPassword().equals(dto.getConfirmPassword())) {
             throw new BadRequestException("Les mots de passe ne correspondent pas.");
         }
@@ -133,79 +250,128 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByEmail(dto.getEmail())
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
 
+        // ---------------------------------------------------------------------
+        // On encode le mot de passe (jamais stocké en clair)
+        // puis on active le compte → l'utilisateur peut maintenant se connecter
+        // ---------------------------------------------------------------------
         user.setPassword(passwordEncoder.encode(dto.getPassword()));
-        
-        // En V1, activation automatique après définition du mot de passe
         user.setStatus(UserStatus.ACTIVE);
         userRepository.save(user);
+
         log.info("Mot de passe défini et compte activé pour : {}", user.getEmail());
     }
 
-    // ============================================================================
-    // 🔐 CONNEXION ET JWT
-    // ============================================================================
+
+    // =========================================================================
+    // PARTIE 2 — CONNEXION ET JWT
+    // =========================================================================
+    //
+    //  Deux flux selon le rôle :
+    //
+    //  Prestataire / Copropriétaire / Syndic :
+    //  login() ──► retourne directement un token JWT
+    //
+    //  Admin (sécurité renforcée avec 2FA) :
+    //  login() ──► envoie un OTP par email ──► verifyAdminLoginOtp() ──► token JWT
+    //
+    // =========================================================================
 
     @Override
     @Transactional
     public LoginResponseDTO login(LoginRequestDTO dto) {
-        // Recherche par email ou téléphone
+
+        // ---------------------------------------------------------------------
+        // Recherche par email OU par téléphone
+        // L'utilisateur peut se connecter avec l'un ou l'autre
+        // ---------------------------------------------------------------------
         User user = userRepository.findByEmail(dto.getIdentifier())
                 .or(() -> userRepository.findByPhone(dto.getIdentifier()))
-                .orElseThrow(() -> new BadRequestException("Identifiant ou mot de passe incorrect"));
+                .orElseThrow(() -> new BadRequestException(
+                        "Identifiant ou mot de passe incorrect"));
 
+        // ---------------------------------------------------------------------
         // Vérification du mot de passe
+        // passwordEncoder.matches() compare le mot de passe saisi
+        // avec la version encodée stockée en base
+        // ---------------------------------------------------------------------
         if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
             throw new BadRequestException("Identifiant ou mot de passe incorrect");
         }
 
+        // ---------------------------------------------------------------------
         // Vérification du statut du compte
+        // PENDING  → pas encore activé
+        // DISABLED → bloqué par l'admin
+        // ---------------------------------------------------------------------
         if (user.getStatus() == UserStatus.PENDING) {
-            throw new BadRequestException("Votre compte n'est pas encore activé. Veuillez vérifier votre email.");
+            throw new BadRequestException(
+                    "Votre compte n'est pas encore activé. " +
+                            "Veuillez vérifier votre email.");
         }
         if (user.getStatus() == UserStatus.DISABLED) {
-            throw new BadRequestException("Votre compte a été désactivé. Veuillez contacter l'administrateur.");
+            throw new BadRequestException(
+                    "Votre compte a été désactivé. " +
+                            "Veuillez contacter l'administrateur.");
         }
 
-        // Si c'est un administrateur, on déclenche un flux OTP (2FA)
+        // ---------------------------------------------------------------------
+        // Cas spécial ADMIN → double authentification (2FA)
+        // On envoie un OTP par email avant de donner le token JWT
+        // ---------------------------------------------------------------------
         if (user.getRole().getName() == ERole.ROLE_ADMIN) {
-            // Génération d'un code à 6 chiffres pour l'admin
             String otpCode = activationCodeService.generateAndStoreCode(user);
             emailService.sendActivationCode(user.getEmail(), otpCode, user.getFirstName());
             log.info("OTP de connexion généré pour l'administrateur : {}", user.getEmail());
+            // otpRequired = true signale au front d'afficher l'écran de saisie OTP
             return new LoginResponseDTO(user.getEmail(), true);
         }
-        
-        // Pour les autres rôles : connexion directe avec génération du token JWT
+
+        // ---------------------------------------------------------------------
+        // Tous les autres rôles → connexion directe avec token JWT
+        // ---------------------------------------------------------------------
         return generateLoginResponse(user);
     }
 
     @Override
     @Transactional
     public LoginResponseDTO verifyAdminLoginOtp(VerifyCodeRequestDTO dto) {
-        User user = userRepository.findByEmail(dto.getEmail())
-                .orElseThrow(() -> new ResourceNotFoundException("Administrateur non trouvé"));
 
+        User user = userRepository.findByEmail(dto.getEmail())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Administrateur non trouvé"));
+
+        // ---------------------------------------------------------------------
+        // Sécurité : cet endpoint est réservé aux admins uniquement
+        // ---------------------------------------------------------------------
         if (user.getRole().getName() != ERole.ROLE_ADMIN) {
             throw new BadRequestException("Action réservée aux administrateurs");
         }
 
-        // Vérification du code
+        // ---------------------------------------------------------------------
+        // Vérification du code OTP reçu par email
+        // ---------------------------------------------------------------------
         if (!activationCodeService.verifyCode(user, dto.getCode())) {
             throw new BadRequestException("Code OTP invalide ou expiré");
         }
 
-        // Nettoyage du code utilisé
+        // ---------------------------------------------------------------------
+        // Code valide → on le supprime et on génère le token JWT
+        // ---------------------------------------------------------------------
         activationCodeService.deleteCodeByUser(user);
         log.info("OTP validé pour l'admin : {}. Génération du token...", user.getEmail());
 
         return generateLoginResponse(user);
     }
 
-
-
     @Override
     @Transactional
     public void logout(String token) {
+
+        // ---------------------------------------------------------------------
+        // On extrait le token JWT du header "Bearer xxxxx"
+        // puis on le met en blacklist → il ne sera plus accepté
+        // même s'il n'est pas encore expiré
+        // ---------------------------------------------------------------------
         if (token != null && token.startsWith("Bearer ")) {
             String jwt = token.substring(7);
             tokenBlacklistService.addToBlackList(jwt);
@@ -213,106 +379,156 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
-    // ============================================================================
-    // 🔄 RÉCUPÉRATION DE MOT DE PASSE
-    // ============================================================================
+
+    // =========================================================================
+    // PARTIE 3 — MOT DE PASSE OUBLIÉ
+    // =========================================================================
+    //
+    //  Flux complet :
+    //
+    //  forgotPassword() ──► verifyForgotPasswordCode(mobile) ──► resetPassword()
+    //
+    //  Étape 1 : forgotPassword()            → envoi d'un code OTP par email
+    //  Étape 2 : verifyForgotPasswordCode()  → validation du code
+    //                                          → retourne un token UUID temporaire (mobile) /web (token déjà disponible dans le lien)
+    //  Étape 3 : resetPassword()             → nouveau mot de passe avec le token
+    //
+    // =========================================================================
 
     @Override
     @Transactional
     public void forgotPassword(ForgotPasswordRequestDTO dto) {
-        // 1. Trouver l'utilisateur par e-mail ou téléphone
+
+        // ---------------------------------------------------------------------
+        // Recherche par email OU téléphone
+        // ---------------------------------------------------------------------
         User user = userRepository.findByEmail(dto.getEmailOrPhone())
                 .or(() -> userRepository.findByPhone(dto.getEmailOrPhone()))
-                .orElseThrow(() -> new ResourceNotFoundException("Aucun compte n'est associé à cet identifiant (email ou téléphone)."));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Aucun compte n'est associé à cet identifiant."));
 
-        // 2. Bloquer si le compte est désactivé
+        // ---------------------------------------------------------------------
+        // Vérifications du statut du compte
+        // ---------------------------------------------------------------------
         if (user.getStatus() == UserStatus.DISABLED) {
-            throw new BadRequestException("Ce compte a été désactivé par un administrateur.");
+            throw new BadRequestException(
+                    "Ce compte a été désactivé par un administrateur.");
         }
-
-        // 3. Vérifier si le compte est actif (comme dans Coopachat)
         if (user.getStatus() != UserStatus.ACTIVE) {
-            throw new BadRequestException("Ce compte n'est pas encore actif. Veuillez d'abord valider votre inscription.");
+            throw new BadRequestException(
+                    "Ce compte n'est pas encore actif. " +
+                            "Veuillez d'abord valider votre inscription.");
         }
 
-        // 4. Générer le code/token en fonction du rôle (Mobile vs Web)
+        // ---------------------------------------------------------------------
+        // Génération du code selon la plateforme :
+        // Mobile (Prestataire / Copropriétaire) → code à 4 chiffres
+        // Web (Syndic / Admin)                  → token UUID directement sur le lien 
+        // ---------------------------------------------------------------------
         String resetToken;
         ERole userRole = user.getRole().getName();
+
         if (userRole == ERole.ROLE_PRESTATAIRE || userRole == ERole.ROLE_COPROPRIETAIRE) {
-            // Code à 4 chiffres pour le mobile
             resetToken = activationCodeService.generateAndStoreResetCodeMobile(user);
         } else {
-            // Token UUID pour le web
             resetToken = activationCodeService.generateAndStoreResetToken(user);
         }
-        
-        // 5. Envoyer l'email avec le lien/code
+
         emailService.sendPasswordResetCode(user.getEmail(), resetToken, user.getFirstName());
         log.info("Processus de réinitialisation initié pour : {}", user.getEmail());
     }
 
+
+    // -----------------------------------------------------------------------------------------------------------------------------------------
+    // Vérification de la validité d'un code otp à 4 chiffres  de réinitialisation d'un mot de passe envoyé (mobile) et génération du token UUID
+    // --------------------------------------------------------------------------------------------------------------------------------------
     @Override
     @Transactional
-    public ForgotPasswordVerifyResponseDTO verifyForgotPasswordCode(VerifyForgotPasswordCodeRequestDTO dto) {
-        // 1. Trouver l'utilisateur par e-mail ou téléphone
+    public ForgotPasswordVerifyResponseDTO verifyForgotPasswordCode(
+            VerifyForgotPasswordCodeRequestDTO dto) {
+
+        // ---------------------------------------------------------------------
+        // Recherche de l'utilisateur
+        // ---------------------------------------------------------------------
         User user = userRepository.findByEmail(dto.getEmailOrPhone())
                 .or(() -> userRepository.findByPhone(dto.getEmailOrPhone()))
-                .orElseThrow(() -> new ResourceNotFoundException("Aucun compte n'est associé à cet identifiant."));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Aucun compte n'est associé à cet identifiant."));
 
-        // 2. Récupérer le code de type PASSWORD_RESET
-        ActivationCode activationCode = activationCodeRepository.findByCodeAndUser(dto.getCode(), user)
+        // ---------------------------------------------------------------------
+        // Récupération et validation du code PASSWORD_RESET
+        // ---------------------------------------------------------------------
+        ActivationCode activationCode = activationCodeRepository
+                .findByCodeAndUser(dto.getCode(), user)
                 .filter(ac -> ac.getType() == CodeType.PASSWORD_RESET)
-                .orElseThrow(() -> new BadRequestException("Code de réinitialisation invalide."));
+                .orElseThrow(() -> new BadRequestException(
+                        "Code de réinitialisation invalide."));
 
-        // 3. Vérifier s'il est expiré ou déjà utilisé
         if (activationCode.isUsed()) {
             throw new BadRequestException("Ce code a déjà été utilisé.");
         }
         if (activationCode.isExpired()) {
-            throw new BadRequestException("Ce code a expiré. Veuillez refaire une demande.");
+            throw new BadRequestException(
+                    "Ce code a expiré. Veuillez refaire une demande.");
         }
 
-        // 4. Invalider le code à 4 chiffres (usage unique)
+        // ---------------------------------------------------------------------
+        // Code valide → on le marque comme utilisé (usage unique)
+        // puis on génère un token UUID pour l'étape suivante
+        // ---------------------------------------------------------------------
         activationCode.setUsed(true);
         activationCodeRepository.save(activationCode);
 
-        // 5. Générer un token UUID pour l'étape suivante (reset-password)
         String finalResetToken = activationCodeService.generateAndStoreResetToken(user);
 
         return ForgotPasswordVerifyResponseDTO.builder()
                 .token(finalResetToken)
                 .build();
     }
-
-
+   
+    // ----------------------------------------------------------------------------------------------------
+    // Réinitialisation du mot de passe avec le token UUID 
+    // ----------------------------------------------------------------------------------------------------
     @Override
     @Transactional
     public void resetPassword(ResetPasswordRequestDTO dto) {
-        // 1. Vérifier que les mots de passe correspondent
+
+        // ---------------------------------------------------------------------
+        // Vérification que les deux mots de passe sont identiques
+        // ---------------------------------------------------------------------
         if (!dto.getNewPassword().equals(dto.getConfirmPassword())) {
             throw new BadRequestException("Les mots de passe ne correspondent pas.");
         }
 
-        // 2. Récupérer le token depuis la base (doit être de type PASSWORD_RESET et non utilisé)
-        ActivationCode activationCode = activationCodeRepository.findByCodeAndTypeAndUsedFalse(dto.getToken(), CodeType.PASSWORD_RESET)
-                .orElseThrow(() -> new BadRequestException("Token de réinitialisation invalide ou déjà utilisé."));
+        // ---------------------------------------------------------------------
+        // Récupération et validation du token UUID de réinitialisation
+        // ---------------------------------------------------------------------
+        ActivationCode activationCode = activationCodeRepository
+                .findByCodeAndTypeAndUsedFalse(dto.getToken(), CodeType.PASSWORD_RESET)
+                .orElseThrow(() -> new BadRequestException(
+                        "Token de réinitialisation invalide ou déjà utilisé."));
 
-        // 3. Vérifier l'expiration
         if (activationCode.isExpired()) {
-            throw new BadRequestException("Ce token a expiré. Veuillez refaire une demande.");
+            throw new BadRequestException(
+                    "Ce token a expiré. Veuillez refaire une demande.");
         }
 
-        // 4. Récupérer l'utilisateur associé
+        // ---------------------------------------------------------------------
+        // Récupération de l'utilisateur associé au token
+        // ---------------------------------------------------------------------
         User user = activationCode.getUser();
         if (user == null) {
-            throw new ResourceNotFoundException("Utilisateur introuvable pour ce token.");
+            throw new ResourceNotFoundException(
+                    "Utilisateur introuvable pour ce token.");
         }
 
-        // 5. Mettre à jour le mot de passe
+        // ---------------------------------------------------------------------
+        // Mise à jour du mot de passe (encodé, jamais en clair)
+        // puis marquage du token comme utilisé
+        // ---------------------------------------------------------------------
         user.setPassword(passwordEncoder.encode(dto.getNewPassword()));
         userRepository.save(user);
 
-        // 6. Marquer le token comme utilisé
         activationCode.setUsed(true);
         activationCodeRepository.save(activationCode);
 
@@ -320,242 +536,267 @@ public class AuthServiceImpl implements AuthService {
     }
 
 
-    // ============================================================================
-    // 🔑 ACTIVATION DE COMPTE UTILISATEUR (créé par ADMIN)
-    // ============================================================================
+    // =========================================================================
+    // PARTIE 4 — ACTIVATION DES COMPTES CRÉÉS PAR L'ADMIN
+    // =========================================================================
+    //
+    //  Flux : L'admin crée un compte Syndic → un email avec un lien est envoyé
+    //         Le syndic clique sur le lien → saisit son mot de passe → compte actif
+    //
+    //  validateActivationToken() ──► activateAccount()
+    //
+    // =========================================================================
 
     /**
-     * Étape 1 : L'utilisateur clique sur le lien d'activation.
-     * Valide le token UUID et retourne les infos du compte pour pré-remplir le formulaire.
+     * Étape 1 — Validation du lien d'activation.
+     * L'utilisateur clique sur le lien dans son email.
+     * On vérifie que le lien est valide et on retourne ses infos
+     * pour pré-remplir le formulaire de définition du mot de passe.
      */
     @Override
     @Transactional(readOnly = true)
     public AccountActivationInfoDTO validateActivationToken(String token) {
+
         ActivationCode activationCode = activationCodeService
                 .findValidAccountActivationToken(token)
                 .orElseThrow(() -> new BadRequestException(
                         "Ce lien d'activation est invalide ou a expiré. " +
-                        "Veuillez contacter votre administrateur pour obtenir un nouveau lien."
+                                "Veuillez contacter votre administrateur pour obtenir un nouveau lien."
                 ));
 
         User user = activationCode.getUser();
         if (user == null) {
-            throw new ResourceNotFoundException("Compte utilisateur introuvable pour ce token.");
+            throw new ResourceNotFoundException(
+                    "Compte utilisateur introuvable pour ce token.");
         }
 
-        log.info("Token d'activation validé pour l'utilisateur : {}", user.getEmail());
+        log.info("Token d'activation validé pour : {}", user.getEmail());
 
+        // ---------------------------------------------------------------------
+        // On retourne les infos du compte pour pré-remplir le formulaire
+        // + le token pour l'étape suivante (activateAccount)
+        // ---------------------------------------------------------------------
         return AccountActivationInfoDTO.builder()
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .email(user.getEmail())
                 .phone(user.getPhone())
-                .token(token) // Retour du token pour l'étape suivante
+                .token(token)
                 .build();
     }
-
     /**
-     * Renvoie un nouveau lien d'activation à l'utilisateur.
-     * Inclut un cooldown de 60 secondes .
-     */
-    @Override
-    @Transactional
-    public void resendUserActivationLink(String email) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable avec cet email : " + email));
-
-        // 1. Vérifier si le compte est déjà actif
-        if (user.getStatus() == UserStatus.ACTIVE) {
-            throw new BadRequestException("Ce compte est déjà actif.");
-        }
-
-        // 2. Déterminer si c'est un utilisateur mobile ou web
-        ERole userRole = user.getRole().getName();
-        boolean isMobile = (userRole == ERole.ROLE_PRESTATAIRE || userRole == ERole.ROLE_COPROPRIETAIRE);
-
-        // 3. Déterminer le type de code (ACTIVATION ou ACCOUNT_ACTIVATION)
-        CodeType type = CodeType.ACCOUNT_ACTIVATION;
-        if (isMobile) {
-            // Pour le mobile, on regarde s'il y a un code ACCOUNT_ACTIVATION existant, sinon on utilise ACTIVATION
-            Optional<ActivationCode> existingCode = activationCodeRepository.findByUserAndType(user, CodeType.ACCOUNT_ACTIVATION);
-            if (existingCode.isEmpty()) {
-                type = CodeType.ACTIVATION;
-            }
-        }
-
-        // 4. Vérifier le cooldown (délai entre deux envois)
-        long cooldown = activationCodeService.getRemainingCooldownSecond(user, type);
-        if (cooldown > 0) {
-            String unit = isMobile ? "code" : "lien";
-            throw new BadRequestException("Veuillez attendre " + cooldown + " secondes avant de demander un nouveau " + unit + ".");
-        }
-
-        // 5. Invalider l'ancien et renvoyer
-        if (isMobile) {
-            String newCode = activationCodeService.generateAndStoreCodeMobileWithType(user, type);
-            emailService.sendActivationCode(user.getEmail(), newCode, user.getFirstName());
-            log.info("Nouveau code d'activation (4 chiffres) renvoyé pour l'utilisateur mobile : {}", email);
-        } else {
-            String newToken = activationCodeService.generateAndStoreAccountActivationToken(user);
-            emailService.sendUserActivationLink(user.getEmail(), newToken, user.getFirstName());
-            log.info("Nouveau lien d'activation (UUID) renvoyé pour l'utilisateur : {}", email);
-        }
-    }
-
-    /**
-     * Renvoie un nouveau code OTP d'activation à un utilisateur mobile.
-     * Cet endpoint est séparé du renvoi de lien pour clarifier l'usage côté mobile.
-     */
-    @Override
-    @Transactional
-    public void resendActivationCode(String email) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable avec cet email : " + email));
-
-        // 1. Vérifier si le compte est déjà actif
-        if (user.getStatus() == UserStatus.ACTIVE) {
-            throw new BadRequestException("Ce compte est déjà actif.");
-        }
-
-        // 2. Ce endpoint est dédié aux comptes mobiles
-        ERole userRole = user.getRole().getName();
-        boolean isMobile = (userRole == ERole.ROLE_PRESTATAIRE || userRole == ERole.ROLE_COPROPRIETAIRE);
-        if (!isMobile) {
-            throw new BadRequestException("Ce compte utilise un lien d'activation, pas un code OTP.");
-        }
-
-        // 3. Déterminer le type de code à renouveler
-        CodeType type = CodeType.ACCOUNT_ACTIVATION;
-        Optional<ActivationCode> existingCode = activationCodeRepository.findByUserAndType(user, CodeType.ACCOUNT_ACTIVATION);
-        if (existingCode.isEmpty()) {
-            type = CodeType.ACTIVATION;
-        }
-
-        // 4. Vérifier le cooldown
-        long cooldown = activationCodeService.getRemainingCooldownSecond(user, type);
-        if (cooldown > 0) {
-            throw new BadRequestException("Veuillez attendre " + cooldown + " secondes avant de demander un nouveau code.");
-        }
-
-        // 5. Invalider l'ancien code et renvoyer un nouveau code OTP
-        String newCode = activationCodeService.generateAndStoreCodeMobileWithType(user, type);
-        emailService.sendActivationCode(user.getEmail(), newCode, user.getFirstName());
-        log.info("Nouveau code d'activation (4 chiffres) renvoyé pour l'utilisateur mobile : {}", email);
-    }
-
-
-    /**
-     * Étape 2 : L'utilisateur définit son mot de passe.
-     * Valide à nouveau le token, encode le mot de passe, active le compte et génère un JWT.
+     * Étape 2 — Définition du mot de passe et activation du compte.
+     * L'utilisateur saisit son nouveau mot de passe via le formulaire.
+     * Le compte passe en statut ACTIVE.
      */
     @Override
     @Transactional
     public String activateAccount(ActivateAccountRequestDTO dto) {
 
-        // 1. Vérifier que les mots de passe correspondent
+        // ---------------------------------------------------------------------
+        // Vérification que les mots de passe correspondent
+        // ---------------------------------------------------------------------
         if (!dto.getPassword().equals(dto.getConfirmPassword())) {
             throw new BadRequestException("Les mots de passe ne correspondent pas.");
         }
 
-        // 2. Valider et récupérer le token d'activation (doit être ACCOUNT_ACTIVATION, non utilisé, non expiré)
+        // ---------------------------------------------------------------------
+        // Validation du token d'activation
+        // ---------------------------------------------------------------------
         ActivationCode activationCode = activationCodeService
                 .findValidAccountActivationToken(dto.getToken())
                 .orElseThrow(() -> new BadRequestException(
                         "Ce lien d'activation est invalide ou a expiré. " +
-                        "Veuillez contacter votre administrateur pour obtenir un nouveau lien."
+                                "Veuillez contacter votre administrateur pour obtenir un nouveau lien."
                 ));
 
         User user = activationCode.getUser();
         if (user == null) {
-            throw new ResourceNotFoundException("Compte utilisateur introuvable pour ce token.");
+            throw new ResourceNotFoundException(
+                    "Compte utilisateur introuvable pour ce token.");
         }
 
-        // 3. Définir le mot de passe et activer le compte
+        // ---------------------------------------------------------------------
+        // Activation du compte :
+        // 1. Encodage du mot de passe
+        // 2. Statut → ACTIVE
+        // 3. Token → marqué comme utilisé (usage unique)
+        // ---------------------------------------------------------------------
         user.setPassword(passwordEncoder.encode(dto.getPassword()));
         user.setStatus(UserStatus.ACTIVE);
         userRepository.save(user);
 
-        // 4. Invalider le token (usage unique)
         activationCode.setUsed(true);
         activationCodeRepository.save(activationCode);
 
-        log.info("Compte utilisateur activé avec succès pour : {}", user.getEmail());
+        log.info("Compte activé avec succès pour : {}", user.getEmail());
 
         return "Votre compte a été activé avec succès. Vous pouvez maintenant vous connecter.";
     }
 
-    // ============================================================================
-    // 🛠️ MÉTHODES PRIVÉES
-    // ============================================================================
 
+    /**
+     * Renvoie un nouveau lien d'activation pour les comptes web.
+     * Utile si le premier lien a expiré.
+     * Inclut un cooldown de 60 secondes pour éviter le spam.
+     */
+    @Override
+    @Transactional
+    public void resendUserActivationLink(String email) {
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Utilisateur introuvable avec cet email : " + email));
+
+        // ---------------------------------------------------------------------
+        // Vérification que le compte n'est pas déjà actif
+        // ---------------------------------------------------------------------
+        if (user.getStatus() == UserStatus.ACTIVE) {
+            throw new BadRequestException("Ce compte est déjà actif.");
+        }
+
+        ERole userRole = user.getRole().getName();
+        boolean isMobile = (userRole == ERole.ROLE_PRESTATAIRE
+                || userRole == ERole.ROLE_COPROPRIETAIRE);
+        if (isMobile) {
+            throw new BadRequestException(
+                    "Ce compte utilise un code OTP, pas un lien d'activation.");
+        }
+
+        // ---------------------------------------------------------------------
+        // Vérification du cooldown → 60 secondes entre deux envois
+        // ---------------------------------------------------------------------
+        long cooldown = activationCodeService.getRemainingCooldownSecond(user, CodeType.ACCOUNT_ACTIVATION);
+        if (cooldown > 0) {
+            throw new BadRequestException(
+                    "Veuillez attendre " + cooldown + " secondes " +
+                            "avant de demander un nouveau lien.");
+        }
+
+        // ---------------------------------------------------------------------
+        // Génération et envoi du nouveau lien d'activation
+        // ---------------------------------------------------------------------
+        String newToken = activationCodeService
+                .generateAndStoreAccountActivationToken(user);
+        emailService.sendUserActivationLink(user.getEmail(), newToken, user.getFirstName());
+        log.info("Nouveau lien d'activation renvoyé à : {}", email);
+    }
+
+
+    // =========================================================================
+    // MÉTHODES PRIVÉES — Utilitaires internes
+    // =========================================================================
+
+    /**
+     * Vérifie et renseigne les informations spécifiques au prestataire.
+     * Un prestataire doit avoir : nom d'entreprise + spécialité + coordonnées GPS
+     * (les coordonnées GPS servent au matching dans un rayon de 30km)
+     */
     private void validateAndSetProviderInfo(User user, RegisterRequestDTO dto) {
+
         if (dto.getCompanyName() == null || dto.getCompanyName().isBlank()) {
-            throw new BadRequestException("Le nom de l'entreprise est obligatoire pour un prestataire");
+            throw new BadRequestException(
+                    "Le nom de l'entreprise est obligatoire pour un prestataire.");
         }
         if (dto.getSpecialtyId() == null) {
-            throw new BadRequestException("La spécialité est obligatoire pour un prestataire");
+            throw new BadRequestException(
+                    "La spécialité est obligatoire pour un prestataire.");
         }
         if (dto.getLatitude() == null || dto.getLongitude() == null) {
-            throw new BadRequestException("Les coordonnées GPS sont obligatoires pour localiser vos interventions");
+            throw new BadRequestException(
+                    "Les coordonnées GPS sont obligatoires pour localiser vos interventions.");
         }
 
         user.setCompanyName(dto.getCompanyName());
         user.setSpecialty(specialtyRepository.findById(dto.getSpecialtyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Spécialité non trouvée")));
-
-        // On enregistre sa position de base pour le matching 30km
+        user.setInterventionZone(dto.getInterventionZone());
         user.setLatitude(dto.getLatitude());
         user.setLongitude(dto.getLongitude());
     }
 
+    /**
+     * Vérifie et renseigne les informations spécifiques au copropriétaire.
+     * Un copropriétaire doit choisir sa résidence et son bien au moment de l'inscription.
+     * Le bien ne peut pas déjà avoir un propriétaire.
+     */
     private void validateAndSetCoOwnerInfo(User user, RegisterRequestDTO dto) {
-        // Rejeter les champs spécifiques aux prestataires
+
+        // ---------------------------------------------------------------------
+        // Un copropriétaire ne doit pas envoyer les champs réservés aux prestataires
+        // ---------------------------------------------------------------------
         if (dto.getSpecialtyId() != null) {
-            throw new BadRequestException("Le champ specialtyId est réservé aux prestataires");
+            throw new BadRequestException(
+                    "Le champ specialtyId est réservé aux prestataires.");
         }
         if (dto.getCompanyName() != null) {
-            throw new BadRequestException("Le champ companyName est réservé aux prestataires");
+            throw new BadRequestException(
+                    "Le champ companyName est réservé aux prestataires.");
         }
         if (dto.getLatitude() != null || dto.getLongitude() != null) {
-            throw new BadRequestException("Les coordonnées GPS sont réservées aux prestataires");
+            throw new BadRequestException(
+                    "Les coordonnées GPS sont réservées aux prestataires.");
         }
 
+        // ---------------------------------------------------------------------
+        // Vérification des champs obligatoires
+        // ---------------------------------------------------------------------
         if (dto.getResidenceId() == null) {
-            throw new BadRequestException("La résidence est obligatoire pour un copropriétaire");
+            throw new BadRequestException(
+                    "La résidence est obligatoire pour un copropriétaire.");
         }
         if (dto.getPropertyId() == null) {
-            throw new BadRequestException("L'appartement est obligatoire pour un copropriétaire");
+            throw new BadRequestException(
+                    "L'appartement est obligatoire pour un copropriétaire à l'inscription.");
         }
 
-        // Vérifier que la résidence existe
+        // ---------------------------------------------------------------------
+        // Vérification que la résidence existe
+        // ---------------------------------------------------------------------
         residenceRepository.findById(dto.getResidenceId())
                 .orElseThrow(() -> new ResourceNotFoundException("Résidence non trouvée"));
 
-        // Vérifier que le bien existe et appartient à la résidence
+        // ---------------------------------------------------------------------
+        // Vérification que le bien existe et appartient bien à cette résidence
+        // ---------------------------------------------------------------------
         Property property = propertyRepository.findById(dto.getPropertyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Appartement non trouvé"));
 
         if (!property.getResidence().getId().equals(dto.getResidenceId())) {
-            throw new BadRequestException("L'appartement n'appartient pas à cette résidence");
+            throw new BadRequestException(
+                    "L'appartement n'appartient pas à cette résidence.");
         }
 
-        // Vérifier que le bien n'a pas déjà un propriétaire
+        // ---------------------------------------------------------------------
+        // Vérification que le bien n'a pas déjà un propriétaire
+        // Un bien ne peut appartenir qu'à un seul copropriétaire à la fois
+        // ---------------------------------------------------------------------
         if (property.getOwner() != null) {
             throw new BadRequestException(
-                "Cet appartement a déjà un propriétaire. " +
-                "Contactez votre syndic pour plus d'informations."
+                    "Cet appartement a déjà un propriétaire. " +
+                            "Contactez votre syndic pour plus d'informations."
             );
         }
 
-        // Lier l'utilisateur au bien (propriétaire)
+        // ---------------------------------------------------------------------
+        // Association du bien au nouveau copropriétaire
+        // ---------------------------------------------------------------------
         property.setOwner(user);
         propertyRepository.save(property);
     }
 
     /**
-     * Centralise la création de la réponse de connexion avec JWT.
+     * Génère la réponse de connexion complète avec le token JWT.
+     * Utilisé par login() et verifyAdminLoginOtp() pour éviter la duplication.
      */
     private LoginResponseDTO generateLoginResponse(User user) {
+
+        // ---------------------------------------------------------------------
+        // Génération du token JWT contenant :
+        // - l'email (identifiant unique)
+        // - le rôle (ADMIN, SYNDIC, PRESTATAIRE, COPROPRIETAIRE)
+        // - l'ID (pour les requêtes futures)
+        // ---------------------------------------------------------------------
         String accessToken = jwtService.generateToken(
                 user.getEmail(),
                 user.getRole().getName().name(),
@@ -570,7 +811,7 @@ public class AuthServiceImpl implements AuthService {
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .status(user.getStatus())
-                .otpRequired(false)
+                .otpRequired(false) // false = pas besoin d'OTP supplémentaire
                 .build();
     }
 }

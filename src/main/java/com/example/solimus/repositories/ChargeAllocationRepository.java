@@ -166,4 +166,21 @@ public interface ChargeAllocationRepository extends JpaRepository<ChargeAllocati
      * @return la liste des allocations en retard
      */
     List<ChargeAllocation> findAllByStatusAndChargeDueDateBefore(ChargeStatus status, java.time.LocalDate date);
+
+    /**
+     * Compte le nombre total d'allocations pour une résidence.
+     *
+     * @param residenceId l'ID de la résidence
+     * @return le nombre d'allocations
+     */
+    long countByChargeResidenceId(Long residenceId);
+
+    /**
+     * Compte le nombre d'allocations avec un statut donné pour une résidence.
+     *
+     * @param residenceId l'ID de la résidence
+     * @param status le statut des allocations
+     * @return le nombre d'allocations avec ce statut
+     */
+    long countByChargeResidenceIdAndStatus(Long residenceId, ChargeStatus status);
 }

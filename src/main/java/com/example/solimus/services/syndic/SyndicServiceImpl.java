@@ -3,18 +3,15 @@ package com.example.solimus.services.syndic;
 import com.example.solimus.dtos.charge.ChargeLineDTO;
 import com.example.solimus.dtos.charge.ChargeResponseDTO;
 import com.example.solimus.dtos.charge.CreateChargeDTO;
-import com.example.solimus.dtos.charge.CreateChargeLineDTO;
 import com.example.solimus.dtos.intervention.CreateInterventionRequestDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestDTO;
 import com.example.solimus.dtos.intervention.InterventionStatusHistoryDTO;
 import com.example.solimus.dtos.intervention.WorkflowStepDTO;
 import com.example.solimus.dtos.intervention.NearbyProviderDTO;
 import com.example.solimus.dtos.intervention.SyndicQuoteDTO;
-import com.example.solimus.dtos.property.CreatePropertyDTO;
-import com.example.solimus.dtos.property.PropertyDTO;
-import com.example.solimus.dtos.residence.CreateResidenceDTO;
-import com.example.solimus.dtos.residence.ResidenceDTO;
+import com.example.solimus.dtos.residence.PropertyDTO;
 import com.example.solimus.dtos.syndic.CreateCoOwnerDTO;
+import com.example.solimus.dtos.provider.WithdrawalRequestDTO;
 import com.example.solimus.entities.Charge;
 import com.example.solimus.entities.ChargeAllocation;
 import com.example.solimus.entities.ChargeLine;
@@ -25,6 +22,8 @@ import com.example.solimus.entities.Residence;
 import com.example.solimus.entities.Role;
 import com.example.solimus.entities.Specialty;
 import com.example.solimus.entities.User;
+import com.example.solimus.entities.Wallet;
+import com.example.solimus.entities.WithdrawalRequest;
 import com.example.solimus.enums.ChargeStatus;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.InitiatedBy;
@@ -33,6 +32,7 @@ import com.example.solimus.enums.QuoteStatus;
 import com.example.solimus.enums.UserStatus;
 import com.example.solimus.enums.SubscriptionPlan;
 import com.example.solimus.enums.SubscriptionStatus;
+import com.example.solimus.enums.WithdrawalStatus;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
@@ -40,7 +40,6 @@ import com.example.solimus.repositories.*;
 import com.example.solimus.services.auth.ActivationCodeService;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.geolocation.GeolocationService;
-import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.provider.ProviderService;
 import com.example.solimus.repositories.PaymentRepository;
 import com.example.solimus.entities.Payment;
@@ -93,6 +92,8 @@ public class SyndicServiceImpl implements SyndicService {
     private final SubscriptionRepository subscriptionRepository;
     private final ChargeRepository chargeRepository;
     private final ChargeLineRepository chargeLineRepository;
+    private final WithdrawalRequestRepository withdrawalRequestRepository;
+    private final WalletRepository walletRepository;
     private final ChargeAllocationRepository chargeAllocationRepository;
 
     @Value("${solimus.geolocation.search-radius-km:30.0}")
@@ -102,77 +103,8 @@ public class SyndicServiceImpl implements SyndicService {
     private String touchPayBridgeUrlTemplate;
 
     // =========================================================================
-    // GESTION DES RÉSIDENCES
-    // =========================================================================
-
-    /**
-     * Crée une nouvelle résidence rattachée au syndic actuellement connecté.
-     */
-    @Override
-    @Transactional
-    public ResidenceDTO createResidence(CreateResidenceDTO dto) {
-        User currentSyndic = getCurrentUser();
-        Residence residence = new Residence();
-        residence.setName(dto.getName());
-        residence.setFullAddress(dto.getFullAddress());
-        residence.setLatitude(dto.getLatitude());
-        residence.setLongitude(dto.getLongitude());
-        residence.setFloorCount(dto.getFloorCount());
-        residence.setApartmentCount(dto.getApartmentCount());
-        residence.setSyndic(currentSyndic);
-        return mapToResidenceDTO(residenceRepository.save(residence));
-    }
-
-    /**
-     * Récupère la liste de toutes les résidences gérées par le syndic connecté.
-     */
-    @Override
-    @Transactional(readOnly = true)
-    public List<ResidenceDTO> getMyResidences() {
-        User currentSyndic = getCurrentUser();
-        return residenceRepository.findAllBySyndic(currentSyndic).stream()
-                .map(this::mapToResidenceDTO)
-                .collect(Collectors.toList());
-    }
-
-    // =========================================================================
     // GESTION DES BIENS (PROPERTIES)
     // =========================================================================
-
-    /**
-     * Enregistre un nouveau bien (appartement, parking, etc.) dans une résidence.
-     */
-    @Override
-    @Transactional
-    public PropertyDTO createProperty(CreatePropertyDTO dto) {
-        Residence residence = residenceRepository.findById(dto.getResidenceId())
-                .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
-
-        Property property = new Property();
-        property.setReference(genererReferenceBien());
-        property.setFloor(dto.getFloor());
-        property.setArea(dto.getArea());
-        property.setType(dto.getType());
-        property.setResidence(residence);
-
-        // Si un propriétaire est déjà désigné à la création
-        if (dto.getOwnerId() != null) {
-            User owner = userRepository.findById(dto.getOwnerId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Propriétaire introuvable"));
-            if (owner.getRole() == null || !owner.getRole().getName().equals(ERole.ROLE_COPROPRIETAIRE)) {
-                throw new BadRequestException("Seul un utilisateur avec le rôle COPROPRIETAIRE peut posséder un bien.");
-            }
-            if (owner.getStatus() != UserStatus.ACTIVE) {
-                throw new BadRequestException("Le compte du copropriétaire doit être actif pour posséder un bien.");
-            }
-            property.setOwner(owner);
-        }
-        return mapToPropertyDTO(propertyRepository.save(property));
-    }
-
-    private String genererReferenceBien() {
-        return "PROP-" + (int)(Math.random() * 900000 + 100000);
-    }
 
     // =========================================================================
     // CRÉER UNE CHARGE
@@ -843,23 +775,7 @@ public class SyndicServiceImpl implements SyndicService {
     }
 
     /**
-     * Mappe une entité Residence vers son DTO.
-     */
-    private ResidenceDTO mapToResidenceDTO(Residence res) {
-        return ResidenceDTO.builder()
-                .id(res.getId())
-                .name(res.getName())
-                .fullAddress(res.getFullAddress())
-                .latitude(res.getLatitude())
-                .longitude(res.getLongitude())
-                .floorCount(res.getFloorCount())
-                .apartmentCount(res.getApartmentCount())
-                .syndicId(res.getSyndic() != null ? res.getSyndic().getId() : null)
-                .syndicName(res.getSyndic() != null ? res.getSyndic().getFirstName() + " " + res.getSyndic().getLastName() : null)
-                .createdAt(res.getCreatedAt())
-                .build();
-    }
-
+ x
     /**
      * Mappe une entité Property vers son DTO.
      */
@@ -867,9 +783,8 @@ public class SyndicServiceImpl implements SyndicService {
         return PropertyDTO.builder()
                 .id(p.getId())
                 .reference(p.getReference())
-                .floor(p.getFloor())
-                .area(p.getArea())
-                .type(p.getType())
+                .superficie(p.getSuperficie())
+                .type(p.getTypeBien())
                 .residenceId(p.getResidence() != null ? p.getResidence().getId() : null)
                 .residenceName(p.getResidence() != null ? p.getResidence().getName() : null)
                 .ownerId(p.getOwner() != null ? p.getOwner().getId() : null)
@@ -1059,5 +974,86 @@ public class SyndicServiceImpl implements SyndicService {
         });
 
         log.info("{} charge(s) passées EN_RETARD", enRetard.size());
+    }
+
+    // =========================================================================
+    // GESTION DES RETRAITS PRESTATAIRES
+    // =========================================================================
+
+    @Override
+    public List<WithdrawalRequestDTO> getWithdrawalRequests(WithdrawalStatus status) {
+        return withdrawalRequestRepository.findAll().stream()
+                .filter(w -> status == null || w.getStatus() == status)
+                .map(this::mapToWithdrawalRequestDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public WithdrawalRequestDTO confirmWithdrawal(Long withdrawalId) {
+        WithdrawalRequest retrait = getPendingWithdrawal(withdrawalId);
+        Wallet wallet = getWithdrawalWallet(retrait);
+
+        wallet.setPendingBalance(safeSubtract(wallet.getPendingBalance(), retrait.getAmount()));
+        retrait.setStatus(WithdrawalStatus.COMPLETED);
+        retrait.setProcessedAt(LocalDateTime.now());
+
+        walletRepository.save(wallet);
+        WithdrawalRequest saved = withdrawalRequestRepository.save(retrait);
+        return mapToWithdrawalRequestDTO(saved);
+    }
+
+    @Override
+    @Transactional
+    public WithdrawalRequestDTO rejectWithdrawal(Long withdrawalId, String motifRefus) {
+        WithdrawalRequest retrait = getPendingWithdrawal(withdrawalId);
+        Wallet wallet = getWithdrawalWallet(retrait);
+
+        wallet.setPendingBalance(safeSubtract(wallet.getPendingBalance(), retrait.getAmount()));
+        wallet.setAvailableBalance(wallet.getAvailableBalance().add(retrait.getAmount()));
+        retrait.setStatus(WithdrawalStatus.REJECTED);
+        retrait.setProcessedAt(LocalDateTime.now());
+        retrait.setMotifRefus(motifRefus);
+
+        walletRepository.save(wallet);
+        WithdrawalRequest saved = withdrawalRequestRepository.save(retrait);
+        return mapToWithdrawalRequestDTO(saved);
+    }
+
+    // =========================================================================
+    // MÉTHODES PRIVÉES — OUTILS INTERNES POUR LES RETRAITS
+    // =========================================================================
+
+    private WithdrawalRequest getPendingWithdrawal(Long withdrawalId) {
+        WithdrawalRequest retrait = withdrawalRequestRepository.findById(withdrawalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Demande de retrait introuvable"));
+
+        if (retrait.getStatus() != WithdrawalStatus.PENDING) {
+            throw new BadRequestException("Cette demande de retrait a déjà été traitée");
+        }
+
+        return retrait;
+    }
+
+    private Wallet getWithdrawalWallet(WithdrawalRequest retrait) {
+        return walletRepository.findByProviderId(retrait.getProvider().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Wallet prestataire introuvable"));
+    }
+
+    private BigDecimal safeSubtract(BigDecimal currentValue, BigDecimal amount) {
+        BigDecimal result = currentValue.subtract(amount);
+        return result.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : result;
+    }
+
+    private WithdrawalRequestDTO mapToWithdrawalRequestDTO(WithdrawalRequest retrait) {
+        return WithdrawalRequestDTO.builder()
+                .id(retrait.getId())
+                .reference(retrait.getReference())
+                .montant(retrait.getAmount())
+                .methode(retrait.getMethod())
+                .numeroDeTelephone(retrait.getPhoneNumber())
+                .statut(retrait.getStatus())
+                .createdAt(retrait.getCreatedAt())
+                .build();
     }
 }

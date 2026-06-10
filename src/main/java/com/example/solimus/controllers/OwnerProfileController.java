@@ -2,7 +2,8 @@ package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.profile.CoOwnerProfileDTO;
 import com.example.solimus.dtos.profile.UpdateCoOwnerProfileDTO;
-import com.example.solimus.services.profile.CoOwnerProfileService;
+
+import com.example.solimus.services.profile.OwnerProfileService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -13,21 +14,21 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
-@RequestMapping("/api/coproprietaire/profile")
+@RequestMapping("/api/coowner/profile")
 @RequiredArgsConstructor
-@Tag(name = "CoOwner - Profile", description = "Gestion du profil du copropriétaire")
-public class CoOwnerProfileController {
+@Tag(name = "3.f Copropriétaire - Profil", description = "Consultation et mise à jour du profil du copropriétaire.")
+public class OwnerProfileController {
 
-    private final CoOwnerProfileService profileService;
+    private final OwnerProfileService profileService;
 
-    @Operation(summary = "Récupérer mon profil")
+    @Operation(summary = "Voir mon profil")
     @GetMapping
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     public ResponseEntity<CoOwnerProfileDTO> getProfile() {
         return ResponseEntity.ok(profileService.getProfile());
     }
 
-    @Operation(summary = "Mettre à jour mon profil")
+    @Operation(summary = "Modifier mon profil", description = "Permet de modifier : prénom, nom, téléphone et photo de profil. L'email et le bien sont non modifiables.")
     @PutMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     public ResponseEntity<CoOwnerProfileDTO> updateProfile(

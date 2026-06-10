@@ -1,10 +1,10 @@
 package com.example.solimus.services.admin;
 
 import com.example.solimus.dtos.admin.*;
-import com.example.solimus.dtos.provider.WithdrawalRequestDTO;
+import com.example.solimus.dtos.residence.CreateSecurityFeatureDTO;
+import com.example.solimus.dtos.residence.SecurityFeatureDTO;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.UserStatus;
-import com.example.solimus.enums.WithdrawalStatus;
 
 import java.util.List;
 
@@ -38,7 +38,7 @@ public interface AdminService {
     UserListResponseDTO getUsers(int page, int size, String search, ERole role, UserStatus status);
 
     /**
-     * Modifie le statut d'un utilisateur (ex: Activer un prestataire en attente).
+     * Modifie le statut d'un utilisateur
      */
     void updateUserStatus(Long userId, UserStatus status);
 
@@ -50,12 +50,29 @@ public interface AdminService {
      * @param dto Les informations de l'utilisateur saisies par l'admin.
      * @return Le DTO du compte créé avec confirmation d'envoi d'email.
      */
-    com.example.solimus.dtos.admin.CreateUserResponseDTO createUser(
-            com.example.solimus.dtos.admin.CreateUserRequestDTO dto);
+   CreateUserResponseDTO createUser(
+            CreateUserRequestDTO dto);
 
-    List<WithdrawalRequestDTO> getWithdrawalRequests(WithdrawalStatus status);
+  // --- GESTION DES OPTIONS DE SÉCURITÉ ---
 
-    WithdrawalRequestDTO confirmWithdrawal(Long withdrawalId);
+  /**
+   * Créer une nouvelle option de sécurité
+   */
+  void createSecurityFeature(CreateSecurityFeatureDTO dto);
 
-    WithdrawalRequestDTO rejectWithdrawal(Long withdrawalId, String motifRefus);
+  /**
+   * Lister toutes les options de sécurité (actives ou non)
+   */
+  List<SecurityFeatureDTO> getSecurityFeatures();
+
+  /**
+   * Désactiver une option de sécurité
+   */
+  void deactivateSecurityFeature(Long id);
+
+  /**
+   * Activer une option de sécurité
+   */
+  void activateSecurityFeature(Long id);
+    
 }

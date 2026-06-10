@@ -1,5 +1,7 @@
 package com.example.solimus.dtos.residence;
 
+import com.example.solimus.enums.ResidenceHealthStatus;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -8,6 +10,9 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+/**
+ * DTO pour la réponse de la résidence
+ */
 @Data
 @Builder
 @AllArgsConstructor
@@ -15,13 +20,26 @@ import java.time.LocalDateTime;
 public class ResidenceDTO {
     private Long id;
     private String name;
+    private String description;
     private String fullAddress;
+    private String city;
+    private String country;
     private BigDecimal latitude;
     private BigDecimal longitude;
-    private Integer floorCount;
-    private Integer apartmentCount;
+    private String photoUrl;
+    private Integer lotsCount;
+    private Integer constructionYear;
+    private Integer renovationYear;
+    private BigDecimal annualBudget;
+    private ResidenceHealthStatus healthStatus;
     private Long syndicId;
     private String syndicName;
-    @com.fasterxml.jackson.annotation.JsonFormat(pattern = "dd/MM/yyyy HH:mm")
-    private java.time.LocalDateTime createdAt;
+    private Integer totalCoproprietaires;
+    private Integer incidentsOuverts;
+    private Double tauxImpayes;
+    private BigDecimal tresorerie;
+    @JsonFormat(pattern = "dd/MM/yyyy HH:mm")
+    private LocalDateTime createdAt;
+    @JsonFormat(pattern = "dd/MM/yyyy HH:mm")
+    private LocalDateTime updatedAt;
 }

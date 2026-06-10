@@ -5,6 +5,9 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Entité représentant une spécialité pour les prestataires.
+ */
 @Entity
 @Table(name = "specialties")
 @Data

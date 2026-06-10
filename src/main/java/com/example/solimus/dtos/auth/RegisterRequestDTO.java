@@ -12,13 +12,30 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 
 /**
- * DTO pour l'étape initiale de l'inscription.
- * L'utilisateur ne saisit PAS de mot de passe à ce stade.
+ * ============================================================================
+ * DTO D'INSCRIPTION
+ * ============================================================================
+ *
+ * Utilisé lors de l'inscription d'un nouvel utilisateur.
+ *
+ * Ce DTO est commun aux :
+ * - Prestataires
+ * - Copropriétaires
+ *
+ * Les Syndics ne peuvent pas s'inscrire eux-mêmes.
+ * Ils sont créés par l'administrateur.
+ *
+ * À cette étape, aucun mot de passe n'est demandé.
+ * L'utilisateur recevra un code OTP pour activer son compte.
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class RegisterRequestDTO {
+
+    // =========================================================================
+    // INFORMATIONS PERSONNELLES
+    // =========================================================================
 
     @NotBlank(message = "Le prénom est obligatoire")
     private String firstName;
@@ -27,28 +44,72 @@ public class RegisterRequestDTO {
     private String lastName;
 
     @NotBlank(message = "Le numéro de téléphone est obligatoire")
-    @Pattern(regexp = "^[+]?[0-9\\s\\-\\(\\)]{8,25}$", message = "Le numéro de téléphone doit être valide")
+    @Pattern(
+            regexp = "^[+]?[0-9\\s\\-\\(\\)]{8,25}$",
+            message = "Le numéro de téléphone doit être valide"
+    )
     private String phone;
 
     @NotBlank(message = "L'email est obligatoire")
     @Email(message = "L'email doit être valide")
     private String email;
 
+
+    // =========================================================================
+    // RÔLE DEMANDÉ
+    // =========================================================================
+
+    /**
+     * Rôle choisi lors de l'inscription :
+     * - ROLE_PRESTATAIRE
+     * - ROLE_COPROPRIETAIRE
+     */
     @NotNull(message = "Le rôle est obligatoire")
     private ERole role;
 
-    // Champs spécifiques au prestataire (obligatoires si role == ROLE_PRESTATAIRE)
+
+    // =========================================================================
+    // INFORMATIONS SPÉCIFIQUES AU PRESTATAIRE
+    // =========================================================================
+
+    /**
+     * Nom de l'entreprise du prestataire.
+     */
     private String companyName;
+
+    /**
+     * ID de la spécialité :
+     * Plomberie, Électricité, Climatisation, etc.
+     */
     private Long specialtyId;
 
-    // Champs spécifiques au copropriétaire (obligatoires si role == ROLE_COPROPRIETAIRE)
-    private Long residenceId;
-    private Long propertyId;
+    /**
+     * Nom de la zone d'intervention
+     */
+    private String interventionZone;
 
-    // Photo de profil optionnelle dès l'inscription
-    private String profilePhotoUrl;
-
-    // Coordonnées GPS (obligatoires pour les prestataires)
+    /**
+     * Coordonnées GPS utilisées pour calculer
+     * la proximité avec les résidences.
+     */
     private BigDecimal latitude;
+
     private BigDecimal longitude;
+
+
+    // =========================================================================
+    // INFORMATIONS SPÉCIFIQUES AU COPROPRIÉTAIRE
+    // =========================================================================
+
+    /**
+     * Résidence dans laquelle se trouve
+     * le copropriétaire.
+     */
+    private Long residenceId;
+
+    /**
+     * Bien (appartement, studio, local, etc.)
+     * appartenant au copropriétaire.
+     */
+    private Long propertyId;
 }

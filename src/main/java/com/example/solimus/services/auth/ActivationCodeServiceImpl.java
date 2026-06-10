@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.Random;
@@ -16,7 +17,6 @@ import java.util.UUID;
 
 /**
  * Implémentation du service de gestion des codes d'activation et de réinitialisation.
- * Aligné sur la logique de Coopachat pour la gestion des types de codes.
  */
 @Service
 @RequiredArgsConstructor
@@ -27,7 +27,6 @@ public class ActivationCodeServiceImpl implements ActivationCodeService {
     private static final int CODE_LENGTH = 6;
     private static final int CODE_LENGTH_MOBILE = 4;
     private static final int EXPIRATION_MINUTES = 15;
-    private static final int ACCOUNT_ACTIVATION_EXPIRATION_MINUTES = 60;
     private static final int RESEND_COOLDOWN_SECONDS = 60; // Délai minimum entre deux envois
 
     // ============================================================================
@@ -116,8 +115,7 @@ public class ActivationCodeServiceImpl implements ActivationCodeService {
         activationCodeRepository.flush();
 
         String code = generateActivationCodeMobile();
-        int expMinutes = (type == CodeType.ACCOUNT_ACTIVATION) ? ACCOUNT_ACTIVATION_EXPIRATION_MINUTES : EXPIRATION_MINUTES;
-        saveCode(user, code, type, expMinutes);
+        saveCode(user, code, type, EXPIRATION_MINUTES);
         log.info("Code mobile d'activation ({}) à 4 chiffres généré pour : {}", type, user.getEmail());
         return code;
     }
@@ -130,8 +128,8 @@ public class ActivationCodeServiceImpl implements ActivationCodeService {
         activationCodeRepository.flush();
 
         String token = UUID.randomUUID().toString();
-        // Le token d'activation de compte expire après 60 minutes (plus long que le reset)
-        saveCode(user, token, CodeType.ACCOUNT_ACTIVATION, ACCOUNT_ACTIVATION_EXPIRATION_MINUTES);
+        // Le token d'activation de compte expire après 15 minutes
+        saveCode(user, token, CodeType.ACCOUNT_ACTIVATION, EXPIRATION_MINUTES);
         log.info("Token d'activation de compte UUID généré pour : {}", user.getEmail());
         return token;
     }
@@ -167,7 +165,7 @@ public class ActivationCodeServiceImpl implements ActivationCodeService {
             ActivationCode lastCode = lastCodeOpt.get();
 
             // 2. Calculer le temps écoulé depuis la création du dernier code (en secondes)
-            long secondsSinceLastCode = java.time.Duration
+            long secondsSinceLastCode = Duration
                     .between(lastCode.getCreatedAt(), LocalDateTime.now())
                     .getSeconds();
 

@@ -1,6 +1,6 @@
-package com.example.solimus.services.coowner;
+package com.example.solimus.services.owner;
 
-import com.example.solimus.dtos.property.PropertyDTO;
+import com.example.solimus.dtos.residence.PropertyDTO;
 import com.example.solimus.dtos.residence.ResidenceDTO;
 import com.example.solimus.entities.Property;
 import com.example.solimus.entities.Residence;
@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class CoOwnerServiceImpl implements CoOwnerService {
+public class OwnerServiceImpl implements OwnerService {
 
     private final ResidenceRepository residenceRepository;
     private final PropertyRepository propertyRepository;
@@ -42,8 +42,7 @@ public class CoOwnerServiceImpl implements CoOwnerService {
                 .fullAddress(residence.getFullAddress())
                 .latitude(residence.getLatitude())
                 .longitude(residence.getLongitude())
-                .floorCount(residence.getFloorCount())
-                .apartmentCount(residence.getApartmentCount())
+                .lotsCount(residence.getLotsCount())
                 .syndicId(residence.getSyndic() != null ? residence.getSyndic().getId() : null)
                 .syndicName(residence.getSyndic() != null ? residence.getSyndic().getFirstName() + " " + residence.getSyndic().getLastName() : null)
                 .createdAt(residence.getCreatedAt())
@@ -54,9 +53,8 @@ public class CoOwnerServiceImpl implements CoOwnerService {
         return PropertyDTO.builder()
                 .id(property.getId())
                 .reference(property.getReference())
-                .floor(property.getFloor())
-                .area(property.getArea())
-                .type(property.getType())
+                .superficie(property.getSuperficie())
+                .type(property.getTypeBien())
                 .residenceId(property.getResidence() != null ? property.getResidence().getId() : null)
                 .residenceName(property.getResidence() != null ? property.getResidence().getName() : null)
                 .ownerId(property.getOwner() != null ? property.getOwner().getId() : null)

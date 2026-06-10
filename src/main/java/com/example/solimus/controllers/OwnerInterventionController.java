@@ -5,7 +5,7 @@ import com.example.solimus.dtos.intervention.NearbyProviderDTO;
 import com.example.solimus.dtos.intervention.OwnerInterventionDetailDTO;
 import com.example.solimus.dtos.intervention.OwnerInterventionSummaryDTO;
 import com.example.solimus.dtos.intervention.SyndicQuoteDTO;
-import com.example.solimus.dtos.property.PropertyDTO;
+import com.example.solimus.dtos.residence.PropertyDTO;
 import com.example.solimus.dtos.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
@@ -30,7 +30,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/owner/interventions")
 @RequiredArgsConstructor
-@Tag(name = "Owner - Interventions", description = "Gestion des incidents par le copropriétaire")
+@Tag(name = "3.g Copropriétaire - Interventions", description = "Gestion des incidents par le copropriétaire")
 public class OwnerInterventionController {
 
     private final OwnerInterventionService interventionService;

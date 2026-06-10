@@ -1,16 +1,15 @@
 package com.example.solimus.services.admin;
 
 import com.example.solimus.dtos.admin.*;
-import com.example.solimus.dtos.provider.WithdrawalRequestDTO;
+import com.example.solimus.dtos.residence.CreateSecurityFeatureDTO;
+import com.example.solimus.dtos.residence.SecurityFeatureDTO;
 import com.example.solimus.entities.EstimatedDelay;
 import com.example.solimus.entities.Role;
+import com.example.solimus.entities.SecurityFeature;
 import com.example.solimus.entities.Specialty;
 import com.example.solimus.entities.User;
-import com.example.solimus.entities.Wallet;
-import com.example.solimus.entities.WithdrawalRequest;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.UserStatus;
-import com.example.solimus.enums.WithdrawalStatus;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.EmailAlreadyExistsException;
 import com.example.solimus.exceptions.PhoneAlreadyExistsException;
@@ -18,27 +17,30 @@ import com.example.solimus.exceptions.ResourceNotFoundException;
 
 import com.example.solimus.repositories.EstimatedDelayRepository;
 import com.example.solimus.repositories.RoleRepository;
+import com.example.solimus.repositories.SecurityFeatureRepository;
 import com.example.solimus.repositories.SpecialtyRepository;
 import com.example.solimus.repositories.UserRepository;
-import com.example.solimus.repositories.WalletRepository;
-import com.example.solimus.repositories.WithdrawalRequestRepository;
 import com.example.solimus.services.auth.ActivationCodeService;
 import com.example.solimus.services.auth.EmailService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AdminServiceImpl implements AdminService {
+
+    // ============================================================================
+    // DÉPENDANCES
+    // ============================================================================
 
     private final SpecialtyRepository specialtyRepository;
     private final EstimatedDelayRepository estimatedDelayRepository;
@@ -46,11 +48,15 @@ public class AdminServiceImpl implements AdminService {
     private final RoleRepository roleRepository;
     private final ActivationCodeService activationCodeService;
     private final EmailService emailService;
-    private final WithdrawalRequestRepository withdrawalRequestRepository;
-    private final WalletRepository walletRepository;
+    private final SecurityFeatureRepository securityFeatureRepository;
 
     // ============================================================================
-    // 🛠 GESTION DES SPÉCIALITÉS
+    // PARTIE 1 — GESTION DES SPÉCIALITÉS
+    // ============================================================================
+    //
+    // Permet à l'administrateur de gérer les métiers disponibles pour les
+    // prestataires : plomberie, électricité, nettoyage, maintenance, etc.
+    //
     // ============================================================================
 
     @Override
@@ -63,7 +69,7 @@ public class AdminServiceImpl implements AdminService {
     @Override
     @Transactional
     public SpecialtyDTO createSpecialty(CreateSpecialtyDTO dto) {
-        // Vérifier l'unicité du nom
+        // Empêche la création de deux spécialités portant le même nom
         if (specialtyRepository.existsByName(dto.getName())) {
             throw new BadRequestException("La spécialité '" + dto.getName() + "' existe déjà.");
         }
@@ -80,7 +86,12 @@ public class AdminServiceImpl implements AdminService {
     public SpecialtyDTO updateSpecialty(Long id, CreateSpecialtyDTO dto) {
         Specialty specialty = specialtyRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Spécialité non trouvée"));
-        
+
+        // Empêche de renommer avec un nom déjà utilisé par une autre spécialité
+        if (specialtyRepository.existsByNameAndIdNot(dto.getName(), id)) {
+            throw new BadRequestException("La spécialité '" + dto.getName() + "' existe déjà.");
+        }
+
         specialty.setName(dto.getName());
         specialty.setDescription(dto.getDescription());
         
@@ -98,9 +109,13 @@ public class AdminServiceImpl implements AdminService {
     }
 
 
-
     // ============================================================================
-    // ⏳ GESTION DES DÉLAIS
+    // PARTIE 2 — GESTION DES DÉLAIS ESTIMÉS
+    // ============================================================================
+    //
+    // Les délais estimés permettent de qualifier le temps prévu pour une
+    // intervention : urgence, 24h, 48h, une semaine, etc.
+    //
     // ============================================================================
 
     @Override
@@ -122,7 +137,12 @@ public class AdminServiceImpl implements AdminService {
     }
 
     // ============================================================================
-    // 👤 GESTION DES UTILISATEURS
+    // PARTIE 3 — CONSULTATION ET STATUT DES UTILISATEURS
+    // ============================================================================
+    //
+    // Regroupe la liste paginée des utilisateurs et la modification de leur statut.
+    // Les filtres permettent de rechercher par texte, rôle et statut.
+    //
     // ============================================================================
 
     @Override
@@ -139,7 +159,6 @@ public class AdminServiceImpl implements AdminService {
                         u.getPhone(),
                         u.getRole().getName(),
                         u.getStatus(),
-                        u.getCompanyName(),
                         u.getCreatedAt()
                 ))
                 .collect(Collectors.toList());
@@ -162,14 +181,25 @@ public class AdminServiceImpl implements AdminService {
     }
 
     // ============================================================================
-    // 💼 CRÉATION DE COMPTE UTILISATEUR (par ADMIN)
+    // PARTIE 4 — CRÉATION DE COMPTE UTILISATEUR PAR L'ADMIN
+    // ============================================================================
+    //
+    // Flux de création :
+    // 1. L'admin crée un utilisateur sans mot de passe
+    // 2. Le compte est enregistré avec le statut PENDING
+    // 3. Un token UUID d'activation est généré
+    // 4. L'utilisateur reçoit un lien email pour définir son mot de passe
+    // 5. Une fois activé, le compte devient utilisable dans l'application
+    //
     // ============================================================================
 
     @Override
     @Transactional
     public CreateUserResponseDTO createUser(CreateUserRequestDTO dto) {
 
-        // 1. Vérifications de duplication
+        // ---------------------------------------------------------------------
+        // 1. Vérification de l'unicité de l'email et du téléphone
+        // ---------------------------------------------------------------------
         if (userRepository.existsByEmail(dto.getEmail())) {
             throw new EmailAlreadyExistsException("Un compte avec cet email existe déjà : " + dto.getEmail());
         }
@@ -177,11 +207,15 @@ public class AdminServiceImpl implements AdminService {
             throw new PhoneAlreadyExistsException("Un compte avec ce téléphone existe déjà : " + dto.getPhone());
         }
 
-        // 2. Récupérer le rôle depuis le DTO
+        // ---------------------------------------------------------------------
+        // 2. Récupération du rôle demandé depuis la base
+        // ---------------------------------------------------------------------
         Role role = roleRepository.findByName(dto.getRole())
                 .orElseThrow(() -> new ResourceNotFoundException("Rôle " + dto.getRole() + " introuvable en base"));
 
-        // 3. Créer l'utilisateur sans mot de passe, statut PENDING
+        // ---------------------------------------------------------------------
+        // 3. Création du compte sans mot de passe
+        // ---------------------------------------------------------------------
         User user = new User();
         user.setFirstName(dto.getFirstName());
         user.setLastName(dto.getLastName());
@@ -193,17 +227,23 @@ public class AdminServiceImpl implements AdminService {
 
         User savedUser = userRepository.save(user);
 
-        // 4. Générer un token UUID sécurisé (expire dans 60 minutes)
+        // ---------------------------------------------------------------------
+        // 4. Génération du token UUID d'activation
+        // ---------------------------------------------------------------------
         String activationToken = activationCodeService.generateAndStoreAccountActivationToken(savedUser);
 
-        // 5. Envoyer l'email d'activation
+        // ---------------------------------------------------------------------
+        // 5. Envoi du lien d'activation par email
+        // ---------------------------------------------------------------------
         emailService.sendUserActivationLink(
                 savedUser.getEmail(),
                 activationToken,
                 savedUser.getFirstName()
         );
 
-        // 6. Retourner la réponse avec confirmation
+        // ---------------------------------------------------------------------
+        // 6. Réponse retournée à l'admin après création
+        // ---------------------------------------------------------------------
         return CreateUserResponseDTO.builder()
                 .id(savedUser.getId())
                 .firstName(savedUser.getFirstName())
@@ -217,76 +257,74 @@ public class AdminServiceImpl implements AdminService {
                 .build();
     }
 
-    @Override
-    public List<WithdrawalRequestDTO> getWithdrawalRequests(WithdrawalStatus status) {
-        return withdrawalRequestRepository.findAll().stream()
-                .filter(w -> status == null || w.getStatus() == status)
-                .map(this::mapToWithdrawalRequestDTO)
-                .collect(Collectors.toList());
-    }
+    // ============================================================================
+    // PARTIE 5 - GESTION DES OPTIONS DE SÉCURITÉ
+    // ============================================================================
 
     @Override
     @Transactional
-    public WithdrawalRequestDTO confirmWithdrawal(Long withdrawalId) {
-        WithdrawalRequest retrait = getPendingWithdrawal(withdrawalId);
-        Wallet wallet = getWithdrawalWallet(retrait);
+    public void createSecurityFeature(CreateSecurityFeatureDTO dto) {
 
-        wallet.setPendingBalance(safeSubtract(wallet.getPendingBalance(), retrait.getAmount()));
-        retrait.setStatus(WithdrawalStatus.COMPLETED);
-        retrait.setProcessedAt(LocalDateTime.now());
-
-        walletRepository.save(wallet);
-        WithdrawalRequest saved = withdrawalRequestRepository.save(retrait);
-        return mapToWithdrawalRequestDTO(saved);
-    }
-
-    @Override
-    @Transactional
-    public WithdrawalRequestDTO rejectWithdrawal(Long withdrawalId, String motifRefus) {
-        WithdrawalRequest retrait = getPendingWithdrawal(withdrawalId);
-        Wallet wallet = getWithdrawalWallet(retrait);
-
-        wallet.setPendingBalance(safeSubtract(wallet.getPendingBalance(), retrait.getAmount()));
-        wallet.setAvailableBalance(wallet.getAvailableBalance().add(retrait.getAmount()));
-        retrait.setStatus(WithdrawalStatus.REJECTED);
-        retrait.setProcessedAt(LocalDateTime.now());
-        retrait.setMotifRefus(motifRefus);
-
-        walletRepository.save(wallet);
-        WithdrawalRequest saved = withdrawalRequestRepository.save(retrait);
-        return mapToWithdrawalRequestDTO(saved);
-    }
-
-    private WithdrawalRequest getPendingWithdrawal(Long withdrawalId) {
-        WithdrawalRequest retrait = withdrawalRequestRepository.findById(withdrawalId)
-                .orElseThrow(() -> new ResourceNotFoundException("Demande de retrait introuvable"));
-
-        if (retrait.getStatus() != WithdrawalStatus.PENDING) {
-            throw new BadRequestException("Cette demande de retrait a déjà été traitée");
+        // Vérifier si le label existe déjà
+        if (securityFeatureRepository.existsByLabel(dto.getLabel())) {
+            throw new BadRequestException("Une option de sécurité avec ce label existe déjà");
         }
 
-        return retrait;
+        SecurityFeature feature = new SecurityFeature();
+        feature.setLabel(dto.getLabel());
+        feature.setDescription(dto.getDescription());
+        feature.setActive(true);
+
+        securityFeatureRepository.save(feature);
+
+        log.info("Option de sécurité '{}' créée par l'admin", dto.getLabel());
     }
 
-    private Wallet getWithdrawalWallet(WithdrawalRequest retrait) {
-        return walletRepository.findByProviderId(retrait.getProvider().getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Wallet prestataire introuvable"));
+    @Override
+    public List<SecurityFeatureDTO> getSecurityFeatures() {
+        return securityFeatureRepository.findAll()
+            .stream()
+            .map(this::mapToSecurityFeatureDTO)
+            .collect(Collectors.toList());
     }
 
-    private BigDecimal safeSubtract(BigDecimal currentValue, BigDecimal amount) {
-        BigDecimal result = currentValue.subtract(amount);
-        return result.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : result;
+    @Override
+    @Transactional
+    public void deactivateSecurityFeature(Long id) {
+
+        //Vérifier que l'option existe
+        SecurityFeature feature = securityFeatureRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Option de sécurité introuvable"));
+
+        //si oui, on la désactive
+        feature.setActive(false);
+        securityFeatureRepository.save(feature);
+
+        log.info("Option de sécurité '{}' désactivée par l'admin", feature.getLabel());
     }
 
-    private WithdrawalRequestDTO mapToWithdrawalRequestDTO(WithdrawalRequest retrait) {
-        return WithdrawalRequestDTO.builder()
-                .id(retrait.getId())
-                .reference(retrait.getReference())
-                .montant(retrait.getAmount())
-                .methode(retrait.getMethod())
-                .numeroDeTelephone(retrait.getPhoneNumber())
-                .statut(retrait.getStatus())
-                .createdAt(retrait.getCreatedAt())
-                .build();
+    @Override
+    @Transactional
+    public void activateSecurityFeature(Long id) {
+
+        //Vérifier que l'option existe
+        SecurityFeature feature = securityFeatureRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Option de sécurité introuvable"));
+
+        //si oui , on l'active
+        feature.setActive(true);
+        securityFeatureRepository.save(feature);
+
+        log.info("Option de sécurité '{}' activée par l'admin", feature.getLabel());
     }
+
+    private SecurityFeatureDTO mapToSecurityFeatureDTO(SecurityFeature feature) {
+        return SecurityFeatureDTO.builder()
+            .id(feature.getId())
+            .label(feature.getLabel())
+            .description(feature.getDescription())
+            .active(feature.isActive())
+            .build();
+    }
+
 }

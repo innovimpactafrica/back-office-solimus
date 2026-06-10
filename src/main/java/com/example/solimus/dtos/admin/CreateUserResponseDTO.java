@@ -2,6 +2,7 @@ package com.example.solimus.dtos.admin;
 
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.UserStatus;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -26,8 +27,8 @@ public class CreateUserResponseDTO {
     private String phone;
     private ERole role;
     private UserStatus status;
-    @com.fasterxml.jackson.annotation.JsonFormat(pattern = "dd/MM/yyyy HH:mm")
-    private java.time.LocalDateTime createdAt;
+    @JsonFormat(pattern = "dd/MM/yyyy HH:mm")
+    private LocalDateTime createdAt;
 
     /** Message informatif indiquant que l'email d'activation a été envoyé. */
     private String message;

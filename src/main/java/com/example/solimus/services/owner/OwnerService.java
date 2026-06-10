@@ -1,11 +1,11 @@
-package com.example.solimus.services.coowner;
+package com.example.solimus.services.owner;
 
-import com.example.solimus.dtos.property.PropertyDTO;
+import com.example.solimus.dtos.residence.PropertyDTO;
 import com.example.solimus.dtos.residence.ResidenceDTO;
 
 import java.util.List;
 
-public interface CoOwnerService {
+public interface OwnerService {
 
     // =========================================================================
     // RÉSIDENCES (Dropdown pour l'inscription)

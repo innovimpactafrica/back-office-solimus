@@ -1,7 +1,7 @@
 package com.example.solimus.services.coproprietaire;
 
 import com.example.solimus.dtos.intervention.*;
-import com.example.solimus.dtos.property.PropertyDTO;
+import com.example.solimus.dtos.residence.PropertyDTO;
 import com.example.solimus.dtos.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
@@ -293,8 +293,7 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
                 .fullAddress(residence.getFullAddress())
                 .latitude(residence.getLatitude())
                 .longitude(residence.getLongitude())
-                .floorCount(residence.getFloorCount())
-                .apartmentCount(residence.getApartmentCount())
+                .lotsCount(residence.getLotsCount())
                 .syndicId(residence.getSyndic() != null ? residence.getSyndic().getId() : null)
                 .syndicName(residence.getSyndic() != null ? residence.getSyndic().getFirstName() + " " + residence.getSyndic().getLastName() : null)
                 .createdAt(residence.getCreatedAt())
@@ -305,9 +304,8 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
         return PropertyDTO.builder()
                 .id(property.getId())
                 .reference(property.getReference())
-                .floor(property.getFloor())
-                .area(property.getArea())
-                .type(property.getType())
+                .superficie(property.getSuperficie())
+                .type(property.getTypeBien())
                 .residenceId(property.getResidence() != null ? property.getResidence().getId() : null)
                 .residenceName(property.getResidence() != null ? property.getResidence().getName() : null)
                 .ownerId(property.getOwner() != null ? property.getOwner().getId() : null)

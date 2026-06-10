@@ -67,11 +67,23 @@ public interface UserRepository extends JpaRepository<User, Long> {
            "OR LOWER(u.lastName) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%'))) " +
            "AND (:role IS NULL OR u.role.name = :role) " +
-           "AND (:status IS NULL OR u.status = :status)")
+           "AND (:status IS NULL OR u.status = :status) " +
+           "AND u.role.name NOT IN ('ROLE_PRESTATAIRE', 'ROLE_COPROPRIETAIRE')")
     Page<User> findAllWithFilters(
             @Param("search") String search,
             @Param("role") ERole role,
             @Param("status") UserStatus status,
             Pageable pageable
     );
+
+    /**
+     * Listing  des copropriétaires actifs avec filtres (utilisé pour l'affectation d'un lot).
+     */
+    @Query("SELECT u FROM User u " +
+           "WHERE u.role.name = 'ROLE_COPROPRIETAIRE' " +
+           "AND u.status = 'ACTIVE' " +
+           "AND (:search IS NULL OR LOWER(u.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR LOWER(u.lastName) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))")
+    List<User> findActiveCoOwnersForSelection(@Param("search") String search);
 }

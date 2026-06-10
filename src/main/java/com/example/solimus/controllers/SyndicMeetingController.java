@@ -26,7 +26,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic/meetings")
 @RequiredArgsConstructor
-@Tag(name = "Syndic - Réunions", description = "Gestion des réunions par le syndic")
+@Tag(name = "4.h Syndic - Réunions", description = "Gestion des réunions par le syndic")
 public class SyndicMeetingController {
 
     private final SyndicMeetingService meetingService;

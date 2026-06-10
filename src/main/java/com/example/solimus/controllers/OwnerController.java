@@ -1,8 +1,8 @@
 package com.example.solimus.controllers;
 
-import com.example.solimus.dtos.property.PropertyDTO;
+import com.example.solimus.dtos.residence.PropertyDTO;
 import com.example.solimus.dtos.residence.ResidenceDTO;
-import com.example.solimus.services.coowner.CoOwnerService;
+import com.example.solimus.services.owner.OwnerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -14,20 +14,20 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/coowner")
 @RequiredArgsConstructor
-@Tag(name = "CoOwner API", description = "Endpoints pour les copropriétaires (dropdowns pour l'inscription)")
-public class CoOwnerController {
+@Tag(name = "3.a Copropriétaire - Inscription", description = "Endpoints publics pour récupérer les résidences et biens lors de l'inscription. Aucune authentification requise.")
+public class OwnerController {
 
-    private final CoOwnerService coOwnerService;
+    private final OwnerService OwnerService;
 
-    @Operation(summary = "Lister toutes les résidences (dropdown pour l'inscription copropriétaire)")
+    @Operation(summary = "Lister toutes les résidences disponibles")
     @GetMapping("/residences")
     public ResponseEntity<List<ResidenceDTO>> getAllResidences() {
-        return ResponseEntity.ok(coOwnerService.getAllResidences());
+        return ResponseEntity.ok(OwnerService.getAllResidences());
     }
 
-    @Operation(summary = "Lister les biens d'une résidence (dropdown pour l'inscription copropriétaire)")
+    @Operation(summary = "Lister les biens d'une résidence")
     @GetMapping("/residences/{residenceId}/properties")
     public ResponseEntity<List<PropertyDTO>> getPropertiesByResidence(@PathVariable Long residenceId) {
-        return ResponseEntity.ok(coOwnerService.getPropertiesByResidence(residenceId));
+        return ResponseEntity.ok(OwnerService.getPropertiesByResidence(residenceId));
     }
 }

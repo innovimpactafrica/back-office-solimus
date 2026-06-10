@@ -1,4 +1,4 @@
-package com.example.solimus.dtos.property;
+package com.example.solimus.dtos.residence;
 
 import com.example.solimus.enums.PropertyType;
 import lombok.AllArgsConstructor;
@@ -6,6 +6,11 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
+
+/**
+ * DTO pour la réponse d'un lot 
+ */
 @Data
 @Builder
 @AllArgsConstructor
@@ -13,12 +18,11 @@ import lombok.NoArgsConstructor;
 public class PropertyDTO {
     private Long id;
     private String reference;
-    private Integer floor;
-    private Double area;
+    private BigDecimal superficie;
     private PropertyType type;
     private Long residenceId;
     private String residenceName;
-    
+
     // Infos du propriétaire unique
     private Long ownerId;
     private String ownerName;
