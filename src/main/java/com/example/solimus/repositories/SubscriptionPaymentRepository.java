@@ -1,7 +1,7 @@
 package com.example.solimus.repositories;
 
 import com.example.solimus.entities.SubscriptionPayment;
-import com.example.solimus.enums.PaymentStatus;
+import com.example.solimus.enums.SubscriptionPaymentStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -15,7 +15,7 @@ public interface SubscriptionPaymentRepository extends JpaRepository<Subscriptio
     Optional<SubscriptionPayment> findByReference(String reference);
 
     /**
-     * Trouve les paiements PENDING créés avant une date donnée (pour expiration).
+     * Trouve les paiements EN_ATTENTE créés avant une date donnée (pour expiration).
      */
-    List<SubscriptionPayment> findByStatusAndCreatedAtBefore(PaymentStatus status, LocalDateTime createdAt);
+    List<SubscriptionPayment> findByStatutAndCreatedAtBefore(SubscriptionPaymentStatus statut, LocalDateTime createdAt);
 }

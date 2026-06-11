@@ -4,6 +4,7 @@ import com.example.solimus.entities.ChargePayment;
 import com.example.solimus.entities.Payment;
 import com.example.solimus.entities.SubscriptionPayment;
 import com.example.solimus.enums.PaymentStatus;
+import com.example.solimus.enums.SubscriptionPaymentStatus;
 import com.example.solimus.repositories.ChargePaymentRepository;
 import com.example.solimus.repositories.PaymentRepository;
 import com.example.solimus.repositories.SubscriptionPaymentRepository;
@@ -45,9 +46,9 @@ public class PaymentExpirationScheduler {
 
         // 2. Paiements abonnements
         List<SubscriptionPayment> pendingSubscriptions = subscriptionPaymentRepository
-                .findByStatusAndCreatedAtBefore(PaymentStatus.PENDING, expirationThreshold);
+                .findByStatutAndCreatedAtBefore(SubscriptionPaymentStatus.EN_ATTENTE, expirationThreshold);
         for (SubscriptionPayment subscription : pendingSubscriptions) {
-            subscription.setStatus(PaymentStatus.FAILED);
+            subscription.setStatut(SubscriptionPaymentStatus.ECHOUE);
             subscriptionPaymentRepository.save(subscription);
             log.info("Paiement expiré (abonnement) : {}", subscription.getReference());
         }
