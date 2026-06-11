@@ -1,11 +1,14 @@
 package com.example.solimus.services.coproprietaire;
 
+import com.example.solimus.dtos.admin.SpecialtyDTO;
 import com.example.solimus.dtos.intervention.*;
+import com.example.solimus.dtos.residence.CommonFacilityDTO;
 import com.example.solimus.dtos.residence.PropertyDTO;
 import com.example.solimus.dtos.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
+import com.example.solimus.entities.CommonFacility;
 import com.example.solimus.entities.InterventionRequest;
 import com.example.solimus.entities.Property;
 import com.example.solimus.entities.Quote;
@@ -16,6 +19,7 @@ import com.example.solimus.enums.*;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
+import com.example.solimus.repositories.CommonFacilityRepository;
 import com.example.solimus.repositories.InterventionRequestRepository;
 import com.example.solimus.repositories.PropertyRepository;
 import com.example.solimus.repositories.ProviderRatingRepository;
@@ -48,10 +52,30 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
     private final PropertyRepository propertyRepository;
     private final ResidenceRepository residenceRepository;
     private final SpecialtyRepository specialtyRepository;
+    private final CommonFacilityRepository commonFacilityRepository;
     private final QuoteRepository quoteRepository;
     private final ProviderRatingRepository providerRatingRepository;
     private final EmailService emailService;
     private final GeolocationService geolocationService;
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SpecialtyDTO> getAllSpecialties() {
+        return specialtyRepository.findAll().stream()
+                .map(s -> new SpecialtyDTO(s.getId(), s.getName(), null))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CommonFacilityDTO> getCommonFacilitiesByResidence(Long residenceId) {
+        return commonFacilityRepository.findByResidenceId(residenceId).stream()
+                .map(cf -> CommonFacilityDTO.builder()
+                        .id(cf.getId())
+                        .label(cf.getFacilityType().name())
+                        .build())
+                .collect(Collectors.toList());
+    }
 
     @Override
     @Transactional(readOnly = true)

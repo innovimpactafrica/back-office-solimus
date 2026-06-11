@@ -1,10 +1,12 @@
 package com.example.solimus.services.coproprietaire;
 
+import com.example.solimus.dtos.admin.SpecialtyDTO;
 import com.example.solimus.dtos.intervention.CreateOwnerInterventionRequestDTO;
 import com.example.solimus.dtos.intervention.NearbyProviderDTO;
 import com.example.solimus.dtos.intervention.OwnerInterventionDetailDTO;
 import com.example.solimus.dtos.intervention.OwnerInterventionSummaryDTO;
 import com.example.solimus.dtos.intervention.SyndicQuoteDTO;
+import com.example.solimus.dtos.residence.CommonFacilityDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
@@ -12,6 +14,16 @@ import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
 import java.util.List;
 
 public interface OwnerInterventionService {
+
+    /**
+     * Lister toutes les spécialités disponibles.
+     */
+    List<SpecialtyDTO> getAllSpecialties();
+
+    /**
+     * Lister les parties communes d'une résidence.
+     */
+    List<CommonFacilityDTO> getCommonFacilitiesByResidence(Long residenceId);
 
     /**
      * Trouve les prestataires proches de la résidence du copropriétaire connecté.

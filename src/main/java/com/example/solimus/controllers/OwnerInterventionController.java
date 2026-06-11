@@ -38,6 +38,21 @@ public class OwnerInterventionController {
     private final OwnerInterventionService interventionService;
     private final MinioService minioService;
 
+    @Operation(summary = "Lister toutes les spécialités")
+    @GetMapping("/specialties")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    public ResponseEntity<List<com.example.solimus.dtos.admin.SpecialtyDTO>> getAllSpecialties() {
+        return ResponseEntity.ok(interventionService.getAllSpecialties());
+    }
+
+    @Operation(summary = "Lister les parties communes d'une résidence")
+    @GetMapping("/residences/{residenceId}/common-facilities")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    public ResponseEntity<List<com.example.solimus.dtos.residence.CommonFacilityDTO>> getCommonFacilitiesByResidence(
+            @PathVariable Long residenceId) {
+        return ResponseEntity.ok(interventionService.getCommonFacilitiesByResidence(residenceId));
+    }
+
     @Operation(summary = "Trouver les prestataires proches de ma résidence")
     @GetMapping("/nearby-providers")
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
