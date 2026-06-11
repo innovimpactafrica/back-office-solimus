@@ -55,37 +55,6 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ResidenceDTO> getMyResidences() {
-        User currentOwner = getCurrentUser();
-
-        return propertyRepository.findAllByOwnerId(currentOwner.getId()).stream()
-                .map(Property::getResidence)
-                .filter(residence -> residence != null)
-                .collect(Collectors.toMap(
-                        Residence::getId,
-                        residence -> residence,
-                        (existing, duplicate) -> existing
-                ))
-                .values()
-                .stream()
-                .sorted(Comparator.comparing(Residence::getName, Comparator.nullsLast(String::compareToIgnoreCase)))
-                .map(this::mapToResidenceDTO)
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<PropertyDTO> getMyPropertiesByResidence(Long residenceId) {
-        User currentOwner = getCurrentUser();
-
-        return propertyRepository.findAllByOwnerId(currentOwner.getId()).stream()
-                .filter(property -> property.getResidence() != null && property.getResidence().getId().equals(residenceId))
-                .map(this::mapToPropertyDTO)
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    @Transactional(readOnly = true)
     public List<NearbyProviderDTO> findNearbyProviders(Long specialtyId) {
         User currentOwner = getCurrentUser();
         
@@ -115,6 +84,11 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
     @Transactional
     public OwnerInterventionDetailDTO createIntervention(CreateOwnerInterventionRequestDTO dto, List<String> photoUrls) {
         User currentOwner = getCurrentUser();
+
+        // Avertissement si aucune photo n'est fournie
+        if (photoUrls == null || photoUrls.isEmpty()) {
+            log.warn("Intervention créée sans photo par le copropriétaire {} : {}", currentOwner.getEmail(), dto.getTitle());
+        }
 
         // Récupérer la résidence
         Residence residence = residenceRepository.findById(dto.getResidenceId())
@@ -149,6 +123,9 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
             // PARTIE_COMMUNE : pas de bien, gestion forcée par syndic
             if (dto.getPropertyId() != null) {
                 throw new BadRequestException("Pour un incident de type PARTIE_COMMUNE, aucun bien ne doit être spécifié");
+            }
+            if (dto.getManagementMode() == InterventionManagementMode.OWNER) {
+                throw new BadRequestException("Le copropriétaire ne peut pas gérer les parties communes. Le mode de gestion doit être SYNDIC.");
             }
             request.setProperty(null);
             request.setManagementMode(InterventionManagementMode.SYNDIC);
@@ -322,7 +299,7 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
                 .id(request.getId())
                 .title(request.getTitle())
                 .residenceName(request.getResidence().getName())
-                .propertyReference(request.getProperty().getReference())
+                .propertyReference(request.getProperty() != null ? request.getProperty().getReference() : null)
                 .specialtyName(request.getSpecialty() != null ? request.getSpecialty().getName() : null)
                 .status(request.getStatus())
                 .createdAt(request.getCreatedAt())
@@ -346,10 +323,10 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .residenceName(request.getResidence().getName())
-                .propertyReference(request.getProperty().getReference())
+                .propertyReference(request.getProperty() != null ? request.getProperty().getReference() : null)
                 .status(request.getStatus())
                 .specialtyName(request.getSpecialty() != null ? request.getSpecialty().getName() : null)
-                .photoUrls(request.getPhotoUrls())
+                .photoUrls(request.getPhotoUrls() != null ? new ArrayList<>(request.getPhotoUrls()) : new ArrayList<>())
                 .selectedProvider(selectedProviderInfo)
                 .timeline(buildTimeline(request))
                 .createdAt(request.getCreatedAt())

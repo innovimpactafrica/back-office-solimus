@@ -59,7 +59,7 @@ public class InterventionRequest {
     private UrgencyLevel urgencyLevel;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "syndic_id")
+    @JoinColumn(name = "syndic_id", nullable = true)
     private User syndic;
 
     @ManyToOne(fetch = FetchType.LAZY)

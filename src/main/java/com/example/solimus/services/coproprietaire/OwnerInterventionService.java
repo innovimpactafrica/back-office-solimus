@@ -5,8 +5,6 @@ import com.example.solimus.dtos.intervention.NearbyProviderDTO;
 import com.example.solimus.dtos.intervention.OwnerInterventionDetailDTO;
 import com.example.solimus.dtos.intervention.OwnerInterventionSummaryDTO;
 import com.example.solimus.dtos.intervention.SyndicQuoteDTO;
-import com.example.solimus.dtos.residence.PropertyDTO;
-import com.example.solimus.dtos.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
@@ -14,10 +12,6 @@ import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
 import java.util.List;
 
 public interface OwnerInterventionService {
-
-    List<ResidenceDTO> getMyResidences();
-
-    List<PropertyDTO> getMyPropertiesByResidence(Long residenceId);
 
     /**
      * Trouve les prestataires proches de la résidence du copropriétaire connecté.
