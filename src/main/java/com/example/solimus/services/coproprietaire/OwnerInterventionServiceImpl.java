@@ -187,13 +187,15 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
         // Notification du syndic si affecté
         if (request.getSyndic() != null) {
             try {
-                emailService.sendInterventionNotification(
-                        request.getSyndic().getEmail(),
-                        request.getSyndic().getFirstName(),
-                        request.getTitle(),
-                        residence.getName()
-                );
-                log.info("Syndic notifié pour l'intervention {} créée par le copropriétaire {}", request.getTitle(), currentOwner.getEmail());
+                if (request.getSyndic().isNotificationsEnabled()) {
+                    emailService.sendInterventionNotification(
+                            request.getSyndic().getEmail(),
+                            request.getSyndic().getFirstName(),
+                            request.getTitle(),
+                            residence.getName()
+                    );
+                    log.info("Syndic notifié pour l'intervention {} créée par le copropriétaire {}", request.getTitle(), currentOwner.getEmail());
+                }
             } catch (Exception e) {
                 log.error("Erreur lors de l'envoi de l'email au syndic {}", request.getSyndic().getEmail(), e);
             }
@@ -220,12 +222,14 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
 
                 nearbyProviders.forEach(provider -> {
                     try {
-                        emailService.sendInterventionNotification(
-                                provider.getEmail(),
-                                provider.getFirstName(),
-                                request.getTitle(),
-                                residence.getName()
-                        );
+                        if (provider.isNotificationsEnabled()) {
+                            emailService.sendInterventionNotification(
+                                    provider.getEmail(),
+                                    provider.getFirstName(),
+                                    request.getTitle(),
+                                    residence.getName()
+                            );
+                        }
                     } catch (Exception e) {
                         log.error("Erreur lors de l'envoi de l'email au prestataire {}", provider.getEmail(), e);
                     }
@@ -477,12 +481,18 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
         // Vérifier que l'intervention appartient au copropriétaire
         InterventionRequest request = interventionRepository.findById(interventionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
-        
+
         User currentOwner = getCurrentUser();
         if (!request.getOwner().getId().equals(currentOwner.getId())) {
             throw new ForbiddenException("Accès non autorisé à cette intervention");
         }
-        
+
+        // Bloquer le paiement si géré par le syndic
+        if (request.getManagementMode() == InterventionManagementMode.SYNDIC
+                || request.getLocationType() == IncidentLocationType.PARTIE_COMMUNE) {
+            throw new ForbiddenException("Cette intervention est gérée par le syndic. Le paiement doit être effectué par le syndic.");
+        }
+
         // Placeholder - implémentation du paiement d'acompte
         return PaymentResponseDTO.builder()
                 .success(true)
@@ -497,12 +507,18 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
         // Vérifier que l'intervention appartient au copropriétaire
         InterventionRequest request = interventionRepository.findById(interventionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
-        
+
         User currentOwner = getCurrentUser();
         if (!request.getOwner().getId().equals(currentOwner.getId())) {
             throw new ForbiddenException("Accès non autorisé à cette intervention");
         }
-        
+
+        // Bloquer le paiement si géré par le syndic
+        if (request.getManagementMode() == InterventionManagementMode.SYNDIC
+                || request.getLocationType() == IncidentLocationType.PARTIE_COMMUNE) {
+            throw new ForbiddenException("Cette intervention est gérée par le syndic. Le paiement doit être effectué par le syndic.");
+        }
+
         // Placeholder - implémentation de la validation et paiement du solde
         return PaymentResponseDTO.builder()
                 .success(true)

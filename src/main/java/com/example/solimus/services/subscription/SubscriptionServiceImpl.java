@@ -146,12 +146,14 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                     );
 
                     // Notifier par email de la réussite du renouvellement
-                    emailService.sendSubscriptionRenewalNotification(
-                            sub.getProvider().getEmail(),
-                            sub.getProvider().getFirstName(),
-                            sub.getPlan().name(),
-                            sub.getDateExpiration().format(DATE_FORMATTER)
-                    );
+                    if (sub.getProvider().isNotificationsEnabled()) {
+                        emailService.sendSubscriptionRenewalNotification(
+                                sub.getProvider().getEmail(),
+                                sub.getProvider().getFirstName(),
+                                sub.getPlan().name(),
+                                sub.getDateExpiration().format(DATE_FORMATTER)
+                        );
+                    }
                     log.info("Abonnement Premium renouvelé avec succès pour le prestataire : {}", sub.getProvider().getEmail());
                 } else {
                     // En cas d'échec de paiement → Rétrogradation automatique au plan GRATUIT
@@ -160,10 +162,12 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                     subscriptionRepository.save(sub);
 
                     // Notifier par email de l'échec et du passage en GRATUIT
-                    emailService.sendSubscriptionRenewalFailedNotification(
-                            sub.getProvider().getEmail(),
-                            sub.getProvider().getFirstName()
-                    );
+                    if (sub.getProvider().isNotificationsEnabled()) {
+                        emailService.sendSubscriptionRenewalFailedNotification(
+                                sub.getProvider().getEmail(),
+                                sub.getProvider().getFirstName()
+                        );
+                    }
                     log.warn("Échec du paiement de renouvellement. Rétrogradation du prestataire : {}", sub.getProvider().getEmail());
                 }
             } catch (Exception e) {
@@ -183,10 +187,12 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 subscriptionRepository.save(sub);
 
                 // Notifier par email de la fin de l'abonnement Premium
-                emailService.sendSubscriptionExpiredNotification(
-                        sub.getProvider().getEmail(),
-                        sub.getProvider().getFirstName()
-                );
+                if (sub.getProvider().isNotificationsEnabled()) {
+                    emailService.sendSubscriptionExpiredNotification(
+                            sub.getProvider().getEmail(),
+                            sub.getProvider().getFirstName()
+                    );
+                }
                 log.info("Abonnement Premium expiré. Rétrogradation automatique du prestataire : {}", sub.getProvider().getEmail());
             } catch (Exception e) {
                 log.error("Erreur lors de la rétrogradation de l'abonnement expiré pour le prestataire ID : {}", sub.getProvider().getId(), e);
@@ -224,10 +230,12 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         subscriptionRepository.save(subscription);
 
         // Envoyer la notification par email au prestataire
-        emailService.sendSubscriptionCancellationNotification(
-                subscription.getProvider().getEmail(),
-                subscription.getProvider().getFirstName()
-        );
+        if (subscription.getProvider().isNotificationsEnabled()) {
+            emailService.sendSubscriptionCancellationNotification(
+                    subscription.getProvider().getEmail(),
+                    subscription.getProvider().getFirstName()
+            );
+        }
         log.info("Renouvellement automatique désactivé pour le prestataire ID : {}", providerId);
     }
 

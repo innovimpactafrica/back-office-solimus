@@ -30,4 +30,10 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
      */
     List<Meeting> findTop5ByResidenceIdAndStatusOrderByMeetingDateAsc(
             Long residenceId, MeetingStatus status);
+
+    /**
+     * Trouve les 2 prochaines réunions A_VENIR pour une résidence.
+     */
+    List<Meeting> findTop2ByResidenceIdAndStatusOrderByMeetingDateAsc(
+            Long residenceId, MeetingStatus status);
 }

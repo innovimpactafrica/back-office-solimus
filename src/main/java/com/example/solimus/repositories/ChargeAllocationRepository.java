@@ -64,6 +64,12 @@ public interface ChargeAllocationRepository extends JpaRepository<ChargeAllocati
             Long ownerId, Long propertyId, ChargeStatus status);
 
     /**
+     * Trouve les 2 premières allocations EN_ATTENTE d'un propriétaire pour un bien donné.
+     */
+    List<ChargeAllocation> findTop2ByOwnerIdAndPropertyIdAndStatusOrderByChargeDueDateAsc(
+            Long ownerId, Long propertyId, ChargeStatus status);
+
+    /**
      * Compte le nombre de documents de charges pour un propriétaire.
      */
     @Query("SELECT SUM(SIZE(c.documentUrls)) FROM Charge c JOIN c.allocations a WHERE a.owner.id = :ownerId")

@@ -148,6 +148,18 @@ public class User {
     @Column(name = "profile_photo_url")
     private String profilePhotoUrl;
 
+    // =========================================================================
+    // PRÉFÉRENCES DE NOTIFICATION
+    // =========================================================================
+
+    /**
+     * Indique si l'utilisateur souhaite recevoir les notifications par email.
+     * Par défaut : true (activé).
+     * Si false, seuls les emails critiques (sécurité, activation, reset password) sont envoyés.
+     */
+    @Column(name = "notifications_enabled", nullable = false)
+    private boolean notificationsEnabled = true;
+
 
     // =========================================================================
     // AUDIT (DATES AUTOMATIQUES)

@@ -376,12 +376,14 @@ public class SyndicServiceImpl implements SyndicService {
 
             nearbyProviders.forEach(provider -> {
                 try {
-                    emailService.sendInterventionNotification(
-                            provider.getEmail(),
-                            provider.getFirstName(),
-                            request.getTitle(),
-                            residence.getName()
-                    );
+                    if (provider.isNotificationsEnabled()) {
+                        emailService.sendInterventionNotification(
+                                provider.getEmail(),
+                                provider.getFirstName(),
+                                request.getTitle(),
+                                residence.getName()
+                        );
+                    }
                 } catch (Exception e) {
                     log.error("Erreur lors de l'envoi de notification email à {}", provider.getEmail());
                 }
@@ -504,12 +506,14 @@ public class SyndicServiceImpl implements SyndicService {
 
             nearbyProviders.forEach(provider -> {
                 try {
-                    emailService.sendInterventionNotification(
-                            provider.getEmail(),
-                            provider.getFirstName(),
-                            request.getTitle(),
-                            request.getResidence().getName()
-                    );
+                    if (provider.isNotificationsEnabled()) {
+                        emailService.sendInterventionNotification(
+                                provider.getEmail(),
+                                provider.getFirstName(),
+                                request.getTitle(),
+                                request.getResidence().getName()
+                        );
+                    }
                 } catch (Exception e) {
                     log.error("Erreur lors de l'envoi de l'email au prestataire {}", provider.getEmail(), e);
                 }

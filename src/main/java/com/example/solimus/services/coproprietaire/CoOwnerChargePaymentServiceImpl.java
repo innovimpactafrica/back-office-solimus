@@ -61,41 +61,52 @@ public class CoOwnerChargePaymentServiceImpl implements CoOwnerChargePaymentServ
                 "Cette charge est déjà payée");
         }
 
-        // 4. Vérifier qu'aucun paiement PENDING n'existe déjà
-        boolean paiementEnCours = chargePaymentRepository
-            .existsByAllocationIdAndStatus(
-                allocationId, PaymentStatus.PENDING);
+        // 4. Vérifier si un paiement existe déjà pour cette allocation
+        ChargePayment paiement = chargePaymentRepository
+            .findByAllocationId(allocationId)
+            .orElse(null);
 
-        if (paiementEnCours) {
-            throw new BadRequestException(
-                "Un paiement est déjà en cours pour cette charge");
+        if (paiement != null) {
+            if (paiement.getStatus() == PaymentStatus.PENDING) {
+                throw new BadRequestException(
+                    "Un paiement est déjà en cours pour cette charge");
+            }
+            if (paiement.getStatus() != PaymentStatus.FAILED) {
+                throw new BadRequestException(
+                    "Cette charge a déjà été traitée");
+            }
+            // Paiement FAILED → réinitialiser pour une nouvelle tentative
+            paiement.setReference(genererReference("CPY"));
+            paiement.setMethod(dto.getMethod());
+            paiement.setStatus(PaymentStatus.PENDING);
+            paiement.setPaidAt(null);
+        } else {
+            // 5. Générer la référence unique
+            String transactionRef = genererReference("CPY");
+
+            // 6. Créer le paiement en PENDING
+            paiement = new ChargePayment();
+            paiement.setReference(transactionRef);
+            paiement.setAllocation(allocation);
+            paiement.setOwner(currentOwner);
+            paiement.setAmount(allocation.getAmount());
+            paiement.setMethod(dto.getMethod());
+            paiement.setStatus(PaymentStatus.PENDING);
         }
-
-        // 5. Générer la référence unique
-        String transactionRef = genererReference("CPY");
-
-        // 6. Créer le paiement en PENDING
-        ChargePayment paiement = new ChargePayment();
-        paiement.setReference(transactionRef);
-        paiement.setAllocation(allocation);
-        paiement.setOwner(currentOwner);
-        paiement.setAmount(allocation.getAmount());
-        paiement.setMethod(dto.getMethod());
-        paiement.setStatus(PaymentStatus.PENDING);
 
         chargePaymentRepository.save(paiement);
 
         // 7. Construire l'URL bridge
         String bridgeUrl = String.format(
-            touchPayBridgeUrlTemplate, transactionRef);
+            touchPayBridgeUrlTemplate, paiement.getReference());
 
         log.info("Paiement charge {} initié — ref: {}",
-            allocationId, transactionRef);
+            allocationId, paiement.getReference());
 
         return ChargePaymentResponseDTO.builder()
             .success(true)
             .message("Paiement initié. Veuillez compléter via TouchPay.")
-            .transactionReference(transactionRef)
+            .transactionReference(paiement.getReference())
             .amount(allocation.getAmount())
             .paymentUrl(bridgeUrl)
             .build();

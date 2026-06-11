@@ -1,5 +1,6 @@
 package com.example.solimus.controllers;
 
+import com.example.solimus.dtos.meeting.MeetingCalendarDayDTO;
 import com.example.solimus.dtos.meeting.MeetingDetailDTO;
 import com.example.solimus.dtos.meeting.MeetingSummaryDTO;
 import com.example.solimus.services.coproprietaire.CoOwnerMeetingService;
@@ -42,5 +43,24 @@ public class OwnerMeetingController {
             @Parameter(description = "ID de la réunion")
             @PathVariable Long meetingId) {
         return ResponseEntity.ok(meetingService.getMeetingDetail(meetingId));
+    }
+
+    @Operation(summary = "Lister les réunions d'une résidence")
+    @GetMapping("/residence/{residenceId}")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    public ResponseEntity<List<MeetingSummaryDTO>> getMeetingsByResidence(
+            @PathVariable Long residenceId) {
+        return ResponseEntity.ok(meetingService.getMeetingsByResidence(residenceId));
+    }
+
+    @Operation(summary = "Vue calendrier — réunions groupées par jour pour un mois donné")
+    @GetMapping("/calendar/{residenceId}")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    public ResponseEntity<List<MeetingCalendarDayDTO>> getMeetingsCalendar(
+            @PathVariable Long residenceId,
+            @RequestParam int year,
+            @RequestParam int month) {
+        return ResponseEntity.ok(
+                meetingService.getMeetingsCalendar(residenceId, year, month));
     }
 }

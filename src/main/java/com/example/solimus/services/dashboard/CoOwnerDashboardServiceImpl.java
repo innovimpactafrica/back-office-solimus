@@ -68,9 +68,9 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
                         .build())
                 .collect(Collectors.toList());
 
-        // 4. Charges EN_ATTENTE (max 3)
+        // 4. Charges EN_ATTENTE (max 2)
         List<ChargeAllocation> pendingCharges = chargeAllocationRepository
-                .findTop3ByOwnerIdAndPropertyIdAndStatusOrderByChargeDueDateAsc(
+                .findTop2ByOwnerIdAndPropertyIdAndStatusOrderByChargeDueDateAsc(
                         currentOwner.getId(),
                         selectedProperty.getId(),
                         ChargeStatus.EN_ATTENTE
@@ -79,9 +79,9 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
                 .map(this::toChargeSummaryDTO)
                 .collect(Collectors.toList());
 
-        // 5. Prochaines réunions (max 5)
+        // 5. Prochaines réunions (max 2)
         List<Meeting> upcomingMeetings = meetingRepository
-                .findTop5ByResidenceIdAndStatusOrderByMeetingDateAsc(
+                .findTop2ByResidenceIdAndStatusOrderByMeetingDateAsc(
                         selectedProperty.getResidence().getId(),
                         MeetingStatus.A_VENIR
                 );

@@ -4,6 +4,9 @@ import com.example.solimus.dtos.intervention.CreateInterventionRequestDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestDTO;
 import com.example.solimus.dtos.intervention.NearbyProviderDTO;
 import com.example.solimus.dtos.intervention.SyndicQuoteDTO;
+import com.example.solimus.dtos.syndic.PayerAcompteDTO;
+import com.example.solimus.dtos.syndic.PaymentResponseDTO;
+import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.syndic.SyndicService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -16,10 +19,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.prepost.PreAuthorize;
+import jakarta.validation.Valid;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
@@ -130,5 +136,25 @@ public class SyndicInterventionController {
     @PostMapping("/interventions/{requestId}/assign")
     public ResponseEntity<InterventionRequestDTO> assignIntervention(@PathVariable Long requestId) {
         return ResponseEntity.ok(syndicService.assignIntervention(requestId));
+    }
+
+    // ==================== PAIEMENTS PAR LE SYNDIC ====================
+
+    @Operation(summary = "Payer un acompte pour une intervention gérée par le syndic", tags = {"4.c Syndic - Interventions"})
+    @PostMapping("/interventions/{requestId}/payer-acompte")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    public ResponseEntity<PaymentResponseDTO> payerAcompte(
+            @PathVariable Long requestId,
+            @RequestBody @Valid PayerAcompteDTO dto) {
+        return ResponseEntity.ok(syndicService.payerAcompte(requestId, dto));
+    }
+
+    @Operation(summary = "Valider les travaux et payer le solde", tags = {"4.c Syndic - Interventions"})
+    @PostMapping("/interventions/{requestId}/valider-solde")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    public ResponseEntity<PaymentResponseDTO> validerEtPayerSolde(
+            @PathVariable Long requestId,
+            @RequestBody @Valid ValiderTravauxDTO dto) {
+        return ResponseEntity.ok(syndicService.validerEtPayerSolde(requestId, dto));
     }
 }

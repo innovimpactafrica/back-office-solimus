@@ -15,6 +15,8 @@ import com.example.solimus.services.coproprietaire.OwnerInterventionService;
 import com.example.solimus.services.minio.MinioService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -71,6 +73,7 @@ public class OwnerInterventionController {
             @RequestParam("locationType") String locationType,
             @RequestParam(value = "managementMode", required = false) String managementMode,
             @RequestParam("urgencyLevel") String urgencyLevel,
+            @Parameter(description = "Photos de l'incident", array = @ArraySchema(schema = @Schema(type = "string", format = "binary")))
             @RequestParam(value = "photos", required = false) List<MultipartFile> photos) {
 
         CreateOwnerInterventionRequestDTO dto = CreateOwnerInterventionRequestDTO.builder()

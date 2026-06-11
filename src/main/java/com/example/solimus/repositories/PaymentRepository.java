@@ -1,12 +1,15 @@
 package com.example.solimus.repositories;
 
 import com.example.solimus.entities.Payment;
+import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.PaymentType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -17,6 +20,11 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     boolean existsByInterventionRequestIdAndType(Long requestId, PaymentType type);
     java.util.List<Payment> findAllByProviderIdOrderByCreatedAtDesc(Long providerId);
     Optional<Payment> findByReference(String reference);
+
+    /**
+     * Trouve les paiements PENDING créés avant une date donnée (pour expiration).
+     */
+    List<Payment> findByStatusAndCreatedAtBefore(PaymentStatus status, LocalDateTime createdAt);
 
     /**
      * Calcule le total des paiements validés reçus par un prestataire pour une date précise.
