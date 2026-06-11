@@ -717,8 +717,7 @@ public class AuthServiceImpl implements AuthService {
 
     /**
      * Vérifie et renseigne les informations spécifiques au copropriétaire.
-     * Un copropriétaire doit choisir sa résidence et son bien au moment de l'inscription.
-     * Le bien ne peut pas déjà avoir un propriétaire.
+     * L'affectation aux biens se fera après inscription (par le syndic ou via un flux de rattachement).
      */
     private void validateAndSetCoOwnerInfo(User user, RegisterRequestDTO dto) {
 
@@ -737,52 +736,6 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException(
                     "Les coordonnées GPS sont réservées aux prestataires.");
         }
-
-        // ---------------------------------------------------------------------
-        // Vérification des champs obligatoires
-        // ---------------------------------------------------------------------
-        if (dto.getResidenceId() == null) {
-            throw new BadRequestException(
-                    "La résidence est obligatoire pour un copropriétaire.");
-        }
-        if (dto.getPropertyId() == null) {
-            throw new BadRequestException(
-                    "L'appartement est obligatoire pour un copropriétaire à l'inscription.");
-        }
-
-        // ---------------------------------------------------------------------
-        // Vérification que la résidence existe
-        // ---------------------------------------------------------------------
-        residenceRepository.findById(dto.getResidenceId())
-                .orElseThrow(() -> new ResourceNotFoundException("Résidence non trouvée"));
-
-        // ---------------------------------------------------------------------
-        // Vérification que le bien existe et appartient bien à cette résidence
-        // ---------------------------------------------------------------------
-        Property property = propertyRepository.findById(dto.getPropertyId())
-                .orElseThrow(() -> new ResourceNotFoundException("Appartement non trouvé"));
-
-        if (!property.getResidence().getId().equals(dto.getResidenceId())) {
-            throw new BadRequestException(
-                    "L'appartement n'appartient pas à cette résidence.");
-        }
-
-        // ---------------------------------------------------------------------
-        // Vérification que le bien n'a pas déjà un propriétaire
-        // Un bien ne peut appartenir qu'à un seul copropriétaire à la fois
-        // ---------------------------------------------------------------------
-        if (property.getOwner() != null) {
-            throw new BadRequestException(
-                    "Cet appartement a déjà un propriétaire. " +
-                            "Contactez votre syndic pour plus d'informations."
-            );
-        }
-
-        // ---------------------------------------------------------------------
-        // Association du bien au nouveau copropriétaire
-        // ---------------------------------------------------------------------
-        property.setOwner(user);
-        propertyRepository.save(property);
     }
 
     /**

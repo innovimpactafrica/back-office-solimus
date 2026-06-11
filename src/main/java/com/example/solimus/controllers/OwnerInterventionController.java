@@ -38,20 +38,6 @@ public class OwnerInterventionController {
     private final OwnerInterventionService interventionService;
     private final MinioService minioService;
 
-    @Operation(summary = "Lister mes résidences pour créer un incident")
-    @GetMapping("/residences")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
-    public ResponseEntity<List<ResidenceDTO>> getMyResidences() {
-        return ResponseEntity.ok(interventionService.getMyResidences());
-    }
-
-    @Operation(summary = "Lister mes biens dans une résidence pour créer un incident")
-    @GetMapping("/residences/{residenceId}/properties")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
-    public ResponseEntity<List<PropertyDTO>> getMyPropertiesByResidence(@PathVariable Long residenceId) {
-        return ResponseEntity.ok(interventionService.getMyPropertiesByResidence(residenceId));
-    }
-
     @Operation(summary = "Trouver les prestataires proches de ma résidence")
     @GetMapping("/nearby-providers")
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
@@ -74,7 +60,7 @@ public class OwnerInterventionController {
             @RequestParam(value = "managementMode", required = false) String managementMode,
             @RequestParam("urgencyLevel") String urgencyLevel,
             @Parameter(description = "Photos de l'incident", array = @ArraySchema(schema = @Schema(type = "string", format = "binary")))
-            @RequestParam(value = "photos", required = false) List<MultipartFile> photos) {
+            @RequestPart(value = "photos", required = false) MultipartFile[] photos) {
 
         CreateOwnerInterventionRequestDTO dto = CreateOwnerInterventionRequestDTO.builder()
                 .title(title)

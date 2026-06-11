@@ -95,21 +95,7 @@ public class RegisterRequestDTO {
     private BigDecimal latitude;
 
     private BigDecimal longitude;
-
-
-    // =========================================================================
-    // INFORMATIONS SPÉCIFIQUES AU COPROPRIÉTAIRE
-    // =========================================================================
-
-    /**
-     * Résidence dans laquelle se trouve
-     * le copropriétaire.
-     */
-    private Long residenceId;
-
-    /**
-     * Bien (appartement, studio, local, etc.)
-     * appartenant au copropriétaire.
-     */
-    private Long propertyId;
 }
+
+
+   
