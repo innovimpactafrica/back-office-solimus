@@ -11,26 +11,36 @@ package com.example.solimus.enums;
 public enum FacilityType {
 
     /** Piscine — nombre + chauffée ou non */
-    PISCINE,
+    PISCINE("Piscine"),
 
     /** Ascenseur — nombre + capacité personnes */
-    ASCENSEUR,
+    ASCENSEUR("Ascenseur"),
 
     /** Couloir — nombre + étages concernés */
-    COULOIR,
+    COULOIR("Couloir"),
 
     /** Jardin — superficie + état */
-    JARDIN,
+    JARDIN("Jardin"),
 
     /** Parking & stationnement — places intérieures/extérieures + bornes recharge */
-    PARKING,
+    PARKING("Parking"),
 
     /** Jardins & espaces verts — mêmes champs que PARKING */
-    JARDINS_ESPACES_VERTS,
+    JARDINS_ESPACES_VERTS("Jardins et espaces verts"),
 
     /** Groupe électrogène — puissance KVA + type carburant */
-    GROUPE_ELECTROGENE,
+    GROUPE_ELECTROGENE("Groupe électrogène"),
 
     /** Réservoir d'eau — capacité litres + pompe de relevage */
-    RESERVOIR_EAU
+    RESERVOIR_EAU("Réservoir d'eau");
+
+    private final String label;
+
+    FacilityType(String label) {
+        this.label = label;
+    }
+
+    public String getLabel() {
+        return label;
+    }
 }

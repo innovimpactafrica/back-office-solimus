@@ -72,7 +72,7 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
         return commonFacilityRepository.findByResidenceId(residenceId).stream()
                 .map(cf -> CommonFacilityDTO.builder()
                         .id(cf.getId())
-                        .label(cf.getFacilityType().name())
+                        .label(cf.getFacilityType().getLabel())
                         .build())
                 .collect(Collectors.toList());
     }
