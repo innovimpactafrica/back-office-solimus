@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Data
@@ -24,6 +25,6 @@ public class CoOwnerDashboardDTO {
     private List<MeetingSummaryDTO> prochainesReunions;
     
     // Santé financière de la résidence
-    private java.math.BigDecimal soldeActuelResidence;
-    private java.math.BigDecimal montantArrieresResidence;
+    private BigDecimal soldeActuelResidence;
+    private BigDecimal montantArrieresResidence;
 }

@@ -1,6 +1,8 @@
 package com.example.solimus.dtos.intervention;
 
 import com.example.solimus.enums.InterventionStatus;
+import com.example.solimus.enums.UrgencyLevel;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,14 +20,46 @@ public class OwnerInterventionDetailDTO {
     private Long id;
     private String title;
     private String description;
+
+    // Localisation
     private String residenceName;
-    private String propertyReference;
-    private InterventionStatus status;
-    private String specialtyName;
-    private List<String> photoUrls;
-    private ProviderInfoDTO selectedProvider;
-    private List<OwnerTimelineStepDTO> timeline;
+
+    // CAS APPARTEMENT → type de bien (ex: "Appartement T3")
+    // CAS PARTIE_COMMUNE → null
+    private String typeBien;
+
+    // CAS PARTIE_COMMUNE → nom partie commune (ex: "Ascenseur Bloc A")
+    // CAS APPARTEMENT → null
+    private String commonFacilityName;
+
+    // Date et heure de signalement
+    @JsonFormat(pattern = "dd/MM/yyyy HH:mm")
     private LocalDateTime createdAt;
+
+    // Statut lisible (ex: "Intervention en cours")
+    private String statusLabel;
+    private InterventionStatus status;
+
+    // Urgence lisible (ex: "Urgent")
+    private String urgencyLabel;
+    private UrgencyLevel urgencyLevel;
+
+    // Catégorie = spécialité (ex: "Plomberie")
+    private String specialtyName;
+    private String specialtyIcon;
+
+    // Photos du problème
+    private List<String> photoUrls;
+
+    // Prestataire affecté — null tant qu'aucun devis accepté
+    private ProviderInfoDTO selectedProvider;
+
+    // Timeline de suivi
+    private List<OwnerTimelineStepDTO> timeline;
+
+    @JsonFormat(pattern = "dd/MM/yyyy HH:mm")
     private LocalDateTime startedAt;
+
+    @JsonFormat(pattern = "dd/MM/yyyy HH:mm")
     private LocalDateTime finishedAt;
 }

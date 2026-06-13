@@ -15,6 +15,7 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @AllArgsConstructor
 public class QuoteSummaryDTO {
+    private Long id;                // ID numérique du devis
     private String reference;       // "DEV-584729"
     private String titre;           // "Réparation fuite d'eau"
     private String residenceName;   // "Résidence Les Palmiers"

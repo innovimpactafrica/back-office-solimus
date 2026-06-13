@@ -126,18 +126,14 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
     }
 
     private MeetingSummaryDTO toMeetingSummaryDTO(Meeting meeting) {
-        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm");
-        String timeRange = meeting.getMeetingDate() != null
-                ? meeting.getMeetingDate().format(timeFormatter) + " - " + 
-                  meeting.getMeetingDate().plusHours(2).format(timeFormatter)
-                : "";
-
         return MeetingSummaryDTO.builder()
                 .id(meeting.getId())
                 .title(meeting.getTitle())
                 .type(meeting.getType())
                 .status(meeting.getStatus())
                 .meetingDate(meeting.getMeetingDate())
+                .meetingStartTime(meeting.getStartTime() != null ? meeting.getStartTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) : null)
+                .meetingEndTime(meeting.getEndTime() != null ? meeting.getEndTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) : null)
                 .location(meeting.getLocation())
                 .participantCount(meeting.getParticipants() != null ? meeting.getParticipants().size() : 0)
                 .documentCount(meeting.getDocuments() != null ? meeting.getDocuments().size() : 0)

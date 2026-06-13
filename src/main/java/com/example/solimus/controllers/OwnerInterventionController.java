@@ -1,10 +1,6 @@
 package com.example.solimus.controllers;
 
-import com.example.solimus.dtos.intervention.CreateOwnerInterventionRequestDTO;
-import com.example.solimus.dtos.intervention.NearbyProviderDTO;
-import com.example.solimus.dtos.intervention.OwnerInterventionDetailDTO;
-import com.example.solimus.dtos.intervention.OwnerInterventionSummaryDTO;
-import com.example.solimus.dtos.intervention.SyndicQuoteDTO;
+import com.example.solimus.dtos.intervention.*;
 import com.example.solimus.dtos.residence.PropertyDTO;
 import com.example.solimus.dtos.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
@@ -18,6 +14,8 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
+
+import java.util.Map;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -123,12 +121,35 @@ public class OwnerInterventionController {
 
     // ==================== GESTION DES DEVIS ====================
 
+    @Operation(summary = "Nombre de devis reçus pour une intervention")
+    @GetMapping("/{interventionId}/quotes/count")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    public ResponseEntity<Map<String, Integer>> getQuotesCount(
+            @PathVariable Long interventionId) {
+        return ResponseEntity.ok(
+            Map.of("total", interventionService.getQuotesCount(interventionId))
+        );
+    }
+
     @Operation(summary = "Lister les devis reçus pour une intervention")
     @GetMapping("/{interventionId}/quotes")
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
-    public ResponseEntity<List<SyndicQuoteDTO>> getQuotesByIntervention(
+    public ResponseEntity<List<CoOwnerQuoteCardDTO>> getQuotesByIntervention(
             @PathVariable Long interventionId) {
-        return ResponseEntity.ok(interventionService.getQuotesByIntervention(interventionId));
+        return ResponseEntity.ok(
+            interventionService.getQuotesByIntervention(interventionId)
+        );
+    }
+
+    @Operation(summary = "Détail d'un devis")
+    @GetMapping("/{interventionId}/quotes/{quoteId}")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    public ResponseEntity<CoOwnerQuoteDetailDTO> getQuoteDetail(
+            @PathVariable Long interventionId,
+            @PathVariable Long quoteId) {
+        return ResponseEntity.ok(
+            interventionService.getQuoteDetail(interventionId, quoteId)
+        );
     }
 
     @Operation(summary = "Accepter un devis et valider le prestataire")

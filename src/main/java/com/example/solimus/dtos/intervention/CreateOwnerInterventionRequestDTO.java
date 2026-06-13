@@ -29,6 +29,11 @@ public class CreateOwnerInterventionRequestDTO {
 
     private Long propertyId;
 
+    /**
+     * ID de la partie commune concernée (obligatoire si locationType = PARTIE_COMMUNE)
+     */
+    private Long commonFacilityId;
+
     @NotNull(message = "La spécialité est obligatoire")
     private Long specialtyId;
 

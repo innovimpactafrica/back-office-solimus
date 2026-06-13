@@ -10,7 +10,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.LocalDate;
+import java.time.LocalTime;
 
 @Data
 @Builder
@@ -28,7 +29,13 @@ public class CreateMeetingDTO {
 
     @NotNull(message = "La date de réunion est obligatoire")
     @Future(message = "La date de réunion doit être dans le futur")
-    private LocalDateTime meetingDate;
+    private LocalDate meetingDate;
+
+    @NotNull(message = "L'heure de début est obligatoire")
+    private LocalTime startTime;
+
+    @NotNull(message = "L'heure de fin est obligatoire")
+    private LocalTime endTime;
 
     @NotBlank(message = "Le lieu est obligatoire")
     private String location;

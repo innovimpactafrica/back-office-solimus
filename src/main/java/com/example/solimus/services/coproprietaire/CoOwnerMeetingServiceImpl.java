@@ -1,17 +1,11 @@
 package com.example.solimus.services.coproprietaire;
 
 import com.example.solimus.dtos.meeting.*;
-import com.example.solimus.entities.Meeting;
-import com.example.solimus.entities.MeetingParticipant;
-import com.example.solimus.entities.Residence;
-import com.example.solimus.entities.User;
+import com.example.solimus.entities.*;
 import com.example.solimus.enums.ParticipantRole;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
-import com.example.solimus.repositories.MeetingParticipantRepository;
-import com.example.solimus.repositories.MeetingRepository;
-import com.example.solimus.repositories.ResidenceRepository;
-import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.repositories.*;
 import com.example.solimus.services.coproprietaire.CoOwnerMeetingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +30,7 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
     private final UserRepository userRepository;
     private final MeetingParticipantRepository participantRepository;
     private final ResidenceRepository residenceRepository;
+    private final PropertyRepository propertyRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -80,10 +76,16 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<MeetingCalendarDayDTO> getMeetingsCalendar(Long residenceId,
-                                                            int year, int month) {
-        Residence residence = residenceRepository.findById(residenceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+    public List<MeetingCalendarDayDTO> getMeetingsCalendar(int year, int month) {
+        User currentOwner = getCurrentUser();
+
+        // Récupérer la résidence du copropriétaire via son bien
+        Property property = propertyRepository
+                .findFirstByOwnerId(currentOwner.getId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Aucun bien trouvé pour ce copropriétaire"));
+
+        Residence residence = property.getResidence();
 
         // Bornes du mois demandé
         LocalDate start = LocalDate.of(year, month, 1);
@@ -91,13 +93,13 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
 
         List<Meeting> meetings = meetingRepository
                 .findByResidenceAndMeetingDateBetween(residence,
-                        start.atStartOfDay(),
-                        end.atTime(23, 59, 59));
+                        start,
+                        end);
 
         // Grouper par jour
         Map<LocalDate, List<Meeting>> grouped = meetings.stream()
                 .collect(Collectors.groupingBy(
-                        m -> m.getMeetingDate().toLocalDate()));
+                        m -> m.getMeetingDate()));
 
         // Construire la liste triée par date
         return grouped.entrySet().stream()
@@ -115,7 +117,7 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
     @Transactional(readOnly = true)
     public long getUpcomingMeetingsCount() {
         User currentOwner = getCurrentUser();
-        LocalDateTime now = LocalDateTime.now();
+        LocalDate now = LocalDate.now();
 
         List<MeetingParticipant> participations = participantRepository.findByUserId(currentOwner.getId());
 
@@ -130,7 +132,10 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
             .title(meeting.getTitle())
             .type(meeting.getType())
             .status(meeting.getStatus())
+            // Date séparée de l'heure
             .meetingDate(meeting.getMeetingDate())
+            .meetingStartTime(meeting.getStartTime() != null ? meeting.getStartTime().format(DateTimeFormatter.ofPattern("HH:mm")) : null)
+            .meetingEndTime(meeting.getEndTime() != null ? meeting.getEndTime().format(DateTimeFormatter.ofPattern("HH:mm")) : null)
             .location(meeting.getLocation())
             .participantCount(meeting.getParticipants().size())
             .documentCount(meeting.getDocuments().size())
@@ -173,6 +178,8 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
             .status(meeting.getStatus())
             .mode(meeting.getMode())
             .meetingDate(meeting.getMeetingDate())
+            .meetingStartTime(meeting.getStartTime() != null ? meeting.getStartTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) : null)
+            .meetingEndTime(meeting.getEndTime() != null ? meeting.getEndTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) : null)
             .organizerName(meeting.getSyndic().getFirstName() + " " + meeting.getSyndic().getLastName())
             .description(meeting.getDescription())
             .participantCount(allParticipants.size())

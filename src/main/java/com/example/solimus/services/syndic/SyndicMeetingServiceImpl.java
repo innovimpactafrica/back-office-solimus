@@ -20,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -68,6 +69,8 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         meeting.setType(dto.getType());
         meeting.setStatus(MeetingStatus.A_VENIR); // statut par défaut
         meeting.setMeetingDate(dto.getMeetingDate());
+        meeting.setStartTime(dto.getStartTime());
+        meeting.setEndTime(dto.getEndTime());
         meeting.setLocation(dto.getLocation());
         meeting.setMode(dto.getMode());
         meeting.setResidence(residence);
@@ -278,13 +281,13 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
 
         List<Meeting> meetings = meetingRepository
                 .findByResidenceAndMeetingDateBetween(residence,
-                        start.atStartOfDay(),
-                        end.atTime(23, 59, 59));
+                        start,
+                        end);
 
         // Grouper par jour
         Map<LocalDate, List<Meeting>> grouped = meetings.stream()
                 .collect(Collectors.groupingBy(
-                        m -> m.getMeetingDate().toLocalDate()));
+                        m -> m.getMeetingDate()));
 
         // Construire la liste triée par date
         return grouped.entrySet().stream()
@@ -377,6 +380,8 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
                 .type(meeting.getType())
                 .status(meeting.getStatus())
                 .meetingDate(meeting.getMeetingDate())
+                .meetingStartTime(meeting.getStartTime() != null ? meeting.getStartTime().format(DateTimeFormatter.ofPattern("HH:mm")) : null)
+                .meetingEndTime(meeting.getEndTime() != null ? meeting.getEndTime().format(DateTimeFormatter.ofPattern("HH:mm")) : null)
                 .location(meeting.getLocation())
                 .participantCount(meeting.getParticipants().size())
                 .documentCount(meeting.getDocuments().size())
@@ -427,6 +432,8 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
                 .status(meeting.getStatus())
                 .mode(meeting.getMode())
                 .meetingDate(meeting.getMeetingDate())
+                .meetingStartTime(meeting.getStartTime() != null ? meeting.getStartTime().format(DateTimeFormatter.ofPattern("HH:mm")) : null)
+                .meetingEndTime(meeting.getEndTime() != null ? meeting.getEndTime().format(DateTimeFormatter.ofPattern("HH:mm")) : null)
                 .organizerName(organizerName)
                 .description(meeting.getDescription())
                 .participantCount(allParticipants.size())

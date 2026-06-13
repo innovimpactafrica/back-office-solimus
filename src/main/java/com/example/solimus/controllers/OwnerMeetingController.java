@@ -54,13 +54,12 @@ public class OwnerMeetingController {
     }
 
     @Operation(summary = "Vue calendrier — réunions groupées par jour pour un mois donné")
-    @GetMapping("/calendar/{residenceId}")
+    @GetMapping("/calendar")
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     public ResponseEntity<List<MeetingCalendarDayDTO>> getMeetingsCalendar(
-            @PathVariable Long residenceId,
             @RequestParam int year,
             @RequestParam int month) {
         return ResponseEntity.ok(
-                meetingService.getMeetingsCalendar(residenceId, year, month));
+                meetingService.getMeetingsCalendar(year, month));
     }
 }

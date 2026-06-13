@@ -5,6 +5,7 @@ import com.example.solimus.enums.IncidentLocationType;
 import com.example.solimus.enums.InterventionManagementMode;
 import com.example.solimus.enums.InterventionStatus;
 import com.example.solimus.enums.UrgencyLevel;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,6 +23,7 @@ public class InterventionRequestDTO {
     private String title;
     private String description;
     private InterventionStatus status;
+    private String statusLabel;
     private InitiatedBy initiatedBy;
     private IncidentLocationType locationType;
     private InterventionManagementMode managementMode;
@@ -38,12 +40,12 @@ public class InterventionRequestDTO {
     private List<InterventionCommentDTO> comments;
     private List<InterventionStatusHistoryDTO> history;
     private List<WorkflowStepDTO> workflowSteps;
-    @com.fasterxml.jackson.annotation.JsonFormat(pattern = "dd/MM/yyyy HH:mm")
+    @JsonFormat(pattern = "dd/MM/yyyy HH:mm")
     private LocalDateTime createdAt;
 
-    @com.fasterxml.jackson.annotation.JsonFormat(pattern = "dd/MM/yyyy HH:mm")
+    @JsonFormat(pattern = "dd/MM/yyyy HH:mm")
     private LocalDateTime startedAt;
 
-    @com.fasterxml.jackson.annotation.JsonFormat(pattern = "dd/MM/yyyy HH:mm")
+    @JsonFormat(pattern = "dd/MM/yyyy HH:mm")
     private LocalDateTime finishedAt;
 }

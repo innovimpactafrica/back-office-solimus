@@ -121,6 +121,18 @@ public class User {
     @Column(name = "is_available", nullable = false)
     private boolean isAvailable = true;
 
+    /**
+     * Indique si le prestataire a été vérifié/validé par l'admin.
+     */
+    @Column(name = "is_verified", nullable = false)
+    private boolean isVerified = false;
+
+    /**
+     * Nombre d'interventions réalisées par le prestataire.
+     */
+    @Column(name = "intervention_count")
+    private Integer interventionCount = 0;
+
     // =========================================================================
     // RÔLE ET ÉTAT DU COMPTE
     // =========================================================================

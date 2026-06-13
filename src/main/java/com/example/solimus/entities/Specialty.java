@@ -24,4 +24,10 @@ public class Specialty {
 
     @Column(columnDefinition = "TEXT")
     private String description;
+
+    /**
+     * Nom de l'icône pour l'affichage frontend (ex: "plumbing", "electrical")
+     * Le frontend mappe ce nom vers une icône locale.
+     */
+    private String icon;
 }

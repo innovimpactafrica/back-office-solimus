@@ -60,10 +60,20 @@
                     ? "Le paiement a été marqué comme échoué."
                     : "Paiement échoué, mais la mise à jour backend a échoué.";
 
+                  // 📱 Redirection vers l'application mobile même en cas d'erreur , on ajoute la référence car ça permet  de savoir quel paiement a réussi/échoué  et d'afficher les détails si nécessaire
+                // setTimeout(() => {
+                //     window.location.href = `solimus://payment-failed?ref=${reference}`;
+                // }, 1000);
+
             } catch (error) {
                 // 🔴 Erreur réseau / backend inaccessible
                 document.getElementById('message').innerText =
                     "Paiement échoué, mais impossible de contacter le backend.";
+
+                // 📱 Redirection vers l'application mobile même en cas d'erreur , on ajoute la référence car ça permet  de savoir quel paiement a réussi/échoué  et d'afficher les détails si nécessaire
+                // setTimeout(() => {
+                //     window.location.href = `solimus://payment-failed?ref=${reference}`;
+                // }, 1000);
             }
         }
 

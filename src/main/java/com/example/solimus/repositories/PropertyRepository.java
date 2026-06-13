@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface PropertyRepository extends JpaRepository<Property, Long> {
@@ -20,6 +21,9 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
 
     // Lister tous les biens d'un propriétaire donné
     List<Property> findAllByOwnerId(Long ownerId);
+
+    // Trouver le premier bien d'un propriétaire donné
+    Optional<Property> findFirstByOwnerId(Long ownerId);
 
     // Compter les biens d'un propriétaire donné
     long countByOwnerId(Long ownerId);

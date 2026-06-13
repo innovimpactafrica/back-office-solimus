@@ -10,6 +10,8 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,7 +39,9 @@ public class Meeting {
     @Enumerated(EnumType.STRING)
     private MeetingStatus status;
 
-    private LocalDateTime meetingDate;
+    private LocalDate meetingDate;
+    private LocalTime startTime;
+    private LocalTime endTime;
 
     private String location;
 

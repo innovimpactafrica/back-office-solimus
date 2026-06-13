@@ -16,7 +16,8 @@ import java.time.LocalDateTime;
 public class InterventionStatusHistoryDTO {
     private Long id;
     private InterventionStatus status;
-    
+    private String statusLabel;
+
     @JsonFormat(pattern = "dd/MM/yyyy HH:mm")
     private LocalDateTime createdAt;
 }

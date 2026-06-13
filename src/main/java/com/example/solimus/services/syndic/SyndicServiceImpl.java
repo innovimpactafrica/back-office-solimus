@@ -810,10 +810,11 @@ public class SyndicServiceImpl implements SyndicService {
             residentEmail = owner.getEmail();
         }
         
-        List<InterventionStatusHistoryDTO> historyDTOs = request.getHistory() != null 
+        List<InterventionStatusHistoryDTO> historyDTOs = request.getHistory() != null
             ? request.getHistory().stream().map(h -> InterventionStatusHistoryDTO.builder()
                 .id(h.getId())
                 .status(h.getStatus())
+                .statusLabel(h.getStatus() != null ? h.getStatus().getLabel() : null)
                 .createdAt(h.getCreatedAt())
                 .build()).collect(Collectors.toList())
             : new ArrayList<>();
@@ -827,6 +828,7 @@ public class SyndicServiceImpl implements SyndicService {
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .status(request.getStatus())
+                .statusLabel(request.getStatus() != null ? request.getStatus().getLabel() : null)
                 .initiatedBy(request.getInitiatedBy())
                 .locationType(request.getLocationType())
                 .managementMode(request.getManagementMode())

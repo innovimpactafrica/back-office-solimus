@@ -62,7 +62,7 @@ public class AdminServiceImpl implements AdminService {
     @Override
     public List<SpecialtyDTO> getAllSpecialties() {
         return specialtyRepository.findAll().stream()
-                .map(s -> new SpecialtyDTO(s.getId(), s.getName(), s.getDescription()))
+                .map(s -> new SpecialtyDTO(s.getId(), s.getName(), s.getDescription(), s.getIcon()))
                 .collect(Collectors.toList());
     }
 
@@ -77,8 +77,9 @@ public class AdminServiceImpl implements AdminService {
         Specialty specialty = new Specialty();
         specialty.setName(dto.getName());
         specialty.setDescription(dto.getDescription());
+        specialty.setIcon(dto.getIcon());
         Specialty saved = specialtyRepository.save(specialty);
-        return new SpecialtyDTO(saved.getId(), saved.getName(), saved.getDescription());
+        return new SpecialtyDTO(saved.getId(), saved.getName(), saved.getDescription(), saved.getIcon());
     }
 
     @Override
@@ -94,9 +95,10 @@ public class AdminServiceImpl implements AdminService {
 
         specialty.setName(dto.getName());
         specialty.setDescription(dto.getDescription());
+        specialty.setIcon(dto.getIcon());
         
         Specialty updated = specialtyRepository.save(specialty);
-        return new SpecialtyDTO(updated.getId(), updated.getName(), updated.getDescription());
+        return new SpecialtyDTO(updated.getId(), updated.getName(), updated.getDescription(), updated.getIcon());
     }
 
     @Override

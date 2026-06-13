@@ -2,6 +2,7 @@ package com.example.solimus.services.coproprietaire;
 
 import com.example.solimus.dtos.admin.SpecialtyDTO;
 import com.example.solimus.dtos.intervention.*;
+import com.example.solimus.dtos.provider.QuoteLineDTO;
 import com.example.solimus.dtos.residence.CommonFacilityDTO;
 import com.example.solimus.dtos.residence.PropertyDTO;
 import com.example.solimus.dtos.residence.ResidenceDTO;
@@ -35,6 +36,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -62,7 +64,7 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
     @Transactional(readOnly = true)
     public List<SpecialtyDTO> getAllSpecialties() {
         return specialtyRepository.findAll().stream()
-                .map(s -> new SpecialtyDTO(s.getId(), s.getName(), null))
+                .map(s -> new SpecialtyDTO(s.getId(), s.getName(), null, s.getIcon()))
                 .collect(Collectors.toList());
     }
 
@@ -144,20 +146,37 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
 
         // Règles selon le type d'incident
         if (dto.getLocationType() == IncidentLocationType.PARTIE_COMMUNE) {
-            // PARTIE_COMMUNE : pas de bien, gestion forcée par syndic
+            // PARTIE_COMMUNE : pas de bien, gestion forcée par syndic, partie commune obligatoire
             if (dto.getPropertyId() != null) {
                 throw new BadRequestException("Pour un incident de type PARTIE_COMMUNE, aucun bien ne doit être spécifié");
+            }
+            if (dto.getCommonFacilityId() == null) {
+                throw new BadRequestException("Pour un incident de type PARTIE_COMMUNE, la partie commune concernée doit être spécifiée");
             }
             if (dto.getManagementMode() == InterventionManagementMode.OWNER) {
                 throw new BadRequestException("Le copropriétaire ne peut pas gérer les parties communes. Le mode de gestion doit être SYNDIC.");
             }
+
+            // Récupérer et vérifier la partie commune
+            CommonFacility commonFacility = commonFacilityRepository.findById(dto.getCommonFacilityId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Partie commune introuvable"));
+
+            // Vérifier que la partie commune appartient à la résidence
+            if (commonFacility.getResidence() == null || !commonFacility.getResidence().getId().equals(dto.getResidenceId())) {
+                throw new BadRequestException("Cette partie commune n'appartient pas à cette résidence");
+            }
+
             request.setProperty(null);
+            request.setCommonFacility(commonFacility);
             request.setManagementMode(InterventionManagementMode.SYNDIC);
             request.setSyndic(residence.getSyndic());
         } else if (dto.getLocationType() == APPARTEMENT) {
-            // APPARTEMENT : bien obligatoire
+            // APPARTEMENT : bien obligatoire, pas de partie commune
             if (dto.getPropertyId() == null) {
                 throw new BadRequestException("Pour un incident de type APPARTEMENT, un bien doit être spécifié");
+            }
+            if (dto.getCommonFacilityId() != null) {
+                throw new BadRequestException("Pour un incident de type APPARTEMENT, aucune partie commune ne doit être spécifiée");
             }
 
             // Vérifier que le bien appartient au copropriétaire et à la résidence
@@ -167,6 +186,7 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
                     .orElseThrow(() -> new ForbiddenException("Ce bien ne vous appartient pas ou n'est pas dans cette résidence"));
 
             request.setProperty(property);
+            request.setCommonFacility(null);
 
             // Gestion : OWNER ou SYNDIC
             if (dto.getManagementMode() == null) {
@@ -319,13 +339,43 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
     }
 
     private OwnerInterventionSummaryDTO mapToSummaryDTO(InterventionRequest request) {
+
+        // Déterminer si c'est un incident appartement ou partie commune
+        boolean isPartieCommune = request.getLocationType() == IncidentLocationType.PARTIE_COMMUNE;
+
         return OwnerInterventionSummaryDTO.builder()
                 .id(request.getId())
                 .title(request.getTitle())
                 .residenceName(request.getResidence().getName())
-                .propertyReference(request.getProperty() != null ? request.getProperty().getReference() : null)
-                .specialtyName(request.getSpecialty() != null ? request.getSpecialty().getName() : null)
+
+                // CAS APPARTEMENT → type de bien
+                .typeBien(!isPartieCommune && request.getProperty() != null
+                        ? request.getProperty().getTypeBien().getLabel()
+                        : null)
+
+                // CAS PARTIE COMMUNE → nom de la partie commune
+                .commonFacilityName(isPartieCommune && request.getCommonFacility() != null
+                        ? request.getCommonFacility().getFacilityType().getLabel()
+                        : null)
+
+                // Spécialité
+                .specialtyName(request.getSpecialty() != null
+                        ? request.getSpecialty().getName()
+                        : null)
+                .specialtyIcon(request.getSpecialty() != null
+                        ? request.getSpecialty().getIcon()
+                        : null)
+
+                // Statut avec label lisible
+                .statusLabel(request.getStatus().getLabel())
                 .status(request.getStatus())
+
+                // Urgence avec label lisible
+                .urgencyLabel(request.getUrgencyLevel() != null
+                        ? request.getUrgencyLevel().getLabel()
+                        : null)
+                .urgencyLevel(request.getUrgencyLevel())
+
                 .createdAt(request.getCreatedAt())
                 .build();
     }
@@ -342,18 +392,40 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
                     .build();
         }
 
+        // Déterminer si c'est un incident appartement ou partie commune
+        boolean isPartieCommune = request.getLocationType() == IncidentLocationType.PARTIE_COMMUNE;
+
+        // CAS APPARTEMENT → type de bien
+        // CAS PARTIE_COMMUNE → null
+        String typeBien = null;
+        if (!isPartieCommune && request.getProperty() != null && request.getProperty().getTypeBien() != null) {
+            typeBien = request.getProperty().getTypeBien().getLabel();
+        }
+
+        // CAS PARTIE_COMMUNE → nom de la partie commune
+        // CAS APPARTEMENT → null
+        String commonFacilityName = null;
+        if (isPartieCommune && request.getCommonFacility() != null) {
+            commonFacilityName = request.getCommonFacility().getFacilityType().getLabel();
+        }
+
         return OwnerInterventionDetailDTO.builder()
                 .id(request.getId())
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .residenceName(request.getResidence().getName())
-                .propertyReference(request.getProperty() != null ? request.getProperty().getReference() : null)
+                .typeBien(typeBien)
+                .commonFacilityName(commonFacilityName)
+                .createdAt(request.getCreatedAt())
+                .statusLabel(request.getStatus() != null ? request.getStatus().getLabel() : null)
                 .status(request.getStatus())
+                .urgencyLabel(request.getUrgencyLevel() != null ? request.getUrgencyLevel().getLabel() : null)
+                .urgencyLevel(request.getUrgencyLevel())
                 .specialtyName(request.getSpecialty() != null ? request.getSpecialty().getName() : null)
+                .specialtyIcon(request.getSpecialty() != null ? request.getSpecialty().getIcon() : null)
                 .photoUrls(request.getPhotoUrls() != null ? new ArrayList<>(request.getPhotoUrls()) : new ArrayList<>())
                 .selectedProvider(selectedProviderInfo)
                 .timeline(buildTimeline(request))
-                .createdAt(request.getCreatedAt())
                 .startedAt(request.getStartedAt())
                 .finishedAt(request.getFinishedAt())
                 .build();
@@ -409,22 +481,206 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
         return 0.0;
     }
 
+    // =========================================================================
+    // GESTION DES DEVIS — CÔTÉ COPROPRIÉTAIRE
+    // =========================================================================
+
     @Override
     @Transactional(readOnly = true)
-    public List<SyndicQuoteDTO> getQuotesByIntervention(Long interventionId) {
-        // Vérifier que l'intervention appartient au copropriétaire
+    public List<CoOwnerQuoteCardDTO> getQuotesByIntervention(Long interventionId) {
+
+        // 1. Vérifier que l'intervention existe et appartient au copropriétaire
         InterventionRequest request = interventionRepository.findById(interventionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
-        
+
         User currentOwner = getCurrentUser();
         if (!request.getOwner().getId().equals(currentOwner.getId())) {
             throw new ForbiddenException("Accès non autorisé à cette intervention");
         }
-        
-        List<Quote> quotes = quoteRepository.findAllByInterventionRequestOrderByTotalAmountAsc(request);
-        return quotes.stream()
-                .map(this::mapToSyndicQuoteDTO)
+
+        // 2. Récupérer uniquement les devis envoyés (pas les brouillons)
+        List<Quote> quotes = quoteRepository
+                .findAllByInterventionRequestOrderByTotalAmountAsc(request)
+                .stream()
+                .filter(q -> q.getStatus() != QuoteStatus.DRAFT)
                 .collect(Collectors.toList());
+
+        if (quotes.isEmpty()) return List.of();
+
+        // 3. Prix max pour normaliser le score prix
+        double maxAmount = quotes.stream()
+                .mapToDouble(q -> q.getTotalAmount().doubleValue())
+                .max()
+                .orElse(1.0);
+
+        // 4. Mapper chaque devis avec son score
+        List<CoOwnerQuoteCardDTO> cards = quotes.stream()
+                .map(quote -> {
+
+                    Double noteMoyenne = providerRatingRepository
+                            .calculerNoteMoyenne(quote.getProvider().getId());
+                    double rating = noteMoyenne != null ? noteMoyenne : 0.0;
+
+                    int reviewCount = (int) providerRatingRepository
+                            .countByProviderId(quote.getProvider().getId());
+
+                    // Score prix 40% + note 40% + délai 20%
+                    double scorePrix = 1.0 - (quote.getTotalAmount().doubleValue() / maxAmount);
+                    double scoreNote = rating / 5.0;
+                    double scoreDelai = quote.getEstimatedDelay() != null
+                            ? 1.0 - (quote.getEstimatedDelay().getDays() / 30.0)
+                            : 0.0;
+                    double scoreFinal = (scorePrix * 0.40) + (scoreNote * 0.40) + (scoreDelai * 0.20);
+                    int scoreQualitePrix = (int) Math.round(scoreFinal * 100);
+
+                    return CoOwnerQuoteCardDTO.builder()
+                            .id(quote.getId())
+                            .providerId(quote.getProvider().getId())
+                            .providerName(quote.getProvider().getFirstName()
+                                    + " " + quote.getProvider().getLastName())
+                            .companyName(quote.getProvider().getCompanyName())
+                            .providerPhotoUrl(quote.getProvider().getProfilePhotoUrl())
+                            .providerCity(quote.getProvider().getInterventionZone())
+                            .providerRating(rating)
+                            .reviewCount(reviewCount)
+                            .totalAmount(quote.getTotalAmount())
+                            .estimatedDelayLabel(quote.getEstimatedDelay() != null
+                                    ? quote.getEstimatedDelay().getLabel() : "N/A")
+                            .isVerified(quote.getProvider().isVerified())
+                            .isBestOffer(false) // défini après
+                            .scoreQualitePrix(scoreQualitePrix)
+                            .scoreFinal(scoreFinal) // temporaire pour tri
+                            .status(quote.getStatus())
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        // 5. Badge RECOMMANDÉ → meilleur score
+        cards.stream()
+                .max(Comparator.comparingDouble(CoOwnerQuoteCardDTO::getScoreFinal))
+                .ifPresent(best -> best.setBestOffer(true));
+
+        // 6. Trier par score décroissant (le recommandé en premier)
+        cards.sort(Comparator.comparingDouble(CoOwnerQuoteCardDTO::getScoreFinal).reversed());
+
+        return cards;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CoOwnerQuoteDetailDTO getQuoteDetail(Long interventionId, Long quoteId) {
+
+        // 1. Vérifier l'intervention et l'accès
+        InterventionRequest request = interventionRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        User currentOwner = getCurrentUser();
+        if (!request.getOwner().getId().equals(currentOwner.getId())) {
+            throw new ForbiddenException("Accès non autorisé à cette intervention");
+        }
+
+        // 2. Récupérer le devis
+        Quote quote = quoteRepository.findById(quoteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Devis introuvable"));
+
+        // 3. Vérifier que le devis appartient bien à cette intervention
+        if (!quote.getInterventionRequest().getId().equals(interventionId)) {
+            throw new BadRequestException("Ce devis n'appartient pas à cette intervention");
+        }
+
+        User provider = quote.getProvider();
+
+        Double noteMoyenne = providerRatingRepository.calculerNoteMoyenne(provider.getId());
+        double rating = noteMoyenne != null ? noteMoyenne : 0.0;
+
+        int reviewCount = (int) providerRatingRepository.countByProviderId(provider.getId());
+
+        Integer satisfactionRate = providerRatingRepository.calculerTauxSatisfaction(provider.getId());
+
+        Double avgMinutes = providerRatingRepository.calculerTempsIntervention(provider.getId());
+        String avgInterventionTime;
+        if (avgMinutes == null) {
+            avgInterventionTime = "N/A";
+        } else if (avgMinutes < 60) {
+            avgInterventionTime = Math.round(avgMinutes) + " min";
+        } else {
+            long hours = Math.round(avgMinutes) / 60;
+            long minutes = Math.round(avgMinutes) % 60;
+            avgInterventionTime = minutes > 0 ? hours + "h" + minutes : hours + "h";
+        }
+
+        // 4. Lignes matériaux
+        List<QuoteLineDTO> materialLines = quote.getItems() != null
+                ? quote.getItems().stream()
+                        .filter(item -> item.getType() == com.example.solimus.enums.QuoteItemType.MATERIAL)
+                        .map(line -> QuoteLineDTO.builder()
+                                .description(line.getDescription())
+                                .detail(line.getQuantity() + " × " + line.getUnitPrice())
+                                .montant(line.getUnitPrice()
+                                        .multiply(BigDecimal.valueOf(line.getQuantity())))
+                                .build())
+                        .collect(Collectors.toList())
+                : List.of();
+
+        // 5. Lignes main d'œuvre
+        List<QuoteLineDTO> laborLines = quote.getItems() != null
+                ? quote.getItems().stream()
+                        .filter(item -> item.getType() == com.example.solimus.enums.QuoteItemType.LABOR)
+                        .map(line -> QuoteLineDTO.builder()
+                                .description(line.getDescription())
+                                .detail(line.getQuantity() + " × " + line.getUnitPrice())
+                                .montant(line.getUnitPrice()
+                                        .multiply(BigDecimal.valueOf(line.getQuantity())))
+                                .build())
+                        .collect(Collectors.toList())
+                : List.of();
+
+        return CoOwnerQuoteDetailDTO.builder()
+                .id(quote.getId())
+                .providerId(provider.getId())
+                .providerName(provider.getFirstName() + " " + provider.getLastName())
+                .companyName(provider.getCompanyName())
+                .providerPhotoUrl(provider.getProfilePhotoUrl())
+                .providerCity(provider.getInterventionZone())
+                .providerPhone(provider.getPhone())
+                .providerEmail(provider.getEmail())
+                .providerRating(rating)
+                .reviewCount(reviewCount)
+                .interventionCount(provider.getInterventionCount() != null ? provider.getInterventionCount() : 0)
+                .satisfactionRate(satisfactionRate != null ? satisfactionRate : 0)
+                .avgInterventionTime(avgInterventionTime)
+                .isVerified(provider.isVerified())
+                .isBestOffer(false) // recalculé si nécessaire
+                .materialLines(materialLines)
+                .laborLines(laborLines)
+                .laborTotalAmount(quote.getLaborTotalAmount())
+                .materialTotalAmount(quote.getMaterialTotalAmount())
+                .totalAmount(quote.getTotalAmount())
+                .estimatedDelayLabel(quote.getEstimatedDelay() != null
+                        ? quote.getEstimatedDelay().getLabel() : "N/A")
+                .additionalComments(quote.getAdditionalComments())
+                .status(quote.getStatus())
+                .createdAt(quote.getCreatedAt())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public int getQuotesCount(Long interventionId) {
+
+        InterventionRequest request = interventionRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        User currentOwner = getCurrentUser();
+        if (!request.getOwner().getId().equals(currentOwner.getId())) {
+            throw new ForbiddenException("Accès non autorisé à cette intervention");
+        }
+
+        return (int) quoteRepository
+                .findAllByInterventionRequestOrderByTotalAmountAsc(request)
+                .stream()
+                .filter(q -> q.getStatus() != QuoteStatus.DRAFT)
+                .count();
     }
 
     @Override
@@ -532,24 +788,5 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
-    }
-
-    private SyndicQuoteDTO mapToSyndicQuoteDTO(Quote quote) {
-        Double noteMoyenne = providerRatingRepository.calculerNoteMoyenne(quote.getProvider().getId());
-        double rating = noteMoyenne != null ? noteMoyenne : 0.0;
-
-        return SyndicQuoteDTO.builder()
-                .id(quote.getId())
-                .providerId(quote.getProvider().getId())
-                .providerName(quote.getProvider().getFirstName() + " " + quote.getProvider().getLastName())
-                .companyName(quote.getProvider().getCompanyName())
-                .laborTotalAmount(quote.getLaborTotalAmount())
-                .materialTotalAmount(quote.getMaterialTotalAmount())
-                .totalAmount(quote.getTotalAmount())
-                .estimatedDelayLabel(quote.getEstimatedDelay() != null ? quote.getEstimatedDelay().getLabel() : "N/A")
-                .additionalComments(quote.getAdditionalComments())
-                .status(quote.getStatus())
-                .providerRating(rating)
-                .build();
     }
 }

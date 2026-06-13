@@ -1,11 +1,7 @@
 package com.example.solimus.services.coproprietaire;
 
 import com.example.solimus.dtos.admin.SpecialtyDTO;
-import com.example.solimus.dtos.intervention.CreateOwnerInterventionRequestDTO;
-import com.example.solimus.dtos.intervention.NearbyProviderDTO;
-import com.example.solimus.dtos.intervention.OwnerInterventionDetailDTO;
-import com.example.solimus.dtos.intervention.OwnerInterventionSummaryDTO;
-import com.example.solimus.dtos.intervention.SyndicQuoteDTO;
+import com.example.solimus.dtos.intervention.*;
 import com.example.solimus.dtos.residence.CommonFacilityDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
@@ -45,10 +41,26 @@ public interface OwnerInterventionService {
      */
     OwnerInterventionDetailDTO getInterventionDetail(Long interventionId);
 
+    // =========================================================================
+    // GESTION DES DEVIS — CÔTÉ COPROPRIÉTAIRE
+    // =========================================================================
+
     /**
-     * Lister les devis reçus pour une intervention.
+     * Retourne la liste des devis reçus pour une intervention,
+     * triés par score qualité/prix décroissant (le recommandé en premier).
      */
-    List<SyndicQuoteDTO> getQuotesByIntervention(Long interventionId);
+    List<CoOwnerQuoteCardDTO> getQuotesByIntervention(Long interventionId);
+
+    /**
+     * Retourne le détail complet d'un devis (contact, lignes matériaux, main d'œuvre).
+     */
+    CoOwnerQuoteDetailDTO getQuoteDetail(Long interventionId, Long quoteId);
+
+    /**
+     * Retourne le nombre total de devis reçus pour une intervention.
+     * Utilisé pour afficher "Vous avez reçu X devis".
+     */
+    int getQuotesCount(Long interventionId);
 
     /**
      * Accepter un devis et valider le prestataire.

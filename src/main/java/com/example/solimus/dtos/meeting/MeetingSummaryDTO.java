@@ -8,7 +8,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 
 /**
  * DTO léger pour une carte dans la liste des réunions.
@@ -23,10 +23,16 @@ public class MeetingSummaryDTO {
     private String title;
     private MeetingType type;       // badge type
     private MeetingStatus status;   // badge statut
-    @JsonFormat(pattern = "dd/MM/yyyy HH:mm")
-    private LocalDateTime meetingDate;
+
+    // Séparés pour que le front affiche facilement sur 2 lignes
+    @JsonFormat(pattern = "dd/MM/yyyy")
+    private LocalDate meetingDate;      // 📅 "25/05/2026"
+
+    private String meetingStartTime;   // 🕕 "18:00"
+    private String meetingEndTime;     // 🕕 "20:00"
+
     private String location;
-    private int participantCount;   // "45 participants"
-    private int documentCount;      // "5 document(s)"
+    private int participantCount;
+    private int documentCount;
     private Long residenceId;
 }

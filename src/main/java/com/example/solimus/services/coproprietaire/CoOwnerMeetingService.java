@@ -16,8 +16,7 @@ public interface CoOwnerMeetingService {
     List<MeetingSummaryDTO> getMeetingsByResidence(Long residenceId);
 
     /** Vue calendrier — réunions groupées par jour pour un mois donné */
-    List<MeetingCalendarDayDTO> getMeetingsCalendar(Long residenceId,
-                                                     int year, int month);
+    List<MeetingCalendarDayDTO> getMeetingsCalendar(int year, int month);
 
     /** Nombre de réunions à venir pour le copropriétaire connecté */
     long getUpcomingMeetingsCount();

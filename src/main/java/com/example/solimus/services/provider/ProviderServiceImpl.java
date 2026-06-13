@@ -67,6 +67,7 @@ public class ProviderServiceImpl implements ProviderService {
     private final WithdrawalRequestRepository withdrawalRequestRepository;
     private final PaymentRepository paymentRepository;
     private final SubscriptionRepository subscriptionRepository;
+    private final com.example.solimus.services.subscription.SubscriptionService subscriptionService;
 
     @Value("${solimus.subscription.free.max-quotes-per-month:3}")
     private int maxQuotesPerMonth;
@@ -452,6 +453,7 @@ public class ProviderServiceImpl implements ProviderService {
 
         List<QuoteSummaryDTO> devisList = quotePage.getContent().stream().map(quote ->
             QuoteSummaryDTO.builder()
+                .id(quote.getId())
                 .reference(quote.getReference())
                 .titre(quote.getInterventionRequest().getTitle())
                 .residenceName(quote.getInterventionRequest().getResidence().getName())
@@ -646,7 +648,7 @@ public class ProviderServiceImpl implements ProviderService {
         User currentProvider = getCurrentUser();
         
         // Déterminer le statut contextuel du point de vue de ce prestataire
-        String finalStatus = request.getStatus() != null ? request.getStatus().name() : "PENDING";
+        String finalStatus = request.getStatus() != null ? request.getStatus().getLabel() : "PENDING";
         
         // Si un autre prestataire a été sélectionné pour cette intervention, 
         // le statut affiché pour le prestataire connecté devient "REFUSED"
@@ -690,6 +692,7 @@ public class ProviderServiceImpl implements ProviderService {
                 ? request.getHistory().stream().map(h -> InterventionStatusHistoryDTO.builder()
                 .id(h.getId())
                 .status(h.getStatus())
+                .statusLabel(h.getStatus() != null ? h.getStatus().getLabel() : null)
                 .createdAt(h.getCreatedAt())
                 .build()).collect(Collectors.toList())
                 : new ArrayList<>();
@@ -712,6 +715,7 @@ public class ProviderServiceImpl implements ProviderService {
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .status(request.getStatus())
+                .statusLabel(request.getStatus() != null ? request.getStatus().getLabel() : null)
                 // Si la résidence est nulle (sécurité), on renvoie "N/A"
                 .residenceName(request.getResidence() != null ? request.getResidence().getName() : "N/A")
                 .residentPhone(residentPhone)
@@ -889,6 +893,7 @@ public class ProviderServiceImpl implements ProviderService {
         // Étape 2 : Récupérer les informations d'identité
         String companyName = currentProvider.getCompanyName() != null ? currentProvider.getCompanyName() : "Prestataire";
         String role = "Prestataire";
+        String profilePhotoUrl = currentProvider.getProfilePhotoUrl();
 
         // Étape 3 : Calculer les KPIs principaux du mois courant
         // - totalRequestsCount : Nombre total de demandes reçues (prestataire notifié)
@@ -987,6 +992,7 @@ public class ProviderServiceImpl implements ProviderService {
         return ProviderDashboardDTO.builder()
                 .companyName(companyName)                       // Nom de l'entreprise du prestataire
                 .role(role)                                     // Rôle du prestataire connecté ("Prestataire")
+                .profilePhotoUrl(profilePhotoUrl)               // URL de la photo de profil
                 .totalRequestsCount(totalRequestsCount)         // Total des demandes d'intervention reçues
                 .pendingQuotesCount(pendingQuotesCount)         // Devis envoyés en attente de validation par le syndic
                 .inProgressCount(inProgressCount)               // Interventions actuellement en cours de réalisation
@@ -1003,6 +1009,46 @@ public class ProviderServiceImpl implements ProviderService {
                 .totalInterventions(totalInterventions)         // Total cumulé de toutes ses interventions à vie
                 .variationHebdo(variationHebdo)                 // Tendance des revenus par rapport à la semaine d'avant (%)
                 .build();
+    }
+
+    // =========================================================================
+    // ABONNEMENT
+    // =========================================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.example.solimus.dtos.subscription.SubscriptionDTO getMonAbonnement() {
+        User currentProvider = getCurrentUser();
+        return subscriptionService.getMonAbonnement(currentProvider.getId());
+    }
+
+    @Override
+    @Transactional
+    public com.example.solimus.dtos.syndic.PaymentResponseDTO passerEnPremium(
+            com.example.solimus.dtos.subscription.SouscrirePremiumDTO dto) {
+        User currentProvider = getCurrentUser();
+        return subscriptionService.passerEnPremium(currentProvider.getId(), dto);
+    }
+
+    @Override
+    @Transactional
+    public void annulerAbonnement() {
+        User currentProvider = getCurrentUser();
+        subscriptionService.annulerAbonnement(currentProvider.getId());
+    }
+
+    // =========================================================================
+    // NOTIFICATIONS
+    // =========================================================================
+
+    @Override
+    @Transactional
+    public void toggleNotifications() {
+        User currentProvider = getCurrentUser();
+        currentProvider.setNotificationsEnabled(!currentProvider.isNotificationsEnabled());
+        userRepository.save(currentProvider);
+        log.info("Préférences de notification mises à jour pour le prestataire : {}",
+                currentProvider.isNotificationsEnabled() ? "activées" : "désactivées");
     }
 
     /**

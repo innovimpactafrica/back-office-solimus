@@ -22,6 +22,9 @@ public class ProviderDashboardDTO {
     // Rôle de l'utilisateur (ex: "Prestataire")
     private String role;
 
+    // URL de la photo de profil du prestataire
+    private String profilePhotoUrl;
+
     // ===== COMPTEURS PRINCIPAUX (KPIs) =====
 
     // Nombre total de demandes d'intervention reçues

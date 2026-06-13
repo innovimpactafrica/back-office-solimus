@@ -9,7 +9,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -27,8 +27,10 @@ public class MeetingDetailDTO {
     private MeetingType type;       // badge
     private MeetingStatus status;
     private MeetingMode mode;
-    @JsonFormat(pattern = "dd/MM/yyyy HH:mm")
-    private LocalDateTime meetingDate;
+    @JsonFormat(pattern = "dd/MM/yyyy")
+    private LocalDate meetingDate;
+    private String meetingStartTime;   // "14:00"
+    private String meetingEndTime;     // "16:00"
     private String organizerName;   // "M. Diop - Syndic SOLIMUS"
     private String description;     // section "À propos"
     private int participantCount;   // "45 participants attendus"

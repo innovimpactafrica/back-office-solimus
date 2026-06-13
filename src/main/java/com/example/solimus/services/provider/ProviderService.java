@@ -70,4 +70,18 @@ public interface ProviderService {
     // TABLEAU DE BORD (DASHBOARD)
     // =========================================================================
     ProviderDashboardDTO getDashboard();
+
+    // =========================================================================
+    // ABONNEMENT
+    // =========================================================================
+    com.example.solimus.dtos.subscription.SubscriptionDTO getMonAbonnement();
+
+    com.example.solimus.dtos.syndic.PaymentResponseDTO passerEnPremium(com.example.solimus.dtos.subscription.SouscrirePremiumDTO dto);
+
+    void annulerAbonnement();
+
+    // =========================================================================
+    // NOTIFICATIONS
+    // =========================================================================
+    void toggleNotifications();
 }

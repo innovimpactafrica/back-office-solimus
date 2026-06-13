@@ -74,6 +74,13 @@ public class InterventionRequest {
     @JoinColumn(name = "property_id")
     private Property property;
 
+    /**
+     * Partie commune concernée (si locationType = PARTIE_COMMUNE)
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "common_facility_id")
+    private CommonFacility commonFacility;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "specialty_id")
     private Specialty specialty;

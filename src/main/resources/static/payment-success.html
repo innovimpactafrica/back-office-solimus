@@ -65,10 +65,20 @@
                     ? "Votre paiement a bien été confirmé."
                     : "Paiement réussi, mais la confirmation backend a échoué.";
 
+                 // 📱 Redirection vers l'application mobile même en cas d'erreur , on ajoute la référence car ça permet  de savoir quel paiement a réussi/échoué  et d'afficher les détails si nécessaire
+                // setTimeout(() => {
+                //     window.location.href = `solimus://payment-success?ref=${reference}`;
+                // }, 1000);
+
             } catch (error) {
                 // 🔴 Erreur réseau ou backend inaccessible
                 document.getElementById('message').innerText =
                     "Paiement réussi, mais impossible de contacter le backend.";
+
+                  // 📱 Redirection vers l'application mobile même en cas d'erreur , on ajoute la référence car ça permet  de savoir quel paiement a réussi/échoué  et d'afficher les détails si nécessaire
+                // setTimeout(() => {
+                //     window.location.href = `solimus://payment-success?ref=${reference}`;
+                // }, 1000);
             }
         }
 

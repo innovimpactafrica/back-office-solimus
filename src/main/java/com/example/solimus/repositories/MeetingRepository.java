@@ -6,6 +6,7 @@ import com.example.solimus.enums.MeetingStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -22,8 +23,8 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
     List<Meeting> findByResidenceOrderByMeetingDateAsc(Residence residence);
 
     List<Meeting> findByResidenceAndMeetingDateBetween(Residence residence,
-                                                        LocalDateTime start,
-                                                        LocalDateTime end);
+                                                        LocalDate start,
+                                                        LocalDate end);
 
     /**
      * Trouve les 5 prochaines réunions A_VENIR pour une résidence.
