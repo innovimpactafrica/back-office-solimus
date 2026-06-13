@@ -64,19 +64,29 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<MeetingSummaryDTO> getMeetingsByResidence(Long residenceId) {
+    public org.springframework.data.domain.Page<MeetingSummaryDTO> getMeetingsByResidence(
+            Long residenceId,
+            int page,
+            int size) {
         Residence residence = residenceRepository.findById(residenceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
 
-        return meetingRepository.findByResidenceOrderByMeetingDateAsc(residence)
-                .stream()
-                .map(this::toSummaryDTO)
-                .collect(Collectors.toList());
+        org.springframework.data.domain.Pageable pageable =
+                org.springframework.data.domain.PageRequest.of(page, size, org.springframework.data.domain.Sort.by("meetingDate").ascending());
+
+        org.springframework.data.domain.Page<Meeting> meetings =
+                meetingRepository.findByResidence(residence, pageable);
+
+        return meetings.map(this::toSummaryDTO);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<MeetingCalendarDayDTO> getMeetingsCalendar(int year, int month) {
+    public org.springframework.data.domain.Page<MeetingCalendarDayDTO> getMeetingsCalendar(
+            int year,
+            int month,
+            int page,
+            int size) {
         User currentOwner = getCurrentUser();
 
         // Récupérer la résidence du copropriétaire via son bien
@@ -102,7 +112,7 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
                         m -> m.getMeetingDate()));
 
         // Construire la liste triée par date
-        return grouped.entrySet().stream()
+        List<MeetingCalendarDayDTO> calendarDays = grouped.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .map(entry -> MeetingCalendarDayDTO.builder()
                         .date(entry.getKey())
@@ -111,6 +121,16 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
                                 .collect(Collectors.toList()))
                         .build())
                 .collect(Collectors.toList());
+
+        // Appliquer la pagination
+        int startIdx = (int) org.springframework.data.domain.PageRequest.of(page, size).getOffset();
+        int endIdx = Math.min(startIdx + size, calendarDays.size());
+        List<MeetingCalendarDayDTO> pagedDays = calendarDays.subList(startIdx, endIdx);
+
+        return new org.springframework.data.domain.PageImpl<>(
+                pagedDays,
+                org.springframework.data.domain.PageRequest.of(page, size),
+                calendarDays.size());
     }
 
     @Override

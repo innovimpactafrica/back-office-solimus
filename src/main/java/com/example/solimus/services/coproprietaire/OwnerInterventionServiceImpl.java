@@ -32,6 +32,10 @@ import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.geolocation.GeolocationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -270,14 +274,31 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<OwnerInterventionSummaryDTO> getMyInterventions() {
+    public OwnerInterventionPageDTO getMyInterventions(
+            String search,
+            InterventionStatus status,
+            int page,
+            int size) {
         User currentOwner = getCurrentUser();
-        
-        List<InterventionRequest> interventions = interventionRepository.findAllByOwner(currentOwner);
-        
-        return interventions.stream()
-                .map(this::mapToSummaryDTO)
-                .collect(Collectors.toList());
+
+        // Calculer les compteurs
+        int totalIncidents = (int) interventionRepository.countByOwner(currentOwner);
+        int enCoursCount = (int) interventionRepository.countByOwnerAndStatus(currentOwner, InterventionStatus.STARTED);
+
+        String normalizedSearch = (search == null || search.isBlank()) ? null : search.trim();
+       Pageable pageable =
+               PageRequest.of(page, size, org.springframework.data.domain.Sort.by("createdAt").descending());
+
+       Page<InterventionRequest> interventions =
+                interventionRepository.findByOwnerWithFilters(currentOwner, normalizedSearch, status, pageable);
+
+        Page<OwnerInterventionSummaryDTO> interventionsPage = interventions.map(this::mapToSummaryDTO);
+
+        return com.example.solimus.dtos.intervention.OwnerInterventionPageDTO.builder()
+                .totalIncidents(totalIncidents)
+                .enCoursCount(enCoursCount)
+                .interventions(interventionsPage)
+                .build();
     }
 
     @Override
@@ -487,7 +508,7 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CoOwnerQuoteCardDTO> getQuotesByIntervention(Long interventionId) {
+    public Page<CoOwnerQuoteCardDTO> getQuotesByIntervention(Long interventionId, int page, int size) {
 
         // 1. Vérifier que l'intervention existe et appartient au copropriétaire
         InterventionRequest request = interventionRepository.findById(interventionId)
@@ -505,7 +526,9 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
                 .filter(q -> q.getStatus() != QuoteStatus.DRAFT)
                 .collect(Collectors.toList());
 
-        if (quotes.isEmpty()) return List.of();
+        if (quotes.isEmpty()) {
+            return new PageImpl<>(List.of(), PageRequest.of(page, size), 0);
+        }
 
         // 3. Prix max pour normaliser le score prix
         double maxAmount = quotes.stream()
@@ -560,10 +583,15 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
                 .max(Comparator.comparingDouble(CoOwnerQuoteCardDTO::getScoreFinal))
                 .ifPresent(best -> best.setBestOffer(true));
 
-        // 6. Trier par score décroissant (le recommandé en premier)
+        // 6. Trier par score décroissant
         cards.sort(Comparator.comparingDouble(CoOwnerQuoteCardDTO::getScoreFinal).reversed());
 
-        return cards;
+        // 7. Appliquer la pagination
+        int start = (int) PageRequest.of(page, size).getOffset();
+        int end = Math.min(start + size, cards.size());
+        List<CoOwnerQuoteCardDTO> pagedCards = cards.subList(start, end);
+
+        return new PageImpl<>(pagedCards, PageRequest.of(page, size), cards.size());
     }
 
     @Override

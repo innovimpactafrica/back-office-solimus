@@ -48,18 +48,22 @@ public class OwnerMeetingController {
     @Operation(summary = "Lister les réunions d'une résidence")
     @GetMapping("/residence/{residenceId}")
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
-    public ResponseEntity<List<MeetingSummaryDTO>> getMeetingsByResidence(
-            @PathVariable Long residenceId) {
-        return ResponseEntity.ok(meetingService.getMeetingsByResidence(residenceId));
+    public ResponseEntity<org.springframework.data.domain.Page<MeetingSummaryDTO>> getMeetingsByResidence(
+            @PathVariable Long residenceId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(meetingService.getMeetingsByResidence(residenceId, page, size));
     }
 
     @Operation(summary = "Vue calendrier — réunions groupées par jour pour un mois donné")
     @GetMapping("/calendar")
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
-    public ResponseEntity<List<MeetingCalendarDayDTO>> getMeetingsCalendar(
+    public ResponseEntity<org.springframework.data.domain.Page<MeetingCalendarDayDTO>> getMeetingsCalendar(
             @RequestParam int year,
-            @RequestParam int month) {
+            @RequestParam int month,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(
-                meetingService.getMeetingsCalendar(year, month));
+                meetingService.getMeetingsCalendar(year, month, page, size));
     }
 }

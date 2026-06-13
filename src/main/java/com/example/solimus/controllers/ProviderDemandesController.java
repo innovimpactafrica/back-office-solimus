@@ -54,6 +54,16 @@ public class ProviderDemandesController {
         return ResponseEntity.ok(providerService.getRequestDetails(id));
     }
 
+    @Operation(summary = "Lister mes interventions assignées")
+    @GetMapping("/my-interventions")
+    public ResponseEntity<Page<InterventionRequestDTO>> getMyInterventions(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) InterventionStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(providerService.getMyInterventions(search, status, page, size));
+    }
+
     // ==================== GESTION DES DEVIS ====================
 
     @Operation(summary = "Créer un devis (Brouillon ou Envoi)")

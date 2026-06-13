@@ -15,6 +15,8 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
 
     List<Meeting> findByResidenceId(Long residenceId);
 
+    org.springframework.data.domain.Page<Meeting> findByResidence(Residence residence, org.springframework.data.domain.Pageable pageable);
+
     List<Meeting> findByResidenceIdAndStatus(Long residenceId, MeetingStatus status);
 
     List<Meeting> findByResidenceIdAndMeetingDateAfterOrderByMeetingDateAsc(

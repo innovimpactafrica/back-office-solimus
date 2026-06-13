@@ -21,8 +21,10 @@ public class ProviderWalletController {
 
     @Operation(summary = "Récupérer les informations du portefeuille (Wallet)")
     @GetMapping
-    public ResponseEntity<WalletDTO> getMonWallet() {
-        return ResponseEntity.ok(providerService.getMonWallet());
+    public ResponseEntity<WalletDTO> getMonWallet(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(providerService.getMonWallet(page, size));
     }
 
     @Operation(summary = "Demander un versement (Wave, Orange Money)")

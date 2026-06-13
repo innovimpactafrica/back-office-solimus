@@ -31,6 +31,23 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
     // Lister les demandes créées par un copropriétaire précis
     List<InterventionRequest> findAllByOwner(User owner);
 
+    // Compter le total des interventions d'un copropriétaire
+    long countByOwner(User owner);
+
+    // Compter les interventions en cours (STARTED) d'un copropriétaire
+    long countByOwnerAndStatus(User owner, InterventionStatus status);
+
+    // Rechercher et filtrer les interventions d'un copropriétaire avec pagination
+    @Query("SELECT ir FROM InterventionRequest ir WHERE ir.owner = :owner " +
+           "AND (:search IS NULL OR LOWER(ir.title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "AND (:status IS NULL OR ir.status = :status) " +
+           "ORDER BY ir.createdAt DESC")
+    org.springframework.data.domain.Page<InterventionRequest> findByOwnerWithFilters(
+            @Param("owner") User owner,
+            @Param("search") String search,
+            @Param("status") com.example.solimus.enums.InterventionStatus status,
+            org.springframework.data.domain.Pageable pageable);
+
     // Récupère une demande en la verrouillant en écriture jusqu'à la fin de la transaction.
     // Utilisé lors de l'acceptation d'un devis pour éviter deux validations concurrentes.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -39,6 +56,17 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
     
     // Lister les demandes assignées à un prestataire précis
     List<InterventionRequest> findAllBySelectedProvider(User provider);
+
+    // Rechercher et filtrer les interventions assignées à un prestataire avec pagination
+    @Query("SELECT ir FROM InterventionRequest ir WHERE ir.selectedProvider = :provider " +
+           "AND (:search IS NULL OR LOWER(ir.title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "AND (:status IS NULL OR ir.status = :status) " +
+           "ORDER BY ir.createdAt DESC")
+    org.springframework.data.domain.Page<InterventionRequest> findBySelectedProviderWithFilters(
+            @Param("provider") User provider,
+            @Param("search") String search,
+            @Param("status") InterventionStatus status,
+            org.springframework.data.domain.Pageable pageable);
 
     // Vérifier si une demande spécifique est accessible à un prestataire (si il a été notifié)
     Optional<InterventionRequest> findByIdAndNotifiedProvidersContaining(Long id, User provider);

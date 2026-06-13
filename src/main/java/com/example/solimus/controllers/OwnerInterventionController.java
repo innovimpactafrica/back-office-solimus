@@ -6,6 +6,7 @@ import com.example.solimus.dtos.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
+import com.example.solimus.enums.InterventionStatus;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.services.coproprietaire.OwnerInterventionService;
 import com.example.solimus.services.minio.MinioService;
@@ -18,6 +19,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.Map;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -106,8 +108,12 @@ public class OwnerInterventionController {
     @Operation(summary = "Lister mes interventions")
     @GetMapping
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
-    public ResponseEntity<List<OwnerInterventionSummaryDTO>> getMyInterventions() {
-        return ResponseEntity.ok(interventionService.getMyInterventions());
+    public ResponseEntity<com.example.solimus.dtos.intervention.OwnerInterventionPageDTO> getMyInterventions(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) InterventionStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(interventionService.getMyInterventions(search, status, page, size));
     }
 
     @Operation(summary = "Détail d'une intervention")
@@ -134,10 +140,12 @@ public class OwnerInterventionController {
     @Operation(summary = "Lister les devis reçus pour une intervention")
     @GetMapping("/{interventionId}/quotes")
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
-    public ResponseEntity<List<CoOwnerQuoteCardDTO>> getQuotesByIntervention(
-            @PathVariable Long interventionId) {
+    public ResponseEntity<Page<CoOwnerQuoteCardDTO>> getQuotesByIntervention(
+            @PathVariable Long interventionId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(
-            interventionService.getQuotesByIntervention(interventionId)
+            interventionService.getQuotesByIntervention(interventionId, page, size)
         );
     }
 

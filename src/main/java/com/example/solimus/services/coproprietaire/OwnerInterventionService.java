@@ -33,8 +33,16 @@ public interface OwnerInterventionService {
 
     /**
      * Liste toutes les interventions du copropriétaire connecté.
+     * @param search Recherche par titre (optionnel)
+     * @param status Filtre par statut (optionnel)
+     * @param page Numéro de page (défaut 0)
+     * @param size Taille de page (défaut 10)
      */
-    List<OwnerInterventionSummaryDTO> getMyInterventions();
+    com.example.solimus.dtos.intervention.OwnerInterventionPageDTO getMyInterventions(
+            String search,
+            com.example.solimus.enums.InterventionStatus status,
+            int page,
+            int size);
 
     /**
      * Récupère le détail d'une intervention spécifique du copropriétaire.
@@ -48,8 +56,14 @@ public interface OwnerInterventionService {
     /**
      * Retourne la liste des devis reçus pour une intervention,
      * triés par score qualité/prix décroissant (le recommandé en premier).
+     * @param interventionId ID de l'intervention
+     * @param page Numéro de page (défaut 0)
+     * @param size Taille de page (défaut 10)
      */
-    List<CoOwnerQuoteCardDTO> getQuotesByIntervention(Long interventionId);
+    org.springframework.data.domain.Page<CoOwnerQuoteCardDTO> getQuotesByIntervention(
+            Long interventionId,
+            int page,
+            int size);
 
     /**
      * Retourne le détail complet d'un devis (contact, lignes matériaux, main d'œuvre).

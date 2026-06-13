@@ -13,10 +13,17 @@ public interface CoOwnerMeetingService {
     MeetingDetailDTO getMeetingDetail(Long meetingId);
 
     /** Liste des réunions d'une résidence triées par date (plus proche en premier) */
-    List<MeetingSummaryDTO> getMeetingsByResidence(Long residenceId);
+    org.springframework.data.domain.Page<MeetingSummaryDTO> getMeetingsByResidence(
+            Long residenceId,
+            int page,
+            int size);
 
     /** Vue calendrier — réunions groupées par jour pour un mois donné */
-    List<MeetingCalendarDayDTO> getMeetingsCalendar(int year, int month);
+    org.springframework.data.domain.Page<MeetingCalendarDayDTO> getMeetingsCalendar(
+            int year,
+            int month,
+            int page,
+            int size);
 
     /** Nombre de réunions à venir pour le copropriétaire connecté */
     long getUpcomingMeetingsCount();

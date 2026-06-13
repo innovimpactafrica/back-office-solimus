@@ -99,4 +99,22 @@ public class ProviderProfilController {
         providerService.toggleNotifications();
         return ResponseEntity.ok("Préférences de notification mises à jour.");
     }
+
+    // ==================== PARAMÈTRES DU COMPTE ====================
+
+    @Operation(summary = "Changer le mot de passe")
+    @PostMapping("/change-password")
+    public ResponseEntity<String> changePassword(
+            @RequestParam("currentPassword") String currentPassword,
+            @RequestParam("newPassword") String newPassword) {
+        providerService.changePassword(currentPassword, newPassword);
+        return ResponseEntity.ok("Mot de passe changé avec succès.");
+    }
+
+    @Operation(summary = "Supprimer le compte")
+    @DeleteMapping("/delete-account")
+    public ResponseEntity<String> deleteAccount() {
+        providerService.deleteAccount();
+        return ResponseEntity.ok("Compte supprimé avec succès.");
+    }
 }

@@ -68,6 +68,7 @@ public class ProviderServiceImpl implements ProviderService {
     private final PaymentRepository paymentRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final com.example.solimus.services.subscription.SubscriptionService subscriptionService;
+    private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
     @Value("${solimus.subscription.free.max-quotes-per-month:3}")
     private int maxQuotesPerMonth;
@@ -126,11 +127,22 @@ public class ProviderServiceImpl implements ProviderService {
     }
 
     @Override
-    public List<InterventionRequestDTO> getMyInterventions() {
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<InterventionRequestDTO> getMyInterventions(
+            String search,
+            InterventionStatus status,
+            int page,
+            int size) {
         User currentProvider = getCurrentUser();
-        return interventionRepository.findAllBySelectedProvider(currentProvider).stream()
-                .map(this::mapToDTO)
-                .collect(Collectors.toList());
+
+        String normalizedSearch = (search == null || search.isBlank()) ? null : search.trim();
+        org.springframework.data.domain.Pageable pageable =
+                org.springframework.data.domain.PageRequest.of(page, size, org.springframework.data.domain.Sort.by("createdAt").descending());
+
+        org.springframework.data.domain.Page<InterventionRequest> interventions =
+                interventionRepository.findBySelectedProviderWithFilters(currentProvider, normalizedSearch, status, pageable);
+
+        return interventions.map(this::mapToDTO);
     }
 
     @Override
@@ -510,8 +522,9 @@ public class ProviderServiceImpl implements ProviderService {
                         .build())
                 .collect(Collectors.toList());
 
-        // Récupérer les informations du syndic (client)
+        // Récupérer les informations du client (syndic ou owner)
         User syndic = quote.getInterventionRequest().getSyndic();
+        User owner = quote.getInterventionRequest().getOwner();
         String address = quote.getInterventionRequest().getResidence() != null ? quote.getInterventionRequest().getResidence().getFullAddress() : "N/A";
 
         // Déduire la date de validation à partir de l'historique de statut SYNDIC_VALIDATED de la demande
@@ -524,6 +537,12 @@ public class ProviderServiceImpl implements ProviderService {
                     .orElse(null);
         }
 
+        // Utiliser le syndic si disponible, sinon le owner (copropriétaire)
+        User client = syndic != null ? syndic : owner;
+        String clientNom = client != null ? client.getFirstName() + " " + client.getLastName() : "N/A";
+        String clientTelephone = client != null ? client.getPhone() : "N/A";
+        String clientEmail = client != null ? client.getEmail() : "N/A";
+
         return QuoteDetailDTO.builder()
                 .reference(quote.getReference())
                 .titre(quote.getInterventionRequest().getTitle())
@@ -531,9 +550,9 @@ public class ProviderServiceImpl implements ProviderService {
                 .montantTotal(quote.getTotalAmount())
                 .dateEnvoi(quote.getCreatedAt() != null ? quote.getCreatedAt().toLocalDate() : null)
                 .dateValidation(dateValidation)
-                .clientNom(syndic.getFirstName() + " " + syndic.getLastName())
-                .clientTelephone(syndic.getPhone())
-                .clientEmail(syndic.getEmail())
+                .clientNom(clientNom)
+                .clientTelephone(clientTelephone)
+                .clientEmail(clientEmail)
                 .clientAdresse(address)
                 .materiaux(materiaux)
                 .sousTotalMateriaux(quote.getMaterialTotalAmount())
@@ -555,7 +574,7 @@ public class ProviderServiceImpl implements ProviderService {
      */
     @Override
     @Transactional
-    public WalletDTO getMonWallet() {
+    public WalletDTO getMonWallet(int page, int size) {
         User currentProvider = getCurrentUser();
 
         // Récupérer le wallet en base ou en créer un si non existant (sécurité)
@@ -570,8 +589,9 @@ public class ProviderServiceImpl implements ProviderService {
                     return walletRepository.save(newWallet);
                 });
 
-        // Récupérer l'historique des transactions fusionnées (paiements + retraits)
-        List<WalletTransactionDTO> transactions = getTransactions(currentProvider.getId());
+        // Récupérer l'historique des transactions fusionnées (paiements + retraits) avec pagination
+       Page<WalletTransactionDTO> transactions =
+                getTransactions(currentProvider.getId(), page, size);
 
         return WalletDTO.builder()
                 .soldeDisponible(wallet.getAvailableBalance())
@@ -792,7 +812,7 @@ public class ProviderServiceImpl implements ProviderService {
      * Fusionne les paiements reçus (crédits) et les demandes de retrait (débits),
      * les mappe vers WalletTransactionDTO et les trie par date décroissante.
      */
-    private List<WalletTransactionDTO> getTransactions(Long providerId) {
+    private org.springframework.data.domain.Page<WalletTransactionDTO> getTransactions(Long providerId, int page, int size) {
         // 1. Récupérer tous les paiements reçus (acomptes + soldes)
         List<Payment> paiements = paymentRepository.findAllByProviderIdOrderByCreatedAtDesc(providerId);
 
@@ -845,7 +865,15 @@ public class ProviderServiceImpl implements ProviderService {
         // 5. Trier par date décroissante
         transactions.sort(Comparator.comparing(WalletTransactionDTO::getDate).reversed());
 
-        return transactions;
+        // 6. Appliquer la pagination
+        int start = (int) org.springframework.data.domain.PageRequest.of(page, size).getOffset();
+        int end = Math.min(start + size, transactions.size());
+        List<WalletTransactionDTO> pagedTransactions = transactions.subList(start, end);
+
+        return new org.springframework.data.domain.PageImpl<>(
+                pagedTransactions,
+                org.springframework.data.domain.PageRequest.of(page, size),
+                transactions.size());
     }
 
 
@@ -1049,6 +1077,54 @@ public class ProviderServiceImpl implements ProviderService {
         userRepository.save(currentProvider);
         log.info("Préférences de notification mises à jour pour le prestataire : {}",
                 currentProvider.isNotificationsEnabled() ? "activées" : "désactivées");
+    }
+
+    // =========================================================================
+    // PARAMÈTRES DU COMPTE
+    // =========================================================================
+
+    @Override
+    @Transactional
+    public void changePassword(String currentPassword, String newPassword) {
+        User currentProvider = getCurrentUser();
+
+        // Vérifier que le mot de passe actuel est correct
+        if (!passwordEncoder.matches(currentPassword, currentProvider.getPassword())) {
+            throw new BadRequestException("Le mot de passe actuel est incorrect.");
+        }
+
+        // Vérifier que le nouveau mot de passe est différent
+        if (passwordEncoder.matches(newPassword, currentProvider.getPassword())) {
+            throw new BadRequestException("Le nouveau mot de passe doit être différent de l'actuel.");
+        }
+
+        // Encoder et mettre à jour le nouveau mot de passe
+        currentProvider.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(currentProvider);
+        log.info("Mot de passe changé avec succès pour le prestataire : {}", currentProvider.getEmail());
+    }
+
+    @Override
+    @Transactional
+    public void deleteAccount() {
+        User currentProvider = getCurrentUser();
+
+        // Vérifier que le prestataire n'a pas d'interventions en cours
+        long inProgressCount = interventionRepository.countBySelectedProviderIdAndStatus(
+                currentProvider.getId(), InterventionStatus.STARTED);
+        if (inProgressCount > 0) {
+            throw new BadRequestException("Impossible de supprimer le compte : vous avez des interventions en cours.");
+        }
+
+        // Vérifier que le prestataire n'a pas de wallet avec un solde positif
+        Wallet wallet = walletRepository.findByProviderId(currentProvider.getId()).orElse(null);
+        if (wallet != null && wallet.getAvailableBalance().compareTo(java.math.BigDecimal.ZERO) > 0) {
+            throw new BadRequestException("Impossible de supprimer le compte : vous avez un solde positif à retirer.");
+        }
+
+        // Supprimer le compte
+        userRepository.delete(currentProvider);
+        log.info("Compte supprimé pour le prestataire : {}", currentProvider.getEmail());
     }
 
     /**

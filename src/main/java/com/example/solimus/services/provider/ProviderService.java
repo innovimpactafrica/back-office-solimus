@@ -23,7 +23,11 @@ public interface ProviderService {
     // Détail complet d'une demande (quand on clique)
     InterventionRequestDTO getRequestDetails(Long id);
 
-    List<InterventionRequestDTO> getMyInterventions();
+    org.springframework.data.domain.Page<InterventionRequestDTO> getMyInterventions(
+            String search,
+            InterventionStatus status,
+            int page,
+            int size);
 
     void createQuote(CreateQuoteDTO dto);
 
@@ -60,7 +64,7 @@ public interface ProviderService {
     // =========================================================================
     // PORTEFEUILLE (WALLET)
     // =========================================================================
-   WalletDTO getMonWallet();
+   WalletDTO getMonWallet(int page, int size);
 
    WithdrawalRequestDTO demanderVersement(DemanderVersementDTO dto);
 
@@ -84,4 +88,11 @@ public interface ProviderService {
     // NOTIFICATIONS
     // =========================================================================
     void toggleNotifications();
+
+    // =========================================================================
+    // PARAMÈTRES DU COMPTE
+    // =========================================================================
+    void changePassword(String currentPassword, String newPassword);
+
+    void deleteAccount();
 }

@@ -5,8 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import org.springframework.data.domain.Page;
 import java.math.BigDecimal;
-import java.util.List;
 
 /**
  * DTO principal représentant le portefeuille électronique d'un prestataire.
@@ -19,5 +19,5 @@ public class WalletDTO {
     private BigDecimal soldeDisponible;   // "450 000 FCFA"
     private BigDecimal soldeEnAttente;    // "125 000 FCFA"
     private BigDecimal totalCeMois;       // "450 000 FCFA"
-    private List<WalletTransactionDTO> transactions;
+    private Page<WalletTransactionDTO> transactions;
 }
