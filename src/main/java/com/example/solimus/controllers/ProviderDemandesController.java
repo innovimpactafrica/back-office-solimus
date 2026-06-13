@@ -34,7 +34,7 @@ public class ProviderDemandesController {
 
     @Operation(summary = "Lister les demandes d'intervention (Listing paginé et filtré)")
     @GetMapping("/available-requests")
-    public ResponseEntity<Page<InterventionRequestSummaryDTO>> getAvailableRequests(
+    public ResponseEntity<com.example.solimus.dtos.intervention.ProviderRequestsPageDTO> getAvailableRequests(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) InterventionStatus status,
             @RequestParam(defaultValue = "0") int page,

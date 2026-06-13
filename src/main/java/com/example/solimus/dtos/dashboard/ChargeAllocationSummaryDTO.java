@@ -24,5 +24,6 @@ public class ChargeAllocationSummaryDTO {
     private LocalDate dueDate;
 
     private ChargeStatus status;
-    private Long propertyId;
+    private String typeBien;
+    private String residenceName;
 }

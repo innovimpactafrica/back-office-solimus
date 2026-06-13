@@ -3,6 +3,9 @@ package com.example.solimus.services.provider;
 import com.example.solimus.dtos.admin.EstimatedDelayDTO;
 import com.example.solimus.dtos.intervention.*;
 import com.example.solimus.dtos.provider.*;
+import com.example.solimus.dtos.subscription.SouscrirePremiumDTO;
+import com.example.solimus.dtos.subscription.SubscriptionDTO;
+import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.InterventionStatus;
@@ -79,13 +82,20 @@ public class ProviderServiceImpl implements ProviderService {
      */
     @Override
     @Transactional(readOnly = true)
-    public Page<InterventionRequestSummaryDTO> getAvailableRequests(String search, InterventionStatus status,
+    public com.example.solimus.dtos.intervention.ProviderRequestsPageDTO getAvailableRequests(String search, InterventionStatus status,
             Pageable pageable) {
         User currentProvider = getCurrentUser();
         String normalizedSearch = (search == null || search.isBlank()) ? null : search.trim();
 
-        return interventionRepository.findFilteredRequests(currentProvider.getId(), normalizedSearch, status, pageable)
+        long totalRequests = interventionRepository.countRequestsByProvider(currentProvider.getId());
+        Page<InterventionRequestSummaryDTO> requestsPage = interventionRepository
+                .findFilteredRequests(currentProvider.getId(), normalizedSearch, status, pageable)
                 .map(this::mapToSummaryDTO);
+
+        return com.example.solimus.dtos.intervention.ProviderRequestsPageDTO.builder()
+                .totalRequests(totalRequests)
+                .requests(requestsPage)
+                .build();
     }
 
     /**
@@ -812,7 +822,7 @@ public class ProviderServiceImpl implements ProviderService {
      * Fusionne les paiements reçus (crédits) et les demandes de retrait (débits),
      * les mappe vers WalletTransactionDTO et les trie par date décroissante.
      */
-    private org.springframework.data.domain.Page<WalletTransactionDTO> getTransactions(Long providerId, int page, int size) {
+    private Page<WalletTransactionDTO> getTransactions(Long providerId, int page, int size) {
         // 1. Récupérer tous les paiements reçus (acomptes + soldes)
         List<Payment> paiements = paymentRepository.findAllByProviderIdOrderByCreatedAtDesc(providerId);
 
@@ -870,9 +880,9 @@ public class ProviderServiceImpl implements ProviderService {
         int end = Math.min(start + size, transactions.size());
         List<WalletTransactionDTO> pagedTransactions = transactions.subList(start, end);
 
-        return new org.springframework.data.domain.PageImpl<>(
+        return new PageImpl<>(
                 pagedTransactions,
-                org.springframework.data.domain.PageRequest.of(page, size),
+                PageRequest.of(page, size),
                 transactions.size());
     }
 
@@ -1045,15 +1055,15 @@ public class ProviderServiceImpl implements ProviderService {
 
     @Override
     @Transactional(readOnly = true)
-    public com.example.solimus.dtos.subscription.SubscriptionDTO getMonAbonnement() {
+    public SubscriptionDTO getMonAbonnement() {
         User currentProvider = getCurrentUser();
         return subscriptionService.getMonAbonnement(currentProvider.getId());
     }
 
     @Override
     @Transactional
-    public com.example.solimus.dtos.syndic.PaymentResponseDTO passerEnPremium(
-            com.example.solimus.dtos.subscription.SouscrirePremiumDTO dto) {
+    public PaymentResponseDTO passerEnPremium(
+            SouscrirePremiumDTO dto) {
         User currentProvider = getCurrentUser();
         return subscriptionService.passerEnPremium(currentProvider.getId(), dto);
     }

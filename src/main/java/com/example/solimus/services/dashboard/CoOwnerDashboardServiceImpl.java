@@ -88,7 +88,6 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
         List<MeetingSummaryDTO> meetingSummaries = upcomingMeetings.stream()
                 .map(this::toMeetingSummaryDTO)
                 .collect(Collectors.toList());
-
         // 6. Total documents
         int meetingDocCount = meetingDocumentRepository.countByMeetingResidenceId(
                 selectedProperty.getResidence().getId()
@@ -148,7 +147,9 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
                 .amount(allocation.getAmount())
                 .dueDate(allocation.getCharge() != null ? allocation.getCharge().getDueDate() : null)
                 .status(allocation.getStatus())
-                .propertyId(allocation.getProperty() != null ? allocation.getProperty().getId() : null)
+                .typeBien(allocation.getProperty() != null ? allocation.getProperty().getTypeBien().getLabel() : null)
+                .residenceName(allocation.getProperty() != null && allocation.getProperty().getResidence() != null
+                        ? allocation.getProperty().getResidence().getName() : null)
                 .build();
     }
 

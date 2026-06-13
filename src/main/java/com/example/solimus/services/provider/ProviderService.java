@@ -15,7 +15,7 @@ import java.util.List;
 public interface ProviderService {
 
     // Listing paginé et filtré pour le dashboard mobile
-    Page<InterventionRequestSummaryDTO> getAvailableRequests(String search, InterventionStatus status, Pageable pageable);
+    com.example.solimus.dtos.intervention.ProviderRequestsPageDTO getAvailableRequests(String search, InterventionStatus status, Pageable pageable);
 
     // Nombre total de demandes reçues par le prestataire
     long getTotalRequestsCount();
