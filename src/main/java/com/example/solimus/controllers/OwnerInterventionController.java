@@ -45,6 +45,13 @@ public class OwnerInterventionController {
         return ResponseEntity.ok(interventionService.getAllSpecialties());
     }
 
+    @Operation(summary = "Lister mes résidences")
+    @GetMapping("/residences")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    public ResponseEntity<List<ResidenceDTO>> getMyResidences() {
+        return ResponseEntity.ok(interventionService.getMyResidences());
+    }
+
     @Operation(summary = "Lister les parties communes d'une résidence")
     @GetMapping("/residences/{residenceId}/common-facilities")
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
@@ -70,6 +77,7 @@ public class OwnerInterventionController {
             @RequestParam("description") String description,
             @RequestParam("residenceId") Long residenceId,
             @RequestParam(value = "propertyId", required = false) Long propertyId,
+            @RequestParam(value = "commonFacilityId", required = false) Long commonFacilityId,
             @RequestParam("specialtyId") Long specialtyId,
             @RequestParam("locationType") String locationType,
             @RequestParam(value = "managementMode", required = false) String managementMode,
@@ -82,6 +90,7 @@ public class OwnerInterventionController {
                 .description(description)
                 .residenceId(residenceId)
                 .propertyId(propertyId)
+                .commonFacilityId(commonFacilityId)
                 .specialtyId(specialtyId)
                 .locationType(com.example.solimus.enums.IncidentLocationType.valueOf(locationType))
                 .managementMode(managementMode != null ? com.example.solimus.enums.InterventionManagementMode.valueOf(managementMode) : null)

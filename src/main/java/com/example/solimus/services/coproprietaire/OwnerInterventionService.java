@@ -3,6 +3,7 @@ package com.example.solimus.services.coproprietaire;
 import com.example.solimus.dtos.admin.SpecialtyDTO;
 import com.example.solimus.dtos.intervention.*;
 import com.example.solimus.dtos.residence.CommonFacilityDTO;
+import com.example.solimus.dtos.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
@@ -15,6 +16,11 @@ public interface OwnerInterventionService {
      * Lister toutes les spécialités disponibles.
      */
     List<SpecialtyDTO> getAllSpecialties();
+
+    /**
+     * Lister toutes les résidences où le copropriétaire connecté possède un bien.
+     */
+    List<ResidenceDTO> getMyResidences();
 
     /**
      * Lister les parties communes d'une résidence.

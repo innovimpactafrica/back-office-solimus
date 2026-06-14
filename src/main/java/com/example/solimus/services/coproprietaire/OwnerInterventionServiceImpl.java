@@ -74,6 +74,19 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<ResidenceDTO> getMyResidences() {
+        User currentOwner = getCurrentUser();
+
+        return propertyRepository.findAllByOwnerId(currentOwner.getId()).stream()
+                .map(Property::getResidence)
+                .filter(residence -> residence != null)
+                .distinct()
+                .map(this::mapToResidenceDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<CommonFacilityDTO> getCommonFacilitiesByResidence(Long residenceId) {
         return commonFacilityRepository.findByResidenceId(residenceId).stream()
                 .map(cf -> CommonFacilityDTO.builder()
