@@ -11,7 +11,9 @@ import com.example.solimus.dtos.intervention.WorkflowStepDTO;
 import com.example.solimus.dtos.intervention.NearbyProviderDTO;
 import com.example.solimus.dtos.intervention.SyndicQuoteDTO;
 import com.example.solimus.dtos.residence.PropertyDTO;
-import com.example.solimus.dtos.syndic.CreateCoOwnerDTO;
+import com.example.solimus.dtos.syndic.PayerAcompteDTO;
+import com.example.solimus.dtos.syndic.PaymentResponseDTO;
+import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
 import com.example.solimus.dtos.provider.WithdrawalRequestDTO;
 import com.example.solimus.entities.Charge;
 import com.example.solimus.entities.ChargeAllocation;
@@ -42,6 +44,7 @@ import com.example.solimus.repositories.*;
 import com.example.solimus.services.auth.ActivationCodeService;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.geolocation.GeolocationService;
+import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.provider.ProviderService;
 import com.example.solimus.repositories.PaymentRepository;
 import com.example.solimus.entities.Payment;
@@ -97,6 +100,7 @@ public class SyndicServiceImpl implements SyndicService {
     private final WithdrawalRequestRepository withdrawalRequestRepository;
     private final WalletRepository walletRepository;
     private final ChargeAllocationRepository chargeAllocationRepository;
+    private final MinioService minioService;
 
     @Value("${solimus.geolocation.search-radius-km:30.0}")
     private double searchRadiusKm;
@@ -641,31 +645,7 @@ public class SyndicServiceImpl implements SyndicService {
     // GESTION DES COPROPRIÉTAIRES
     // =========================================================================
 
-    /**
-     * Ajoute un nouveau copropriétaire et lui envoie un code d'activation par email.
-     */
-    @Override
-    @Transactional
-    public void addCoOwner(CreateCoOwnerDTO dto) {
-        if (userRepository.existsByEmail(dto.getEmail())) throw new BadRequestException("Email déjà utilisé.");
-        
-        Role role = roleRepository.findByName(ERole.ROLE_COPROPRIETAIRE).get();
-        User user = new User();
-        user.setFirstName(dto.getFirstName());
-        user.setLastName(dto.getLastName());
-        user.setEmail(dto.getEmail());
-        user.setPhone(dto.getPhone());
-        user.setRole(role);
-        user.setStatus(UserStatus.PENDING);
-        
-        User saved = userRepository.save(user);
-        
-        // Génération du code d'activation mobile et envoi email
-        String code = activationCodeService.generateAndStoreCodeMobile(saved);
-        emailService.sendActivationCode(saved.getEmail(), code, saved.getFirstName());
-    }
-
-     // ================================================
+    // ================================================
     // ACOMPTE — versé avant ou au début des travaux
     // ================================================
     @Override
@@ -834,9 +814,7 @@ public class SyndicServiceImpl implements SyndicService {
                 .build()).collect(Collectors.toList())
             : new ArrayList<>();
 
-        List<String> photoUrls = request.getPhotoUrls() != null
-            ? new ArrayList<>(request.getPhotoUrls())
-            : new ArrayList<>();
+        List<String> photoUrls = toPresignedUrls(request.getPhotoUrls());
 
         return InterventionRequestDTO.builder()
                 .id(request.getId())
@@ -1075,6 +1053,13 @@ public class SyndicServiceImpl implements SyndicService {
     private BigDecimal safeSubtract(BigDecimal currentValue, BigDecimal amount) {
         BigDecimal result = currentValue.subtract(amount);
         return result.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : result;
+    }
+
+    private List<String> toPresignedUrls(List<String> urls) {
+        if (urls == null || urls.isEmpty()) return new ArrayList<>();
+        return urls.stream()
+                .map(url -> minioService.getPresignedDownloadUrl(url, 3600))
+                .collect(Collectors.toList());
     }
 
     private WithdrawalRequestDTO mapToWithdrawalRequestDTO(WithdrawalRequest retrait) {

@@ -131,16 +131,8 @@ public class SyndicResidenceController {
     }
 
     // =========================================================================
-    // ÉTAPE 3 — ÉQUIPEMENTS & SÉCURITÉ
+    // ÉTAPE 3 — SÉCURITÉ
     // =========================================================================
-
-    @Operation(summary = "Ajouter un équipement commun (Étape 3)", tags = {"4.a Syndic - Résidences"})
-    @PostMapping("/residences/{id}/facilities")
-    public ResponseEntity<AddFacilityDTO> addFacility(
-            @PathVariable Long id,
-            @RequestBody @Valid AddFacilityDTO dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(residenceService.addFacility(id, dto));
-    }
 
     @Operation(summary = "Lister les options de sécurité actives (Étape 3)", tags = {"4.a Syndic - Résidences"})
     @GetMapping("/security-features")

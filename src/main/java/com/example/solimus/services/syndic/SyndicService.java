@@ -7,7 +7,6 @@ import com.example.solimus.dtos.intervention.InterventionRequestDTO;
 import com.example.solimus.dtos.intervention.NearbyProviderDTO;
 import com.example.solimus.dtos.intervention.SyndicQuoteDTO;
 import com.example.solimus.dtos.residence.PropertyDTO;
-import com.example.solimus.dtos.syndic.CreateCoOwnerDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
@@ -23,7 +22,6 @@ public interface SyndicService {
     List<InterventionRequestDTO> getMyInterventionRequests();
     void acceptQuote(Long requestId, Long quoteId);
     List<SyndicQuoteDTO> getQuotesByInterventionRequest(Long requestId);
-    void addCoOwner(CreateCoOwnerDTO dto);
 
     // ================================================
     // INTERVENTIONS — prise en charge par le syndic

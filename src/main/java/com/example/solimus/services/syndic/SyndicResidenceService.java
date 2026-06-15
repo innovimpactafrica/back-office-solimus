@@ -18,9 +18,6 @@ public interface SyndicResidenceService {
     // Étape 2 — Ajouter un lot/appartement à la résidence
     PropertyDTO addProperty(Long residenceId, AddPropertyDTO dto);
 
-    // Étape 3 — Ajouter un équipement commun
-    AddFacilityDTO addFacility(Long residenceId, AddFacilityDTO dto);
-
     // Ajouter un contact clé
     AddResidenceContactDTO addContact(Long residenceId, AddResidenceContactDTO dto);
 

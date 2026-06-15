@@ -69,7 +69,7 @@ public class CoOwnerDocumentServiceImpl implements CoOwnerDocumentService {
                         .documentType(doc.getDocumentType() != null ? doc.getDocumentType().name() : "AUTRE")
                         .date(doc.getCreatedAt() != null ? doc.getCreatedAt().toLocalDate() : null)
                         .source("MEETING")
-                        .sourceId(doc.getMeeting() != null ? doc.getMeeting().getId() : null)
+                        .sourceId(doc.getId())
                         .build())
                 .collect(Collectors.toList());
         
@@ -156,10 +156,6 @@ public class CoOwnerDocumentServiceImpl implements CoOwnerDocumentService {
             MeetingDocument document = meetingDocumentRepository.findById(sourceId)
                     .orElseThrow(() -> new ResourceNotFoundException("Document introuvable"));
 
-            if (!fileName.equals(extractFileNameFromUrl(document.getFileUrl()))) {
-                throw new ForbiddenException("Accès refusé");
-            }
-
             Long residenceId = document.getMeeting() != null && document.getMeeting().getResidence() != null
                     ? document.getMeeting().getResidence().getId()
                     : null;
@@ -171,6 +167,9 @@ public class CoOwnerDocumentServiceImpl implements CoOwnerDocumentService {
             if (!hasResidenceAccess) {
                 throw new ForbiddenException("Accès refusé");
             }
+
+            // Utiliser le fileName interne pour MinIO
+            fileName = document.getFileName();
         } else if ("CHARGE".equals(normalizedSource)) {
             Charge charge = chargeRepository.findById(sourceId)
                     .orElseThrow(() -> new ResourceNotFoundException("Charge introuvable"));

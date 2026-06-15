@@ -737,8 +737,8 @@ public class ProviderServiceImpl implements ProviderService {
                 .createdAt(c.getCreatedAt())
                 .build()).collect(Collectors.toList())
                 : new ArrayList<>();
-        List<String> photoUrls = request.getPhotoUrls() != null ? new ArrayList<>(request.getPhotoUrls()) : new ArrayList<>();
-        List<String> workPhotoUrls = request.getWorkPhotoUrls() != null ? new ArrayList<>(request.getWorkPhotoUrls()) : new ArrayList<>();
+        List<String> photoUrls = toPresignedUrls(request.getPhotoUrls());
+        List<String> workPhotoUrls = toPresignedUrls(request.getWorkPhotoUrls());
 
         return InterventionRequestDTO.builder()
                 .id(request.getId())
@@ -1179,6 +1179,13 @@ public class ProviderServiceImpl implements ProviderService {
         
         // Arrondi à une décimale (ex: 8.5 pour +8.5%)
         return Math.round(rawVariation * 10.0) / 10.0;
+    }
+
+    private List<String> toPresignedUrls(List<String> urls) {
+        if (urls == null || urls.isEmpty()) return new ArrayList<>();
+        return urls.stream()
+                .map(url -> minioService.getPresignedDownloadUrl(url, 3600))
+                .collect(Collectors.toList());
     }
 
     private User getCurrentUser() {

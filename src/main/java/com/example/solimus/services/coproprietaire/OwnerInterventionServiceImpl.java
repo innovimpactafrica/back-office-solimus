@@ -30,6 +30,7 @@ import com.example.solimus.repositories.SpecialtyRepository;
 import com.example.solimus.repositories.UserRepository;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.geolocation.GeolocationService;
+import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -63,6 +64,7 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
     private final ProviderRatingRepository providerRatingRepository;
     private final EmailService emailService;
     private final GeolocationService geolocationService;
+    private final MinioService minioService;
 
     @Override
     @Transactional(readOnly = true)
@@ -457,7 +459,7 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
                 .urgencyLevel(request.getUrgencyLevel())
                 .specialtyName(request.getSpecialty() != null ? request.getSpecialty().getName() : null)
                 .specialtyIcon(request.getSpecialty() != null ? request.getSpecialty().getIcon() : null)
-                .photoUrls(request.getPhotoUrls() != null ? new ArrayList<>(request.getPhotoUrls()) : new ArrayList<>())
+                .photoUrls(toPresignedUrls(request.getPhotoUrls()))
                 .selectedProvider(selectedProviderInfo)
                 .timeline(buildTimeline(request))
                 .startedAt(request.getStartedAt())
@@ -823,6 +825,13 @@ public class OwnerInterventionServiceImpl implements OwnerInterventionService {
                 .message("Solde payé avec succès")
                 .transactionReference("TX-" + System.currentTimeMillis())
                 .build();
+    }
+
+    private List<String> toPresignedUrls(List<String> urls) {
+        if (urls == null || urls.isEmpty()) return new ArrayList<>();
+        return urls.stream()
+                .map(url -> minioService.getPresignedDownloadUrl(url, 3600))
+                .collect(Collectors.toList());
     }
 
     private User getCurrentUser() {

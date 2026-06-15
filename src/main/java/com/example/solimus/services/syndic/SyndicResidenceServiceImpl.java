@@ -375,47 +375,6 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 .collect(Collectors.toList());
     }
 
-
-    // =========================================================================
-    // ÉTAPE 3 — AJOUTER UN ÉQUIPEMENT COMMUN
-    // =========================================================================
-    @Override
-    @Transactional
-    public AddFacilityDTO addFacility(Long residenceId, AddFacilityDTO dto) {
-
-        // Récupérer la résidence 
-        Residence residence = getResidenceOrThrow(residenceId);
-
-        // Vérifier que le syndic est bien le propriétaire de la résidence
-        verifyResidenceOwnership(residence);
-
-        CommonFacility facility = new CommonFacility();
-        facility.setFacilityType(dto.getFacilityType());
-        facility.setResidence(residence);
-
-        // Copier les champs pertinents selon le type
-        facility.setCount(dto.getCount());
-        facility.setIsHeated(dto.getIsHeated());
-        facility.setCapacity(dto.getCapacity());
-        facility.setFloorsCovered(dto.getFloorsCovered());
-        facility.setSuperficie(dto.getSuperficie());
-        facility.setEtat(dto.getEtat());
-        facility.setIndoorSpots(dto.getIndoorSpots());
-        facility.setOutdoorSpots(dto.getOutdoorSpots());
-        facility.setChargingStations(dto.getChargingStations());
-        facility.setPowerKva(dto.getPowerKva());
-        facility.setFuelType(dto.getFuelType());
-        facility.setCapacityLiters(dto.getCapacityLiters());
-        facility.setPumpStatus(dto.getPumpStatus());
-
-        CommonFacility saved = facilityRepository.save(facility);
-
-        log.info("Équipement '{}' ajouté à la résidence '{}'",
-            saved.getFacilityType(), residence.getName());
-
-        return dto;
-    }
-
     //=======================================================================
     // ÉTAPE 3 — LISTER LES OPTIONS DE SÉCURITÉ ACTIVES
     //========================================================================
