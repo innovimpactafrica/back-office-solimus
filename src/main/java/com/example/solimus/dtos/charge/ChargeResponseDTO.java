@@ -27,6 +27,6 @@ public class ChargeResponseDTO {
     private String residenceName;
     private int nombreAllocations;   // combien de copros concernés
     private List<ChargeLineDTO> lines;
-    private List<String> documentUrls;
+    private List<ChargeDocumentDTO> documents;
     private LocalDateTime createdAt;
 }

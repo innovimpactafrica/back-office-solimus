@@ -1,6 +1,7 @@
 package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.document.CoOwnerDocumentDTO;
+import com.example.solimus.dtos.document.DocumentDownloadUrlDTO;
 import com.example.solimus.services.document.CoOwnerDocumentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -43,5 +44,15 @@ public class OwnerDocumentController {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "date"));
 
         return ResponseEntity.ok(documentService.getMesDocuments(search, documentType, source, pageable));
+    }
+
+    @Operation(summary = "Générer une URL temporaire de téléchargement d'un document")
+    @GetMapping("/download-url")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    public ResponseEntity<DocumentDownloadUrlDTO> getDownloadUrl(
+            @RequestParam String source,
+            @RequestParam Long sourceId,
+            @RequestParam String fileName) {
+        return ResponseEntity.ok(documentService.getDownloadUrl(source, sourceId, fileName));
     }
 }

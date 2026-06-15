@@ -37,6 +37,15 @@ public interface MinioService {
     String getFileUrl(String fileName);
 
     /**
+     * Génère une URL pré-signée temporaire pour télécharger un fichier.
+     *
+     * @param fileName le nom ou l'identifiant du fichier dans MinIO
+     * @param expirySeconds durée de validité en secondes
+     * @return URL pré-signée temporaire
+     */
+    String getPresignedDownloadUrl(String fileName, int expirySeconds);
+
+    /**
      * Télécharge un fichier depuis MinIO et retourne son flux.
      *
      * @param fileName le nom ou l'identifiant du fichier dans MinIO

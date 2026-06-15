@@ -59,11 +59,8 @@ public class Charge {
     @OneToMany(mappedBy = "charge", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ChargeLine> lines = new ArrayList<>();
 
-    @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "charge_documents",
-        joinColumns = @JoinColumn(name = "charge_id"))
-    @Column(name = "document_url")
-    private List<String> documentUrls = new ArrayList<>();
+    @OneToMany(mappedBy = "charge", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ChargeDocument> documents = new ArrayList<>();
 
     @OneToMany(mappedBy = "charge", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ChargeAllocation> allocations = new ArrayList<>();

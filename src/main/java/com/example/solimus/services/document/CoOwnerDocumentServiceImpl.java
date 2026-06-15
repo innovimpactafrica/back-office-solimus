@@ -1,16 +1,21 @@
 package com.example.solimus.services.document;
 
 import com.example.solimus.dtos.document.CoOwnerDocumentDTO;
+import com.example.solimus.dtos.document.DocumentDownloadUrlDTO;
 import com.example.solimus.entities.Charge;
 import com.example.solimus.entities.ChargeAllocation;
 import com.example.solimus.entities.MeetingDocument;
 import com.example.solimus.entities.Property;
 import com.example.solimus.entities.User;
+import com.example.solimus.exceptions.BadRequestException;
+import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.ChargeAllocationRepository;
+import com.example.solimus.repositories.ChargeRepository;
 import com.example.solimus.repositories.MeetingDocumentRepository;
 import com.example.solimus.repositories.PropertyRepository;
 import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -36,6 +41,8 @@ public class CoOwnerDocumentServiceImpl implements CoOwnerDocumentService {
     private final PropertyRepository propertyRepository;
     private final MeetingDocumentRepository meetingDocumentRepository;
     private final ChargeAllocationRepository chargeAllocationRepository;
+    private final ChargeRepository chargeRepository;
+    private final MinioService minioService;
 
     @Override
     @Transactional(readOnly = true)
@@ -72,13 +79,13 @@ public class CoOwnerDocumentServiceImpl implements CoOwnerDocumentService {
         
         for (ChargeAllocation allocation : allocations) {
             Charge charge = allocation.getCharge();
-            if (charge != null && charge.getDocumentUrls() != null) {
-                for (String docUrl : charge.getDocumentUrls()) {
+            if (charge != null && charge.getDocuments() != null) {
+                for (com.example.solimus.entities.ChargeDocument document : charge.getDocuments()) {
                     chargeDTOs.add(CoOwnerDocumentDTO.builder()
-                            .id(null) // Pas d'ID pour les documents de charge (utilisent l'URL)
-                            .fileName(extractFileNameFromUrl(docUrl))
-                            .fileUrl(docUrl)
-                            .fileSizeKb(null) // Taille non disponible
+                            .id(document.getId())
+                            .fileName(document.getOriginalFileName() != null ? document.getOriginalFileName() : document.getFileName())
+                            .fileUrl(document.getFileUrl())
+                            .fileSizeKb(document.getFileSizeKb())
                             .documentType("Charges")
                             .date(charge.getDueDate() != null ? charge.getDueDate() : 
                                   (charge.getCreatedAt() != null ? charge.getCreatedAt().toLocalDate() : null))
@@ -131,6 +138,69 @@ public class CoOwnerDocumentServiceImpl implements CoOwnerDocumentService {
         );
         
         return new PageImpl<>(pagedDocuments, pageable, allDocuments.size());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DocumentDownloadUrlDTO getDownloadUrl(String source, Long sourceId, String fileName) {
+        User currentOwner = getCurrentUser();
+        int expiresInSeconds = 300;
+
+        if (source == null || sourceId == null || fileName == null || fileName.isBlank()) {
+            throw new BadRequestException("Paramètres de téléchargement invalides");
+        }
+
+        String normalizedSource = source.trim().toUpperCase();
+
+        if ("MEETING".equals(normalizedSource)) {
+            MeetingDocument document = meetingDocumentRepository.findById(sourceId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Document introuvable"));
+
+            if (!fileName.equals(extractFileNameFromUrl(document.getFileUrl()))) {
+                throw new ForbiddenException("Accès refusé");
+            }
+
+            Long residenceId = document.getMeeting() != null && document.getMeeting().getResidence() != null
+                    ? document.getMeeting().getResidence().getId()
+                    : null;
+
+            boolean hasResidenceAccess = propertyRepository.findAllByOwnerId(currentOwner.getId()).stream()
+                    .anyMatch(property -> property.getResidence() != null
+                            && property.getResidence().getId().equals(residenceId));
+
+            if (!hasResidenceAccess) {
+                throw new ForbiddenException("Accès refusé");
+            }
+        } else if ("CHARGE".equals(normalizedSource)) {
+            Charge charge = chargeRepository.findById(sourceId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Charge introuvable"));
+
+            boolean hasChargeAccess = chargeAllocationRepository.findByOwnerOrderByCreatedAtDesc(currentOwner).stream()
+                    .anyMatch(allocation -> allocation.getCharge() != null
+                            && allocation.getCharge().getId().equals(charge.getId()));
+
+            String requestedFileName = fileName;
+            com.example.solimus.entities.ChargeDocument document = charge.getDocuments() != null
+                    ? charge.getDocuments().stream()
+                            .filter(chargeDocument -> requestedFileName.equals(chargeDocument.getFileName())
+                                    || requestedFileName.equals(chargeDocument.getOriginalFileName()))
+                            .findFirst()
+                            .orElse(null)
+                    : null;
+
+            if (!hasChargeAccess || document == null) {
+                throw new ForbiddenException("Accès refusé");
+            }
+
+            fileName = document.getFileName();
+        } else {
+            throw new BadRequestException("Source de document invalide");
+        }
+
+        return DocumentDownloadUrlDTO.builder()
+                .downloadUrl(minioService.getPresignedDownloadUrl(fileName, expiresInSeconds))
+                .expiresInSeconds((long) expiresInSeconds)
+                .build();
     }
     
     /**

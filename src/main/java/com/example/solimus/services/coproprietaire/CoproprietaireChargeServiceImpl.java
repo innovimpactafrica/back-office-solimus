@@ -2,6 +2,7 @@ package com.example.solimus.services.coproprietaire;
 
 import com.example.solimus.dtos.charge.ChargeAllocationDetailDTO;
 import com.example.solimus.dtos.charge.ChargeAllocationSummaryDTO;
+import com.example.solimus.dtos.charge.ChargeDocumentDTO;
 import com.example.solimus.dtos.charge.ChargeLineDTO;
 import com.example.solimus.dtos.charge.MyChargesSummaryDTO;
 import com.example.solimus.entities.ChargeAllocation;
@@ -128,6 +129,19 @@ public class CoproprietaireChargeServiceImpl implements CoproprietaireChargeServ
                 .collect(Collectors.toList())
             : new ArrayList<>();
 
+        List<ChargeDocumentDTO> documents = a.getCharge().getDocuments() != null
+            ? a.getCharge().getDocuments().stream()
+                .map(document -> ChargeDocumentDTO.builder()
+                    .id(document.getId())
+                    .fileName(document.getFileName())
+                    .originalFileName(document.getOriginalFileName())
+                    .fileUrl(document.getFileUrl())
+                    .fileSizeKb(document.getFileSizeKb())
+                    .contentType(document.getContentType())
+                    .build())
+                .collect(Collectors.toList())
+            : new ArrayList<>();
+
         return ChargeAllocationDetailDTO.builder()
             .idAllocation(a.getId())
             .reference(a.getReference())
@@ -142,7 +156,7 @@ public class CoproprietaireChargeServiceImpl implements CoproprietaireChargeServ
             .propertyReference(a.getProperty().getReference())
             .description(a.getCharge().getDescription())
             .lines(lines)
-            .documentUrls(a.getCharge().getDocumentUrls())
+            .documents(documents)
             .createdAt(a.getCharge().getCreatedAt())
             .build();
     }

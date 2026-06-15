@@ -31,6 +31,6 @@ public class ChargeAllocationDetailDTO {
     private String propertyReference;  // "A12"
     private String description;
     private List<ChargeLineDTO> lines; // répartition des frais
-    private List<String> documentUrls; // factures PDF
+    private List<ChargeDocumentDTO> documents; // factures PDF
     private LocalDateTime createdAt;    // Date de création automatique
 }

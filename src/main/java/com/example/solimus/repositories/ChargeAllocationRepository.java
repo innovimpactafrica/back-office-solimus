@@ -72,7 +72,7 @@ public interface ChargeAllocationRepository extends JpaRepository<ChargeAllocati
     /**
      * Compte le nombre de documents de charges pour un propriétaire.
      */
-    @Query("SELECT SUM(SIZE(c.documentUrls)) FROM Charge c JOIN c.allocations a WHERE a.owner.id = :ownerId")
+    @Query("SELECT SUM(SIZE(c.documents)) FROM Charge c JOIN c.allocations a WHERE a.owner.id = :ownerId")
     int countDocumentsByOwnerId(@Param("ownerId") Long ownerId);
 
     /**

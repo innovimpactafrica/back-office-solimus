@@ -1,6 +1,7 @@
 package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.charge.ChargeResponseDTO;
+import com.example.solimus.dtos.charge.ChargeDocumentDTO;
 import com.example.solimus.dtos.charge.CreateChargeDTO;
 import com.example.solimus.dtos.charge.CreateChargeLineDTO;
 import com.example.solimus.enums.ChargeType;
@@ -96,7 +97,7 @@ public class SyndicChargeController {
                 dto.setLines(lineList);
             }
 
-            List<String> documentUrls = new ArrayList<>();
+            List<ChargeDocumentDTO> documentDTOs = new ArrayList<>();
             if (documents != null && documents.length > 0) {
                 for (MultipartFile document : documents) {
                     if (document.isEmpty()) continue;
@@ -112,11 +113,17 @@ public class SyndicChargeController {
 
                     String uploadedFileName = minioService.uploadFile(document, "charges");
                     if (uploadedFileName != null) {
-                        documentUrls.add(uploadedFileName);
+                        documentDTOs.add(ChargeDocumentDTO.builder()
+                                .fileName(uploadedFileName.substring(uploadedFileName.lastIndexOf("/") + 1))
+                                .originalFileName(originalFilename)
+                                .fileUrl(uploadedFileName)
+                                .fileSizeKb(document.getSize() / 1024)
+                                .contentType(document.getContentType())
+                                .build());
                     }
                 }
             }
-            dto.setDocumentUrls(documentUrls);
+            dto.setDocuments(documentDTOs);
 
             return ResponseEntity
                 .status(HttpStatus.CREATED)

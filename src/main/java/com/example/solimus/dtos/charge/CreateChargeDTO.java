@@ -38,5 +38,5 @@ public class CreateChargeDTO {
     private List<CreateChargeLineDTO> lines;
 
     // Documents joints
-    private List<String> documentUrls;
+    private List<ChargeDocumentDTO> documents;
 }

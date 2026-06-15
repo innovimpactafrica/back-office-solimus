@@ -2,6 +2,7 @@ package com.example.solimus.services.syndic;
 
 import com.example.solimus.dtos.charge.ChargeLineDTO;
 import com.example.solimus.dtos.charge.ChargeResponseDTO;
+import com.example.solimus.dtos.charge.ChargeDocumentDTO;
 import com.example.solimus.dtos.charge.CreateChargeDTO;
 import com.example.solimus.dtos.intervention.CreateInterventionRequestDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestDTO;
@@ -14,6 +15,7 @@ import com.example.solimus.dtos.syndic.CreateCoOwnerDTO;
 import com.example.solimus.dtos.provider.WithdrawalRequestDTO;
 import com.example.solimus.entities.Charge;
 import com.example.solimus.entities.ChargeAllocation;
+import com.example.solimus.entities.ChargeDocument;
 import com.example.solimus.entities.ChargeLine;
 import com.example.solimus.entities.InterventionRequest;
 import com.example.solimus.entities.Property;
@@ -137,9 +139,22 @@ public class SyndicServiceImpl implements SyndicService {
         charge.setDueDate(dto.getDueDate());
         charge.setResidence(residence);
         charge.setSyndic(currentSyndic);
-        charge.setDocumentUrls(dto.getDocumentUrls() != null ? dto.getDocumentUrls() : new ArrayList<>());
 
         Charge savedCharge = chargeRepository.save(charge);
+
+        if (dto.getDocuments() != null && !dto.getDocuments().isEmpty()) {
+            dto.getDocuments().forEach(documentDTO -> {
+                ChargeDocument document = new ChargeDocument();
+                document.setCharge(savedCharge);
+                document.setFileName(documentDTO.getFileName());
+                document.setOriginalFileName(documentDTO.getOriginalFileName());
+                document.setFileUrl(documentDTO.getFileUrl());
+                document.setFileSizeKb(documentDTO.getFileSizeKb());
+                document.setContentType(documentDTO.getContentType());
+                savedCharge.getDocuments().add(document);
+            });
+            chargeRepository.save(savedCharge);
+        }
 
         // 4. Ajouter les lignes de répartition des frais (ex: entretien, électricité...)
         if (dto.getLines() != null && !dto.getLines().isEmpty()) {
@@ -946,6 +961,17 @@ public class SyndicServiceImpl implements SyndicService {
                 .build())
             .collect(Collectors.toList());
 
+        List<ChargeDocumentDTO> documentDTOs = charge.getDocuments().stream()
+            .map(document -> ChargeDocumentDTO.builder()
+                .id(document.getId())
+                .fileName(document.getFileName())
+                .originalFileName(document.getOriginalFileName())
+                .fileUrl(document.getFileUrl())
+                .fileSizeKb(document.getFileSizeKb())
+                .contentType(document.getContentType())
+                .build())
+            .collect(Collectors.toList());
+
         return ChargeResponseDTO.builder()
             .id(charge.getId())
             .reference(charge.getReference())
@@ -957,7 +983,7 @@ public class SyndicServiceImpl implements SyndicService {
             .residenceName(charge.getResidence().getName())
             .nombreAllocations(charge.getAllocations().size())
             .lines(lineDTOs)
-            .documentUrls(charge.getDocumentUrls())
+            .documents(documentDTOs)
             .createdAt(charge.getCreatedAt())
             .build();
     }

@@ -1,6 +1,7 @@
 package com.example.solimus.services.minio;
 
 import io.minio.*;
+import io.minio.http.Method;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,6 +13,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -90,6 +92,26 @@ public class MinioServiceImpl implements MinioService {
     public String getFileUrl(String fileName) {
         if (fileName == null || fileName.isEmpty()) return null;
         return minioUrl + "/" + bucket + "/" + toObjectKey(fileName);
+    }
+
+    @Override
+    public String getPresignedDownloadUrl(String fileName, int expirySeconds) {
+        if (fileName == null || fileName.isBlank()) {
+            throw new RuntimeException("Chemin fichier vide");
+        }
+        String objectKey = toObjectKey(fileName);
+        try {
+            return minioClient.getPresignedObjectUrl(
+                    GetPresignedObjectUrlArgs.builder()
+                            .method(Method.GET)
+                            .bucket(bucket)
+                            .object(objectKey)
+                            .expiry(expirySeconds, TimeUnit.SECONDS)
+                            .build());
+        } catch (Exception e) {
+            log.error("Error generating presigned download URL from Minio (objectKey={})", objectKey, e);
+            throw new RuntimeException("Erreur lors de la génération du lien de téléchargement : " + e.getMessage());
+        }
     }
 
     // Télécharge le fichier depuis MinIO et retourne son InputStream.

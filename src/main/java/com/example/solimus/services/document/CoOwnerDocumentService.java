@@ -1,6 +1,7 @@
 package com.example.solimus.services.document;
 
 import com.example.solimus.dtos.document.CoOwnerDocumentDTO;
+import com.example.solimus.dtos.document.DocumentDownloadUrlDTO;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -17,4 +18,6 @@ public interface CoOwnerDocumentService {
      * @return page de documents
      */
     Page<CoOwnerDocumentDTO> getMesDocuments(String search, String documentType, String source, Pageable pageable);
+
+    DocumentDownloadUrlDTO getDownloadUrl(String source, Long sourceId, String fileName);
 }
