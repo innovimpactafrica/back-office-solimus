@@ -1,5 +1,6 @@
 package com.example.solimus.dtos.intervention;
 
+import com.example.solimus.dtos.provider.request.WorkflowStepDTO;
 import com.example.solimus.enums.InitiatedBy;
 import com.example.solimus.enums.IncidentLocationType;
 import com.example.solimus.enums.InterventionManagementMode;

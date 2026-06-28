@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -94,6 +95,17 @@ public class MinioServiceImpl implements MinioService {
         return minioUrl + "/" + bucket + "/" + toObjectKey(fileName);
     }
 
+    // Transforme les chemins de fichiers MinIO stockés en base de données en URLs temporaires signées
+    // Ces URLs permettent au front d'afficher les images sans accès direct à MinIO
+    public List<String> toPresignedUrls(List<String> urls) {
+        if (urls == null || urls.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        return urls.stream()
+                .map(url -> getPresignedDownloadUrl(url, 3600))
+                .collect(Collectors.toList());
+    }
     @Override
     public String getPresignedDownloadUrl(String fileName, int expirySeconds) {
         if (fileName == null || fileName.isBlank()) {

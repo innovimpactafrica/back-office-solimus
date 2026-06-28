@@ -1,0 +1,39 @@
+package com.example.solimus.entities;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
+
+import java.time.LocalDateTime;
+
+
+@Entity
+@Table(name = "intervention_comments")
+@Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+public class InterventionComment {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id; // Identifiant unique du commentaire
+
+    @Column(columnDefinition = "TEXT", nullable = false)
+    private String content; // Contenu du commentaire
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "author_id", nullable = false)
+    private User author; // Utilisateur qui a écrit le commentaire
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "intervention_id", nullable = false)
+    private InterventionRequest interventionRequest; // Intervention concernée
+
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
+    private LocalDateTime createdAt; // Date de création du commentaire
+}

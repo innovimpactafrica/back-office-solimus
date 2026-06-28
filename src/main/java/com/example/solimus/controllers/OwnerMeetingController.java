@@ -3,7 +3,7 @@ package com.example.solimus.controllers;
 import com.example.solimus.dtos.meeting.MeetingCalendarDayDTO;
 import com.example.solimus.dtos.meeting.MeetingDetailDTO;
 import com.example.solimus.dtos.meeting.MeetingSummaryDTO;
-import com.example.solimus.services.coproprietaire.CoOwnerMeetingService;
+import com.example.solimus.services.owner.CoOwnerMeetingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;

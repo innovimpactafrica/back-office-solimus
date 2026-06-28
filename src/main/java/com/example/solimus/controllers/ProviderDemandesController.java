@@ -1,11 +1,11 @@
 package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.admin.EstimatedDelayDTO;
-import com.example.solimus.dtos.intervention.CreateQuoteDTO;
+import com.example.solimus.dtos.provider.request.CreateQuoteDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestDTO;
-import com.example.solimus.dtos.intervention.InterventionRequestSummaryDTO;
-import com.example.solimus.dtos.provider.ProviderQuoteListDTO;
-import com.example.solimus.dtos.provider.QuoteDetailDTO;
+import com.example.solimus.dtos.provider.request.ProviderQuoteListDTO;
+import com.example.solimus.dtos.provider.request.QuoteDetailDTO;
+import com.example.solimus.dtos.provider.request.ProviderRequestsPageDTO;
 import com.example.solimus.enums.InterventionStatus;
 import com.example.solimus.enums.QuoteStatus;
 import com.example.solimus.services.provider.ProviderService;
@@ -34,7 +34,7 @@ public class ProviderDemandesController {
 
     @Operation(summary = "Lister les demandes d'intervention (Listing paginé et filtré)")
     @GetMapping("/available-requests")
-    public ResponseEntity<com.example.solimus.dtos.intervention.ProviderRequestsPageDTO> getAvailableRequests(
+    public ResponseEntity<ProviderRequestsPageDTO> getAvailableRequests(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) InterventionStatus status,
             @RequestParam(defaultValue = "0") int page,

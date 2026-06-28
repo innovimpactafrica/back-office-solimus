@@ -1,8 +1,8 @@
 package com.example.solimus.services.admin;
 
 import com.example.solimus.dtos.admin.*;
-import com.example.solimus.dtos.residence.CreateSecurityFeatureDTO;
-import com.example.solimus.dtos.residence.SecurityFeatureDTO;
+import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanDTO;
+import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanRequestDTO;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.UserStatus;
 
@@ -10,21 +10,20 @@ import java.util.List;
 
 /**
  * Service de gestion administrative.
- * Gère le référentiel (Spécialités, Zones) et les utilisateurs (Listing, Activation).
  */
 public interface AdminService {
+
+    // --- GESTION ABONNEMENTS PRESTATAIRES ---
+    /**
+     * Crée ou met à jour la formule prestataire (save transparent).
+     * Si aucune formule n'existe encore, elle est créée.
+     * Si une formule existe déjà, elle est mise à jour avec les nouvelles valeurs.
+     */
+    ProviderPlanDTO saveProviderPlan(ProviderPlanRequestDTO dto);
 
     // --- GESTION DES DÉLAIS ---
     List<EstimatedDelayDTO> getAllEstimatedDelays();
     EstimatedDelayDTO addEstimatedDelay(String label, Integer days);
-
-    // --- GESTION DES SPÉCIALITÉS ---
-    List<SpecialtyDTO> getAllSpecialties();
-    SpecialtyDTO createSpecialty(CreateSpecialtyDTO specialtyDTO);
-    SpecialtyDTO updateSpecialty(Long id, CreateSpecialtyDTO specialtyDTO);
-    void deleteSpecialty(Long id);
-
-
 
     // --- GESTION DES UTILISATEURS ---
     /**
@@ -53,26 +52,5 @@ public interface AdminService {
    CreateUserResponseDTO createUser(
             CreateUserRequestDTO dto);
 
-  // --- GESTION DES OPTIONS DE SÉCURITÉ ---
 
-  /**
-   * Créer une nouvelle option de sécurité
-   */
-  void createSecurityFeature(CreateSecurityFeatureDTO dto);
-
-  /**
-   * Lister toutes les options de sécurité (actives ou non)
-   */
-  List<SecurityFeatureDTO> getSecurityFeatures();
-
-  /**
-   * Désactiver une option de sécurité
-   */
-  void deactivateSecurityFeature(Long id);
-
-  /**
-   * Activer une option de sécurité
-   */
-  void activateSecurityFeature(Long id);
-    
 }

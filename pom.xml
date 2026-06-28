@@ -145,6 +145,13 @@
 			<version>1.26.2</version>
 		</dependency>
 
+		<!-- Firebase Admin SDK — notifications push FCM -->
+		<dependency>
+			<groupId>com.google.firebase</groupId>
+			<artifactId>firebase-admin</artifactId>
+			<version>9.4.1</version>
+		</dependency>
+
 		<!-- Apache POI -->
 		<dependency>
 			<groupId>org.apache.poi</groupId>

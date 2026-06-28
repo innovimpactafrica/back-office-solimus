@@ -1,10 +1,10 @@
 package com.example.solimus.enums;
 
+//Niveau d'urgence de la demande de travaux
 public enum UrgencyLevel {
     FAIBLE("Faible"),
     MOYEN("Moyen"),
-    URGENT("Urgent"),
-    CRITIQUE("Critique");
+    URGENT("Urgent");
 
     private final String label;
 

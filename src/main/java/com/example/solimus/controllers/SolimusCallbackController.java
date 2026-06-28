@@ -1,11 +1,11 @@
 package com.example.solimus.controllers;
 
 import com.example.solimus.entities.ChargeAllocation;
-import com.example.solimus.entities.ChargePayment;
 import com.example.solimus.entities.InterventionRequest;
 import com.example.solimus.entities.InTouchCallbackRequest;
-import com.example.solimus.entities.Subscription;
-import com.example.solimus.entities.SubscriptionPayment;
+import com.example.solimus.enums.SubscriptionStatus;
+import com.example.solimus.repositories.SubscriptionRepository;
+
 import com.example.solimus.enums.*;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.auth.EmailService;
@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
+
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
@@ -35,12 +35,6 @@ public class SolimusCallbackController {
     // Repository de la demande d'intervention liée au paiement
     private final InterventionRequestRepository interventionRepository;
 
-    // Repository des paiements d'abonnement Premium : SUB-*
-    private final SubscriptionPaymentRepository subscriptionPaymentRepository;
-
-    // Repository des abonnements prestataires
-    private final SubscriptionRepository subscriptionRepository;
-
     // Repository des paiements de charges : CPY-*
     private final ChargePaymentRepository chargePaymentRepository;
 
@@ -49,6 +43,9 @@ public class SolimusCallbackController {
 
     // Service utilisé pour créditer le wallet du prestataire après confirmation InTouch
     private final ProviderService providerService;
+
+    // Repository des abonnements prestataires : SUB-*
+    private final SubscriptionRepository subscriptionRepository;
 
     // Service email pour notifier le prestataire après activation Premium
     private final EmailService emailService;
@@ -92,7 +89,7 @@ public class SolimusCallbackController {
         }
 
         if (ref.startsWith("SUB-")) {
-            // Paiement abonnement Premium prestataire
+            // On route vers le traitement spécifique à l'abonnement
             return handleSubscriptionCallback(ref, succes);
         }
 
@@ -200,25 +197,26 @@ public class SolimusCallbackController {
     // =========================================================================
     // CAS 2 — Paiement abonnement Premium (SUB-)
     // =========================================================================
-    private ResponseEntity<Map<String, Object>> handleSubscriptionCallback(
-            String ref, boolean succes) {
+    private ResponseEntity<Map<String, Object>> handleSubscriptionCallback(String ref, boolean succes) {
 
-        return subscriptionPaymentRepository.findByReference(ref)
-                .map(paiement -> {
+        // On retrouve la Subscription créée en PENDING grâce à sa référence unique
+        return subscriptionRepository.findByTransactionRef(ref)
+                .map(subscription -> {
 
-                    // Sécurité anti-double callback
-                    if (paiement.getStatut() == SubscriptionPaymentStatus.PAYE) {
+                    // Anti-double callback : si TouchPay rappelle deux fois, on ne réagit pas la 2e fois
+                    if (subscription.getStatus() == SubscriptionStatus.ACTIVE) {
                         return ResponseEntity.ok(Map.<String, Object>of(
                                 "success", true,
                                 "message", "Abonnement déjà activé"
                         ));
                     }
 
-                    // Paiement échoué → le prestataire reste sur son plan actuel
                     if (!succes) {
-                        paiement.setStatut(SubscriptionPaymentStatus.ECHOUE);
-                        subscriptionPaymentRepository.save(paiement);
+                        // Le paiement a échoué côté TouchPay → on met à échec cette tentative
+                        subscription.setStatus(SubscriptionStatus.FAILED);
+                        subscriptionRepository.save(subscription);
 
+                        // On trace l'échec dans les logs pour debug
                         log.warn("Paiement abonnement échoué pour ref : {}", ref);
 
                         return ResponseEntity.ok(Map.<String, Object>of(
@@ -227,45 +225,30 @@ public class SolimusCallbackController {
                         ));
                     }
 
-                    // Paiement confirmé → marquer comme payé
-                    paiement.setStatut(SubscriptionPaymentStatus.PAYE);
-                    subscriptionPaymentRepository.save(paiement);
-
-                    // Activer le plan Premium pour 1 mois
-                    Subscription subscription = paiement.getSubscription();
-                    subscription.setPlan(SubscriptionPlan.PREMIUM);
+                    // Le paiement est confirmé par TouchPay → on débloque réellement l'accès
                     subscription.setStatus(SubscriptionStatus.ACTIVE);
-                    subscription.setDateActivation(LocalDate.now());
-                    subscription.setDateExpiration(LocalDate.now().plusMonths(1));
-                    subscription.setRenouvellementAuto(paiement.isRenouvellementAuto());
-                    subscription.setMoyenPaiement(paiement.getMoyenPaiement());
                     subscriptionRepository.save(subscription);
 
-                    // Notifier le prestataire par email
-                    String formattedDate = subscription.getDateExpiration()
-                            .format(DATE_FORMATTER);
-                    emailService.sendSubscriptionPremiumNotification(
-                            subscription.getProvider().getEmail(),
-                            subscription.getProvider().getFirstName(),
-                            subscription.getPlan().name(),
-                            formattedDate
-                    );
-
-                    log.info("Premium activé via callback pour prestataire ID : {}",
-                            subscription.getProvider().getId());
+                    // On trace l'activation réussie, avec la date d'expiration pour suivi
+                    log.info("Abonnement {} activé pour prestataire {} — expire le {}",
+                            ref,
+                            subscription.getProvider().getId(),
+                            subscription.getEndDate().format(DATE_FORMATTER));
 
                     return ResponseEntity.ok(Map.<String, Object>of(
                             "success", true,
-                            "message", "Abonnement Premium activé avec succès"
+                            "message", "Abonnement activé avec succès"
                     ));
                 })
+                // Si la référence n'existe pas du tout en base (cas anormal)
                 .orElseGet(() -> ResponseEntity.badRequest().body(
                         Map.<String, Object>of(
                                 "success", false,
-                                "message", "Paiement abonnement introuvable pour la référence : " + ref
+                                "message", "Abonnement introuvable pour la référence : " + ref
                         )
                 ));
     }
+
 
     // =========================================================================
     // CAS 3 — Paiement charge copropriétaire (CPY-)
@@ -274,47 +257,47 @@ public class SolimusCallbackController {
             String ref, boolean succes) {
 
         return chargePaymentRepository.findByReference(ref)
-            .map(paiement -> {
+                .map(paiement -> {
 
-                // Anti-double callback
-                if (paiement.getStatus() == PaymentStatus.COMPLETED) {
-                    return ResponseEntity.ok(Map.<String, Object>of(
-                        "success", true,
-                        "message", "Paiement déjà confirmé"
-                    ));
-                }
+                    // Anti-double callback
+                    if (paiement.getStatus() == PaymentStatus.COMPLETED) {
+                        return ResponseEntity.ok(Map.<String, Object>of(
+                                "success", true,
+                                "message", "Paiement déjà confirmé"
+                        ));
+                    }
 
-                if (!succes) {
-                    paiement.setStatus(PaymentStatus.FAILED);
+                    if (!succes) {
+                        paiement.setStatus(PaymentStatus.FAILED);
+                        chargePaymentRepository.save(paiement);
+                        return ResponseEntity.ok(Map.<String, Object>of(
+                                "success", true,
+                                "message", "Paiement marqué comme échoué"
+                        ));
+                    }
+
+                    // Confirmer le paiement
+                    paiement.setStatus(PaymentStatus.COMPLETED);
+                    paiement.setPaidAt(LocalDateTime.now());
                     chargePaymentRepository.save(paiement);
+
+                    // Marquer l'allocation comme PAYEE
+                    ChargeAllocation allocation = paiement.getAllocation();
+                    allocation.setStatus(ChargeStatus.PAYEE);
+                    chargeAllocationRepository.save(allocation);
+
+                    log.info("Charge {} payée avec succès", ref);
+
                     return ResponseEntity.ok(Map.<String, Object>of(
-                        "success", true,
-                        "message", "Paiement marqué comme échoué"
+                            "success", true,
+                            "message", "Paiement charge confirmé"
                     ));
-                }
-
-                // Confirmer le paiement
-                paiement.setStatus(PaymentStatus.COMPLETED);
-                paiement.setPaidAt(LocalDateTime.now());
-                chargePaymentRepository.save(paiement);
-
-                // Marquer l'allocation comme PAYEE
-                ChargeAllocation allocation = paiement.getAllocation();
-                allocation.setStatus(ChargeStatus.PAYEE);
-                chargeAllocationRepository.save(allocation);
-
-                log.info("Charge {} payée avec succès", ref);
-
-                return ResponseEntity.ok(Map.<String, Object>of(
-                    "success", true,
-                    "message", "Paiement charge confirmé"
+                })
+                .orElseGet(() -> ResponseEntity.badRequest().body(
+                        Map.<String, Object>of(
+                                "success", false,
+                                "message", "Paiement charge introuvable : " + ref
+                        )
                 ));
-            })
-            .orElseGet(() -> ResponseEntity.badRequest().body(
-                Map.<String, Object>of(
-                    "success", false,
-                    "message", "Paiement charge introuvable : " + ref
-                )
-            ));
     }
 }

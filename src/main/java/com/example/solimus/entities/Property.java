@@ -1,7 +1,6 @@
 package com.example.solimus.entities;
 
 import com.example.solimus.enums.PropertyStatus;
-import com.example.solimus.enums.PropertyType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -69,10 +68,10 @@ public class Property {
 
     /**
      * Type de bien.
-     * Valeurs : APPARTEMENT, STUDIO, LOCAL_COMMERCIAL, PARKING, CAVE
+     * Référence vers l'entité PropertyType gérée par le syndic.
      */
-    @Enumerated(EnumType.STRING)
-    @Column(name = "type_bien", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "property_type_id", nullable = false)
     private PropertyType typeBien;
 
 

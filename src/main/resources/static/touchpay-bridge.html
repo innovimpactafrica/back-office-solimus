@@ -123,7 +123,6 @@
 
             const loading = document.getElementById('loading');
             const errorBox = document.getElementById('errorBox');
-            const btn = document.getElementById('btnContinuer');
 
             // si pas de référence dans l’URL
             if (!ref) {
@@ -180,9 +179,9 @@
                 let rawPhone = data.customerPhone || '';
                 dynamicPhone = String(rawPhone).replace(/[^\d+]/g, '');
 
-                // ✅ cacher loading et afficher bouton
+                // ✅ cacher loading et lancer TouchPay directement
                 loading.style.display = 'none';
-                btn.style.display = 'inline-block';
+                calltouchpay();
 
             } catch (error) {
                 // ❌ en cas d’erreur backend
@@ -204,7 +203,7 @@
                 return;
             }
 
-            // 🚀 appel du script TouchPay (fourni par leur SDK)
+            // 🚀 appel du script TouchPay 
             sendPaymentInfos(
                 dynamicTransactionRef,  // référence paiement
                 dynamicAgencyCode,      // code agence
@@ -243,21 +242,6 @@
 
     <!-- ❌ affichage des erreurs -->
     <div id="errorBox" style="display:none;"></div>
-
-    <!-- 🔘 bouton paiement -->
-    <input type="button"
-           id="btnContinuer"
-           onclick="calltouchpay()"
-           value="Continuer"
-           style="display:none;
-                      background-color: rgb(42, 83, 139);
-                      color: white;
-                      border-radius: 8px;
-                      height: 40px;
-                      border: none;
-                      cursor: pointer;
-                      padding: 0 30px;
-                      font-size: 16px;" />
 </div>
 
 </body>

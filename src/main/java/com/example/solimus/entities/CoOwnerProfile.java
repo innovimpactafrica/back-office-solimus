@@ -12,6 +12,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+//----------------------------------------------
+// Représente Le profil d'un copropriétaire
+//------------------------------------------------
 @Entity
 @Table(name = "co_owner_profiles")
 @Data
@@ -42,19 +45,11 @@ public class CoOwnerProfile {
     /** Numéro de téléphone secondaire */
     private String secondaryPhone;
 
-    /** Adresse postale */
+    /** Adresse */
     @Column(columnDefinition = "TEXT")
     private String address;
 
     /** URL de la photo de profil */
     private String photoUrl;
 
-    /** Date de création du profil */
-    @CreationTimestamp
-    @Column(updatable = false)
-    private LocalDateTime createdAt;
-
-    /** Date de dernière mise à jour du profil */
-    @UpdateTimestamp
-    private LocalDateTime updatedAt;
 }

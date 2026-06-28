@@ -2,11 +2,11 @@ package com.example.solimus.services.syndic;
 
 import com.example.solimus.dtos.charge.ChargeResponseDTO;
 import com.example.solimus.dtos.charge.CreateChargeDTO;
-import com.example.solimus.dtos.intervention.CreateInterventionRequestDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestDTO;
 import com.example.solimus.dtos.intervention.NearbyProviderDTO;
 import com.example.solimus.dtos.intervention.SyndicQuoteDTO;
-import com.example.solimus.dtos.residence.PropertyDTO;
+import com.example.solimus.dtos.syndic.travaux.CreateReviewDTO;
+import com.example.solimus.dtos.syndic.residence.PropertyDTO;
 import com.example.solimus.dtos.syndic.PayerAcompteDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
@@ -16,9 +16,9 @@ import com.example.solimus.enums.WithdrawalStatus;
 import java.util.List;
 
 public interface SyndicService {
-    PropertyDTO addOwner(Long propertyId, Long userId);
+
     List<NearbyProviderDTO> findNearbyProviders(Long residenceId, Long specialtyId);
-    InterventionRequestDTO createInterventionRequest(CreateInterventionRequestDTO dto);
+
     List<InterventionRequestDTO> getMyInterventionRequests();
     void acceptQuote(Long requestId, Long quoteId);
     List<SyndicQuoteDTO> getQuotesByInterventionRequest(Long requestId);

@@ -10,6 +10,8 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
+
+// Représente l'historique des changements de statut d'une intervention
 @Entity
 @Table(name = "intervention_status_history")
 @Data
@@ -18,23 +20,24 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class InterventionStatusHistory {
 
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "intervention_id", nullable = false)
-    private InterventionRequest interventionRequest;
+    private InterventionRequest interventionRequest; // L'intervention concernée
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private InterventionStatus status;
+    private InterventionStatus status; // Nouveau statut
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "changed_by_id", nullable = false)
-    private User changedBy;
+    private User changedBy; // Utilisateur qui a effectué le changement
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    private LocalDateTime createdAt; // Date du changement
 }

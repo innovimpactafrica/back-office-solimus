@@ -4,17 +4,15 @@ import com.example.solimus.dtos.charge.ChargeLineDTO;
 import com.example.solimus.dtos.charge.ChargeResponseDTO;
 import com.example.solimus.dtos.charge.ChargeDocumentDTO;
 import com.example.solimus.dtos.charge.CreateChargeDTO;
-import com.example.solimus.dtos.intervention.CreateInterventionRequestDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestDTO;
 import com.example.solimus.dtos.intervention.InterventionStatusHistoryDTO;
-import com.example.solimus.dtos.intervention.WorkflowStepDTO;
+import com.example.solimus.dtos.provider.request.WorkflowStepDTO;
 import com.example.solimus.dtos.intervention.NearbyProviderDTO;
 import com.example.solimus.dtos.intervention.SyndicQuoteDTO;
-import com.example.solimus.dtos.residence.PropertyDTO;
-import com.example.solimus.dtos.syndic.PayerAcompteDTO;
-import com.example.solimus.dtos.syndic.PaymentResponseDTO;
-import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
+import com.example.solimus.dtos.syndic.*;
+import com.example.solimus.dtos.syndic.residence.PropertyDTO;
 import com.example.solimus.dtos.provider.WithdrawalRequestDTO;
+import com.example.solimus.dtos.syndic.travaux.CreateReviewDTO;
 import com.example.solimus.entities.Charge;
 import com.example.solimus.entities.ChargeAllocation;
 import com.example.solimus.entities.ChargeDocument;
@@ -23,19 +21,12 @@ import com.example.solimus.entities.InterventionRequest;
 import com.example.solimus.entities.Property;
 import com.example.solimus.entities.Quote;
 import com.example.solimus.entities.Residence;
-import com.example.solimus.entities.Role;
-import com.example.solimus.entities.Specialty;
 import com.example.solimus.entities.User;
 import com.example.solimus.entities.Wallet;
 import com.example.solimus.entities.WithdrawalRequest;
 import com.example.solimus.enums.ChargeStatus;
-import com.example.solimus.enums.ERole;
-import com.example.solimus.enums.InitiatedBy;
 import com.example.solimus.enums.InterventionStatus;
 import com.example.solimus.enums.QuoteStatus;
-import com.example.solimus.enums.UserStatus;
-import com.example.solimus.enums.SubscriptionPlan;
-import com.example.solimus.enums.SubscriptionStatus;
 import com.example.solimus.enums.WithdrawalStatus;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
@@ -50,10 +41,6 @@ import com.example.solimus.repositories.PaymentRepository;
 import com.example.solimus.entities.Payment;
 import com.example.solimus.enums.PaymentType;
 import com.example.solimus.enums.PaymentStatus;
-import com.example.solimus.dtos.syndic.PayerAcompteDTO;
-import com.example.solimus.dtos.syndic.PaymentDTO;
-import com.example.solimus.dtos.syndic.PaymentResponseDTO;
-import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -87,20 +74,20 @@ public class SyndicServiceImpl implements SyndicService {
     private final SpecialtyRepository specialtyRepository;
     private final InterventionRequestRepository interventionRepository;
     private final QuoteRepository quoteRepository;
-    private final ProviderRatingRepository providerRatingRepository;
+    private final ReviewRepository reviewRepository;
     private final RoleRepository roleRepository;
     private final ActivationCodeService activationCodeService;
     private final EmailService emailService;
     private final GeolocationService geolocationService;
     private final PaymentRepository paymentRepository;
     private final ProviderService providerService;
-    private final SubscriptionRepository subscriptionRepository;
     private final ChargeRepository chargeRepository;
     private final ChargeLineRepository chargeLineRepository;
     private final WithdrawalRequestRepository withdrawalRequestRepository;
     private final WalletRepository walletRepository;
     private final ChargeAllocationRepository chargeAllocationRepository;
     private final MinioService minioService;
+    private final com.example.solimus.repositories.ProviderProfileRepository providerProfileRepository;
 
     @Value("${solimus.geolocation.search-radius-km:30.0}")
     private double searchRadiusKm;
@@ -108,9 +95,6 @@ public class SyndicServiceImpl implements SyndicService {
     @Value("${app.touchpay.bridge-url}")
     private String touchPayBridgeUrlTemplate;
 
-    // =========================================================================
-    // GESTION DES BIENS (PROPERTIES)
-    // =========================================================================
 
     // =========================================================================
     // CRÉER UNE CHARGE
@@ -273,36 +257,6 @@ public class SyndicServiceImpl implements SyndicService {
             .collect(Collectors.toList());
     }
 
-    /**
-     * Assigne un copropriétaire à un bien existant.
-     * Vérifie que le compte est actif avant l'assignation.
-     */
-    @Override
-    @Transactional
-    public PropertyDTO addOwner(Long propertyId, Long userId) {
-        User currentSyndic = getCurrentUser();
-        Property property = propertyRepository.findById(propertyId)
-                .orElseThrow(() -> new ResourceNotFoundException("Bien introuvable"));
-
-        // Sécurité : Vérifier que le syndic gère bien la résidence du bien
-        if (!property.getResidence().getSyndic().equals(currentSyndic)) {
-            throw new BadRequestException("Vous n'êtes pas autorisé à modifier ce bien.");
-        }
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
-
-        if (user.getRole() == null || !user.getRole().getName().equals(ERole.ROLE_COPROPRIETAIRE)) {
-            throw new BadRequestException("Seul un utilisateur avec le rôle COPROPRIETAIRE peut posséder un bien.");
-        }
-
-        if (user.getStatus() != UserStatus.ACTIVE) {
-            throw new BadRequestException("Le compte du copropriétaire doit être actif pour posséder un bien.");
-        }
-
-        property.setOwner(user);
-        return mapToPropertyDTO(propertyRepository.save(property));
-    }
 
     // =========================================================================
     // GESTION DES INTERVENTIONS
@@ -327,92 +281,27 @@ public class SyndicServiceImpl implements SyndicService {
 
         // Transformation en DTO avec calcul fin de la distance pour l'affichage
         return providers.stream().map(provider -> {
+            com.example.solimus.entities.ProviderProfile profile = providerProfileRepository.findByUser(provider)
+                    .orElse(null);
             double distance = geolocationService.calculateDistance(
                     residence.getLatitude().doubleValue(),
                     residence.getLongitude().doubleValue(),
-                    provider.getLatitude().doubleValue(),
-                    provider.getLongitude().doubleValue()
+                    profile != null ? profile.getLatitude().doubleValue() : 0,
+                    profile != null ? profile.getLongitude().doubleValue() : 0
             );
-
-            boolean isPremium = subscriptionRepository.findByProviderId(provider.getId())
-                    .map(sub -> sub.getPlan() == SubscriptionPlan.PREMIUM && sub.getStatus() == SubscriptionStatus.ACTIVE)
-                    .orElse(false);
 
             return NearbyProviderDTO.builder()
                     .id(provider.getId())
                     .firstName(provider.getFirstName())
                     .lastName(provider.getLastName())
-                    .companyName(provider.getCompanyName())
-                    .specialtyName(provider.getSpecialty() != null ? provider.getSpecialty().getName() : "N/A")
+                    .companyName(profile != null ? profile.getCompanyName() : null)
+                    .specialtyName(profile != null && profile.getSpecialty() != null ? profile.getSpecialty().getName() : "N/A")
                     .distanceKm(Math.round(distance * 10.0) / 10.0) // Arrondi à 1 décimale
-                    .premium(isPremium)
                     .build();
         }).collect(Collectors.toList());
     }
 
-    /**
-     * Crée une demande d'intervention et notifie les prestataires sélectionnés par email.
-     */
-    @Override
-    @Transactional
-    public InterventionRequestDTO createInterventionRequest(CreateInterventionRequestDTO dto) {
-        User currentSyndic = getCurrentUser();
-        
-        Residence residence = residenceRepository.findById(dto.getResidenceId())
-                .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
-        Property property = propertyRepository.findById(dto.getPropertyId())
-                .orElseThrow(() -> new ResourceNotFoundException("Bien introuvable"));
-        Specialty specialty = specialtyRepository.findById(dto.getSpecialtyId())
-                .orElseThrow(() -> new ResourceNotFoundException("Spécialité introuvable"));
 
-        InterventionRequest request = new InterventionRequest();
-        request.setTitle(dto.getTitle());
-        request.setDescription(dto.getDescription());
-        request.addStatusHistory(InterventionStatus.PENDING, currentSyndic);
-        request.setInitiatedBy(InitiatedBy.SYNDIC);
-        request.setSyndic(currentSyndic);
-        request.setResidence(residence);
-        request.setProperty(property);
-        request.setSpecialty(specialty);
-        request.setPhotoUrls(dto.getPhotoUrls());
-
-        // Diffusion automatique aux prestataires proches
-        if (residence.getLatitude() == null || residence.getLongitude() == null) {
-            throw new BadRequestException("La résidence n'a pas de coordonnées GPS, impossible de trouver des prestataires proches");
-        }
-
-        List<User> nearbyProviders = userRepository.findNearbyProviders(
-                residence.getLatitude().doubleValue(),
-                residence.getLongitude().doubleValue(),
-                specialty.getId(),
-                30.0 // rayon de 30 km
-        );
-
-        if (nearbyProviders.isEmpty()) {
-            log.warn("Aucun prestataire trouvé dans un rayon de 30 km pour la résidence {} et la spécialité {}", residence.getName(), specialty.getName());
-        } else {
-            request.setNotifiedProviders(nearbyProviders);
-
-            nearbyProviders.forEach(provider -> {
-                try {
-                    if (provider.isNotificationsEnabled()) {
-                        emailService.sendInterventionNotification(
-                                provider.getEmail(),
-                                provider.getFirstName(),
-                                request.getTitle(),
-                                residence.getName()
-                        );
-                    }
-                } catch (Exception e) {
-                    log.error("Erreur lors de l'envoi de notification email à {}", provider.getEmail());
-                }
-            });
-
-            log.info("Diffusion automatique : {} prestataires notifiés pour l'intervention {}", nearbyProviders.size(), request.getTitle());
-        }
-
-        return mapToInterventionDTO(interventionRepository.save(request));
-    }
 
     /**
      * Accepte un devis et rejette automatiquement tous les autres devis en attente pour la même demande.
@@ -467,6 +356,7 @@ public class SyndicServiceImpl implements SyndicService {
 
         // 7. Finaliser la demande : assignation du prestataire, montant et changement de statut
         request.setSelectedProvider(acceptedQuote.getProvider());
+        request.setQuoteAcceptedAt(java.time.LocalDateTime.now());
         request.setTotalAmount(acceptedQuote.getTotalAmount());
         request.addStatusHistory(InterventionStatus.SYNDIC_VALIDATED, getCurrentUser());
     }
@@ -580,7 +470,7 @@ public class SyndicServiceImpl implements SyndicService {
             .map(quote -> {
 
                 // Note moyenne réelle du prestataire
-                Double noteMoyenne = providerRatingRepository
+                Double noteMoyenne = reviewRepository
                     .calculerNoteMoyenne(quote.getProvider().getId());
 
                 // Si le prestataire n'a jamais été noté → 0.0 par défaut
@@ -610,12 +500,13 @@ public class SyndicServiceImpl implements SyndicService {
                 // Ex: 0.74 → 74%
                 int scoreQualitePrix = (int) Math.round(scoreFinal * 100);
 
+                com.example.solimus.entities.ProviderProfile profile = providerProfileRepository.findByUser(quote.getProvider()).orElse(null);
                 return SyndicQuoteDTO.builder()
                     .id(quote.getId())
                     .providerId(quote.getProvider().getId())
                     .providerName(quote.getProvider().getFirstName()
                         + " " + quote.getProvider().getLastName())
-                    .companyName(quote.getProvider().getCompanyName())
+                    .companyName(profile != null ? profile.getCompanyName() : null)
                     .laborTotalAmount(quote.getLaborTotalAmount())
                     .materialTotalAmount(quote.getMaterialTotalAmount())
                     .totalAmount(quote.getTotalAmount())
@@ -774,7 +665,6 @@ public class SyndicServiceImpl implements SyndicService {
     }
 
     /**
- x
     /**
      * Mappe une entité Property vers son DTO.
      */
@@ -783,7 +673,7 @@ public class SyndicServiceImpl implements SyndicService {
                 .id(p.getId())
                 .reference(p.getReference())
                 .superficie(p.getSuperficie())
-                .type(p.getTypeBien())
+                .typeName(p.getTypeBien() != null ? p.getTypeBien().getName() : null)
                 .residenceId(p.getResidence() != null ? p.getResidence().getId() : null)
                 .residenceName(p.getResidence() != null ? p.getResidence().getName() : null)
                 .ownerId(p.getOwner() != null ? p.getOwner().getId() : null)
@@ -897,14 +787,15 @@ public class SyndicServiceImpl implements SyndicService {
      * Mappe une entité Quote vers le DTO SyndicQuoteDTO (comparaison).
      */
     private SyndicQuoteDTO mapToSyndicQuoteDTO(Quote quote) {
-        Double noteMoyenne = providerRatingRepository.calculerNoteMoyenne(quote.getProvider().getId());
+        Double noteMoyenne = reviewRepository.calculerNoteMoyenne(quote.getProvider().getId());
         double rating = noteMoyenne != null ? noteMoyenne : 0.0;
 
+        com.example.solimus.entities.ProviderProfile profile = providerProfileRepository.findByUser(quote.getProvider()).orElse(null);
         return SyndicQuoteDTO.builder()
                 .id(quote.getId())
                 .providerId(quote.getProvider().getId())
                 .providerName(quote.getProvider().getFirstName() + " " + quote.getProvider().getLastName())
-                .companyName(quote.getProvider().getCompanyName())
+                .companyName(profile != null ? profile.getCompanyName() : null)
                 .laborTotalAmount(quote.getLaborTotalAmount())
                 .materialTotalAmount(quote.getMaterialTotalAmount())
                 .totalAmount(quote.getTotalAmount())

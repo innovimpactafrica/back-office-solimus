@@ -47,7 +47,7 @@ public class Quote {
     
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "estimated_delay_id", nullable = false)
-    private EstimatedDelay estimatedDelay;
+    private EstimatedDelay estimatedDelay; //Durée d'estimation des travaux
 
     @Column(columnDefinition = "TEXT")
     private String additionalComments;

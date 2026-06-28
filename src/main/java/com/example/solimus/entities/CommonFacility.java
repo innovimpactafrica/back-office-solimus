@@ -1,6 +1,5 @@
 package com.example.solimus.entities;
 
-import com.example.solimus.enums.FacilityType;
 import com.example.solimus.enums.GardenState;
 import com.example.solimus.enums.FuelType;
 import com.example.solimus.enums.PumpStatus;
@@ -55,25 +54,22 @@ public class CommonFacility {
     // =========================================================================
 
     /**
-     * Type de l'équipement commun.
-     * Détermine quels champs sont pertinents pour cet équipement.
+     * Type de l'équipement commun (référence vers la table des types prédéfinis).
+     * Plusieurs équipements peuvent avoir le même type
      *
-     * Valeurs :
-     * PISCINE, ASCENSEUR, COULOIR, JARDIN,
-     * PARKING, JARDINS_ESPACES_VERTS,
-     * GROUPE_ELECTROGENE, RESERVOIR_EAU
      */
-    @Enumerated(EnumType.STRING)
-    @Column(name = "facility_type", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "facility_type_id", nullable = false)
     private FacilityType facilityType;
 
 
     // =========================================================================
     // RÉSIDENCE PARENTE
-    // =========================================================================
+    // ========================================= ================================
 
     /**
      * La résidence à laquelle appartient cet équipement.
+     * plusieurs équipements peuvent être dans une résidence et avoir le même type
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "residence_id", nullable = false)

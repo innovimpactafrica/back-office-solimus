@@ -1,5 +1,6 @@
 package com.example.solimus.entities;
 
+import com.example.solimus.enums.QuoteItemType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -29,13 +30,13 @@ public class QuoteItem {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private com.example.solimus.enums.QuoteItemType type;
+    private QuoteItemType type;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "quote_id", nullable = false)
     private Quote quote;
 
-    // Calcul du total de la ligne
+    // Calcul du total de la ligne (quantité * prix unitaire)
     public BigDecimal getTotalPrice() {
         return unitPrice.multiply(BigDecimal.valueOf(quantity));
     }

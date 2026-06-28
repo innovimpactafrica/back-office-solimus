@@ -2,6 +2,7 @@ package com.example.solimus.services.auth;
 
 import com.example.solimus.dtos.auth.*;
 import com.example.solimus.entities.Property;
+import com.example.solimus.entities.ProviderProfile;
 import com.example.solimus.entities.Role;
 import com.example.solimus.entities.User;
 import com.example.solimus.entities.auth.ActivationCode;
@@ -13,7 +14,6 @@ import com.example.solimus.exceptions.EmailAlreadyExistsException;
 import com.example.solimus.exceptions.PhoneAlreadyExistsException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
-import com.example.solimus.services.subscription.SubscriptionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -56,7 +56,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final TokenBlacklistService tokenBlacklistService;
-    private final SubscriptionService subscriptionService;
+    private final com.example.solimus.repositories.ProviderProfileRepository providerProfileRepository;
 
 
     // =========================================================================
@@ -91,12 +91,12 @@ public class AuthServiceImpl implements AuthService {
         }
 
         // ---------------------------------------------------------------------
-        // Sécurité : seuls PRESTATAIRE et COPROPRIETAIRE peuvent s'inscrire eux-mêmes
-        // Les comptes SYNDIC et ADMIN sont créés par l'administrateur
+        // Sécurité : seuls les PRESTATAIRES peuvent s'inscrire eux-mêmes
+        // Les comptes SYNDIC, ADMIN et COPROPRIETAIRE sont créés par l'administrateur
         // ---------------------------------------------------------------------
-        if (dto.getRole() != ERole.ROLE_PRESTATAIRE && dto.getRole() != ERole.ROLE_COPROPRIETAIRE) {
+        if (dto.getRole() != ERole.ROLE_PRESTATAIRE) {
             throw new BadRequestException(
-                    "Action non autorisée : seuls les prestataires et copropriétaires " +
+                    "Action non autorisée : seuls les prestataires " +
                             "peuvent s'auto-inscrire."
             );
         }
@@ -122,28 +122,23 @@ public class AuthServiceImpl implements AuthService {
 
         // ---------------------------------------------------------------------
         // Informations spécifiques selon le rôle
-        // Prestataire → coordonnées GPS + spécialité + nom d'entreprise
-        // Copropriétaire → résidence + bien
+        // Prestataire → création du ProviderProfile
         // ---------------------------------------------------------------------
+        //on vérifie si les champs obligatoires pour "prestataire" sont présents
         if (dto.getRole() == ERole.ROLE_PRESTATAIRE) {
             validateAndSetProviderInfo(user, dto);
-        } else if (dto.getRole() == ERole.ROLE_COPROPRIETAIRE) {
-            validateAndSetCoOwnerInfo(user, dto);
         }
 
+         //Si oui , on enregistre le user
         User savedUser = userRepository.save(user);
 
-        // ---------------------------------------------------------------------
-        // Pour les prestataires → initialisation de l'abonnement GRATUIT
-        // (ils pourront passer en PREMIUM plus tard)
-        // ---------------------------------------------------------------------
+        // Créer le ProviderProfile pour les prestataires
         if (dto.getRole() == ERole.ROLE_PRESTATAIRE) {
-            subscriptionService.initialiserAbonnement(savedUser);
+            createProviderProfile(savedUser, dto);
         }
 
         // ---------------------------------------------------------------------
         // Génération du code OTP à 4 chiffres et envoi par email
-        // Ex : "1234" → l'utilisateur le saisit dans l'app mobile
         // ---------------------------------------------------------------------
         String code = activationCodeService.generateAndStoreCodeMobile(savedUser);
         emailService.sendActivationCode(user.getEmail(), code, user.getFirstName());
@@ -168,12 +163,10 @@ public class AuthServiceImpl implements AuthService {
         }
 
         // ---------------------------------------------------------------------
-        // Cet endpoint est réservé aux utilisateurs mobiles
+        // Cet endpoint est réservé aux utilisateurs mobiles (prestataires)
         // ---------------------------------------------------------------------
         ERole userRole = user.getRole().getName();
-        boolean isMobile = (userRole == ERole.ROLE_PRESTATAIRE
-                || userRole == ERole.ROLE_COPROPRIETAIRE);
-        if (!isMobile) {
+        if (userRole != ERole.ROLE_PRESTATAIRE) {
             throw new BadRequestException(
                     "Ce compte utilise un lien d'activation, pas un code OTP.");
         }
@@ -422,13 +415,13 @@ public class AuthServiceImpl implements AuthService {
 
         // ---------------------------------------------------------------------
         // Génération du code selon la plateforme :
-        // Mobile (Prestataire / Copropriétaire) → code à 4 chiffres
-        // Web (Syndic / Admin)                  → token UUID directement sur le lien 
+        // Mobile (Prestataire) → code à 4 chiffres
+        // Web (Syndic / Admin)  → token UUID directement sur le lien
         // ---------------------------------------------------------------------
         String resetToken;
         ERole userRole = user.getRole().getName();
 
-        if (userRole == ERole.ROLE_PRESTATAIRE || userRole == ERole.ROLE_COPROPRIETAIRE) {
+        if (userRole == ERole.ROLE_PRESTATAIRE) {
             resetToken = activationCodeService.generateAndStoreResetCodeMobile(user);
         } else {
             resetToken = activationCodeService.generateAndStoreResetToken(user);
@@ -656,9 +649,7 @@ public class AuthServiceImpl implements AuthService {
         }
 
         ERole userRole = user.getRole().getName();
-        boolean isMobile = (userRole == ERole.ROLE_PRESTATAIRE
-                || userRole == ERole.ROLE_COPROPRIETAIRE);
-        if (isMobile) {
+        if (userRole == ERole.ROLE_PRESTATAIRE) {
             throw new BadRequestException(
                     "Ce compte utilise un code OTP, pas un lien d'activation.");
         }
@@ -688,7 +679,7 @@ public class AuthServiceImpl implements AuthService {
     // =========================================================================
 
     /**
-     * Vérifie et renseigne les informations spécifiques au prestataire.
+     * Vérifie les informations spécifiques au prestataire.
      * Un prestataire doit avoir : nom d'entreprise + spécialité + coordonnées GPS
      * (les coordonnées GPS servent au matching dans un rayon de 30km)
      */
@@ -706,36 +697,22 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException(
                     "Les coordonnées GPS sont obligatoires pour localiser vos interventions.");
         }
-
-        user.setCompanyName(dto.getCompanyName());
-        user.setSpecialty(specialtyRepository.findById(dto.getSpecialtyId())
-                .orElseThrow(() -> new ResourceNotFoundException("Spécialité non trouvée")));
-        user.setInterventionZone(dto.getInterventionZone());
-        user.setLatitude(dto.getLatitude());
-        user.setLongitude(dto.getLongitude());
     }
 
     /**
-     * Vérifie et renseigne les informations spécifiques au copropriétaire.
-     * L'affectation aux biens se fera après inscription (par le syndic ou via un flux de rattachement).
+     * Crée le ProviderProfile pour un prestataire après la création de l'User
      */
-    private void validateAndSetCoOwnerInfo(User user, RegisterRequestDTO dto) {
-
-        // ---------------------------------------------------------------------
-        // Un copropriétaire ne doit pas envoyer les champs réservés aux prestataires
-        // ---------------------------------------------------------------------
-        if (dto.getSpecialtyId() != null) {
-            throw new BadRequestException(
-                    "Le champ specialtyId est réservé aux prestataires.");
-        }
-        if (dto.getCompanyName() != null) {
-            throw new BadRequestException(
-                    "Le champ companyName est réservé aux prestataires.");
-        }
-        if (dto.getLatitude() != null || dto.getLongitude() != null) {
-            throw new BadRequestException(
-                    "Les coordonnées GPS sont réservées aux prestataires.");
-        }
+    private void createProviderProfile(User user, RegisterRequestDTO dto) {
+      ProviderProfile profile = new ProviderProfile();
+        profile.setUser(user);
+        profile.setCompanyName(dto.getCompanyName());
+        profile.setSpecialty(specialtyRepository.findById(dto.getSpecialtyId())
+                .orElseThrow(() -> new ResourceNotFoundException("Spécialité non trouvée")));
+        profile.setInterventionZone(dto.getInterventionZone());
+        profile.setLatitude(dto.getLatitude());
+        profile.setLongitude(dto.getLongitude());
+        profile.setInterventionCount(0);
+        providerProfileRepository.save(profile);
     }
 
     /**

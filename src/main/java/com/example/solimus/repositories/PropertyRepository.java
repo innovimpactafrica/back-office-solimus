@@ -14,6 +14,15 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
     // Lister les biens d'une résidence
     List<Property> findByResidenceId(Long residenceId);
 
+    // Lister les biens d'un propriétaire dans une résidence spécifique
+    List<Property> findByOwnerIdAndResidenceId(Long ownerId, Long residenceId);
+
+    // Vérifier si un propriétaire a au moins un bien dans une résidence
+    boolean existsByOwnerIdAndResidenceId(Long ownerId, Long residenceId);
+
+    // Vérifier qu'un bien précis appartient à un propriétaire dans une résidence donnée
+    boolean existsByIdAndOwnerIdAndResidenceId(Long id, Long ownerId, Long residenceId);
+
     // Compter les biens d'une résidence
     long countByResidenceId(Long residenceId);
 
@@ -31,4 +40,7 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
 
     // Compter les biens d'un propriétaire donné
     long countByOwnerId(Long ownerId);
+
+    // Lister les biens occupés des résidences d'un syndic (pour lister les copropriétaires)
+    List<Property> findByResidence_SyndicIdAndOwnerIsNotNull(Long syndicId);
 }

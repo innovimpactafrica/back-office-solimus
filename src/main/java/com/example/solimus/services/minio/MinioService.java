@@ -59,4 +59,12 @@ public interface MinioService {
      * @param fileName le nom ou l'identifiant du fichier à supprimer
      */
     void deleteFile(String fileName);
+
+    /**
+     * Transforme une liste de chemins de fichiers MinIO en URLs pré-signées temporaires.
+     *
+     * @param urls la liste des chemins/identifiants des fichiers
+     * @return la liste des URLs pré-signées
+     */
+    List<String> toPresignedUrls(List<String> urls);
 }

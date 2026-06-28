@@ -9,6 +9,7 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
+// Représente un commentaire laissé sur une demande d'intervention
 @Entity
 @Table(name = "intervention_comments")
 @Data
@@ -19,20 +20,20 @@ public class InterventionComment {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private Long id; // Identifiant unique du commentaire
 
     @Column(columnDefinition = "TEXT", nullable = false)
-    private String content;
+    private String content; // Contenu du commentaire
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "author_id", nullable = false)
-    private User author;
+    private User author; // Utilisateur qui a écrit le commentaire
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "intervention_id", nullable = false)
-    private InterventionRequest interventionRequest;
+    private InterventionRequest interventionRequest; // Intervention concernée
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
+    private LocalDateTime createdAt; // Date de création du commentaire
 }

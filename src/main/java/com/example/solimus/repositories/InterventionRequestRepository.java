@@ -19,7 +19,111 @@ import java.util.Optional;
 
 @Repository
 public interface InterventionRequestRepository extends JpaRepository<InterventionRequest, Long> {
-    
+
+
+    // ============================================================
+    // PRESTATAIRE
+    // ============================================================
+
+    // Récupère toutes les demandes d'intervention notifiées à ce prestataire,
+    // mais qui ne lui sont pas (ou pas encore) définitivement assignées —
+    // c'est-à-dire : soit personne n'a encore été choisi (selectedProvider = null),
+    // soit un AUTRE prestataire a été choisi à sa place.
+    // Sert à alimenter l'écran "Demandes" côté prestataire (pas l'écran "Travaux").
+    @Query("SELECT i FROM InterventionRequest i " +
+            "WHERE :provider MEMBER OF i.notifiedProviders " +
+            "AND (i.selectedProvider IS NULL OR i.selectedProvider != :provider)")
+    List<InterventionRequest> findNotifiedRequestsNotAssignedToMe(@Param("provider") User provider);
+
+    // Cas SANS filtre : toutes les demandes notifiées, non assignées à moi,
+    // peu importe leur statut calculé (REJECTED, QUOTE_SENT, ou PENDING_QUOTE)
+    @Query("SELECT i FROM InterventionRequest i " +
+            "WHERE :provider MEMBER OF i.notifiedProviders " +
+            "AND (i.selectedProvider IS NULL OR i.selectedProvider != :provider) " +
+            "AND (:search IS NULL OR LOWER(i.title) LIKE LOWER(CONCAT('%', :search, '%')) " +
+            "OR LOWER(i.residence.name) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<InterventionRequest> findAllNotifiedRequests(
+            @Param("provider") User provider,
+            @Param("search") String search,
+            Pageable pageable);
+
+    // Cas REJECTED : un autre prestataire a été choisi (pas moi)
+    @Query("SELECT i FROM InterventionRequest i " +
+            "WHERE :provider MEMBER OF i.notifiedProviders " +
+            "AND i.selectedProvider IS NOT NULL " +
+            "AND i.selectedProvider != :provider " +
+            "AND (:search IS NULL OR LOWER(i.title) LIKE LOWER(CONCAT('%', :search, '%')) " +
+            "OR LOWER(i.residence.name) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<InterventionRequest> findRejectedRequests(
+            @Param("provider") User provider,
+            @Param("search") String search,
+            Pageable pageable);
+
+    // Cas QUOTE_SENT : personne choisi encore, ET j'ai déjà un devis sur cette demande
+    @Query("SELECT i FROM InterventionRequest i " +
+            "WHERE :provider MEMBER OF i.notifiedProviders " +
+            "AND i.selectedProvider IS NULL " +
+            "AND EXISTS (SELECT 1 FROM Quote q WHERE q.interventionRequest = i AND q.provider = :provider) " +
+            "AND (:search IS NULL OR LOWER(i.title) LIKE LOWER(CONCAT('%', :search, '%')) " +
+            "OR LOWER(i.residence.name) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<InterventionRequest> findQuoteSentRequests(
+            @Param("provider") User provider,
+            @Param("search") String search,
+            Pageable pageable);
+
+    // Cas PENDING_QUOTE : personne choisi encore, ET je n'ai PAS encore soumis de devis
+    @Query("SELECT i FROM InterventionRequest i " +
+            "WHERE :provider MEMBER OF i.notifiedProviders " +
+            "AND i.selectedProvider IS NULL " +
+            "AND NOT EXISTS (SELECT 1 FROM Quote q WHERE q.interventionRequest = i AND q.provider = :provider) " +
+            "AND (:search IS NULL OR LOWER(i.title) LIKE LOWER(CONCAT('%', :search, '%')) " +
+            "OR LOWER(i.residence.name) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<InterventionRequest> findPendingQuoteRequests(
+            @Param("provider") User provider,
+            @Param("search") String search,
+            Pageable pageable);
+
+    // On compte toutes les demandes notifiées à ce prestataire, non assignées à lui —
+    // même critère que findAllNotifiedRequests, mais on ne veut que le total, pas les données
+    @Query("SELECT COUNT(i) FROM InterventionRequest i " +
+           "WHERE :provider MEMBER OF i.notifiedProviders " +
+           "AND (i.selectedProvider IS NULL OR i.selectedProvider != :provider)")
+    long countAllNotifiedRequests(@Param("provider") User provider);
+
+
+    // Récupère une demande précise UNIQUEMENT si ce prestataire fait partie de la liste des notifiés
+    Optional<InterventionRequest> findByIdAndNotifiedProvidersContaining(Long id, User provider);
+
+    // ============================================================
+    // OWNER
+    // ============================================================
+    // Variante avec filtre supplémentaire par résidence (residenceId optionnel)
+    @Query("SELECT ir FROM InterventionRequest ir WHERE ir.owner = :owner " +
+            "AND (:search IS NULL OR LOWER(ir.title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+            "AND (:status IS NULL OR ir.status = :status) " +
+            "AND (:residenceId IS NULL OR ir.residence.id = :residenceId) " +
+            "ORDER BY ir.createdAt DESC")
+    Page<InterventionRequest> findByOwnerWithFiltersAndResidence(
+            @Param("owner") User owner,
+            @Param("search") String search,
+            @Param("status") InterventionStatus status,
+            @Param("residenceId") Long residenceId,
+          Pageable pageable);
+
+
+    // Compter le total des interventions d'un copropriétaire (avec filtre optionnel par résidence)
+    @Query("SELECT COUNT(ir) FROM InterventionRequest ir WHERE ir.owner = :owner " +
+            "AND (:residenceId IS NULL OR ir.residence.id = :residenceId)")
+    long countByOwner(@Param("owner") User owner, @Param("residenceId") Long residenceId);
+
+    // Compter les interventions en cours (STARTED) d'un copropriétaire (avec filtre optionnel par résidence)
+    @Query("SELECT COUNT(ir) FROM InterventionRequest ir WHERE ir.owner = :owner " +
+            "AND ir.status = :status " +
+            "AND (:residenceId IS NULL OR ir.residence.id = :residenceId)")
+    long countByOwnerAndStatus(@Param("owner") User owner, @Param("status") InterventionStatus status, @Param("residenceId") Long residenceId);
+
+
+
     // Lister les demandes créées par un syndic précis
     List<InterventionRequest> findAllBySyndic(User syndic);
 
@@ -31,22 +135,6 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
     // Lister les demandes créées par un copropriétaire précis
     List<InterventionRequest> findAllByOwner(User owner);
 
-    // Compter le total des interventions d'un copropriétaire
-    long countByOwner(User owner);
-
-    // Compter les interventions en cours (STARTED) d'un copropriétaire
-    long countByOwnerAndStatus(User owner, InterventionStatus status);
-
-    // Rechercher et filtrer les interventions d'un copropriétaire avec pagination
-    @Query("SELECT ir FROM InterventionRequest ir WHERE ir.owner = :owner " +
-           "AND (:search IS NULL OR LOWER(ir.title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-           "AND (:status IS NULL OR ir.status = :status) " +
-           "ORDER BY ir.createdAt DESC")
-    org.springframework.data.domain.Page<InterventionRequest> findByOwnerWithFilters(
-            @Param("owner") User owner,
-            @Param("search") String search,
-            @Param("status") com.example.solimus.enums.InterventionStatus status,
-            org.springframework.data.domain.Pageable pageable);
 
     // Récupère une demande en la verrouillant en écriture jusqu'à la fin de la transaction.
     // Utilisé lors de l'acceptation d'un devis pour éviter deux validations concurrentes.
@@ -68,8 +156,6 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
             @Param("status") InterventionStatus status,
             org.springframework.data.domain.Pageable pageable);
 
-    // Vérifier si une demande spécifique est accessible à un prestataire (si il a été notifié)
-    Optional<InterventionRequest> findByIdAndNotifiedProvidersContaining(Long id, User provider);
 
     // ===== COMPTEURS POUR LE DASHBOARD PRESTATAIRE (DERIVED QUERIES) =====
 

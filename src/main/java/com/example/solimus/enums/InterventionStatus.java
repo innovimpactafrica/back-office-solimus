@@ -4,9 +4,9 @@ package com.example.solimus.enums;
  * Statuts possibles d'une demande d'intervention dans le workflow Solimus.
  */
 public enum InterventionStatus {
-   PENDING("Signalé"),
-   SYNDIC_ASSIGNED("Pris en charge"),
-   QUOTE_SENT("Devis"),
+   PENDING("En attente de devis"),
+   SYNDIC_ASSIGNED("Pris en charge par le syndic"),
+   QUOTE_SENT("En attente de validation"),
    SYNDIC_VALIDATED("Assigné"),
    STARTED("En cours"),
    FINISHED("Terminé"),

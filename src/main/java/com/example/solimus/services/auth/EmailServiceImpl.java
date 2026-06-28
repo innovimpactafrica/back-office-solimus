@@ -207,131 +207,36 @@ public class EmailServiceImpl implements EmailService {
             log.error("Erreur lors de l'envoi de la notification d'intervention à {} : {}", email, e.getMessage());
         }
     }
-    // =========================================================================
-    // ABONNEMENTS PREMIUM
-    // =========================================================================
+
     @Override
-    public void sendSubscriptionPremiumNotification(String email, String firstName, String planName, String expirationDate) {
+    public void sendSyndicInterventionNotification(String email, String syndicName, String title, String residenceName, String ownerName) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
             helper.setFrom(mailFrom);
             helper.setTo(email);
-            helper.setSubject("Abonnement Premium activé - " + appName);
+            helper.setSubject("Nouvelle demande de travaux - Partie commune - " + appName);
 
-            String body = String.format(
-                "Bonjour %s,%n%nFélicitations ! Votre abonnement %s a été activé avec succès.%n%nIl est valable jusqu'au : %s.%n%nVous bénéficiez dès maintenant de tous les avantages Premium.%n%nL'équipe %s",
-                firstName != null ? firstName : "", planName, expirationDate != null ? expirationDate : "N/A", appName
-            );
+            String htmlBody = "<html><body style=\"font-family:sans-serif;line-height:1.6;color:#333;\">" +
+                    "<div style=\"max-width:600px;margin:auto;border:1px solid #eee;padding:20px;border-radius:10px;\">" +
+                    "<h2 style=\"color:#1a56db;\">Bonjour " + syndicName + ",</h2>" +
+                    "<p>Un copropriétaire de la résidence <strong>" + residenceName + "</strong> a signalé un problème sur une partie commune.</p>" +
+                    "<div style=\"background-color:#f9f9f9;padding:15px;border-left:4px solid #1a56db;margin:20px 0;\">" +
+                    "<strong>Signalé par :</strong> " + ownerName + "<br>" +
+                    "<strong>Titre :</strong> " + title + "<br>" +
+                    "<strong>Résidence :</strong> " + residenceName +
+                    "</div>" +
+                    "<p>Connectez-vous à votre espace syndic pour consulter les détails et prendre en charge cette demande.</p>" +
+                    "<p>Cordialement,<br>L'équipe <strong>" + appName + "</strong></p>" +
+                    "</div></body></html>";
 
-            helper.setText(body, false);
+            helper.setText(htmlBody, true);
             mailSender.send(message);
-
-            log.info("Notification d'abonnement Premium envoyée avec succès à: {}", email);
+            log.info("Notification de travaux partie commune envoyée au syndic : {}", email);
 
         } catch (Exception e) {
-            log.error("Erreur lors de l'envoi de la notification d'abonnement Premium à {}: {}", email, e.getMessage());
-        }
-    }
-
-    @Override
-    public void sendSubscriptionRenewalNotification(String email, String firstName, String planName, String expirationDate) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-
-            helper.setFrom(mailFrom);
-            helper.setTo(email);
-            helper.setSubject("Abonnement Premium renouvelé - " + appName);
-
-            String body = String.format(
-                "Bonjour %s,%n%nVotre abonnement %s a été renouvelé avec succès pour un mois supplémentaire.%n%nProchaine date d'expiration : %s.%n%nMerci pour votre fidélité !%n%nL'équipe %s",
-                firstName != null ? firstName : "", planName, expirationDate != null ? expirationDate : "N/A", appName
-            );
-
-            helper.setText(body, false);
-            mailSender.send(message);
-
-            log.info("Notification de renouvellement d'abonnement Premium envoyée avec succès à: {}", email);
-
-        } catch (Exception e) {
-            log.error("Erreur lors de l'envoi de la notification de renouvellement à {}: {}", email, e.getMessage());
-        }
-    }
-
-    @Override
-    public void sendSubscriptionRenewalFailedNotification(String email, String firstName) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-
-            helper.setFrom(mailFrom);
-            helper.setTo(email);
-            helper.setSubject("Échec du renouvellement de votre abonnement - " + appName);
-
-            String body = String.format(
-                "Bonjour %s,%n%nLe paiement automatique pour le renouvellement de votre abonnement Premium a échoué.%n%nVotre compte a été rétrogradé au plan GRATUIT. Vous pouvez vous réabonner à tout moment depuis votre application.%n%nL'équipe %s",
-                firstName != null ? firstName : "", appName
-            );
-
-            helper.setText(body, false);
-            mailSender.send(message);
-
-            log.info("Notification d'échec de renouvellement envoyée avec succès à: {}", email);
-
-        } catch (Exception e) {
-            log.error("Erreur lors de l'envoi de la notification d'échec de renouvellement à {}: {}", email, e.getMessage());
-        }
-    }
-
-    @Override
-    public void sendSubscriptionCancellationNotification(String email, String firstName) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-
-            helper.setFrom(mailFrom);
-            helper.setTo(email);
-            helper.setSubject("Renouvellement automatique désactivé - " + appName);
-
-            String body = String.format(
-                "Bonjour %s,%n%nLe renouvellement automatique de votre abonnement Premium a été désactivé.%n%nVotre accès Premium restera actif jusqu'à sa date d'expiration actuelle.%n%nL'équipe %s",
-                firstName != null ? firstName : "", appName
-            );
-
-            helper.setText(body, false);
-            mailSender.send(message);
-
-            log.info("Notification de désactivation du renouvellement automatique envoyée à: {}", email);
-
-        } catch (Exception e) {
-            log.error("Erreur lors de l'envoi de la notification de désactivation du renouvellement à {}: {}", email, e.getMessage());
-        }
-    }
-
-    @Override
-    public void sendSubscriptionExpiredNotification(String email, String firstName) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-
-            helper.setFrom(mailFrom);
-            helper.setTo(email);
-            helper.setSubject("Votre abonnement Premium a expiré - " + appName);
-
-            String body = String.format(
-                "Bonjour %s,%n%nVotre abonnement Premium a expiré et votre compte a été rétrogradé au plan GRATUIT.%n%nVous pouvez à tout moment vous réabonner pour continuer à soumettre des devis en illimité.%n%nL'équipe %s",
-                firstName != null ? firstName : "", appName
-            );
-
-            helper.setText(body, false);
-            mailSender.send(message);
-
-            log.info("Notification d'expiration d'abonnement envoyée à: {}", email);
-
-        } catch (Exception e) {
-            log.error("Erreur lors de l'envoi de la notification d'expiration à {}: {}", email, e.getMessage());
+            log.error("Erreur lors de l'envoi de la notification au syndic {} : {}", email, e.getMessage());
         }
     }
 }

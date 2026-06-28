@@ -80,60 +80,6 @@ public class User {
 
 
     // =========================================================================
-    // INFORMATIONS PROFESSIONNELLES (PRESTATAIRE)
-    // =========================================================================
-
-    /**
-     * Nom de l'entreprise du prestataire.
-     */
-    @Column(name = "company_name")
-    private String companyName;
-
-    /**
-     * Spécialité du prestataire :
-     * Plomberie, Électricité, Peinture, etc.
-     */
-    @ManyToOne
-    @JoinColumn(name = "specialty_id")
-    private Specialty specialty;
-
-    /**
-     * Coordonnées GPS utilisées pour calculer
-     * la distance entre une résidence et un prestataire.
-     */
-    @Column(precision = 10, scale = 7)
-    private BigDecimal latitude;
-
-    @Column(precision = 10, scale = 7)
-    private BigDecimal longitude;
-
-    /**
-     * Zone d'intervention déclarée par le prestataire.
-     */
-    @Column(name = "intervention_zone")
-    private String interventionZone;
-
-    /**
-     * Permet d'indiquer si un prestataire
-     * est actuellement disponible pour recevoir
-     * de nouvelles demandes d'intervention.
-     */
-    @Column(name = "is_available", nullable = false)
-    private boolean isAvailable = true;
-
-    /**
-     * Indique si le prestataire a été vérifié/validé par l'admin.
-     */
-    @Column(name = "is_verified", nullable = false)
-    private boolean isVerified = false;
-
-    /**
-     * Nombre d'interventions réalisées par le prestataire.
-     */
-    @Column(name = "intervention_count")
-    private Integer interventionCount = 0;
-
-    // =========================================================================
     // RÔLE ET ÉTAT DU COMPTE
     // =========================================================================
 
@@ -159,6 +105,19 @@ public class User {
 
     @Column(name = "profile_photo_url")
     private String profilePhotoUrl;
+
+    // =========================================================================
+    // NOTIFICATIONS PUSH
+    // =========================================================================
+
+    /**
+     * Token FCM (Firebase Cloud Messaging).
+     * Envoyé par l'app mobile au démarrage et stocké ici
+     * pour savoir où livrer les notifications push de cet utilisateur.
+     * Peut être null si l'utilisateur n'a jamais connecté l'app mobile.
+     */
+    @Column(name = "fcm_token")
+    private String fcmToken; // token unique qui identifie le téléphone de cet utilisateur auprès de Firebase
 
     // =========================================================================
     // PRÉFÉRENCES DE NOTIFICATION

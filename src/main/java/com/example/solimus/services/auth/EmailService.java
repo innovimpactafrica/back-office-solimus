@@ -39,27 +39,7 @@ public interface EmailService {
     void sendInterventionNotification(String email, String providerName, String title, String residenceName);
 
     /**
-     * Envoie un email de confirmation d'activation d'abonnement Premium.
+     * Envoie une notification au syndic pour une nouvelle demande de travaux sur partie commune créée par un copropriétaire.
      */
-    void sendSubscriptionPremiumNotification(String email, String firstName, String planName, String expirationDate);
-
-    /**
-     * Envoie un email de confirmation de renouvellement réussi de l'abonnement Premium.
-     */
-    void sendSubscriptionRenewalNotification(String email, String firstName, String planName, String expirationDate);
-
-    /**
-     * Envoie un email notifiant de l'échec de renouvellement et du retour au plan Gratuit.
-     */
-    void sendSubscriptionRenewalFailedNotification(String email, String firstName);
-
-    /**
-     * Envoie un email notifiant de la désactivation du renouvellement automatique de l'abonnement.
-     */
-    void sendSubscriptionCancellationNotification(String email, String firstName);
-
-    /**
-     * Envoie un email notifiant de l'expiration de l'abonnement Premium.
-     */
-    void sendSubscriptionExpiredNotification(String email, String firstName);
+    void sendSyndicInterventionNotification(String email, String syndicName, String title, String residenceName, String ownerName);
 }

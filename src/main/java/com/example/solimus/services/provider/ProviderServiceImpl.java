@@ -3,19 +3,17 @@ package com.example.solimus.services.provider;
 import com.example.solimus.dtos.admin.EstimatedDelayDTO;
 import com.example.solimus.dtos.intervention.*;
 import com.example.solimus.dtos.provider.*;
-import com.example.solimus.dtos.subscription.SouscrirePremiumDTO;
-import com.example.solimus.dtos.subscription.SubscriptionDTO;
-import com.example.solimus.dtos.syndic.PaymentResponseDTO;
+import com.example.solimus.dtos.provider.profile.ProviderProfileDTO;
+import com.example.solimus.dtos.provider.profile.UpdateProviderProfileDTO;
+import com.example.solimus.dtos.provider.request.*;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.InterventionStatus;
 import com.example.solimus.enums.QuoteItemType;
 import com.example.solimus.enums.QuoteStatus;
-import com.example.solimus.enums.SubscriptionPlan;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
-import com.example.solimus.repositories.SubscriptionRepository;
 import com.example.solimus.repositories.EstimatedDelayRepository;
 import com.example.solimus.repositories.InterventionCommentRepository;
 import com.example.solimus.repositories.InterventionRequestRepository;
@@ -30,17 +28,14 @@ import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.multipart.MultipartFile;
-import java.io.IOException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -69,12 +64,8 @@ public class ProviderServiceImpl implements ProviderService {
     private final WalletRepository walletRepository;
     private final WithdrawalRequestRepository withdrawalRequestRepository;
     private final PaymentRepository paymentRepository;
-    private final SubscriptionRepository subscriptionRepository;
-    private final com.example.solimus.services.subscription.SubscriptionService subscriptionService;
-    private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
-
-    @Value("${solimus.subscription.free.max-quotes-per-month:3}")
-    private int maxQuotesPerMonth;
+    private final PasswordEncoder passwordEncoder;
+    private final com.example.solimus.repositories.ProviderProfileRepository providerProfileRepository;
 
     /**
      * Listing paginé et filtré pour le prestataire.
@@ -82,8 +73,8 @@ public class ProviderServiceImpl implements ProviderService {
      */
     @Override
     @Transactional(readOnly = true)
-    public com.example.solimus.dtos.intervention.ProviderRequestsPageDTO getAvailableRequests(String search, InterventionStatus status,
-            Pageable pageable) {
+    public ProviderRequestsPageDTO getAvailableRequests(String search, InterventionStatus status,
+                                                        Pageable pageable) {
         User currentProvider = getCurrentUser();
         String normalizedSearch = (search == null || search.isBlank()) ? null : search.trim();
 
@@ -92,7 +83,7 @@ public class ProviderServiceImpl implements ProviderService {
                 .findFilteredRequests(currentProvider.getId(), normalizedSearch, status, pageable)
                 .map(this::mapToSummaryDTO);
 
-        return com.example.solimus.dtos.intervention.ProviderRequestsPageDTO.builder()
+        return ProviderRequestsPageDTO.builder()
                 .totalRequests(totalRequests)
                 .requests(requestsPage)
                 .build();
@@ -138,7 +129,7 @@ public class ProviderServiceImpl implements ProviderService {
 
     @Override
     @Transactional(readOnly = true)
-    public org.springframework.data.domain.Page<InterventionRequestDTO> getMyInterventions(
+    public Page<InterventionRequestDTO> getMyInterventions(
             String search,
             InterventionStatus status,
             int page,
@@ -146,10 +137,10 @@ public class ProviderServiceImpl implements ProviderService {
         User currentProvider = getCurrentUser();
 
         String normalizedSearch = (search == null || search.isBlank()) ? null : search.trim();
-        org.springframework.data.domain.Pageable pageable =
-                org.springframework.data.domain.PageRequest.of(page, size, org.springframework.data.domain.Sort.by("createdAt").descending());
+      Pageable pageable =
+               PageRequest.of(page, size, Sort.by("createdAt").descending());
 
-        org.springframework.data.domain.Page<InterventionRequest> interventions =
+       Page<InterventionRequest> interventions =
                 interventionRepository.findBySelectedProviderWithFilters(currentProvider, normalizedSearch, status, pageable);
 
         return interventions.map(this::mapToDTO);
@@ -159,32 +150,6 @@ public class ProviderServiceImpl implements ProviderService {
     @Transactional
     public void createQuote(CreateQuoteDTO dto) {
         User provider = getCurrentUser();
-
-        // --- VERIFICATION ABONNEMENT & QUOTA DE DEVIS ---
-        // On récupère l'abonnement rattaché au prestataire connecté
-        Subscription subscription = subscriptionRepository
-                .findByProviderId(provider.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Abonnement introuvable pour ce prestataire."));
-
-        // Si le prestataire a un abonnement GRATUIT, sa soumission est limitée à 3 devis par mois
-        if (subscription.getPlan() == SubscriptionPlan.GRATUIT) {
-            // Déterminer le début du mois en cours
-            LocalDate debutMois = LocalDate.now().withDayOfMonth(1);
-            
-            // Compter le nombre de devis créés par ce prestataire depuis le début du mois
-            int devisCompteur = quoteRepository.countByProviderIdAndCreatedAtAfter(
-                    provider.getId(),
-                    debutMois.atStartOfDay() // Début du mois à 00:00:00 pour filtrer les données dès le 1er jour complet
-            );
-
-            // Si la limite configurée de devis est atteinte, on refuse la soumission
-            if (devisCompteur >= maxQuotesPerMonth) {
-                throw new BadRequestException(
-                        "Vous avez atteint la limite de " + maxQuotesPerMonth + " devis/mois. " +
-                        "Passez en Premium pour soumettre des devis illimités."
-                );
-            }
-        }
 
         // 1. Vérification du rôle
         if (provider.getRole() == null || !provider.getRole().getName().equals(ERole.ROLE_PRESTATAIRE)) {
@@ -240,7 +205,7 @@ public class ProviderServiceImpl implements ProviderService {
                 item.setType(itemDto.getType()); // Catégorisation pour le calcul automatique des totaux
                 item.setQuote(quote);
                 return item;
-            }).collect(Collectors.toList());
+            }).toList();
             quote.setItems(items);
         }
 
@@ -388,11 +353,12 @@ public class ProviderServiceImpl implements ProviderService {
     @Override
     public ProviderProfileDTO getMyProfile() {
         User currentProvider = getCurrentUser();
+        com.example.solimus.entities.ProviderProfile profile = providerProfileRepository.findByUser(currentProvider)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil prestataire introuvable"));
 
         return ProviderProfileDTO.builder()
-                .companyName(currentProvider.getCompanyName() != null ? currentProvider.getCompanyName() : currentProvider.getFirstName() + " " + currentProvider.getLastName())
-                .specialtyName(currentProvider.getSpecialty() != null ? currentProvider.getSpecialty().getName() : "N/A")
-                .available(currentProvider.isAvailable())
+                .companyName(profile.getCompanyName() != null ? profile.getCompanyName() : currentProvider.getFirstName() + " " + currentProvider.getLastName())
+                .specialtyName(profile.getSpecialty() != null ? profile.getSpecialty().getName() : "N/A")
                 .email(currentProvider.getEmail())
                 .phone(currentProvider.getPhone())
                 .language("Français, Wolof") // Statique comme demandé
@@ -401,32 +367,22 @@ public class ProviderServiceImpl implements ProviderService {
                 .build();
     }
 
-    /**
-     * Permet au prestataire de changer son statut (Disponible / Indisponible).
-     */
-    @Override
-    @Transactional
-    public void toggleAvailability() {
-        User currentProvider = getCurrentUser();
-        // On inverse la valeur actuelle (si true devient false, et inversement)
-        currentProvider.setAvailable(!currentProvider.isAvailable());
-        userRepository.save(currentProvider);
-    }
-
     @Override
     public UpdateProviderProfileDTO getPersonalInformation() {
         User currentProvider = getCurrentUser();
+        com.example.solimus.entities.ProviderProfile profile = providerProfileRepository.findByUser(currentProvider)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil prestataire introuvable"));
         
         return UpdateProviderProfileDTO.builder()
-                .companyName(currentProvider.getCompanyName())
+                .companyName(profile.getCompanyName())
                 .firstName(currentProvider.getFirstName())
                 .lastName(currentProvider.getLastName())
                 .phone(currentProvider.getPhone())
                 .email(currentProvider.getEmail())
-                .specialtyName(currentProvider.getSpecialty() != null ? currentProvider.getSpecialty().getName() : "N/A")
-                .interventionZone(currentProvider.getInterventionZone())
-                .latitude(currentProvider.getLatitude())
-                .longitude(currentProvider.getLongitude())
+                .specialtyName(profile.getSpecialty() != null ? profile.getSpecialty().getName() : "N/A")
+                .interventionZone(profile.getInterventionZone())
+                .latitude(profile.getLatitude())
+                .longitude(profile.getLongitude())
                 .profilePhotoUrl(currentProvider.getProfilePhotoUrl())
                 .build();
     }
@@ -435,16 +391,18 @@ public class ProviderServiceImpl implements ProviderService {
     @Transactional
     public void updateProfile(UpdateProviderProfileDTO dto, MultipartFile photo) {
         User currentProvider = getCurrentUser();
+        com.example.solimus.entities.ProviderProfile profile = providerProfileRepository.findByUser(currentProvider)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil prestataire introuvable"));
 
         // Mettre à jour uniquement les champs modifiables
-        if (dto.getCompanyName() != null) currentProvider.setCompanyName(dto.getCompanyName());
+        if (dto.getCompanyName() != null) profile.setCompanyName(dto.getCompanyName());
         if (dto.getFirstName() != null) currentProvider.setFirstName(dto.getFirstName());
         if (dto.getLastName() != null) currentProvider.setLastName(dto.getLastName());
         if (dto.getPhone() != null) currentProvider.setPhone(dto.getPhone());
         if (dto.getEmail() != null) currentProvider.setEmail(dto.getEmail());
-        if (dto.getInterventionZone() != null) currentProvider.setInterventionZone(dto.getInterventionZone());
-        if (dto.getLatitude() != null) currentProvider.setLatitude(dto.getLatitude());
-        if (dto.getLongitude() != null) currentProvider.setLongitude(dto.getLongitude());
+        if (dto.getInterventionZone() != null) profile.setInterventionZone(dto.getInterventionZone());
+        if (dto.getLatitude() != null) profile.setLatitude(dto.getLatitude());
+        if (dto.getLongitude() != null) profile.setLongitude(dto.getLongitude());
         
         // Gestion de la photo de profil (upload vers Minio)
         if (photo != null && !photo.isEmpty()) {
@@ -460,6 +418,7 @@ public class ProviderServiceImpl implements ProviderService {
         }
 
         userRepository.save(currentProvider);
+        providerProfileRepository.save(profile);
     }
 
     // =========================================================================
@@ -483,7 +442,7 @@ public class ProviderServiceImpl implements ProviderService {
                 .date(quote.getCreatedAt().toLocalDate())
                 .montant(quote.getTotalAmount())
                 .statut(quote.getStatus())
-                .estimatedDelayLabel(quote.getEstimatedDelay() != null ? quote.getEstimatedDelay().getLabel() : null)
+
                 .build()
         ).collect(Collectors.toList());
 
@@ -495,7 +454,6 @@ public class ProviderServiceImpl implements ProviderService {
         }
 
         return ProviderQuoteListDTO.builder()
-                .totalMontantValide(totalValide)
                 .devis(devisPage)
                 .build();
     }
@@ -518,8 +476,7 @@ public class ProviderServiceImpl implements ProviderService {
                 .filter(item -> item.getType() == QuoteItemType.MATERIAL)
                 .map(item -> QuoteLineDTO.builder()
                         .description(item.getDescription())
-                        .detail(item.getQuantity() + " × " + item.getUnitPrice() + " FCFA")
-                        .montant(item.getTotalPrice())
+
                         .build())
                 .collect(Collectors.toList());
 
@@ -527,8 +484,6 @@ public class ProviderServiceImpl implements ProviderService {
                 .filter(item -> item.getType() == QuoteItemType.LABOR)
                 .map(item -> QuoteLineDTO.builder()
                         .description(item.getDescription())
-                        .detail(item.getQuantity() + " × " + item.getUnitPrice() + " FCFA")
-                        .montant(item.getTotalPrice())
                         .build())
                 .collect(Collectors.toList());
 
@@ -570,7 +525,7 @@ public class ProviderServiceImpl implements ProviderService {
                 .sousTotalMainOeuvre(quote.getLaborTotalAmount())
                 .totalTTC(quote.getTotalAmount())
                 .notes(quote.getAdditionalComments())
-                .estimatedDelayLabel(quote.getEstimatedDelay() != null ? quote.getEstimatedDelay().getLabel() : null)
+
                 .build();
     }
     // =========================================================================
@@ -927,9 +882,11 @@ public class ProviderServiceImpl implements ProviderService {
         // Étape 1 : Récupérer le prestataire connecté
         User currentProvider = getCurrentUser();
         Long providerId = currentProvider.getId();
+        com.example.solimus.entities.ProviderProfile profile = providerProfileRepository.findByUser(currentProvider)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil prestataire introuvable"));
 
         // Étape 2 : Récupérer les informations d'identité
-        String companyName = currentProvider.getCompanyName() != null ? currentProvider.getCompanyName() : "Prestataire";
+        String companyName = profile.getCompanyName() != null ? profile.getCompanyName() : "Prestataire";
         String role = "Prestataire";
         String profilePhotoUrl = currentProvider.getProfilePhotoUrl();
 
@@ -1049,45 +1006,7 @@ public class ProviderServiceImpl implements ProviderService {
                 .build();
     }
 
-    // =========================================================================
-    // ABONNEMENT
-    // =========================================================================
 
-    @Override
-    @Transactional(readOnly = true)
-    public SubscriptionDTO getMonAbonnement() {
-        User currentProvider = getCurrentUser();
-        return subscriptionService.getMonAbonnement(currentProvider.getId());
-    }
-
-    @Override
-    @Transactional
-    public PaymentResponseDTO passerEnPremium(
-            SouscrirePremiumDTO dto) {
-        User currentProvider = getCurrentUser();
-        return subscriptionService.passerEnPremium(currentProvider.getId(), dto);
-    }
-
-    @Override
-    @Transactional
-    public void annulerAbonnement() {
-        User currentProvider = getCurrentUser();
-        subscriptionService.annulerAbonnement(currentProvider.getId());
-    }
-
-    // =========================================================================
-    // NOTIFICATIONS
-    // =========================================================================
-
-    @Override
-    @Transactional
-    public void toggleNotifications() {
-        User currentProvider = getCurrentUser();
-        currentProvider.setNotificationsEnabled(!currentProvider.isNotificationsEnabled());
-        userRepository.save(currentProvider);
-        log.info("Préférences de notification mises à jour pour le prestataire : {}",
-                currentProvider.isNotificationsEnabled() ? "activées" : "désactivées");
-    }
 
     // =========================================================================
     // PARAMÈTRES DU COMPTE

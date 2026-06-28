@@ -1,25 +1,16 @@
 package com.example.solimus.services.admin;
 
 import com.example.solimus.dtos.admin.*;
-import com.example.solimus.dtos.residence.CreateSecurityFeatureDTO;
-import com.example.solimus.dtos.residence.SecurityFeatureDTO;
-import com.example.solimus.entities.EstimatedDelay;
-import com.example.solimus.entities.Role;
-import com.example.solimus.entities.SecurityFeature;
-import com.example.solimus.entities.Specialty;
-import com.example.solimus.entities.User;
+import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanDTO;
+import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanRequestDTO;
+import com.example.solimus.entities.*;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.UserStatus;
-import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.EmailAlreadyExistsException;
 import com.example.solimus.exceptions.PhoneAlreadyExistsException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 
-import com.example.solimus.repositories.EstimatedDelayRepository;
-import com.example.solimus.repositories.RoleRepository;
-import com.example.solimus.repositories.SecurityFeatureRepository;
-import com.example.solimus.repositories.SpecialtyRepository;
-import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.repositories.*;
 import com.example.solimus.services.auth.ActivationCodeService;
 import com.example.solimus.services.auth.EmailService;
 import lombok.RequiredArgsConstructor;
@@ -42,77 +33,55 @@ public class AdminServiceImpl implements AdminService {
     // DÉPENDANCES
     // ============================================================================
 
-    private final SpecialtyRepository specialtyRepository;
     private final EstimatedDelayRepository estimatedDelayRepository;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final ActivationCodeService activationCodeService;
     private final EmailService emailService;
     private final SecurityFeatureRepository securityFeatureRepository;
+    private final ProviderPlanRepository providerPlanRepository;
 
     // ============================================================================
-    // PARTIE 1 — GESTION DES SPÉCIALITÉS
+    // PARTIE — GESTION ABONNEMENT PRESTATAIRE
     // ============================================================================
     //
-    // Permet à l'administrateur de gérer les métiers disponibles pour les
-    // prestataires : plomberie, électricité, nettoyage, maintenance, etc.
+    // Save transparent : crée la formule si elle n'existe pas encore,
+    // sinon met à jour la ligne existante avec les nouvelles valeurs
+    // envoyées par l'admin depuis le formulaire.
     //
     // ============================================================================
 
     @Override
-    public List<SpecialtyDTO> getAllSpecialties() {
-        return specialtyRepository.findAll().stream()
-                .map(s -> new SpecialtyDTO(s.getId(), s.getName(), s.getDescription(), s.getIcon()))
-                .collect(Collectors.toList());
-    }
-
-    @Override
     @Transactional
-    public SpecialtyDTO createSpecialty(CreateSpecialtyDTO dto) {
-        // Empêche la création de deux spécialités portant le même nom
-        if (specialtyRepository.existsByName(dto.getName())) {
-            throw new BadRequestException("La spécialité '" + dto.getName() + "' existe déjà.");
+    public ProviderPlanDTO saveProviderPlan(ProviderPlanRequestDTO dto) {
+
+        // On récupère la ligne existante si elle existe, sinon on en crée une nouvelle
+        ProviderPlan plan = providerPlanRepository.findFirstByOrderByIdAsc()
+                .orElse(new ProviderPlan());
+
+
+        // On ne met à jour que les champs réellement envoyés par l'admin.
+        if (dto.getName() != null) {
+            plan.setName(dto.getName());
+        }
+        if (dto.getDescription() != null) {
+            plan.setDescription(dto.getDescription());
+        }
+        if (dto.getMonthlyPrice() != null) {
+            plan.setMonthlyPrice(dto.getMonthlyPrice());
+        }
+        if (dto.getYearlyPrice() != null) {
+            plan.setYearlyPrice(dto.getYearlyPrice());
         }
 
-        Specialty specialty = new Specialty();
-        specialty.setName(dto.getName());
-        specialty.setDescription(dto.getDescription());
-        specialty.setIcon(dto.getIcon());
-        Specialty saved = specialtyRepository.save(specialty);
-        return new SpecialtyDTO(saved.getId(), saved.getName(), saved.getDescription(), saved.getIcon());
-    }
+        ProviderPlan saved = providerPlanRepository.save(plan);
 
-    @Override
-    @Transactional
-    public SpecialtyDTO updateSpecialty(Long id, CreateSpecialtyDTO dto) {
-        Specialty specialty = specialtyRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Spécialité non trouvée"));
-
-        // Empêche de renommer avec un nom déjà utilisé par une autre spécialité
-        if (specialtyRepository.existsByNameAndIdNot(dto.getName(), id)) {
-            throw new BadRequestException("La spécialité '" + dto.getName() + "' existe déjà.");
-        }
-
-        specialty.setName(dto.getName());
-        specialty.setDescription(dto.getDescription());
-        specialty.setIcon(dto.getIcon());
-        
-        Specialty updated = specialtyRepository.save(specialty);
-        return new SpecialtyDTO(updated.getId(), updated.getName(), updated.getDescription(), updated.getIcon());
-    }
-
-    @Override
-    @Transactional
-    public void deleteSpecialty(Long id) {
-        if (!specialtyRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Spécialité non trouvée");
-        }
-        specialtyRepository.deleteById(id);
+        return toDTO(saved);
     }
 
 
     // ============================================================================
-    // PARTIE 2 — GESTION DES DÉLAIS ESTIMÉS
+    // PARTIE — GESTION DES DÉLAIS ESTIMÉS
     // ============================================================================
     //
     // Les délais estimés permettent de qualifier le temps prévu pour une
@@ -139,52 +108,11 @@ public class AdminServiceImpl implements AdminService {
     }
 
     // ============================================================================
-    // PARTIE 3 — CONSULTATION ET STATUT DES UTILISATEURS
+    // PARTIE — AJOUT , CONSULTATION ET STATUT DES UTILISATEURS
     // ============================================================================
     //
     // Regroupe la liste paginée des utilisateurs et la modification de leur statut.
     // Les filtres permettent de rechercher par texte, rôle et statut.
-    //
-    // ============================================================================
-
-    @Override
-    public UserListResponseDTO getUsers(int page, int size, String search, ERole role, UserStatus status) {
-        Pageable pageable = PageRequest.of(page, size);
-        Page<User> userPage = userRepository.findAllWithFilters(search, role, status, pageable);
-
-        List<UserListItemDTO> userDTOs = userPage.getContent().stream()
-                .map(u -> new UserListItemDTO(
-                        u.getId(),
-                        u.getFirstName(),
-                        u.getLastName(),
-                        u.getEmail(),
-                        u.getPhone(),
-                        u.getRole().getName(),
-                        u.getStatus(),
-                        u.getCreatedAt()
-                ))
-                .collect(Collectors.toList());
-
-        return new UserListResponseDTO(
-                userDTOs,
-                userPage.getTotalElements(),
-                userPage.getTotalPages(),
-                userPage.getNumber()
-        );
-    }
-
-    @Override
-    @Transactional
-    public void updateUserStatus(Long userId, UserStatus status) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
-        user.setStatus(status);
-        userRepository.save(user);
-    }
-
-    // ============================================================================
-    // PARTIE 4 — CRÉATION DE COMPTE UTILISATEUR PAR L'ADMIN
-    // ============================================================================
     //
     // Flux de création :
     // 1. L'admin crée un utilisateur sans mot de passe
@@ -259,74 +187,59 @@ public class AdminServiceImpl implements AdminService {
                 .build();
     }
 
+    @Override
+    public UserListResponseDTO getUsers(int page, int size, String search, ERole role, UserStatus status) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<User> userPage = userRepository.findAllWithFilters(search, role, status, pageable);
+
+        List<UserListItemDTO> userDTOs = userPage.getContent().stream()
+                .map(u -> new UserListItemDTO(
+                        u.getId(),
+                        u.getFirstName(),
+                        u.getLastName(),
+                        u.getEmail(),
+                        u.getPhone(),
+                        u.getRole().getName(),
+                        u.getStatus(),
+                        u.getCreatedAt()
+                ))
+                .collect(Collectors.toList());
+
+        return new UserListResponseDTO(
+                userDTOs,
+                userPage.getTotalElements(),
+                userPage.getTotalPages(),
+                userPage.getNumber()
+        );
+    }
+
+    @Override
+    @Transactional
+    public void updateUserStatus(Long userId, UserStatus status) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
+        user.setStatus(status);
+        userRepository.save(user);
+    }
+
     // ============================================================================
-    // PARTIE 5 - GESTION DES OPTIONS DE SÉCURITÉ
+    // Méthodes Utilitaires
     // ============================================================================
-
-    @Override
-    @Transactional
-    public void createSecurityFeature(CreateSecurityFeatureDTO dto) {
-
-        // Vérifier si le label existe déjà
-        if (securityFeatureRepository.existsByLabel(dto.getLabel())) {
-            throw new BadRequestException("Une option de sécurité avec ce label existe déjà");
-        }
-
-        SecurityFeature feature = new SecurityFeature();
-        feature.setLabel(dto.getLabel());
-        feature.setDescription(dto.getDescription());
-        feature.setActive(true);
-
-        securityFeatureRepository.save(feature);
-
-        log.info("Option de sécurité '{}' créée par l'admin", dto.getLabel());
+    /**
+     * Conversion entité → DTO.
+     */
+    private ProviderPlanDTO toDTO(ProviderPlan plan) {
+        return ProviderPlanDTO.builder()
+                .id(plan.getId())
+                .name(plan.getName())
+                .description(plan.getDescription())
+                .monthlyPrice(plan.getMonthlyPrice())
+                .yearlyPrice(plan.getYearlyPrice())
+                .updatedAt(plan.getUpdatedAt())
+                .build();
     }
 
-    @Override
-    public List<SecurityFeatureDTO> getSecurityFeatures() {
-        return securityFeatureRepository.findAll()
-            .stream()
-            .map(this::mapToSecurityFeatureDTO)
-            .collect(Collectors.toList());
-    }
 
-    @Override
-    @Transactional
-    public void deactivateSecurityFeature(Long id) {
 
-        //Vérifier que l'option existe
-        SecurityFeature feature = securityFeatureRepository.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException("Option de sécurité introuvable"));
-
-        //si oui, on la désactive
-        feature.setActive(false);
-        securityFeatureRepository.save(feature);
-
-        log.info("Option de sécurité '{}' désactivée par l'admin", feature.getLabel());
-    }
-
-    @Override
-    @Transactional
-    public void activateSecurityFeature(Long id) {
-
-        //Vérifier que l'option existe
-        SecurityFeature feature = securityFeatureRepository.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException("Option de sécurité introuvable"));
-
-        //si oui , on l'active
-        feature.setActive(true);
-        securityFeatureRepository.save(feature);
-
-        log.info("Option de sécurité '{}' activée par l'admin", feature.getLabel());
-    }
-
-    private SecurityFeatureDTO mapToSecurityFeatureDTO(SecurityFeature feature) {
-        return SecurityFeatureDTO.builder()
-            .id(feature.getId())
-            .label(feature.getLabel())
-            .description(feature.getDescription())
-            .active(feature.isActive())
-            .build();
-    }
 
 }

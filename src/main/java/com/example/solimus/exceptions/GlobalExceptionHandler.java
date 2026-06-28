@@ -1,6 +1,7 @@
 package com.example.solimus.exceptions;
 
-import com.example.solimus.dtos.ErrorResponseDTO;
+import com.example.solimus.dtos.auth.ErrorResponseDTO;
+import com.example.solimus.dtos.syndic.owner.CoOwnerConflictResponseDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -88,6 +89,16 @@ public class GlobalExceptionHandler {
                 HttpStatus.BAD_REQUEST.value()
         );
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+    @ExceptionHandler(CoOwnerAlreadyExistsException.class)
+    public ResponseEntity<CoOwnerConflictResponseDTO> handleCoOwnerAlreadyExists(CoOwnerAlreadyExistsException ex) {
+        CoOwnerConflictResponseDTO error = new CoOwnerConflictResponseDTO(
+                ex.getMessage(),      // "Email déjà utilisé"
+                ex.getCoOwnerId(),    // ID du copropriétaire existant
+                LocalDateTime.now(),
+                HttpStatus.CONFLICT.value() // 409
+        );
+        return new ResponseEntity<>(error, HttpStatus.CONFLICT);
     }
 
     @ExceptionHandler(Exception.class)

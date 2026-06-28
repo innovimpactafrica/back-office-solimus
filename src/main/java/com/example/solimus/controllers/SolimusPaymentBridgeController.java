@@ -3,13 +3,14 @@ package com.example.solimus.controllers;
 import com.example.solimus.dtos.syndic.PaymentBridgeDTO;
 import com.example.solimus.entities.ChargePayment;
 import com.example.solimus.entities.Payment;
-import com.example.solimus.entities.SubscriptionPayment;
+
 import com.example.solimus.entities.User;
-import com.example.solimus.entities.WithdrawalRequest;
+
 import com.example.solimus.exceptions.ResourceNotFoundException;
+import com.example.solimus.entities.Subscription;
 import com.example.solimus.repositories.ChargePaymentRepository;
 import com.example.solimus.repositories.PaymentRepository;
-import com.example.solimus.repositories.SubscriptionPaymentRepository;
+import com.example.solimus.repositories.SubscriptionRepository;
 import com.example.solimus.repositories.WithdrawalRequestRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +20,7 @@ import org.springframework.web.bind.annotation.*;
 
 /**
  * Contrôleur faisant office de pont (Bridge) entre le backend SOLIMUS et l'interface TouchPay (WebView).
- * Il permet à la page HTML touchpay-bridge.html de charger de manière sécurisée les paramètres 
+ * Il permet à la page HTML touchpay-bridge.html de charger de manière sécurisée les paramètres
  * requis par le script TouchPay en fonction d'une référence unique de transaction.
  */
 @RestController
@@ -30,9 +31,11 @@ public class SolimusPaymentBridgeController {
 
     // Référentiel des paiements (syndic -> prestataire)
     private final PaymentRepository paymentRepository;
-    private final SubscriptionPaymentRepository subscriptionPaymentRepository;
     private final WithdrawalRequestRepository withdrawalRequestRepository;
     private final ChargePaymentRepository chargePaymentRepository;
+
+    // Référentiel des abonnements prestataires : SUB-*
+    private final SubscriptionRepository subscriptionRepository;
 
     // URL du script hébergé TouchPay (géré par InTouch)
     @Value("${touchpay.hosted.script-url}")
@@ -80,58 +83,89 @@ public class SolimusPaymentBridgeController {
 
         // 1. Rechercher la transaction de paiement en base de données
         Payment payment = paymentRepository
-            .findByReference(transactionRef)
-            .orElseThrow(() -> new ResourceNotFoundException("Paiement introuvable avec la référence : " + transactionRef));
+                .findByReference(transactionRef)
+                .orElseThrow(() -> new ResourceNotFoundException("Paiement introuvable avec la référence : " + transactionRef));
 
         // 2. Récupérer le syndic initiateur du paiement (pour préremplir ses infos de contact)
         User syndic = payment.getSyndic();
 
         // 3. Retourner le payload structuré pour la WebView TouchPay
         return PaymentBridgeDTO.builder()
-            .merchantToken(touchPaySecureCode)                                  // Token marchand d'authentification
-            .transactionReference(transactionRef)                               // Référence unique de transaction
-            .agencyCode(touchPayAgencyCode)                                     // Code d'agence InTouch
-            .serviceId(touchPayDomainName)                                      // Identifiant de service (ex: TouchPay)
-            .hostedScriptUrl(touchPayHostedScriptUrl)                           // Script JS à charger dans le bridge
-            .amount(payment.getAmount())                                        // Montant exact à prélever
-            .city(touchPayDefaultCity)                                          // Ville par défaut
-            .successRedirectUrl(touchPaySuccessRedirectUrl)                     // URL de redirection si réussite
-            .failedRedirectUrl(touchPayFailedRedirectUrl)                       // URL de redirection si échec
-            .customerEmail(syndic.getEmail())                                   // Email du client (syndic)
-            .customerFirstName(syndic.getFirstName())                           // Prénom du client
-            .customerLastName(syndic.getLastName())                             // Nom du client
-            .customerPhone(syndic.getPhone())                                   // Téléphone du client
-            .build();
+                .merchantToken(touchPaySecureCode)                                  // Token marchand d'authentification
+                .transactionReference(transactionRef)                               // Référence unique de transaction
+                .agencyCode(touchPayAgencyCode)                                     // Code d'agence InTouch
+                .serviceId(touchPayDomainName)                                      // Identifiant de service (ex: TouchPay)
+                .hostedScriptUrl(touchPayHostedScriptUrl)                           // Script JS à charger dans le bridge
+                .amount(payment.getAmount())                                        // Montant exact à prélever
+                .city(touchPayDefaultCity)                                          // Ville par défaut
+                .successRedirectUrl(touchPaySuccessRedirectUrl)                     // URL de redirection si réussite
+                .failedRedirectUrl(touchPayFailedRedirectUrl)                       // URL de redirection si échec
+                .customerEmail(syndic.getEmail())                                   // Email du client (syndic)
+                .customerFirstName(syndic.getFirstName())                           // Prénom du client
+                .customerLastName(syndic.getLastName())                             // Nom du client
+                .customerPhone(syndic.getPhone())                                   // Téléphone du client
+                .build();
     }
+
     // ================================================
     // BRIDGE — Abonnement Premium prestataire
     // ================================================
     @GetMapping("/subscription/{transactionRef}")
     @Transactional(readOnly = true)
     public PaymentBridgeDTO getBridgeSubscription(@PathVariable String transactionRef) {
-        SubscriptionPayment paiement = subscriptionPaymentRepository
-            .findByReference(transactionRef)
-            .orElseThrow(() -> new ResourceNotFoundException("Paiement abonnement introuvable"));
 
-        User provider = paiement.getSubscription().getProvider();
+        // On recherche la Subscription créée en PENDING par le service initiatePayment
+        Subscription subscription = subscriptionRepository
+                .findByTransactionRef(transactionRef)
+                // Si rien n'est trouvé, la référence envoyée par le front est invalide ou expirée
+                .orElseThrow(() -> new ResourceNotFoundException("Abonnement introuvable"));
 
+        // On récupère le prestataire concerné, pour préremplir ses infos dans TouchPay
+        User provider = subscription.getProvider();
+
+        // On construit le même DTO — structure commune à tout le bridge
         return PaymentBridgeDTO.builder()
-            .merchantToken(touchPaySecureCode)
-            .transactionReference(transactionRef)
-            .agencyCode(touchPayAgencyCode)
-            .serviceId(touchPayDomainName)
-            .hostedScriptUrl(touchPayHostedScriptUrl)
-            .amount(paiement.getMontant())
-            .city(touchPayDefaultCity)
-            .successRedirectUrl(touchPaySuccessRedirectUrl)
-            .failedRedirectUrl(touchPayFailedRedirectUrl)
-            .customerEmail(provider.getEmail())
-            .customerFirstName(provider.getFirstName())
-            .customerLastName(provider.getLastName())
-            .customerPhone(provider.getPhone())
-            .build();
-    }
+                // Token marchand fixe, identique pour tous les types de paiement
+                .merchantToken(touchPaySecureCode)
 
+                // La référence exacte que TouchPay doit utiliser pour le callback
+                .transactionReference(transactionRef)
+
+                // Code d'agence fixe, configuré une fois dans application.properties
+                .agencyCode(touchPayAgencyCode)
+
+                // Constante de service TouchPay
+                .serviceId(touchPayDomainName)
+
+                // URL du script JS TouchPay à charger dans la WebView
+                .hostedScriptUrl(touchPayHostedScriptUrl)
+
+                // Montant exact figé au moment de l'initiation (mensuel ou annuel)
+                .amount(subscription.getAmountPaid())
+
+                // Ville par défaut pour la facturation
+                .city(touchPayDefaultCity)
+
+                // Redirection si le paiement réussit
+                .successRedirectUrl(touchPaySuccessRedirectUrl)
+
+                // Redirection si le paiement échoue
+                .failedRedirectUrl(touchPayFailedRedirectUrl)
+
+                // Email du prestataire, prérempli dans le formulaire TouchPay
+                .customerEmail(provider.getEmail())
+
+                // Prénom du prestataire
+                .customerFirstName(provider.getFirstName())
+
+                // Nom du prestataire
+                .customerLastName(provider.getLastName())
+
+                // Téléphone du prestataire
+                .customerPhone(provider.getPhone())
+
+                .build();
+    }
     // ================================================
     // BRIDGE — Paiement charge copropriétaire
     // ================================================
@@ -139,26 +173,26 @@ public class SolimusPaymentBridgeController {
     @Transactional(readOnly = true)
     public PaymentBridgeDTO getBridgeCharge(@PathVariable String transactionRef) {
         ChargePayment paiement = chargePaymentRepository
-            .findByReference(transactionRef)
-            .orElseThrow(() -> new ResourceNotFoundException("Paiement charge introuvable"));
+                .findByReference(transactionRef)
+                .orElseThrow(() -> new ResourceNotFoundException("Paiement charge introuvable"));
 
         User owner = paiement.getOwner();
 
         return PaymentBridgeDTO.builder()
-            .merchantToken(touchPaySecureCode)
-            .transactionReference(transactionRef)
-            .agencyCode(touchPayAgencyCode)
-            .serviceId(touchPayDomainName)
-            .hostedScriptUrl(touchPayHostedScriptUrl)
-            .amount(paiement.getAmount())
-            .city(touchPayDefaultCity)
-            .successRedirectUrl(touchPaySuccessRedirectUrl)
-            .failedRedirectUrl(touchPayFailedRedirectUrl)
-            .customerEmail(owner.getEmail())
-            .customerFirstName(owner.getFirstName())
-            .customerLastName(owner.getLastName())
-            .customerPhone(owner.getPhone())
-            .build();
+                .merchantToken(touchPaySecureCode)
+                .transactionReference(transactionRef)
+                .agencyCode(touchPayAgencyCode)
+                .serviceId(touchPayDomainName)
+                .hostedScriptUrl(touchPayHostedScriptUrl)
+                .amount(paiement.getAmount())
+                .city(touchPayDefaultCity)
+                .successRedirectUrl(touchPaySuccessRedirectUrl)
+                .failedRedirectUrl(touchPayFailedRedirectUrl)
+                .customerEmail(owner.getEmail())
+                .customerFirstName(owner.getFirstName())
+                .customerLastName(owner.getLastName())
+                .customerPhone(owner.getPhone())
+                .build();
     }
 
 }

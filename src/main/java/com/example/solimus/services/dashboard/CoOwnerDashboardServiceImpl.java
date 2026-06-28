@@ -147,7 +147,7 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
                 .amount(allocation.getAmount())
                 .dueDate(allocation.getCharge() != null ? allocation.getCharge().getDueDate() : null)
                 .status(allocation.getStatus())
-                .typeBien(allocation.getProperty() != null ? allocation.getProperty().getTypeBien().getLabel() : null)
+                .typeBien(allocation.getProperty() != null ? allocation.getProperty().getTypeBien().getName() : null)
                 .residenceName(allocation.getProperty() != null && allocation.getProperty().getResidence() != null
                         ? allocation.getProperty().getResidence().getName() : null)
                 .build();

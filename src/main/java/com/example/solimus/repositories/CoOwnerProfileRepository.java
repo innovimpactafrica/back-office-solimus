@@ -9,6 +9,5 @@ import java.util.Optional;
 @Repository
 public interface CoOwnerProfileRepository extends JpaRepository<CoOwnerProfile, Long> {
 
-    /** Trouver le profil d'un copropriétaire par son ID utilisateur */
     Optional<CoOwnerProfile> findByUserId(Long userId);
 }

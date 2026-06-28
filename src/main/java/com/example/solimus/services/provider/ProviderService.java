@@ -1,12 +1,15 @@
 package com.example.solimus.services.provider;
 
-import com.example.solimus.dtos.intervention.CreateQuoteDTO;
+import com.example.solimus.dtos.provider.request.CreateQuoteDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestDTO;
-import com.example.solimus.dtos.intervention.InterventionRequestSummaryDTO;
 import com.example.solimus.dtos.admin.EstimatedDelayDTO;
+import com.example.solimus.dtos.provider.request.ProviderQuoteListDTO;
+import com.example.solimus.dtos.provider.request.ProviderRequestsPageDTO;
 import com.example.solimus.dtos.provider.*;
+import com.example.solimus.dtos.provider.profile.ProviderProfileDTO;
+import com.example.solimus.dtos.provider.profile.UpdateProviderProfileDTO;
+import com.example.solimus.dtos.provider.request.QuoteDetailDTO;
 import com.example.solimus.enums.InterventionStatus;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
@@ -15,7 +18,7 @@ import java.util.List;
 public interface ProviderService {
 
     // Listing paginé et filtré pour le dashboard mobile
-    com.example.solimus.dtos.intervention.ProviderRequestsPageDTO getAvailableRequests(String search, InterventionStatus status, Pageable pageable);
+   ProviderRequestsPageDTO getAvailableRequests(String search, InterventionStatus status, Pageable pageable);
 
     // Nombre total de demandes reçues par le prestataire
     long getTotalRequestsCount();
@@ -47,8 +50,6 @@ public interface ProviderService {
     // =========================================================================
     ProviderProfileDTO getMyProfile();
 
-    void toggleAvailability();
-
     // Informations personnelles (Édition de profil)
     UpdateProviderProfileDTO getPersonalInformation();
     
@@ -74,20 +75,6 @@ public interface ProviderService {
     // TABLEAU DE BORD (DASHBOARD)
     // =========================================================================
     ProviderDashboardDTO getDashboard();
-
-    // =========================================================================
-    // ABONNEMENT
-    // =========================================================================
-    com.example.solimus.dtos.subscription.SubscriptionDTO getMonAbonnement();
-
-    com.example.solimus.dtos.syndic.PaymentResponseDTO passerEnPremium(com.example.solimus.dtos.subscription.SouscrirePremiumDTO dto);
-
-    void annulerAbonnement();
-
-    // =========================================================================
-    // NOTIFICATIONS
-    // =========================================================================
-    void toggleNotifications();
 
     // =========================================================================
     // PARAMÈTRES DU COMPTE

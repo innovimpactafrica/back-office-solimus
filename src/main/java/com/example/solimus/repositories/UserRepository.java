@@ -26,9 +26,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Boolean existsByRole_Name(ERole roleName);
 
+    Boolean existsByEmailOrPhone(String email, String phone);
+
     /**
      * Recherche les prestataires proches d'une position GPS donnée.
      * Utilise la formule Haversine en SQL natif.
+     *
+     * On parcourt tous les prestataires actifs et
+     * on filtre par spécialité et distance ( vérifie si leurs coordonnées (latitude/longitude) sont à moins de 30km des coordonnées de la résidence.)
      */
     @Query(value = """
         SELECT u.*, 
@@ -77,13 +82,16 @@ public interface UserRepository extends JpaRepository<User, Long> {
     );
 
     /**
-     * Listing  des copropriétaires actifs avec filtres (utilisé pour l'affectation d'un lot).
+     * Autocomplete — recherche un copropriétaire par prénom, nom, email ou téléphone.
+     * Retourne les 5 premiers résultats pour ne pas surcharger l'affichage.
      */
     @Query("SELECT u FROM User u " +
            "WHERE u.role.name = 'ROLE_COPROPRIETAIRE' " +
-           "AND u.status = 'ACTIVE' " +
-           "AND (:search IS NULL OR LOWER(u.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(u.lastName) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))")
-    List<User> findActiveCoOwnersForSelection(@Param("search") String search);
+           "AND (LOWER(u.firstName) LIKE LOWER(CONCAT('%', :q, '%')) " +
+           "OR LOWER(u.lastName) LIKE LOWER(CONCAT('%', :q, '%')) " +
+           "OR LOWER(u.email) LIKE LOWER(CONCAT('%', :q, '%')) " +
+           "OR u.phone LIKE CONCAT('%', :q, '%'))")
+    List<User> searchCoOwners(@Param("q") String q, Pageable pageable);
+
+
 }

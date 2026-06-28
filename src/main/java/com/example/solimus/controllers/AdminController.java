@@ -2,15 +2,12 @@ package com.example.solimus.controllers;
 
 
 
-import com.example.solimus.dtos.admin.CreateSpecialtyDTO;
 import com.example.solimus.dtos.admin.CreateUserRequestDTO;
 import com.example.solimus.dtos.admin.CreateUserResponseDTO;
-
 import com.example.solimus.dtos.admin.EstimatedDelayDTO;
-import com.example.solimus.dtos.admin.SpecialtyDTO;
 import com.example.solimus.dtos.admin.UserListResponseDTO;
-import com.example.solimus.dtos.residence.CreateSecurityFeatureDTO;
-import com.example.solimus.dtos.residence.SecurityFeatureDTO;
+import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanDTO;
+import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanRequestDTO;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.UserStatus;
 import com.example.solimus.services.admin.AdminService;
@@ -31,35 +28,15 @@ public class AdminController {
     private final AdminService adminService;
 
     // ============================================================================
-    // 🛠 GESTION DES SPÉCIALITÉS
+    //  GESTION DES Abonnements
     // ============================================================================
 
-    @Operation(summary = "Liste de toutes les spécialités", tags = {"2.b Administration - Spécialités"})
-    @GetMapping("/specialties")
-    public ResponseEntity<List<SpecialtyDTO>> getAllSpecialties() {
-        return ResponseEntity.ok(adminService.getAllSpecialties());
+    @Operation(summary = "Enregistrer le plan d'abonnement de prestataire", tags = {"2.b Administration - Abonnements"})
+    @PostMapping("/provider-plan")
+    public ResponseEntity<ProviderPlanDTO> saveProviderPlan(
+            @RequestBody @Valid ProviderPlanRequestDTO dto) {
+        return ResponseEntity.ok(adminService.saveProviderPlan(dto));
     }
-
-    @Operation(summary = "Créer une nouvelle spécialité", tags = {"2.b Administration - Spécialités"})
-    @PostMapping("/specialties")
-    public ResponseEntity<SpecialtyDTO> createSpecialty(@RequestBody @Valid CreateSpecialtyDTO specialtyDTO) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(adminService.createSpecialty(specialtyDTO));
-    }
-
-    @Operation(summary = "Modifier une spécialité", tags = {"2.b Administration - Spécialités"})
-    @PutMapping("/specialties/{id}")
-    public ResponseEntity<SpecialtyDTO> updateSpecialty(@PathVariable Long id, @RequestBody @Valid CreateSpecialtyDTO specialtyDTO) {
-        return ResponseEntity.ok(adminService.updateSpecialty(id, specialtyDTO));
-    }
-
-    @Operation(summary = "Supprimer une spécialité", tags = {"2.b Administration - Spécialités"})
-    @DeleteMapping("/specialties/{id}")
-    public ResponseEntity<Void> deleteSpecialty(@PathVariable Long id) {
-        adminService.deleteSpecialty(id);
-        return ResponseEntity.noContent().build();
-    }
-
-
 
     // ============================================================================
     // ⏳ GESTION DES DÉLAIS
@@ -115,35 +92,5 @@ public class AdminController {
         return ResponseEntity.ok().build();
     }
 
-    // ============================================================================
-    // GESTION DES OPTIONS DE SÉCURITÉ
-    // ============================================================================
-
-    @Operation(summary = "Créer une option de sécurité", tags = {"2.e Administration - Options de sécurité"})
-    @PostMapping("/security-features")
-    public ResponseEntity<Void> createSecurityFeature(@RequestBody @Valid CreateSecurityFeatureDTO dto) {
-        adminService.createSecurityFeature(dto);
-        return ResponseEntity.status(HttpStatus.CREATED).build();
-    }
-
-    @Operation(summary = "Lister toutes les options de sécurité (actives ou non)", tags = {"2.e Administration - Options de sécurité"})
-    @GetMapping("/security-features")
-    public ResponseEntity<List<SecurityFeatureDTO>> getSecurityFeatures() {
-        return ResponseEntity.ok(adminService.getSecurityFeatures());
-    }
-
-    @Operation(summary = "Désactiver une option de sécurité", tags = {"2.e Administration - Options de sécurité"})
-    @PatchMapping("/security-features/{id}/deactivate")
-    public ResponseEntity<Void> deactivateSecurityFeature(@PathVariable Long id) {
-        adminService.deactivateSecurityFeature(id);
-        return ResponseEntity.ok().build();
-    }
-
-    @Operation(summary = "Activer une option de sécurité", tags = {"2.e Administration - Options de sécurité"})
-    @PatchMapping("/security-features/{id}/activate")
-    public ResponseEntity<Void> activateSecurityFeature(@PathVariable Long id) {
-        adminService.activateSecurityFeature(id);
-        return ResponseEntity.ok().build();
-    }
     
 }

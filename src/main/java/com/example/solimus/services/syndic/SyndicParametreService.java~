@@ -1,0 +1,46 @@
+package com.example.solimus.services.syndic;
+
+import com.example.solimus.dtos.settingsSyndic.CreateFacilityTypeDTO;
+import com.example.solimus.dtos.settingsSyndic.CreatePropertyTypeDTO;
+import com.example.solimus.dtos.settingsSyndic.CreateSpecialtyDTO;
+import com.example.solimus.dtos.settingsSyndic.FacilityTypeDTO;
+import com.example.solimus.dtos.settingsSyndic.PropertyTypeDTO;
+import com.example.solimus.dtos.settingsSyndic.SpecialtyDTO;
+
+import java.util.List;
+
+public interface SyndicParametreService {
+
+    //--------------------------------------------------
+    // ===== TYPES D'ÉQUIPEMENTS =====
+    //--------------------------------------------------
+    List<FacilityTypeDTO> getAllFacilityTypes();
+
+    void createFacilityType(CreateFacilityTypeDTO dto);
+
+    void updateFacilityType(Long id, CreateFacilityTypeDTO dto);
+
+    void deleteFacilityType(Long id);
+
+    //--------------------------------------------------
+    // ===== SPÉCIALITÉS =====
+    //--------------------------------------------------
+    List<SpecialtyDTO> getAllSpecialties();
+
+    void createSpecialty(CreateSpecialtyDTO dto);
+
+    void updateSpecialty(Long id, CreateSpecialtyDTO dto);
+
+    void deleteSpecialty(Long id);
+
+    //--------------------------------------------------
+    // ===== TYPES D'APPARTEMENT =====
+    //--------------------------------------------------
+    List<PropertyTypeDTO> getAllPropertyTypes();
+
+    void createPropertyType(CreatePropertyTypeDTO dto);
+
+    void updatePropertyType(Long id, CreatePropertyTypeDTO dto);
+
+    void deletePropertyType(Long id);
+}
