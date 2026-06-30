@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Aperçu d'un copropriétaire avec ses tantièmes pour le budget.
@@ -19,5 +20,5 @@ public class CoOwnerTantiemePreviewDTO {
     private Long coOwnerId;
     private String coOwnerName;
     private BigDecimal tantieme;       // Ex: 12.5
-    private String propertyReference; // Ex: "A-101"
+    private List<String> propertyReferences; // Ex: ["A-101", "B-205"]
 }

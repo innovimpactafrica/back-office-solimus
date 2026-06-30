@@ -36,7 +36,7 @@ public class SyndicInterventionController {
 
 
 
-    @Operation(summary = "Accepter un devis et valider le prestataire", tags = {"4.c Syndic - Interventions"})
+    @Operation(summary = "Accepter un devis et valider le prestataire", tags = {"Syndic - Interventions"})
     @PostMapping("/interventions/{requestId}/accept-quote/{quoteId}")
     public ResponseEntity<String> acceptQuote(
             @PathVariable Long requestId,
@@ -45,20 +45,20 @@ public class SyndicInterventionController {
         return ResponseEntity.ok("Devis accepté avec succès. Le prestataire a été notifié.");
     }
 
-    @Operation(summary = "Lister les devis reçus pour une demande", tags = {"4.c Syndic - Interventions"})
+    @Operation(summary = "Lister les devis reçus pour une demande", tags = {"Syndic - Interventions"})
     @GetMapping("/interventions/{requestId}/quotes")
     public ResponseEntity<List<SyndicQuoteDTO>> getQuotesByIntervention(
             @PathVariable Long requestId) {
         return ResponseEntity.ok(syndicService.getQuotesByInterventionRequest(requestId));
     }
 
-    @Operation(summary = "Lister mes demandes d'intervention", tags = {"4.c Syndic - Interventions"})
+    @Operation(summary = "Lister mes demandes d'intervention", tags = {"Syndic - Interventions"})
     @GetMapping("/interventions")
     public ResponseEntity<List<InterventionRequestDTO>> getMyInterventions() {
         return ResponseEntity.ok(syndicService.getMyInterventionRequests());
     }
 
-    @Operation(summary = "Prendre en charge une intervention et diffuser aux prestataires", tags = {"4.c Syndic - Interventions"})
+    @Operation(summary = "Prendre en charge une intervention et diffuser aux prestataires", tags = {"Syndic - Interventions"})
     @PostMapping("/interventions/{requestId}/assign")
     public ResponseEntity<InterventionRequestDTO> assignIntervention(@PathVariable Long requestId) {
         return ResponseEntity.ok(syndicService.assignIntervention(requestId));
@@ -66,7 +66,7 @@ public class SyndicInterventionController {
 
     // ==================== PAIEMENTS PAR LE SYNDIC ====================
 
-    @Operation(summary = "Payer un acompte pour une intervention gérée par le syndic", tags = {"4.c Syndic - Interventions"})
+    @Operation(summary = "Payer un acompte pour une intervention gérée par le syndic", tags = {"Syndic - Interventions"})
     @PostMapping("/interventions/{requestId}/payer-acompte")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<PaymentResponseDTO> payerAcompte(
@@ -75,7 +75,7 @@ public class SyndicInterventionController {
         return ResponseEntity.ok(syndicService.payerAcompte(requestId, dto));
     }
 
-    @Operation(summary = "Valider les travaux et payer le solde", tags = {"4.c Syndic - Interventions"})
+    @Operation(summary = "Valider les travaux et payer le solde", tags = {"Syndic - Interventions"})
     @PostMapping("/interventions/{requestId}/valider-solde")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<PaymentResponseDTO> validateAndPayBalance(

@@ -78,7 +78,7 @@ public class SyndicTravauxController {
     // =========================================================================
     // CRÉATION D'INTERVENTION
     // =========================================================================
-    @Operation(summary = "Créer une demande de travaux (Avec upload Minio)", tags = {"4.c Syndic - Travaux"})
+    @Operation(summary = "Créer une demande de travaux (Avec upload Minio)", tags = {"Syndic - Travaux"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping(value = "/interventions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> createIntervention(

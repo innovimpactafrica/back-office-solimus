@@ -12,7 +12,7 @@ import java.util.List;
 
 /**
  * DTO de création d'un budget prévisionnel.
- * Reçoit les 2 étapes du wizard en une seule requête.
+ * Reçoit les 2 étapes en une seule requête.
  */
 @Data
 @AllArgsConstructor

@@ -23,7 +23,7 @@ public class SyndicPaymentController {
 
     private final SyndicService syndicService;
 
-    @Operation(summary = "Payer un acompte pour une intervention validée", tags = {"4.f Syndic - Paiements"})
+    @Operation(summary = "Payer un acompte pour une intervention validée", tags = {"Syndic - Paiements"})
     @PostMapping("/interventions/{id}/payer-acompte")
     public ResponseEntity<PaymentResponseDTO> payerAcompte(
             @PathVariable Long id,
@@ -31,7 +31,7 @@ public class SyndicPaymentController {
         return ResponseEntity.ok(syndicService.payerAcompte(id, dto));
     }
 
-    @Operation(summary = "Valider les travaux et payer le solde", tags = {"4.f Syndic - Paiements"})
+    @Operation(summary = "Valider les travaux et payer le solde", tags = {"Syndic - Paiements"})
     @PostMapping("/interventions/{id}/valider-solde")
     public ResponseEntity<PaymentResponseDTO> validateAndPayBalance(
             @PathVariable Long id,

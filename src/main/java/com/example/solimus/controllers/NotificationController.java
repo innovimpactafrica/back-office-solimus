@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/notifications")
 @RequiredArgsConstructor
-@Tag(name = "9. Notifications", description = "Gestion des notifications push des utilisateurs")
+@Tag(name = "Notifications", description = "Gestion des notifications push des utilisateurs")
 public class NotificationController {
 
     private final NotificationService notificationService;

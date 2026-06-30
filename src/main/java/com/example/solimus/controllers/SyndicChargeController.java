@@ -39,7 +39,7 @@ public class SyndicChargeController {
     private final SyndicService syndicService;
     private final MinioService minioService;
 
-    @Operation(summary = "Créer une charge pour une résidence (Avec upload Minio)", tags = {"4.e Syndic - Charges"})
+    @Operation(summary = "Créer une charge pour une résidence (Avec upload Minio)", tags = {"Syndic - Charges"})
     @PostMapping(value = "/charges", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> createCharge(
             @Parameter(description = "Titre de la charge")
@@ -135,7 +135,7 @@ public class SyndicChargeController {
         }
     }
 
-    @Operation(summary = "Lister les charges d'une résidence", tags = {"4.e Syndic - Charges"})
+    @Operation(summary = "Lister les charges d'une résidence", tags = {"Syndic - Charges"})
     @GetMapping("/charges/residence/{residenceId}")
     public ResponseEntity<List<ChargeResponseDTO>> getChargesByResidence(
             @PathVariable Long residenceId) {
@@ -143,7 +143,7 @@ public class SyndicChargeController {
             syndicService.getChargesByResidence(residenceId));
     }
 
-    @Operation(summary = "Supprimer une charge", tags = {"4.e Syndic - Charges"})
+    @Operation(summary = "Supprimer une charge", tags = {"Syndic - Charges"})
     @DeleteMapping("/charges/{chargeId}")
     public ResponseEntity<String> deleteCharge(@PathVariable Long chargeId) {
         syndicService.deleteCharge(chargeId);

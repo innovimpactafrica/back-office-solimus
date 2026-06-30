@@ -27,14 +27,14 @@ public class SyndicResidenceController {
     // GÉNÉRAL
     // =========================================================================
 
-    @Operation(summary = "Lister mes résidences", tags = {"4.a Syndic - Résidences"})
+    @Operation(summary = "Lister mes résidences", tags = {"Syndic - Résidences"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences")
     public ResponseEntity<List<ResidenceDTO>> getMesResidences() {
         return ResponseEntity.ok(residenceService.getMesResidences());
     }
 
-    @Operation(summary = "Détail complet d'une résidence", tags = {"4.a Syndic - Résidences"})
+    @Operation(summary = "Détail complet d'une résidence", tags = {"Syndic - Résidences"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{id}")
     public ResponseEntity<ResidenceDTO> getResidenceDetail(@PathVariable Long id) {
@@ -45,14 +45,14 @@ public class SyndicResidenceController {
     // ÉTAPE 1 — RÉSIDENCE
     // =========================================================================
 
-    @Operation(summary = "Créer une nouvelle résidence (Étape 1)", tags = {"4.a Syndic - Résidences"})
+    @Operation(summary = "Créer une nouvelle résidence (Étape 1)", tags = {"Syndic - Résidences"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/residences")
     public ResponseEntity<ResidenceDTO> createResidence(@RequestBody @Valid CreateResidenceDTO dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(residenceService.createResidence(dto));
     }
 
-    @Operation(summary = "Uploader la photo principale (Étape 1)", tags = {"4.a Syndic - Résidences"})
+    @Operation(summary = "Uploader la photo principale (Étape 1)", tags = {"Syndic - Résidences"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/residences/{id}/photo")
     public ResponseEntity<ResidenceDTO> uploadPhoto(
@@ -61,7 +61,7 @@ public class SyndicResidenceController {
         return ResponseEntity.ok(residenceService.uploadPhoto(id, photo));
     }
 
-    @Operation(summary = "Ajouter un contact clé (Étape 1)", tags = {"4.a Syndic - Résidences"})
+    @Operation(summary = "Ajouter un contact clé (Étape 1)", tags = {"Syndic - Résidences"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/residences/{id}/contacts")
     public ResponseEntity<AddResidenceContactDTO> addContact(
@@ -74,7 +74,7 @@ public class SyndicResidenceController {
     // ÉTAPE 2 — LOTS
     // =========================================================================
 
-    @Operation(summary = "Ajouter un lot/appartement (Étape 2)", tags = {"4.a Syndic - Résidences"})
+    @Operation(summary = "Ajouter un lot/appartement (Étape 2)", tags = {"Syndic - Résidences"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/residences/{id}/properties")
     public ResponseEntity<PropertyDTO> addProperty(
@@ -83,7 +83,7 @@ public class SyndicResidenceController {
         return ResponseEntity.status(HttpStatus.CREATED).body(residenceService.addProperty(id, dto));
     }
 
-    @Operation(summary = "Lister les copropriétaires pour affecter un lot (Étape 2)", tags = {"4.a Syndic - Résidences"})
+    @Operation(summary = "Lister les copropriétaires pour affecter un lot (Étape 2)", tags = {"Syndic - Résidences"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/properties/co-owners")
     public ResponseEntity<List<CoOwnerSelectionDTO>> searchCoOwnersForSelection(
@@ -91,7 +91,7 @@ public class SyndicResidenceController {
         return ResponseEntity.ok(residenceService.searchCoOwnersForSelection(search));
     }
 
-    @Operation(summary = "Affecter un copropriétaire à un lot (Étape 2)", tags = {"4.a Syndic - Résidences"})
+    @Operation(summary = "Affecter un copropriétaire à un lot (Étape 2)", tags = {"Syndic - Résidences"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PutMapping("/residences/{id}/properties/{propertyId}/owner/{ownerId}")
     public ResponseEntity<PropertyListDTO> assignOwnerToProperty(
@@ -101,7 +101,7 @@ public class SyndicResidenceController {
         return ResponseEntity.ok(residenceService.assignOwnerToProperty(id, propertyId, ownerId));
     }
 
-    @Operation(summary = "Lister tous les types de biens (dropdown)", tags = {"4.a Syndic - Résidences"})
+    @Operation(summary = "Lister tous les types de biens (dropdown)", tags = {"Syndic - Résidences"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/property-types")
     public ResponseEntity<List<PropertyTypeDTO>> getAllPropertyTypes() {
@@ -111,14 +111,14 @@ public class SyndicResidenceController {
     // =========================================================================
     // ÉTAPE 3 — BIENS COMMUNS
     // =========================================================================
-    @Operation(summary = "Lister les types d'équipements avec leurs champs", tags = {"4.a Syndic - Résidences"})
+    @Operation(summary = "Lister les types d'équipements avec leurs champs", tags = {"Syndic - Résidences"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/facility-types")
     public ResponseEntity<List<FacilityTypeDTO>> getFacilityTypes() {
         return ResponseEntity.ok(residenceService.getFacilityTypes());
     }
 
-    @Operation(summary = "Ajouter un équipement commun", tags = {"4.a Syndic - Résidences"})
+    @Operation(summary = "Ajouter un équipement commun", tags = {"Syndic - Résidences"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/residences/{id}/facilities")
     public ResponseEntity<Void> addFacility(

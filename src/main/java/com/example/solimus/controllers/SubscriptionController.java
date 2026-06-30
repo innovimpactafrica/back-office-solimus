@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/provider/subscription")
 @RequiredArgsConstructor
-@Tag(name = "Admin - Abonnements", description = "Gestion de l'abonnement du prestataire")
+@Tag(name = "Prestataire - Abonnement", description = "Gestion de l'abonnement du prestataire")
 public class SubscriptionController {
 
     private final SubscriptionPaymentService subscriptionPaymentService;

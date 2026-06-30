@@ -9,7 +9,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * Aperçu retourné à l'étape 1 du wizard, après sélection de la résidence.
+ * Aperçu retourné à l'étape 1, après sélection de la résidence.
  * Permet au syndic de visualiser qui sera concerné avant de créer le budget.
  */
 @Data

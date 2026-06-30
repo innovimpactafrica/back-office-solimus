@@ -27,7 +27,7 @@ public class SyndicOwnerController {
 
     private final SyndicOwnerService syndicOwnerService;
 
-    @Operation(summary = "Ajouter un copropriétaire (Workflow OTP)", tags = {"4.d Syndic - Copropriétaires"})
+    @Operation(summary = "Ajouter un copropriétaire (Workflow OTP)", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/co-owners")
     public ResponseEntity<String> addCoOwner(@RequestBody @Valid CreateCoOwnerDTO dto) {
@@ -35,7 +35,7 @@ public class SyndicOwnerController {
         return ResponseEntity.ok("Copropriétaire ajouté avec succès. Un code d'activation lui a été envoyé par email.");
     }
 
-    @Operation(summary = "Lister les biens disponibles (VACANT) d'une résidence", tags = {"4.d Syndic - Copropriétaires"})
+    @Operation(summary = "Lister les biens disponibles (VACANT) d'une résidence", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/properties/available")
     public ResponseEntity<List<PropertySummaryDTO>> getAvailableProperties(
@@ -43,14 +43,14 @@ public class SyndicOwnerController {
         return ResponseEntity.ok(syndicOwnerService.getAvailableProperties(residenceId));
     }
 
-    @Operation(summary = "Lister les résidences qui ont au moins un bien vacant", tags = {"4.d Syndic - Copropriétaires"})
+    @Operation(summary = "Lister les résidences qui ont au moins un bien vacant", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/with-vacant-properties")
     public ResponseEntity<List<ResidenceSummaryDTO>> getResidencesWithVacantProperties() {
         return ResponseEntity.ok(syndicOwnerService.getResidencesWithVacantProperties());
     }
 
-    @Operation(summary = "Lister les copropriétaires (recherche + filtre résidence + pagination)", tags = {"4.d Syndic - Copropriétaires"})
+    @Operation(summary = "Lister les copropriétaires (recherche + filtre résidence + pagination)", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners")
     public ResponseEntity<Page<CoOwnerListDTO>> getCoOwners(
@@ -62,7 +62,7 @@ public class SyndicOwnerController {
         return ResponseEntity.ok(syndicOwnerService.getCoOwners(search, residenceId, pageable));
     }
 
-    @Operation(summary = "Autocomplete — rechercher un copropriétaire par nom, email ou téléphone", tags = {"4.d Syndic - Copropriétaires"})
+    @Operation(summary = "Autocomplete — rechercher un copropriétaire par nom, email ou téléphone", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/search")
     public ResponseEntity<List<CoOwnerSearchResultDTO>> searchCoOwners(
@@ -70,7 +70,7 @@ public class SyndicOwnerController {
         return ResponseEntity.ok(syndicOwnerService.searchCoOwners(q));
     }
 
-    @Operation(summary = "Lier un copropriétaire existant au syndic connecté", tags = {"4.d Syndic - Copropriétaires"})
+    @Operation(summary = "Lier un copropriétaire existant au syndic connecté", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/co-owners/{id}/link")
     public ResponseEntity<String> linkCoOwner(@PathVariable Long id) {
