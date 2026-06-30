@@ -25,10 +25,9 @@ public class BudgetDetailDTO {
     private BigDecimal budgetTotal;          // Somme des items → "Budget total estimé"
 
     private List<BudgetItemDTO> items;       // Postes budgétaires
-    private List<CoOwnerQuotePartDTO> repartition; // Répartition avec montants
+    private List<CoOwnerQuotePartDTO> repartition; // Répartition par owner avec montants
 
-    // Libellé de la colonne période, dérivé de SyndicFinancialSettings.chargeFrequency
-    // Ex: "PAR TRIMESTRE" ou "PAR MOIS"
+    // Libellé de la colonne période Ex: "PAR TRIMESTRE" ou "PAR MOIS"
     private String periodeLabel;
 
     private BigDecimal totalTantieme;        // Doit toujours faire 100

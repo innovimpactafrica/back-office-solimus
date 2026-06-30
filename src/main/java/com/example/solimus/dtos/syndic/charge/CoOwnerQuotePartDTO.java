@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Une ligne de répartition (un copropriétaire).
@@ -18,7 +19,7 @@ public class CoOwnerQuotePartDTO {
 
     private Long coOwnerId;
     private String coOwnerName;
-    private String typeBienName;
+    private List<String> typeBienNames;
     private BigDecimal totalTantieme;
     private BigDecimal quotePartAnnuelle;
     private BigDecimal quotePartPeriode;

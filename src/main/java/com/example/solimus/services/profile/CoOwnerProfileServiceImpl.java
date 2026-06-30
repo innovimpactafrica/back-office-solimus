@@ -16,7 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class CoOwnerProfileServiceImpl implements OwnerProfileService {
+public class CoOwnerProfileServiceImpl implements CoOwnerProfileService {
 
     private final UserRepository userRepository;
     private final MinioService minioService;

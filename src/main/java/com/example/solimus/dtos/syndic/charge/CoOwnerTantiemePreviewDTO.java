@@ -19,6 +19,6 @@ public class CoOwnerTantiemePreviewDTO {
 
     private Long coOwnerId;
     private String coOwnerName;
-    private BigDecimal tantieme;       // Ex: 12.5
+    private BigDecimal tantieme;
     private List<String> propertyReferences; // Ex: ["A-101", "B-205"]
 }

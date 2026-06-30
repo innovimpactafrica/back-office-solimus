@@ -3,7 +3,7 @@ package com.example.solimus.controllers;
 import com.example.solimus.dtos.profile.CoOwnerProfileDTO;
 import com.example.solimus.dtos.profile.UpdateCoOwnerProfileDTO;
 
-import com.example.solimus.services.profile.OwnerProfileService;
+import com.example.solimus.services.profile.CoOwnerProfileService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 @Tag(name = "Copropriétaire - Profil", description = "Consultation et mise à jour du profil du copropriétaire.")
 public class OwnerProfileController {
 
-    private final OwnerProfileService profileService;
+    private final CoOwnerProfileService profileService;
 
     @Operation(summary = "Voir mon profil")
     @GetMapping
