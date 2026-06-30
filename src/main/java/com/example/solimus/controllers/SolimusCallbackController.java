@@ -10,6 +10,7 @@ import com.example.solimus.enums.*;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.provider.ProviderService;
+import com.example.solimus.services.provider.wallet.WalletService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -44,6 +45,9 @@ public class SolimusCallbackController {
     // Service utilisé pour créditer le wallet du prestataire après confirmation InTouch
     private final ProviderService providerService;
 
+    // Service wallet pour gérer les crédits du prestataire
+    private final WalletService walletService;
+
     // Repository des abonnements prestataires : SUB-*
     private final SubscriptionRepository subscriptionRepository;
 
@@ -59,8 +63,7 @@ public class SolimusCallbackController {
     // =========================================================================
     @PostMapping("/callback")
     @Transactional
-    public ResponseEntity<Map<String, Object>> handleCallback(
-            @RequestBody InTouchCallbackRequest request) {
+    public ResponseEntity<Map<String, Object>> handleCallback(@RequestBody InTouchCallbackRequest request) {
 
         log.info("InTouch callback reçu: partnerTx={}, guTx={}, status={}",
                 request.getPartnerTransactionId(),
@@ -136,17 +139,14 @@ public class SolimusCallbackController {
                                 "message", "Paiement marqué comme échoué"
                         ));
                     }
-
+                    //-> Paiement réussi
                     // Paiement confirmé par InTouch → on met à jour le statut
                     payment.setStatus(PaymentStatus.COMPLETED);
                     payment.setPaidAt(LocalDateTime.now());
                     paymentRepository.save(payment);
 
-                    // Le prestataire reçoit l'argent uniquement après confirmation réelle
-                    providerService.crediterWallet(
-                            payment.getProvider().getId(),
-                            payment.getAmount()
-                    );
+                    // Le prestataire reçoit l'argent sur son wallet uniquement après confirmation réelle (pour tout type de paiement)
+                    walletService.creditWallet(payment.getProvider().getId(), payment.getAmount());
 
                     // Synchronisation financière de la demande d'intervention
                     InterventionRequest req = payment.getInterventionRequest();
@@ -171,7 +171,7 @@ public class SolimusCallbackController {
                         req.setRemainingAmount(BigDecimal.ZERO);
 
                         // Le paiement du solde valide définitivement l'intervention
-                        req.addStatusHistory(InterventionStatus.FINAL_VALIDATION, payment.getSyndic());
+                        req.addStatusHistory(InterventionStatus.FINAL_VALIDATION, payment.getPaymentInitiator());
                         req.setValidatedAt(LocalDateTime.now());
 
                         log.info("Solde {} confirmé — intervention {} clôturée",

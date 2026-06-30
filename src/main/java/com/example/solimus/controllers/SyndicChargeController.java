@@ -33,7 +33,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic")
 @RequiredArgsConstructor
-@Tag(name = "4.e Syndic - Charges", description = "Gestion des charges de copropriété par le syndic")
+@Tag(name = "Syndic - Charges", description = "Gestion des charges de copropriété par le syndic")
 public class SyndicChargeController {
 
     private final SyndicService syndicService;

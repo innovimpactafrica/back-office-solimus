@@ -5,20 +5,24 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+//DTO pour la récupération et la mise à jour des informations personnelles du prestataire
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class UpdateProviderProfileDTO {
 
+    // Modifiables directement
     private String companyName;
     private String firstName;
     private String lastName;
+
+    // Modifiables avec vérification
     private String phone;
     private String email;
-    private String specialtyName;      // affiché mais non modifiable (le backend ignorera sa mise à jour)
-    private String interventionZone;   // Ex: "Dakar" (le texte de l'autocompléte)
-    private java.math.BigDecimal latitude;   // Coordonnée GPS
-    private java.math.BigDecimal longitude;  // Coordonnée GPS
-    private String profilePhotoUrl;    // A retourner pour affichage
+
+    // Affichage uniquement (non modifiable)
+    private String profilePhotoUrl;
+    private String specialtyName;
+    private String interventionZone;
 }

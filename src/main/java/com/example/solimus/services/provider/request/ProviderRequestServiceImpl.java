@@ -3,10 +3,7 @@ package com.example.solimus.services.provider.request;
 import com.example.solimus.dtos.admin.EstimatedDelayDTO;
 import com.example.solimus.dtos.provider.request.*;
 import com.example.solimus.entities.*;
-import com.example.solimus.enums.InterventionStatus;
-import com.example.solimus.enums.ProviderRequestDisplayStatus;
-import com.example.solimus.enums.QuoteItemType;
-import com.example.solimus.enums.QuoteStatus;
+import com.example.solimus.enums.*;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.EstimatedDelayRepository;
@@ -110,11 +107,11 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
             throw new ForbiddenException("Un autre prestataire a été sélectionné pour cette intervention. Vous ne pouvez plus consulter ses détails.");
         }
 
-        // 4. Déterminer le contact propriétaire selon le type de demande
-        // — appartement → propriétaire, partie commune → syndic
-        User contact = request.getProperty() != null
-                ? request.getProperty().getOwner()
-                : request.getSyndic();
+        // 4. Déterminer le contact selon le mode de gestion
+        // — SYNDIC → syndic, OWNER → propriétaire
+        User contact = request.getManagementMode() == InterventionManagementMode.SYNDIC
+                ? request.getSyndic()
+                : request.getOwner();
 
         // 5. Convertir les chemins photos en URLs signées MinIO affichables par le front
         List<String> photoUrls = minioService.toPresignedUrls(request.getPhotoUrls());
@@ -156,8 +153,8 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
                 .orElseThrow(() -> new RuntimeException(
                         "Demande introuvable ou vous n'êtes pas autorisé à répondre à cette demande."));
 
-        // 3. Vérifier que la demande accepte encore des devis (Statut PENDING ou QUOTE_SENT)
-        if (request.getStatus() != InterventionStatus.PENDING && request.getStatus() != InterventionStatus.QUOTE_SENT) {
+        // 3. Vérifier que la demande accepte encore des devis (Statut PENDING)
+        if (request.getStatus() != InterventionStatus.PENDING) {
             throw new RuntimeException("Cette demande n'accepte plus de nouveaux devis.");
         }
 
@@ -218,133 +215,6 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
                         .build())
                 .collect(Collectors.toList());
     }
-
-    // =========================================================================
-    // LISTAGE DES DEVIS
-    // =========================================================================
-
-    @Override
-    @Transactional(readOnly = true)
-    public ProviderQuoteListDTO getMyQuotes(QuoteStatus statut, String search, int page, int size) {
-
-        // 1. Récupérer le prestataire connecté
-        User currentProvider = getCurrentUser();
-
-        // 2. Configurer la pagination (tri par date de création, le plus récent en premier)
-        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-
-        // 3. Récupérer les devis paginés avec filtres
-        Page<Quote> quotePage = quoteRepository.findMyQuotes(currentProvider.getId(), statut, search, pageable);
-
-        // 4. Transformer les devis en DTOs (utilisation de map() pour la pagination automatique)
-        Page<QuoteSummaryDTO> devisPage = quotePage.map(quote ->
-            QuoteSummaryDTO.builder()
-                .id(quote.getId())
-                .reference(quote.getReference())
-                .titre(quote.getInterventionRequest().getTitle())
-                .residenceName(quote.getInterventionRequest().getResidence() != null ? quote.getInterventionRequest().getResidence().getName() : null)
-                .appartement(quote.getInterventionRequest().getProperty() != null ? quote.getInterventionRequest().getProperty().getReference() : null)
-                .date(quote.getCreatedAt().toLocalDate())
-                .montant(quote.getTotalAmount())
-                .statut(quote.getStatus())
-                .build()
-        );
-
-        // 5. Calculer le montant total des devis acceptés
-        BigDecimal totalValide = quoteRepository.sumTotalAmountByProviderAndStatus(currentProvider.getId(), QuoteStatus.ACCEPTED);
-        if (totalValide == null) {
-            totalValide = BigDecimal.ZERO;
-        }
-
-        // 6. Retourner le DTO avec le bandeau et la liste paginée
-        return ProviderQuoteListDTO.builder()
-                .totalValidAmount(totalValide)
-                .devis(devisPage)
-                .build();
-    }
-
-    // =========================================================================
-    // DÉTAIL D'UN DEVIS
-    // =========================================================================
-
-    @Override
-    @Transactional(readOnly = true)
-    public QuoteDetailDTO getQuoteDetails(Long quoteId) {
-
-        // 1. Récupérer le prestataire connecté
-        User currentProvider = getCurrentUser();
-
-        // 2. Récupérer le devis uniquement s'il appartient à ce prestataire
-        Quote quote = quoteRepository.findById(quoteId)
-                .orElseThrow(() -> new RuntimeException("Devis introuvable"));
-
-        if (!quote.getProvider().getId().equals(currentProvider.getId())) {
-            throw new RuntimeException("Vous n'êtes pas autorisé à consulter ce devis");
-        }
-
-        // 3. Récupérer la demande d'intervention associée
-        InterventionRequest request = quote.getInterventionRequest();
-
-        // 4. Déterminer le client (Usersyndic ou Usercopropriétaire)
-        User client = request.getProperty() != null
-                ? request.getProperty().getOwner()
-                : request.getSyndic();
-
-        // 5. Déterminer l'adresse (toujours l'adresse de la résidence)
-        String clientAdresse = null;
-        if (request.getResidence() != null) {
-            clientAdresse = request.getResidence().getFullAddress();
-        }
-
-        // 5. Séparer les items par type (matériel vs main d'œuvre)
-        List<QuoteLineDTO> materiaux = new ArrayList<>();
-        List<QuoteLineDTO> mainOeuvre = new ArrayList<>();
-        BigDecimal sousTotalMateriaux = BigDecimal.ZERO;
-        BigDecimal sousTotalMainOeuvre = BigDecimal.ZERO;
-
-        if (quote.getItems() != null) {
-            for (QuoteItem item : quote.getItems()) {
-                BigDecimal subtotal = item.getUnitPrice()
-                        .multiply(BigDecimal.valueOf(item.getQuantity()));
-
-                QuoteLineDTO lineDTO = QuoteLineDTO.builder()
-                        .description(item.getDescription())
-                        .quantity(item.getQuantity())
-                        .unitPrice(item.getUnitPrice())
-                        .subtotal(subtotal)
-                        .build();
-
-                if (item.getType() == QuoteItemType.MATERIAL) {
-                    materiaux.add(lineDTO);
-                    sousTotalMateriaux = sousTotalMateriaux.add(subtotal);
-                } else {
-                    mainOeuvre.add(lineDTO);
-                    sousTotalMainOeuvre = sousTotalMainOeuvre.add(subtotal);
-                }
-            }
-        }
-
-        // 6. Construire et retourner le DTO
-        return QuoteDetailDTO.builder()
-                .reference(quote.getReference())
-                .titre(request.getTitle())
-                .statut(quote.getStatus())
-                .montantTotal(quote.getTotalAmount())
-                .dateEnvoi(quote.getCreatedAt().toLocalDate())
-                .dateValidation(request.getQuoteAcceptedAt() != null ? request.getQuoteAcceptedAt().toLocalDate() : null)
-                .clientNom(client != null ? client.getFirstName() + " " + client.getLastName() : null)
-                .clientTelephone(client != null ? client.getPhone() : null)
-                .clientEmail(client != null ? client.getEmail() : null)
-                .clientAdresse(clientAdresse)
-                .materiaux(materiaux)
-                .sousTotalMateriaux(sousTotalMateriaux)
-                .mainOeuvre(mainOeuvre)
-                .sousTotalMainOeuvre(sousTotalMainOeuvre)
-                .totalTTC(quote.getTotalAmount())
-                .notes(quote.getAdditionalComments())
-                .build();
-    }
-
 
     //---------------------------------------------------
     // Méthodes utilitaires

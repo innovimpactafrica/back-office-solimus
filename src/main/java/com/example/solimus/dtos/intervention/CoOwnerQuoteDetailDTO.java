@@ -1,6 +1,6 @@
 package com.example.solimus.dtos.intervention;
 
-import com.example.solimus.dtos.provider.request.QuoteLineDTO;
+import com.example.solimus.dtos.provider.profile.QuoteLineDTO;
 import com.example.solimus.enums.QuoteStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

@@ -6,8 +6,7 @@ package com.example.solimus.enums;
 public enum InterventionStatus {
    PENDING("En attente de devis"),
    SYNDIC_ASSIGNED("Pris en charge par le syndic"),
-   QUOTE_SENT("En attente de validation"),
-   SYNDIC_VALIDATED("Assigné"),
+   QUOTE_VALIDATED("Accepté"),
    STARTED("En cours"),
    FINISHED("Terminé"),
    FINAL_VALIDATION("Clôturé"),

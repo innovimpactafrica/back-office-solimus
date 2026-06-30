@@ -3,8 +3,10 @@ package com.example.solimus.services.admin;
 import com.example.solimus.dtos.admin.*;
 import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanDTO;
 import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanRequestDTO;
+import com.example.solimus.dtos.provider.wallet.WithdrawalRequestDTO;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.UserStatus;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -12,6 +14,19 @@ import java.util.List;
  * Service de gestion administrative.
  */
 public interface AdminService {
+
+    // --- GESTION DES RETRAITS WALLET ---
+
+    /**
+     * Valide une demande de retrait wallet après paiement réel du demandeur.
+     */
+    WithdrawalRequestDTO approveWalletWithdrawal(Long withdrawalId, MultipartFile receipt, String comment);
+
+    /**
+     * Refuse une demande de retrait wallet et remet le montant dans le solde disponible.
+     */
+    WithdrawalRequestDTO rejectWalletWithdrawal(Long withdrawalId, String rejectionReason);
+
 
     // --- GESTION ABONNEMENTS PRESTATAIRES ---
     /**

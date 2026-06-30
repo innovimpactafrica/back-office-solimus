@@ -1,9 +1,19 @@
 package com.example.solimus.enums;
 
 public enum SubscriptionStatus {
-    PENDING,    // paiement initié, en attente de confirmation TouchPay
-    ACTIVE,     // paiement confirmé, accès total à la plateforme
-    EXPIRED,    // date de fin dépassée, accès révoqué
-    CANCELLED ,  // annulé (par l'admin ou le prestataire)
-    FAILED,     // le paiement a échoué techniquement chez TouchPay
+    PENDING("En attente"),        // paiement initié, en attente de confirmation TouchPay
+    ACTIVE("Actif"),              // paiement confirmé, accès total à la plateforme
+    EXPIRED("Expiré"),            // date de fin dépassée, accès révoqué
+    CANCELLED("Annulé"),         // annulé (par l'admin ou le prestataire)
+    FAILED("Échoué");             // le paiement a échoué techniquement chez TouchPay
+
+    private final String label;
+
+    SubscriptionStatus(String label) {
+        this.label = label;
+    }
+
+    public String getLabel() {
+        return label;
+    }
 }

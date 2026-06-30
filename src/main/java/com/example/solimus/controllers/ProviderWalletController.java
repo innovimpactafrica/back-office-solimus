@@ -1,9 +1,9 @@
 package com.example.solimus.controllers;
 
-import com.example.solimus.dtos.provider.DemanderVersementDTO;
-import com.example.solimus.dtos.provider.WithdrawalRequestDTO;
-import com.example.solimus.dtos.provider.WalletDTO;
-import com.example.solimus.services.provider.ProviderService;
+import com.example.solimus.dtos.provider.wallet.RequestWithdrawalDTO;
+import com.example.solimus.dtos.provider.wallet.WithdrawalRequestDTO;
+import com.example.solimus.dtos.provider.wallet.WalletDTO;
+import com.example.solimus.services.provider.wallet.WalletService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -14,23 +14,23 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/provider/wallet")
 @RequiredArgsConstructor
-@Tag(name = "5.c Prestataire - Wallet", description = "Gestion du portefeuille et des retraits")
+@Tag(name = "Prestataire - Wallet", description = "Gestion du portefeuille et des retraits")
 public class ProviderWalletController {
 
-    private final ProviderService providerService;
+    private final WalletService walletService;
 
     @Operation(summary = "Récupérer les informations du portefeuille (Wallet)")
     @GetMapping
-    public ResponseEntity<WalletDTO> getMonWallet(
+    public ResponseEntity<WalletDTO> getMyWallet(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(providerService.getMonWallet(page, size));
+        return ResponseEntity.ok(walletService.getMyWallet(page, size));
     }
 
     @Operation(summary = "Demander un versement (Wave, Orange Money)")
     @PostMapping("/withdraw")
-    public ResponseEntity<WithdrawalRequestDTO> demanderVersement(
-            @RequestBody @Valid DemanderVersementDTO dto) {
-        return ResponseEntity.ok(providerService.demanderVersement(dto));
+    public ResponseEntity<WithdrawalRequestDTO> requestWithdrawal(
+            @RequestBody @Valid RequestWithdrawalDTO dto) {
+        return ResponseEntity.ok(walletService.requestWithdrawal(dto));
     }
 }

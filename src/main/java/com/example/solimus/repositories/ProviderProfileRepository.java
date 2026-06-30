@@ -15,6 +15,8 @@ public interface ProviderProfileRepository extends JpaRepository<ProviderProfile
 
     Optional<ProviderProfile> findByUser(User user);
 
+    Optional<ProviderProfile> findByUserId(Long userId);
+
     // On récupère tous les profils prestataires dont le compte (User) est ACTIVE et qui ont la spécialité demandée
     @Query("SELECT p FROM ProviderProfile p " +
             "WHERE p.specialty.id = :specialtyId " +

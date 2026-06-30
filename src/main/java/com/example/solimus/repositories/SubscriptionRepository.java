@@ -2,6 +2,8 @@ package com.example.solimus.repositories;
 
 import com.example.solimus.entities.Subscription;
 import com.example.solimus.enums.SubscriptionStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -15,6 +17,10 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, Long
     // Récupère le dernier abonnement d'un prestataire (le plus récent selon endDate)
     // → utilisé avant de créer un nouveau paiement, pour vérifier qu'il n'a pas déjà un abonnement actif
     Optional<Subscription> findFirstByProviderIdOrderByEndDateDesc(Long providerId);
+
+    // Récupère tous les abonnements d'un prestataire, du plus récent au plus ancien
+    // → utilisé pour l'écran "Mon abonnement" (carte actuelle + historique des paiements)
+    Page<Subscription> findByProviderIdOrderByStartDateDesc(Long providerId, Pageable pageable);
 
     // Récupère l'abonnement correspondant à une référence de transaction TouchPay (SUB-xxx)
     // → utilisé par le bridge et le callback pour retrouver la bonne ligne

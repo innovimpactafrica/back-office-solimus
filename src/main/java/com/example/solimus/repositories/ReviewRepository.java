@@ -12,32 +12,29 @@ import java.util.Optional;
 @Repository
 public interface ReviewRepository extends JpaRepository<Review, Long> {
 
-    /**
-     * Trouver un avis par intervention
-     */
-    Optional<Review> findByInterventionRequestId(Long interventionRequestId);
 
     /**
      * Vérifier si un avis existe pour une intervention
      */
     boolean existsByInterventionRequestId(Long interventionRequestId);
 
-    /**
-     * Trouver tous les avis pour un prestataire
-     */
-    List<Review> findByProviderId(Long providerId);
 
     /**
      * Calcule la note moyenne globale d'un prestataire basé sur toutes ses évaluations.
      * Retourne null s'il n'a encore reçu aucune note.
      */
     @Query("SELECT AVG(r.rating) FROM Review r WHERE r.provider.id = :providerId")
-    Double calculerNoteMoyenne(@Param("providerId") Long providerId);
+    Double calculateAverageRating(@Param("providerId") Long providerId);
 
     /**
      * Compte le nombre total d'évaluations reçues par un prestataire.
      */
     long countByProviderId(Long providerId);
+
+    /**
+     * Compte le nombre d'avis avec une note >= 4 pour un prestataire.
+     */
+    long countByProviderIdAndRatingGreaterThanEqual(Long providerId, int rating);
 
     /**
      * Calcule le taux de satisfaction d'un prestataire (pourcentage de notes >= 3).

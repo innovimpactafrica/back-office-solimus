@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 @Tag(
-        name = "1. Authentification",
+        name = "Authentification",
         description = "Inscription, connexion, activation de compte et réinitialisation du mot de passe. Tous ces endpoints sont accessibles sans authentification."
 )
 public class AuthController {

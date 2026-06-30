@@ -16,7 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/coowner/profile")
 @RequiredArgsConstructor
-@Tag(name = "3.f Copropriétaire - Profil", description = "Consultation et mise à jour du profil du copropriétaire.")
+@Tag(name = "Copropriétaire - Profil", description = "Consultation et mise à jour du profil du copropriétaire.")
 public class OwnerProfileController {
 
     private final OwnerProfileService profileService;

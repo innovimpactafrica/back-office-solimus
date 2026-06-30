@@ -1,6 +1,12 @@
 package com.example.solimus.controllers;
 
+import com.example.solimus.dtos.intervention.CoOwnerQuoteCardDTO;
+import com.example.solimus.dtos.syndic.travaux.PayDepositDTO;
+import com.example.solimus.dtos.syndic.PaymentResponseDTO;
+import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
 import com.example.solimus.dtos.syndic.travaux.CreateReviewDTO;
+import com.example.solimus.dtos.owner.travaux.BalanceSummaryDTO;
+import com.example.solimus.dtos.owner.travaux.CoOwnerQuoteDetailDTO;
 import com.example.solimus.dtos.owner.travaux.CreateOwnerInterventionRequestDTO;
 import com.example.solimus.dtos.owner.travaux.OwnerInterventionDetailDTO;
 import com.example.solimus.dtos.owner.travaux.OwnerInterventionDTO;
@@ -10,12 +16,13 @@ import com.example.solimus.dtos.syndic.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.enums.InterventionStatus;
 import com.example.solimus.services.owner.travaux.ownerTraveauxService;
-import com.example.solimus.services.syndic.settings.SyndicParametreService;
+import com.example.solimus.services.syndic.settings.SyndicSettingsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -32,10 +39,10 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/owner/travaux")
 @RequiredArgsConstructor
-@Tag(name = "7. Copropriétaire - Travaux", description = "Gestion des demandes de travaux du copropriétaire")
+@Tag(name = "Copropriétaire - Travaux", description = "Gestion des demandes de travaux du copropriétaire")
 public class OwnerTravauxController {
 
-    private final SyndicParametreService syndicParametreService;
+    private final SyndicSettingsService syndicParametreService;
     private final ownerTraveauxService ownerTraveauxService;
 
     @Operation(summary = "Lister toutes les spécialités disponibles")
@@ -93,6 +100,69 @@ public class OwnerTravauxController {
             @Parameter(description = "ID de l'intervention")
             @PathVariable Long interventionId) {
         return ResponseEntity.ok(ownerTraveauxService.getInterventionDetail(interventionId));
+    }
+
+    @Operation(summary = "Lister les devis d'une intervention")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    @GetMapping("/interventions/{interventionId}/quotes")
+    public ResponseEntity<Page<CoOwnerQuoteCardDTO>> getQuotesByIntervention(
+            @Parameter(description = "ID de l'intervention")
+            @PathVariable Long interventionId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(ownerTraveauxService.getQuotesByIntervention(interventionId, page, size));
+    }
+
+    @Operation(summary = "Détail d'un devis")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    @GetMapping("/interventions/{interventionId}/quotes/{quoteId}")
+    public ResponseEntity<CoOwnerQuoteDetailDTO> getQuoteDetail(
+            @Parameter(description = "ID de l'intervention")
+            @PathVariable Long interventionId,
+            @Parameter(description = "ID du devis")
+            @PathVariable Long quoteId) {
+        return ResponseEntity.ok(ownerTraveauxService.getQuoteDetail(interventionId, quoteId));
+    }
+
+    @Operation(summary = "Accepter un devis")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    @PostMapping("/interventions/{interventionId}/quotes/{quoteId}/accept")
+    public ResponseEntity<String> acceptQuote(
+            @Parameter(description = "ID de l'intervention")
+            @PathVariable Long interventionId,
+            @Parameter(description = "ID du devis à accepter")
+            @PathVariable Long quoteId) {
+        ownerTraveauxService.acceptQuote(interventionId, quoteId);
+        return ResponseEntity.ok("Devis accepté avec succès");
+    }
+
+    @Operation(summary = "Payer un acompte")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    @PostMapping("/interventions/{interventionId}/deposit")
+    public ResponseEntity<PaymentResponseDTO> payDeposit(
+            @Parameter(description = "ID de l'intervention")
+            @PathVariable Long interventionId,
+            @RequestBody @Valid PayDepositDTO dto) {
+        return ResponseEntity.ok(ownerTraveauxService.payDeposit(interventionId, dto));
+    }
+
+    @Operation(summary = "Récapitulatif financier avant paiement du solde (montant devis, acompte versé, solde restant)")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    @GetMapping("/interventions/{interventionId}/balance-summary")
+    public ResponseEntity<BalanceSummaryDTO> getBalanceSummary(
+            @Parameter(description = "ID de l'intervention")
+            @PathVariable Long interventionId) {
+        return ResponseEntity.ok(ownerTraveauxService.getBalanceSummary(interventionId));
+    }
+
+    @Operation(summary = "Valider les travaux et payer le solde")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    @PostMapping("/interventions/{interventionId}/balance")
+    public ResponseEntity<PaymentResponseDTO> validateAndPayBalance(
+            @Parameter(description = "ID de l'intervention")
+            @PathVariable Long interventionId,
+            @RequestBody @Valid ValiderTravauxDTO dto) {
+        return ResponseEntity.ok(ownerTraveauxService.validateAndPayBalance(interventionId, dto));
     }
 
     @Operation(summary = "Créer un avis pour une intervention terminée")

@@ -7,12 +7,10 @@ import com.example.solimus.dtos.charge.CreateChargeDTO;
 import com.example.solimus.dtos.intervention.InterventionRequestDTO;
 import com.example.solimus.dtos.intervention.InterventionStatusHistoryDTO;
 import com.example.solimus.dtos.provider.request.WorkflowStepDTO;
-import com.example.solimus.dtos.intervention.NearbyProviderDTO;
 import com.example.solimus.dtos.intervention.SyndicQuoteDTO;
 import com.example.solimus.dtos.syndic.*;
 import com.example.solimus.dtos.syndic.residence.PropertyDTO;
-import com.example.solimus.dtos.provider.WithdrawalRequestDTO;
-import com.example.solimus.dtos.syndic.travaux.CreateReviewDTO;
+import com.example.solimus.dtos.syndic.travaux.PayDepositDTO;
 import com.example.solimus.entities.Charge;
 import com.example.solimus.entities.ChargeAllocation;
 import com.example.solimus.entities.ChargeDocument;
@@ -56,6 +54,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -235,72 +234,6 @@ public class SyndicServiceImpl implements SyndicService {
         chargeRepository.delete(charge);
     }
 
-    // =========================================================================
-    // LISTER LES BIENS D'UNE RÉSIDENCE
-    // =========================================================================
-    @Override
-    @Transactional(readOnly = true)
-    public List<PropertyDTO> getPropertiesByResidence(Long residenceId) {
-
-        User currentSyndic = getCurrentUser();
-
-        // Vérifier que la résidence appartient à ce syndic
-        Residence residence = residenceRepository.findById(residenceId)
-            .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
-
-        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
-            throw new ForbiddenException("Accès non autorisé");
-        }
-
-        return propertyRepository.findByResidenceId(residenceId).stream()
-            .map(this::mapToPropertyDTO)
-            .collect(Collectors.toList());
-    }
-
-
-    // =========================================================================
-    // GESTION DES INTERVENTIONS
-    // =========================================================================
-
-    /**
-     * Recherche les prestataires situés à proximité d'une résidence pour une spécialité donnée.
-     * Utilise le calcul de distance Haversine en SQL.
-     */
-    @Override
-    public List<NearbyProviderDTO> findNearbyProviders(Long residenceId, Long specialtyId) {
-        Residence residence = residenceRepository.findById(residenceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
-
-        // Appel SQL natif pour filtrer les prestataires par distance (30km par défaut)
-        List<User> providers = userRepository.findNearbyProviders(
-                residence.getLatitude().doubleValue(),
-                residence.getLongitude().doubleValue(),
-                specialtyId,
-                searchRadiusKm
-        );
-
-        // Transformation en DTO avec calcul fin de la distance pour l'affichage
-        return providers.stream().map(provider -> {
-            com.example.solimus.entities.ProviderProfile profile = providerProfileRepository.findByUser(provider)
-                    .orElse(null);
-            double distance = geolocationService.calculateDistance(
-                    residence.getLatitude().doubleValue(),
-                    residence.getLongitude().doubleValue(),
-                    profile != null ? profile.getLatitude().doubleValue() : 0,
-                    profile != null ? profile.getLongitude().doubleValue() : 0
-            );
-
-            return NearbyProviderDTO.builder()
-                    .id(provider.getId())
-                    .firstName(provider.getFirstName())
-                    .lastName(provider.getLastName())
-                    .companyName(profile != null ? profile.getCompanyName() : null)
-                    .specialtyName(profile != null && profile.getSpecialty() != null ? profile.getSpecialty().getName() : "N/A")
-                    .distanceKm(Math.round(distance * 10.0) / 10.0) // Arrondi à 1 décimale
-                    .build();
-        }).collect(Collectors.toList());
-    }
-
 
 
     /**
@@ -327,7 +260,7 @@ public class SyndicServiceImpl implements SyndicService {
         }
 
         // 3. Vérifier que la demande est encore en attente de décision
-        if (request.getStatus() != InterventionStatus.PENDING && request.getStatus() != InterventionStatus.QUOTE_SENT) {
+        if (request.getStatus() != InterventionStatus.PENDING) {
             throw new BadRequestException("Cette demande ne peut plus accepter de devis");
         }
 
@@ -356,9 +289,9 @@ public class SyndicServiceImpl implements SyndicService {
 
         // 7. Finaliser la demande : assignation du prestataire, montant et changement de statut
         request.setSelectedProvider(acceptedQuote.getProvider());
-        request.setQuoteAcceptedAt(java.time.LocalDateTime.now());
+        request.setQuoteAcceptedAt(LocalDateTime.now());
         request.setTotalAmount(acceptedQuote.getTotalAmount());
-        request.addStatusHistory(InterventionStatus.SYNDIC_VALIDATED, getCurrentUser());
+        request.addStatusHistory(InterventionStatus.QUOTE_VALIDATED, getCurrentUser());
     }
 
     /**
@@ -471,7 +404,7 @@ public class SyndicServiceImpl implements SyndicService {
 
                 // Note moyenne réelle du prestataire
                 Double noteMoyenne = reviewRepository
-                    .calculerNoteMoyenne(quote.getProvider().getId());
+                    .calculateAverageRating(quote.getProvider().getId());
 
                 // Si le prestataire n'a jamais été noté → 0.0 par défaut
                 double rating = noteMoyenne != null ? noteMoyenne : 0.0;
@@ -541,7 +474,7 @@ public class SyndicServiceImpl implements SyndicService {
     // ================================================
     @Override
     @Transactional
-    public PaymentResponseDTO payerAcompte(Long requestId, PayerAcompteDTO dto) {
+    public PaymentResponseDTO payerAcompte(Long requestId, PayDepositDTO dto) {
         User currentSyndic = getCurrentUser();
 
         // 1. Vérifier si la demande d'intervention existe
@@ -554,12 +487,21 @@ public class SyndicServiceImpl implements SyndicService {
             throw new BadRequestException("Vous n'êtes pas autorisé à payer pour cette demande.");
         }
 
-        // 3. Vérifier qu'aucun acompte n'a déjà été versé pour cette intervention
-        boolean acompteDejaVerse = paymentRepository
-            .existsByInterventionRequestIdAndType(requestId, PaymentType.ACOMPTE);
+        // 3. Vérifier si un acompte existe déjà pour cette intervention
+        Optional<Payment> existingPayment = paymentRepository
+            .findByInterventionRequestIdAndType(requestId, PaymentType.ACOMPTE);
 
-        if (acompteDejaVerse) {
-            throw new BadRequestException("Un acompte a déjà été versé pour cette intervention");
+        if (existingPayment.isPresent()) {
+            Payment payment = existingPayment.get();
+            // Si le paiement est déjà COMPLETED, on bloque
+            if (payment.getStatus() == PaymentStatus.COMPLETED) {
+                throw new BadRequestException("Un acompte a déjà été versé pour cette intervention");
+            }
+            // Si le paiement est PENDING, on bloque (déjà en cours)
+            if (payment.getStatus() == PaymentStatus.PENDING) {
+                throw new BadRequestException("Un paiement est déjà en cours pour cette intervention");
+            }
+            // Si le paiement est FAILED, on permet de réinitier (réinitialisation plus bas)
         }
 
         // 4. Vérifier qu'un prestataire a été sélectionné pour cette demande
@@ -570,17 +512,28 @@ public class SyndicServiceImpl implements SyndicService {
         // 5. Générer une référence unique de transaction
         String transactionRef = genererReference("PAY");
 
-        // 6. Enregistrer le paiement en statut PENDING (en attente du retour de TouchPay)
-        Payment payment = Payment.builder()
-            .reference(transactionRef)                       // Référence unique générée pour InTouch/TouchPay
-            .interventionRequest(request)                     // Demande d'intervention liée à ce paiement
-            .provider(request.getSelectedProvider())          // Prestataire qui doit recevoir l'argent
-            .syndic(currentSyndic)                            // Syndic qui effectue le paiement
-            .amount(dto.getMontant())                         // Montant de l'acompte à payer
-            .type(PaymentType.ACOMPTE)                        // Spécifie qu'il s'agit d'un acompte
-            .method(dto.getMethode())                         // Méthode choisie (ex: WAVE, ORANGE_MONEY, etc.)
-            .status(PaymentStatus.PENDING)                    // Statut temporaire en attente du callback TouchPay
-            .build();
+        // 6. Créer ou réinitialiser le paiement
+        Payment payment;
+        if (existingPayment.isPresent() && existingPayment.get().getStatus() == PaymentStatus.FAILED) {
+            // Paiement FAILED → réinitialiser pour une nouvelle tentative
+            payment = existingPayment.get();
+            payment.setReference(transactionRef);
+            payment.setMethod(dto.getMethode());
+            payment.setStatus(PaymentStatus.PENDING);
+            payment.setPaidAt(null);
+        } else {
+            // Nouveau paiement
+            payment = Payment.builder()
+                .reference(transactionRef)                       // Référence unique générée pour InTouch/TouchPay
+                .interventionRequest(request)                     // Demande d'intervention liée à ce paiement
+                .provider(request.getSelectedProvider())          // Prestataire qui doit recevoir l'argent
+                .paymentInitiator(currentSyndic)                  // Celui qui effectue le paiement (syndic)
+                .amount(dto.getMontant())                         // Montant de l'acompte à payer
+                .type(PaymentType.ACOMPTE)                        // Spécifie qu'il s'agit d'un acompte
+                .method(dto.getMethode())                         // Méthode choisie (ex: WAVE, ORANGE_MONEY, etc.)
+                .status(PaymentStatus.PENDING)                    // Statut temporaire en attente du callback TouchPay
+                .build();
+        }
 
         paymentRepository.save(payment);                      // Sauvegarde du paiement temporaire en base
 
@@ -607,7 +560,7 @@ public class SyndicServiceImpl implements SyndicService {
     // ================================================
     @Override
     @Transactional
-    public PaymentResponseDTO validerEtPayerSolde(Long requestId, ValiderTravauxDTO dto) {
+    public PaymentResponseDTO validateAndPayBalance(Long requestId, ValiderTravauxDTO dto) {
         User currentSyndic = getCurrentUser();
 
         InterventionRequest request = interventionRepository
@@ -626,18 +579,47 @@ public class SyndicServiceImpl implements SyndicService {
             ? request.getRemainingAmount()
             : BigDecimal.ZERO;
 
+        // Vérifier si un solde existe déjà pour cette intervention
+        Optional<Payment> existingPayment = paymentRepository
+            .findByInterventionRequestIdAndType(requestId, PaymentType.SOLDE);
+
+        if (existingPayment.isPresent()) {
+            Payment payment = existingPayment.get();
+            // Si le paiement est déjà COMPLETED, on bloque
+            if (payment.getStatus() == PaymentStatus.COMPLETED) {
+                throw new BadRequestException("Le solde a déjà été versé pour cette intervention");
+            }
+            // Si le paiement est PENDING, on bloque (déjà en cours)
+            if (payment.getStatus() == PaymentStatus.PENDING) {
+                throw new BadRequestException("Un paiement est déjà en cours pour cette intervention");
+            }
+            // Si le paiement est FAILED, on permet de réinitier (réinitialisation plus bas)
+        }
+
         String transactionRef = genererReference("SOL");
 
-        Payment payment = Payment.builder()
-            .reference(transactionRef)
-            .interventionRequest(request)
-            .provider(request.getSelectedProvider())
-            .syndic(currentSyndic)
-            .amount(solde)
-            .type(PaymentType.SOLDE)
-            .method(dto.getMethode())
-            .status(PaymentStatus.PENDING)
-            .build();
+        // Créer ou réinitialiser le paiement
+        Payment payment;
+        if (existingPayment.isPresent() && existingPayment.get().getStatus() == PaymentStatus.FAILED) {
+            // Paiement FAILED → réinitialiser pour une nouvelle tentative
+            payment = existingPayment.get();
+            payment.setReference(transactionRef);
+            payment.setMethod(dto.getMethode());
+            payment.setStatus(PaymentStatus.PENDING);
+            payment.setPaidAt(null);
+        } else {
+            // Nouveau paiement
+            payment = Payment.builder()
+                .reference(transactionRef)
+                .interventionRequest(request)
+                .provider(request.getSelectedProvider())
+                .paymentInitiator(currentSyndic)
+                .amount(solde)
+                .type(PaymentType.SOLDE)
+                .method(dto.getMethode())
+                .status(PaymentStatus.PENDING)
+                .build();
+        }
 
         paymentRepository.save(payment);
 
@@ -748,16 +730,16 @@ public class SyndicServiceImpl implements SyndicService {
             WorkflowStepDTO.builder()
                 .label("Devis envoyé")
                 .completed(statut != InterventionStatus.PENDING)
-                .date(findDate.apply(InterventionStatus.QUOTE_SENT))
+                .date(findFirstQuoteSentDate(request))
                 .build(),
 
             WorkflowStepDTO.builder()
                 .label("Validation syndic")
-                .completed(statut == InterventionStatus.SYNDIC_VALIDATED
+                .completed(statut == InterventionStatus.QUOTE_VALIDATED
                         || statut == InterventionStatus.STARTED
                         || statut == InterventionStatus.FINISHED
                         || statut == InterventionStatus.FINAL_VALIDATION)
-                .date(findDate.apply(InterventionStatus.SYNDIC_VALIDATED))
+                .date(findDate.apply(InterventionStatus.QUOTE_VALIDATED))
                 .build(),
 
             WorkflowStepDTO.builder()
@@ -783,11 +765,19 @@ public class SyndicServiceImpl implements SyndicService {
         );
     }
 
+    private LocalDateTime findFirstQuoteSentDate(InterventionRequest request) {
+        return quoteRepository.findAllByInterventionRequestOrderByTotalAmountAsc(request).stream()
+                .filter(q -> q.getStatus() == QuoteStatus.SENT)
+                .map(Quote::getCreatedAt)
+                .findFirst()
+                .orElse(null);
+    }
+
     /**
      * Mappe une entité Quote vers le DTO SyndicQuoteDTO (comparaison).
      */
     private SyndicQuoteDTO mapToSyndicQuoteDTO(Quote quote) {
-        Double noteMoyenne = reviewRepository.calculerNoteMoyenne(quote.getProvider().getId());
+        Double noteMoyenne = reviewRepository.calculateAverageRating(quote.getProvider().getId());
         double rating = noteMoyenne != null ? noteMoyenne : 0.0;
 
         com.example.solimus.entities.ProviderProfile profile = providerProfileRepository.findByUser(quote.getProvider()).orElse(null);
@@ -877,49 +867,6 @@ public class SyndicServiceImpl implements SyndicService {
         log.info("{} charge(s) passées EN_RETARD", enRetard.size());
     }
 
-    // =========================================================================
-    // GESTION DES RETRAITS PRESTATAIRES
-    // =========================================================================
-
-    @Override
-    public List<WithdrawalRequestDTO> getWithdrawalRequests(WithdrawalStatus status) {
-        return withdrawalRequestRepository.findAll().stream()
-                .filter(w -> status == null || w.getStatus() == status)
-                .map(this::mapToWithdrawalRequestDTO)
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    @Transactional
-    public WithdrawalRequestDTO confirmWithdrawal(Long withdrawalId) {
-        WithdrawalRequest retrait = getPendingWithdrawal(withdrawalId);
-        Wallet wallet = getWithdrawalWallet(retrait);
-
-        wallet.setPendingBalance(safeSubtract(wallet.getPendingBalance(), retrait.getAmount()));
-        retrait.setStatus(WithdrawalStatus.COMPLETED);
-        retrait.setProcessedAt(LocalDateTime.now());
-
-        walletRepository.save(wallet);
-        WithdrawalRequest saved = withdrawalRequestRepository.save(retrait);
-        return mapToWithdrawalRequestDTO(saved);
-    }
-
-    @Override
-    @Transactional
-    public WithdrawalRequestDTO rejectWithdrawal(Long withdrawalId, String motifRefus) {
-        WithdrawalRequest retrait = getPendingWithdrawal(withdrawalId);
-        Wallet wallet = getWithdrawalWallet(retrait);
-
-        wallet.setPendingBalance(safeSubtract(wallet.getPendingBalance(), retrait.getAmount()));
-        wallet.setAvailableBalance(wallet.getAvailableBalance().add(retrait.getAmount()));
-        retrait.setStatus(WithdrawalStatus.REJECTED);
-        retrait.setProcessedAt(LocalDateTime.now());
-        retrait.setMotifRefus(motifRefus);
-
-        walletRepository.save(wallet);
-        WithdrawalRequest saved = withdrawalRequestRepository.save(retrait);
-        return mapToWithdrawalRequestDTO(saved);
-    }
 
     // =========================================================================
     // MÉTHODES PRIVÉES — OUTILS INTERNES POUR LES RETRAITS
@@ -953,15 +900,5 @@ public class SyndicServiceImpl implements SyndicService {
                 .collect(Collectors.toList());
     }
 
-    private WithdrawalRequestDTO mapToWithdrawalRequestDTO(WithdrawalRequest retrait) {
-        return WithdrawalRequestDTO.builder()
-                .id(retrait.getId())
-                .reference(retrait.getReference())
-                .montant(retrait.getAmount())
-                .methode(retrait.getMethod())
-                .numeroDeTelephone(retrait.getPhoneNumber())
-                .statut(retrait.getStatus())
-                .createdAt(retrait.getCreatedAt())
-                .build();
-    }
+
 }

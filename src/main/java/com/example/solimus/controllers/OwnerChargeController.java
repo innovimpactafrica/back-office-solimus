@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/coowner/charges")
 @RequiredArgsConstructor
-@Tag(name = "3.c Copropriétaire - Charges", description = "Consultation et paiement des charges de copropriété. Une charge peut être EN_ATTENTE, PAYEE ou EN_RETARD.")
+@Tag(name = "Copropriétaire - Charges", description = "Consultation et paiement des charges de copropriété. Une charge peut être EN_ATTENTE, PAYEE ou EN_RETARD.")
 public class OwnerChargeController {
 
     private final CoproprietaireChargeService chargeService;

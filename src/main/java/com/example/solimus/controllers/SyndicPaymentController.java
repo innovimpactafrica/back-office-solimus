@@ -1,6 +1,6 @@
 package com.example.solimus.controllers;
 
-import com.example.solimus.dtos.syndic.PayerAcompteDTO;
+import com.example.solimus.dtos.syndic.travaux.PayDepositDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
 import com.example.solimus.services.syndic.SyndicService;
@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/syndic")
 @RequiredArgsConstructor
-@Tag(name = "4.f Syndic - Paiements", description = "Gestion des paiements par le syndic")
+@Tag(name = "Syndic - Paiements", description = "Gestion des paiements par le syndic")
 public class SyndicPaymentController {
 
     private final SyndicService syndicService;
@@ -27,15 +27,15 @@ public class SyndicPaymentController {
     @PostMapping("/interventions/{id}/payer-acompte")
     public ResponseEntity<PaymentResponseDTO> payerAcompte(
             @PathVariable Long id,
-            @RequestBody @Valid PayerAcompteDTO dto) {
+            @RequestBody @Valid PayDepositDTO dto) {
         return ResponseEntity.ok(syndicService.payerAcompte(id, dto));
     }
 
     @Operation(summary = "Valider les travaux et payer le solde", tags = {"4.f Syndic - Paiements"})
     @PostMapping("/interventions/{id}/valider-solde")
-    public ResponseEntity<PaymentResponseDTO> validerEtPayerSolde(
+    public ResponseEntity<PaymentResponseDTO> validateAndPayBalance(
             @PathVariable Long id,
             @RequestBody @Valid ValiderTravauxDTO dto) {
-        return ResponseEntity.ok(syndicService.validerEtPayerSolde(id, dto));
+        return ResponseEntity.ok(syndicService.validateAndPayBalance(id, dto));
     }
 }

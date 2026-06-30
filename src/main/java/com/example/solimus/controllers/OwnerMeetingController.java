@@ -17,7 +17,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/coowner/meetings")
 @RequiredArgsConstructor
-@Tag(name = "3.d Copropriétaire - Réunions", description = "Consultation des réunions et assemblées générales.")
+@Tag(name = "Copropriétaire - Réunions", description = "Consultation des réunions et assemblées générales.")
 public class OwnerMeetingController {
 
     private final CoOwnerMeetingService meetingService;

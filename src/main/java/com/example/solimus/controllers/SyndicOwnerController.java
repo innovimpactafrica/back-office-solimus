@@ -22,7 +22,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic")
 @RequiredArgsConstructor
-@Tag(name = "4.d Syndic - Copropriétaires", description = "Gestion des copropriétaires par le syndic")
+@Tag(name = "Syndic - Copropriétaires", description = "Gestion des copropriétaires par le syndic")
 public class SyndicOwnerController {
 
     private final SyndicOwnerService syndicOwnerService;

@@ -8,5 +8,7 @@ import java.util.Optional;
 
 @Repository
 public interface WalletRepository extends JpaRepository<Wallet, Long> {
+
+    // Récupérer le wallet du prestataire
     Optional<Wallet> findByProviderId(Long providerId);
 }

@@ -17,14 +17,21 @@ import java.util.Optional;
 
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
+
+    /**
+     *  Vérifie si un paiement existe pour une intervention et un type donné
+     */
     boolean existsByInterventionRequestIdAndType(Long requestId, PaymentType type);
-    java.util.List<Payment> findAllByProviderIdOrderByCreatedAtDesc(Long providerId);
+
+    /**
+     * Récupère un paiement par sa référence unique
+     */
     Optional<Payment> findByReference(String reference);
 
     /**
-     * Trouve les paiements PENDING créés avant une date donnée (pour expiration).
+     * Récupère tous les paiements d'un prestataire triés par date décroissante
      */
-    List<Payment> findByStatusAndCreatedAtBefore(PaymentStatus status, LocalDateTime createdAt);
+    List<Payment> findAllByProviderIdOrderByCreatedAtDesc(Long providerId);
 
     /**
      * Calcule le total des paiements validés reçus par un prestataire pour une date précise.
@@ -48,4 +55,16 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
         @Param("providerId") Long providerId,
         @Param("startDate") LocalDate startDate,
         @Param("endDate") LocalDate endDate);
+
+    /**
+     * Récupère tous les paiements PENDING créés avant une certaine date
+     * → utilisé par le scheduler pour expirer les paiements en attente trop anciens
+     */
+    List<Payment> findByStatusAndCreatedAtBefore(PaymentStatus status, LocalDateTime dateTime);
+
+    /**
+     * Récupère un paiement par intervention et type
+     * → utilisé pour vérifier si un paiement existe déjà et permettre de réinitier en cas d'échec
+     */
+    Optional<Payment> findByInterventionRequestIdAndType(Long requestId, PaymentType type);
 }

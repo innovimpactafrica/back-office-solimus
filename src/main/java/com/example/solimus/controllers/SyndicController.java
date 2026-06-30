@@ -6,6 +6,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/syndic")
-@Tag(name = "4. Syndic", description = "Endpoints réservés aux syndics")
+@Tag(name = "Syndic - Biens", description = "Endpoints réservés aux syndics")
 public class SyndicController {
 }

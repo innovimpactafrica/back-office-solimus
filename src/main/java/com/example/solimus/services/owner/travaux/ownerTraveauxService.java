@@ -1,6 +1,12 @@
 package com.example.solimus.services.owner.travaux;
 
+import com.example.solimus.dtos.intervention.CoOwnerQuoteCardDTO;
+import com.example.solimus.dtos.syndic.travaux.PayDepositDTO;
+import com.example.solimus.dtos.syndic.PaymentResponseDTO;
+import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
 import com.example.solimus.dtos.syndic.travaux.CreateReviewDTO;
+import com.example.solimus.dtos.owner.travaux.BalanceSummaryDTO;
+import com.example.solimus.dtos.owner.travaux.CoOwnerQuoteDetailDTO;
 import com.example.solimus.dtos.owner.travaux.CreateOwnerInterventionRequestDTO;
 import com.example.solimus.dtos.owner.travaux.OwnerInterventionDetailDTO;
 import com.example.solimus.dtos.owner.travaux.OwnerInterventionDTO;
@@ -8,6 +14,7 @@ import com.example.solimus.dtos.syndic.residence.CommonFacilityDTO;
 import com.example.solimus.dtos.syndic.residence.PropertyDTO;
 import com.example.solimus.dtos.syndic.residence.ResidenceDTO;
 import com.example.solimus.enums.InterventionStatus;
+import org.springframework.data.domain.Page;
 
 import java.util.List;
 
@@ -60,5 +67,53 @@ public interface ownerTraveauxService {
      * Créer un avis pour une intervention terminée.
      */
     void createReview(Long interventionId, CreateReviewDTO dto);
+
+    // =========================================================================
+    // GESTION DES DEVIS
+    // =========================================================================
+
+    /**
+     * Retourne la liste des devis reçus pour une intervention,
+     * triés par score qualité/prix (le recommandé en premier).
+     * @param interventionId ID de l'intervention
+     * @param page Numéro de page (défaut 0)
+     * @param size Taille de page (défaut 10)
+     */
+    Page<CoOwnerQuoteCardDTO> getQuotesByIntervention(Long interventionId, int page, int size);
+
+    /**
+     * Récupérer les détails d'un devis spécifique pour une intervention.
+     * @param interventionId ID de l'intervention
+     * @param quoteId ID du devis
+     */
+    CoOwnerQuoteDetailDTO getQuoteDetail(Long interventionId, Long quoteId);
+
+    /**
+     * Accepter un devis et valider le prestataire.
+     * @param interventionId ID de l'intervention
+     * @param quoteId ID du devis à accepter
+     */
+    void acceptQuote(Long interventionId, Long quoteId);
+
+    /**
+     * Payer un acompte pour un devis validé.
+     * @param interventionId ID de l'intervention
+     * @param dto DTO contenant le montant et la méthode de paiement
+     */
+    PaymentResponseDTO payDeposit(Long interventionId, PayDepositDTO dto);
+
+    /**
+     * Valider les travaux et payer le solde.
+     * @param interventionId ID de l'intervention
+     * @param dto DTO contenant la méthode de paiement
+     */
+    PaymentResponseDTO validateAndPayBalance(Long interventionId, ValiderTravauxDTO dto);
+
+    /**
+     * Récupérer le récapitulatif financier (montant devis, acompte versé, solde restant)
+     * pour afficher l'écran de paiement du solde avant validation.
+     * @param interventionId ID de l'intervention
+     */
+    BalanceSummaryDTO getBalanceSummary(Long interventionId);
 
 }

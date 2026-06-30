@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
+//DTO profil prestataire
 @Data
 @Builder
 @NoArgsConstructor
@@ -15,15 +16,14 @@ import java.time.LocalDateTime;
 public class ProviderProfileDTO {
 
     // Infos affichées en haut
-    private String companyName;        // "Sen Plomberie"
-    private String specialtyName;      // "Plomberie"
-    private boolean available;         // point vert/rouge (actif ou inactif)
+    private String companyName;
+    private String specialtyName;
     private String email;
     private String phone;
     private String language;           // "Français, Wolof"
     
-    @JsonFormat(pattern = "MMMM yyyy", locale = "fr") // "Janvier 2025" par ex
-    private LocalDateTime memberSince; // quand est-ce qu'il s'est inscrit
+    @JsonFormat(pattern = "MMMM yyyy", locale = "fr")
+    private LocalDateTime memberSince; // quand est-ce qu'il s'est inscrit?
     
     private String profilePhotoUrl;
 }

@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/provider/accueil")
 @RequiredArgsConstructor
-@Tag(name = "5.a Prestataire - Accueil", description = "Dashboard et statistiques du prestataire")
+@Tag(name = "Prestataire - Accueil", description = "Dashboard et statistiques du prestataire")
 public class ProviderAccueilController {
 
     private final ProviderService providerService;

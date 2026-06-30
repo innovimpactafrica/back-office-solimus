@@ -17,6 +17,15 @@ public interface SyndicTravauxService {
     void createInterventionRequest(CreateInterventionRequestDTO dto);
 
     // =========================================================================
+    // ENVOI AUX PRESTATAIRES
+    // =========================================================================
+    /**
+     * Envoie une demande de partie commune créée par un owner aux prestataires proches.
+     * Le syndic doit valider et diffuser la demande aux prestataires.
+     */
+    void sendToProviders(Long interventionId);
+
+    // =========================================================================
     // LISTER LES RÉSIDENCES DU SYNDIC
     // =========================================================================
     /**

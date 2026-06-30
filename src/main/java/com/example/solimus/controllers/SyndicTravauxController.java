@@ -29,7 +29,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic/travaux")
 @RequiredArgsConstructor
-@Tag(name = "4.c Syndic - Travaux", description = "Gestion des travaux par le syndic")
+@Tag(name = "Syndic - Travaux", description = "Gestion des travaux par le syndic")
 public class SyndicTravauxController {
 
     private final SyndicTravauxService syndicTravauxService;
@@ -163,6 +163,17 @@ public class SyndicTravauxController {
         }
     }
 
+    // =========================================================================
+    // ENVOI AUX PRESTATAIRES
+    // =========================================================================
+
+    @Operation(summary = "Envoyer une demande de partie commune aux prestataires")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PostMapping("/interventions/{interventionId}/send-to-providers")
+    public ResponseEntity<String> sendToProviders(@PathVariable Long interventionId) {
+        syndicTravauxService.sendToProviders(interventionId);
+        return ResponseEntity.ok("Demande envoyée aux prestataires avec succès");
+    }
 
     // =========================================================================
     // CRÉATION AVIS

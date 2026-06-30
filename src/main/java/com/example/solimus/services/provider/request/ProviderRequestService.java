@@ -34,12 +34,6 @@ public interface ProviderRequestService {
     /** Créer un devis (brouillon ou envoyé)*/
     void createQuote(CreateQuoteDTO dto);
 
-    /** Lister mes devis (avec filtres et pagination)*/
-    ProviderQuoteListDTO getMyQuotes(QuoteStatus statut, String search, int page, int size);
-
-    /** Voir le détail d'un devis*/
-    QuoteDetailDTO getQuoteDetails(Long quoteId);
-
     /** Lister les délais d'estimation disponibles*/
     List<EstimatedDelayDTO> getEstimatedDelays();
 }

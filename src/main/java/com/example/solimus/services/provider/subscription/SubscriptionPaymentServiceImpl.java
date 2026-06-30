@@ -1,12 +1,16 @@
 package com.example.solimus.services.provider.subscription;
 
 import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanDTO;
+import com.example.solimus.dtos.provider.profile.MySubscriptionDTO;
+import com.example.solimus.dtos.provider.profile.SubscriptionHistoryItemDTO;
 import com.example.solimus.dtos.provider.subscription.InitiateSubscriptionPaymentDTO;
 import com.example.solimus.dtos.provider.subscription.SubscriptionPaymentResponseDTO;
 import com.example.solimus.entities.ProviderPlan;
 import com.example.solimus.entities.Subscription;
 import com.example.solimus.entities.User;
 import com.example.solimus.enums.SubscriptionStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.ProviderPlanRepository;
@@ -23,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -214,6 +219,17 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
     // Génère une référence courte et unique, préfixée selon le type de paiement (SUB-, PAY-, CPY-...)
     private String generateReference(String prefix) {
         return prefix + "-" + UUID.randomUUID().toString().substring(0, 12).toUpperCase();
+    }
+
+    // Convertit le statut d'abonnement en label lisible pour l'historique
+    private String mapStatusToLabel(SubscriptionStatus status) {
+        return switch (status) {
+            case ACTIVE -> "Payé";
+            case PENDING -> "En attente";
+            case FAILED -> "Échoué";
+            case EXPIRED -> "Expiré";
+            case CANCELLED -> "Annulé";
+        };
     }
 
     // Récupère l'utilisateur actuellement authentifié via le contexte de sécurité Spring

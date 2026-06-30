@@ -62,6 +62,12 @@ public class ProviderProfile {
     @Column(name = "intervention_count")
     private Integer interventionCount = 0; // Nombre d'interventions réalisées
 
+    @Column(name = "rating")
+    private Double rating = 0.0; // Note moyenne du prestataire (0.0 - 5.0)
+
+    @Column(name = "review_count")
+    private Long reviewCount = 0L; // Nombre d'avis reçus
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt; // Date de création du profil

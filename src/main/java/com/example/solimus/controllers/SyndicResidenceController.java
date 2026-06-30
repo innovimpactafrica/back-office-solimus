@@ -18,7 +18,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic")
 @RequiredArgsConstructor
-@Tag(name = "4.a Syndic - Résidences", description = "Gestion des résidences par le syndic")
+@Tag(name = "Syndic - Résidences", description = "Gestion des résidences par le syndic")
 public class SyndicResidenceController {
 
     private final SyndicResidenceService residenceService;

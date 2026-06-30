@@ -22,6 +22,12 @@ public interface QuoteRepository extends JpaRepository<Quote, Long> {
     // Lister les devis pour une demande spécifique, triés par prix croissant (du moins cher au plus cher)
     List<Quote> findAllByInterventionRequestOrderByTotalAmountAsc(InterventionRequest request);
 
+    // Lister les devis pour une demande spécifique, triés par prix croissant (paginé)
+    Page<Quote> findAllByInterventionRequestOrderByTotalAmountAsc(InterventionRequest request, Pageable pageable);
+
+    // Récupérer les devis envoyés pour une intervention
+    List<Quote> findByInterventionRequestAndStatus(InterventionRequest request, QuoteStatus status);
+
 
     // Vérifier si un prestataire a déjà soumis un devis pour une demande donnée
     boolean existsByInterventionRequestAndProvider(InterventionRequest request, User provider);

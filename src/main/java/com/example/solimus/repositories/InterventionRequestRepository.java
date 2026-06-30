@@ -145,9 +145,12 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
     // Lister les demandes assignées à un prestataire précis
     List<InterventionRequest> findAllBySelectedProvider(User provider);
 
+    // Lister les demandes terminées pour un prestataire précis
+    List<InterventionRequest> findBySelectedProviderIdAndStatus(Long providerId, InterventionStatus status);
+
     // Rechercher et filtrer les interventions assignées à un prestataire avec pagination
     @Query("SELECT ir FROM InterventionRequest ir WHERE ir.selectedProvider = :provider " +
-           "AND (:search IS NULL OR LOWER(ir.title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "AND (:search IS NULL OR LOWER(ir.title) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(ir.residence.name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
            "AND (:status IS NULL OR ir.status = :status) " +
            "ORDER BY ir.createdAt DESC")
     org.springframework.data.domain.Page<InterventionRequest> findBySelectedProviderWithFilters(

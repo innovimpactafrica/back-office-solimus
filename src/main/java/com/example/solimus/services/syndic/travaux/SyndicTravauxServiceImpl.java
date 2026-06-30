@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -180,66 +181,123 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         request.setSpecialty(specialty); // Définir la spécialité
         request.setPhotoUrls(dto.getPhotoUrls()); // Définir les URLs des photos
         request.setUrgencyLevel(dto.getUrgencyLevel()); // Définir le niveau d'urgence
-        request.setLocationType(IncidentLocationType.PARTIE_COMMUNE); // Pour le syndic, c'est toujours une partie commune
-        request.setManagementMode(InterventionManagementMode.SYNDIC); // Mode de gestion : géré par le syndic
 
-        // Pour le syndic, seul les parties communes sont gérées
+        // Le syndic peut créer des demandes pour les parties communes OU pour les appartements (au nom du propriétaire)
+        if (dto.getPropertyId() != null && dto.getCommonFacilityId() != null) {
+            throw new BadRequestException("Vous ne pouvez spécifier qu'un seul : un appartement OU un équipement commun");
+        }
+        if (dto.getPropertyId() == null && dto.getCommonFacilityId() == null) {
+            throw new BadRequestException("Vous devez spécifier un appartement OU un équipement commun");
+        }
+
         if (dto.getPropertyId() != null) {
-            throw new BadRequestException("Pour une demande de travaux du syndic, aucun bien ne doit être spécifié");
-        }
-        if (dto.getCommonFacilityId() == null) {
-            throw new BadRequestException("Pour une demande de travaux du syndic, l'équipement commun concerné doit être spécifié");
-        }
+            // Demande pour un appartement (partie privée)
+            Property property = propertyRepository.findById(dto.getPropertyId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Appartement introuvable"));
 
-        // Récupérer et vérifier l'équipement commun
-        CommonFacility commonFacility = commonFacilityRepository.findById(dto.getCommonFacilityId())
-                .orElseThrow(() -> new ResourceNotFoundException("Équipement commun introuvable"));
+            // Vérifier que l'appartement appartient à la résidence
+            if (property.getResidence() == null || !property.getResidence().getId().equals(dto.getResidenceId())) {
+                throw new BadRequestException("Cet appartement n'appartient pas à cette résidence");
+            }
 
-        // Vérifier que l'équipement appartient à la résidence
-        if (commonFacility.getResidence() == null || !commonFacility.getResidence().getId().equals(dto.getResidenceId())) {
-            throw new BadRequestException("Cet équipement commun n'appartient pas à cette résidence");
+            request.setProperty(property);
+            request.setCommonFacility(null);
+            request.setLocationType(IncidentLocationType.APPARTEMENT);
+            request.setManagementMode(InterventionManagementMode.SYNDIC);
+            request.setOwner(property.getOwner());
+        } else {
+            // Demande pour un équipement commun (partie commune)
+            CommonFacility commonFacility = commonFacilityRepository.findById(dto.getCommonFacilityId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Équipement commun introuvable"));
+
+            // Vérifier que l'équipement appartient à la résidence
+            if (commonFacility.getResidence() == null || !commonFacility.getResidence().getId().equals(dto.getResidenceId())) {
+                throw new BadRequestException("Cet équipement commun n'appartient pas à cette résidence");
+            }
+
+            request.setProperty(null);
+            request.setCommonFacility(commonFacility);
+            request.setLocationType(IncidentLocationType.PARTIE_COMMUNE);
+            request.setManagementMode(InterventionManagementMode.SYNDIC);
         }
-
-        request.setProperty(null);
-        request.setCommonFacility(commonFacility);
 
         // Diffusion automatique aux prestataires proches
+        notifyNearbyProviders(request, residence, specialty);
+    }
+
+    // =========================================================================
+    // ENVOI AUX PRESTATAIRES
+    // =========================================================================
+
+    @Override
+    @Transactional
+    public void sendToProviders(Long interventionId) {
+        User currentSyndic = getCurrentUser();
+
+        // Récupérer la demande
+        InterventionRequest request = interventionRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Demande introuvable"));
+
+        // Vérifier que c'est une demande de partie commune gérée par le syndic
+        if (request.getLocationType() != IncidentLocationType.PARTIE_COMMUNE
+                || request.getManagementMode() != InterventionManagementMode.SYNDIC) {
+            throw new BadRequestException("Cette demande n'est pas une demande de partie commune gérée par le syndic");
+        }
+
+        // Vérifier que la résidence appartient au syndic
+        if (!request.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à gérer cette demande");
+        }
+
+        // Vérifier que la demande n'a pas déjà été envoyée aux prestataires
+        if (!request.getNotifiedProviders().isEmpty()) {
+            throw new BadRequestException("Cette demande a déjà été envoyée aux prestataires");
+        }
+
+        // Vérifier que la demande est encore en statut PENDING
+        if (request.getStatus() != InterventionStatus.PENDING) {
+            throw new BadRequestException("Cette demande n'est plus en attente de prestataires");
+        }
+
+        // Diffuser la demande aux prestataires proches
+        notifyNearbyProviders(request, request.getResidence(), request.getSpecialty());
+    }
+
+    /**
+     * Diffuse une demande d'intervention aux prestataires proches.
+     * Réutilisé pour les demandes créées par le syndic et celles créées par le owner.
+     */
+    private void notifyNearbyProviders(InterventionRequest request, Residence residence, Specialty specialty) {
+        // Vérifier que la résidence a des coordonnées GPS
         if (residence.getLatitude() == null || residence.getLongitude() == null) {
             throw new BadRequestException("La résidence n'a pas de coordonnées GPS, impossible de trouver des prestataires proches");
         }
 
         // Récupérer les prestataires proches
-        // Étape 1 — on récupère juste les prestataires actifs pour cette spécialité pas de calcul d'abord
         List<ProviderProfile> candidates = providerProfileRepository
                 .findActiveProvidersBySpecialty(specialty.getId());
 
-        // Étape 2 — on ne garde que les prestataires dont l'abonnement est actuellement actif (status ACTIVE ET date de fin non dépassée)
+        // Filtrer les prestataires avec abonnement actif
         List<ProviderProfile> abonnesActifs = candidates.stream()
                 .filter(profile -> subscriptionRepository
-                        // pour chaque prestataire, on va chercher son dernier abonnement
                         .findFirstByProviderIdOrderByEndDateDesc(profile.getUser().getId())
-                        // s'il en a un, on vérifie qu'il est encore valide en ce moment
                         .map(Subscription::isCurrentlyActive)
-                        // s'il n'a jamais eu d'abonnement, on le considère comme non actif
                         .orElse(false))
                 .toList();
 
-        // Étape 3 — on calcule la distance entre la résidence et chaque prestataire
-        // abonné actif, et on ne garde que ceux dans le rayon autorisé (30km)
+        // Calculer la distance et garder ceux dans le rayon autorisé
         List<ProviderProfile> candidatsProches = new ArrayList<>();
-
-        // On calcule d'abord le seuil de fraîcheur GPS une seule fois,
-        // pour ne pas le recalculer à chaque tour de boucle
+        // Calculer le seuil de fraîcheur GPS : position valide si mise à jour il y a moins de X minutes
         LocalDateTime seuilFraicheur = LocalDateTime.now().minusMinutes(gpsFreshnessMinutes);
 
         for (ProviderProfile profile : abonnesActifs) {
-            // On vérifie si ce prestataire a une position GPS récente et valide
+            // Vérifier si le prestataire a une position GPS récente et valide
             boolean gpsValide = profile.getGpsLatitude() != null
                     && profile.getGpsLongitude() != null
                     && profile.getGpsUpdatedAt() != null
                     && profile.getGpsUpdatedAt().isAfter(seuilFraicheur);
 
-            // Si le GPS est valide, on l'utilise ; sinon on retombe sur la zone de référence saisie à l'inscription
+            // Utiliser la position GPS récente si valide, sinon la position de référence saisie à l'inscription
             double providerLat = gpsValide
                     ? profile.getGpsLatitude().doubleValue()
                     : profile.getLatitude().doubleValue();
@@ -248,7 +306,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                     ? profile.getGpsLongitude().doubleValue()
                     : profile.getLongitude().doubleValue();
 
-            // On calcule la distance réelle entre la résidence et ce prestataire
+            // Calculer la distance entre la résidence et le prestataire
             double distance = geolocationService.calculateDistance(
                     residence.getLatitude().doubleValue(),
                     residence.getLongitude().doubleValue(),
@@ -256,27 +314,23 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                     providerLon
             );
 
-            // On ne garde que ceux qui sont à 30km ou moins (searchRadiusKm)
+            // Garder uniquement les prestataires dans le rayon autorisé (30km par défaut)
             if (distance <= searchRadiusKm) {
-                // On stocke le prestataire
                 candidatsProches.add(profile);
             }
         }
 
-        // Étape 4 — on notifie chaque prestataire trouvé, et on les enregistre dans la liste des prestataires notifiés pour cette demande
+        // Notifier chaque prestataire trouvé
         for (ProviderProfile profil : candidatsProches) {
-
             User user = profil.getUser();
 
-            // on envoie la notification push Firebase et l'email si l'utilisateur a activé les notifications
             if (user.isNotificationsEnabled()) {
                 notificationService.sendPush(
-                        user.getId(), // id de l'utilisateur cible
-                        "Nouvelle demande de travaux", // titre visible sur le téléphone
-                        "Une nouvelle demande correspond à votre spécialité : " + request.getTitle() // corps du message
+                        user.getId(),
+                        "Nouvelle demande de travaux",
+                        "Une nouvelle demande correspond à votre spécialité : " + request.getTitle()
                 );
 
-                // On envoie l'email de notification
                 emailService.sendInterventionNotification(
                         user.getEmail(),
                         user.getFirstName(),
@@ -285,12 +339,9 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                 );
             }
 
-            // On garde une trace : ce prestataire fait partie de ceux notifiés
-            // pour cette demande précise — utile  pour savoir qui a le droit de soumettre un devis dessus
             request.getNotifiedProviders().add(user);
         }
 
-        //On sauvegarde la demande
         interventionRepository.save(request);
     }
 
@@ -336,11 +387,35 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         review.setComment(dto.getComment());
 
         reviewRepository.save(review);
+
+        // 7. Mettre à jour le rating et reviewCount du prestataire
+        updateProviderRating(request.getSelectedProvider());
     }
 
     // =========================================================================
     // UTILITAIRES ET MAPPERS
     // =========================================================================
+
+    /**
+     * Met à jour le rating et le reviewCount du prestataire après création d'un avis.
+     */
+    private void updateProviderRating(User provider) {
+        ProviderProfile profile = providerProfileRepository.findByUser(provider)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil prestataire introuvable"));
+
+        // Calculer la nouvelle moyenne
+        Double averageRating = reviewRepository.calculateAverageRating(provider.getId());
+        double newRating = averageRating != null ? averageRating : 0.0;
+
+        // Compter le nombre d'avis
+        long count = reviewRepository.countByProviderId(provider.getId());
+
+        // Mettre à jour le profil
+        profile.setRating(newRating);
+        profile.setReviewCount(count);
+
+        providerProfileRepository.save(profile);
+    }
 
     /**
      * Génère une référence unique de type TRV-001 etc

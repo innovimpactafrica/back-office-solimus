@@ -67,7 +67,7 @@ public class SolimusPaymentBridgeController {
 
 
     // =========================================================================
-    // BRIDGE — Paiement Syndic → Prestataire (Acompte ou Solde)
+    // BRIDGE — Paiement Syndic/Owner → Prestataire (Acompte ou Solde)
     // =========================================================================
     /**
      * Récupère les données de transaction pour le paiement d'une intervention.
@@ -86,8 +86,8 @@ public class SolimusPaymentBridgeController {
                 .findByReference(transactionRef)
                 .orElseThrow(() -> new ResourceNotFoundException("Paiement introuvable avec la référence : " + transactionRef));
 
-        // 2. Récupérer le syndic initiateur du paiement (pour préremplir ses infos de contact)
-        User syndic = payment.getSyndic();
+        // 2. Récupérer l'initiateur du paiement (syndic OU copropriétaire) pour préremplir ses infos de contact
+        User initiator = payment.getPaymentInitiator();
 
         // 3. Retourner le payload structuré pour la WebView TouchPay
         return PaymentBridgeDTO.builder()
@@ -100,10 +100,10 @@ public class SolimusPaymentBridgeController {
                 .city(touchPayDefaultCity)                                          // Ville par défaut
                 .successRedirectUrl(touchPaySuccessRedirectUrl)                     // URL de redirection si réussite
                 .failedRedirectUrl(touchPayFailedRedirectUrl)                       // URL de redirection si échec
-                .customerEmail(syndic.getEmail())                                   // Email du client (syndic)
-                .customerFirstName(syndic.getFirstName())                           // Prénom du client
-                .customerLastName(syndic.getLastName())                             // Nom du client
-                .customerPhone(syndic.getPhone())                                   // Téléphone du client
+                .customerEmail(initiator.getEmail())                                // Email du client (syndic ou copropriétaire)
+                .customerFirstName(initiator.getFirstName())                        // Prénom du client
+                .customerLastName(initiator.getLastName())                          // Nom du client
+                .customerPhone(initiator.getPhone())                                // Téléphone du client
                 .build();
     }
 

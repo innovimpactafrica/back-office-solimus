@@ -2,7 +2,7 @@ package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.document.CoOwnerDocumentDTO;
 import com.example.solimus.dtos.document.DocumentDownloadUrlDTO;
-import com.example.solimus.services.document.CoOwnerDocumentService;
+import com.example.solimus.services.owner.document.CoOwnerDocumentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/coowner/documents")
 @RequiredArgsConstructor
-@Tag(name = "3.e Copropriétaire - Documents", description = "Tous les documents du copropriétaire : PV de réunion, convocations, factures de charges, rapports.")
+@Tag(name = "Copropriétaire - Documents", description = "Tous les documents du copropriétaire : PV de réunion, convocations, factures de charges, rapports.")
 public class OwnerDocumentController {
 
     private final CoOwnerDocumentService documentService;

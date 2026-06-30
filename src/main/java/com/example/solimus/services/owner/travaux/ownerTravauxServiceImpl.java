@@ -1,20 +1,24 @@
 package com.example.solimus.services.owner.travaux;
 
+import com.example.solimus.dtos.intervention.CoOwnerQuoteCardDTO;
+import com.example.solimus.dtos.syndic.travaux.PayDepositDTO;
+import com.example.solimus.dtos.syndic.PaymentResponseDTO;
+import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
 import com.example.solimus.dtos.syndic.travaux.CreateReviewDTO;
+import com.example.solimus.dtos.owner.travaux.BalanceSummaryDTO;
+import com.example.solimus.dtos.owner.travaux.CoOwnerQuoteDetailDTO;
 import com.example.solimus.dtos.owner.travaux.CreateOwnerInterventionRequestDTO;
 import com.example.solimus.dtos.owner.travaux.OwnerInterventionDetailDTO;
 import com.example.solimus.dtos.owner.travaux.OwnerTimelineStepDTO;
 import com.example.solimus.dtos.owner.travaux.ProviderInfoDTO;
 import com.example.solimus.dtos.owner.travaux.OwnerInterventionDTO;
 import com.example.solimus.dtos.owner.travaux.OwnerInterventionSummaryDTO;
+import com.example.solimus.dtos.provider.profile.QuoteLineDTO;
 import com.example.solimus.dtos.syndic.residence.CommonFacilityDTO;
 import com.example.solimus.dtos.syndic.residence.PropertyDTO;
 import com.example.solimus.dtos.syndic.residence.ResidenceDTO;
 import com.example.solimus.entities.*;
-import com.example.solimus.enums.IncidentLocationType;
-import com.example.solimus.enums.InitiatedBy;
-import com.example.solimus.enums.InterventionManagementMode;
-import com.example.solimus.enums.InterventionStatus;
+import com.example.solimus.enums.*;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
@@ -25,16 +29,16 @@ import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.*;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -52,6 +56,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
     private final ProviderProfileRepository providerProfileRepository;
     private final SubscriptionRepository subscriptionRepository;
     private final QuoteRepository quoteRepository;
+    private final PaymentRepository paymentRepository;
     private final GeolocationService geolocationService;
     private final EmailService emailService;
     private final NotificationService notificationService;
@@ -63,6 +68,9 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
 
     @Value("${provider.gps.freshness-minutes:60}")
     private int gpsFreshnessMinutes; // Durée de validité d'une localisation GPS (60 minutes par défaut)
+
+    @Value("${app.touchpay.bridge-url}")
+    private String touchPayBridgeUrlTemplate;
 
     // =========================================================================
     // Recupére les résidences du copropriétaire connecté
@@ -323,7 +331,435 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
         review.setComment(dto.getComment());
 
         reviewRepository.save(review);
+
+        // 7. Mettre à jour le rating et reviewCount du prestataire
+        updateProviderRating(request.getSelectedProvider());
     }
+
+    // =========================================================================
+    // GESTION DES DEVIS
+    // =========================================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<CoOwnerQuoteCardDTO> getQuotesByIntervention(Long interventionId, int page, int size) {
+
+        // 1. Vérifier que l'intervention existe et appartient au copropriétaire
+        InterventionRequest request = interventionRequestRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        User currentOwner = getCurrentUser();
+        if (!request.getOwner().getId().equals(currentOwner.getId())) {
+            throw new ForbiddenException("Accès non autorisé à cette intervention");
+        }
+
+        // 1. Bloquer si l'intervention est gérée par le syndic (partie commune)
+        if (request.getManagementMode() == InterventionManagementMode.SYNDIC) {
+            throw new ForbiddenException("Les devis de cette intervention sont gérés par le syndic.");
+        }
+
+        // 2. Récupérer uniquement les devis envoyés (pas les brouillons)
+        List<Quote> quotesSend = quoteRepository
+                .findByInterventionRequestAndStatus(request, QuoteStatus.SENT);
+
+        if (quotesSend.isEmpty()) {
+            return Page.empty(PageRequest.of(page, size));
+        }
+
+        // 3. Prix max pour normaliser le score prix
+        // Objectif : récupérer le prix le plus élevé parmi tous les devis.
+        // Ce montant servira plus tard à calculer un score relatif (ex: plus le devis est cher, plus le score est bas).
+        double maxAmount = quotesSend.stream()                               // ① On parcourt la liste des devis
+                .mapToDouble(q -> q.getTotalAmount().doubleValue())      // ② Pour chaque devis, on prend son total TTC en double (ex: 150000.0)
+                .max()                                                   // ③ On cherche le maximum de tous ces montants → retourne un OptionalDouble
+                .orElse(1.0);                                            // ④ Si la liste est vide (pas de devis), on met 1.0 par défaut pour éviter une division par zéro plus tard.
+
+
+        // 4. Mapper chaque devis en carte avec son score calculé
+        List<CoOwnerQuoteCardDTO> cards = quotesSend.stream()
+                .map(quote -> mapToQuoteCardDTO(quote, maxAmount))
+                .toList();
+
+        // 5. Badge RECOMMANDÉ → celui avec le meilleur score final (on effectue une comparaison)
+        cards.stream()
+                .max(Comparator.comparingDouble(CoOwnerQuoteCardDTO::getScoreFinal))
+                .ifPresent(cardDTO -> cardDTO.setBestOffer(true));
+
+        // 6. Trier par score décroissant → le meilleur en premier
+        cards.sort(Comparator.comparingDouble(CoOwnerQuoteCardDTO::getScoreFinal).reversed());
+
+        // 7. Retourner la page avec les données triées
+        Pageable pageable = PageRequest.of(page, size);
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), cards.size());
+        List<CoOwnerQuoteCardDTO> pagedCards = cards.subList(start, end);
+
+        // pagedCards -> liste des données à afficher dans cette page
+        // pageable -> infos pagination (numéro page, taille page, tri)
+        // cards.size() -> nombre total d'éléments (pour calculer nombre total de pages)
+        return new PageImpl<>(pagedCards, pageable, cards.size());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CoOwnerQuoteDetailDTO getQuoteDetail(Long interventionId, Long quoteId) {
+
+        // 1. Vérifier que l'intervention appartient au owner connecté
+        User currentOwner = getCurrentUser();
+        InterventionRequest request = interventionRequestRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        if (!request.getOwner().getId().equals(currentOwner.getId())) {
+            throw new ForbiddenException("Accès non autorisé à cette intervention");
+        }
+
+        // 1.Bloquer si l'intervention est gérée par le syndic (partie commune)
+        if (request.getManagementMode() == InterventionManagementMode.SYNDIC) {
+            throw new ForbiddenException("Les devis de cette intervention sont gérés par le syndic.");
+        }
+
+        // 2. Récupérer le devis et vérifier qu'il appartient bien à cette intervention
+        Quote quote = quoteRepository.findById(quoteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Devis introuvable"));
+
+        if (!quote.getInterventionRequest().getId().equals(interventionId)) {
+            throw new BadRequestException("Ce devis n'appartient pas à cette intervention");
+        }
+
+        // 3. Récupérer le profil prestataire
+        ProviderProfile profil = providerProfileRepository
+                .findByUserId(quote.getProvider().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Profil prestataire introuvable"));
+
+        //on récupére Id du user (prestataire)
+        Long providerId = quote.getProvider().getId();
+
+        // 4. Calculer la satisfaction directement en base
+        // Exemple : 55 avis >= 4(notes) sur 56 total → 98%
+        long totalAvis = reviewRepository.countByProviderId(providerId);
+        long avisPositifs = reviewRepository.countByProviderIdAndRatingGreaterThanEqual(providerId, 4);
+        int satisfaction = totalAvis > 0 //s'il a au moins un avis
+                ? (int) Math.round((avisPositifs * 100.0) / totalAvis)
+                : 0;
+
+        // 5. Calculer le temps moyen en minutes
+        // Exemple : interventions de 30min, 90min, 60min → moyenne = 60 min
+        List<InterventionRequest> interventionsTerminees = interventionRequestRepository
+                .findBySelectedProviderIdAndStatus(providerId, InterventionStatus.FINISHED);
+
+        double averageTimeMinutes = interventionsTerminees.stream()
+                // Ignorer les interventions sans dates de début ou de fin
+                .filter(i -> i.getStartedAt() != null && i.getFinishedAt() != null)
+                // Convertir chaque durée en minutes (ex: 2h30 → 150)
+                .mapToLong(i -> Duration.between(i.getStartedAt(), i.getFinishedAt()).toMinutes())
+                // Calculer la moyenne (ex: [120, 180, 90 /3] → 130)
+                .average()
+                // Si aucune donnée, retourner 0.0 (évite une erreur)
+                .orElse(0.0);
+
+        // 6. Séparer les items par type (MATERIAL vs LABOR)
+        List<QuoteLineDTO> materiaux = new ArrayList<>();
+        List<QuoteLineDTO> mainOeuvre = new ArrayList<>();
+        BigDecimal sousTotalMateriaux = BigDecimal.ZERO;
+        BigDecimal sousTotalMainOeuvre = BigDecimal.ZERO;
+
+        for (QuoteItem item : quote.getItems()) {
+            // getTotalPrice() est déjà calculé dans l'entité QuoteItem
+            BigDecimal subtotal = item.getTotalPrice();
+
+            QuoteLineDTO lineDTO = QuoteLineDTO.builder()
+                    .description(item.getDescription())
+                    .quantity(item.getQuantity())
+                    .unitPrice(item.getUnitPrice())
+                    .subtotal(subtotal)
+                    .build();
+
+            if (item.getType() == QuoteItemType.MATERIAL) {
+                materiaux.add(lineDTO);
+                sousTotalMateriaux = sousTotalMateriaux.add(subtotal);
+            } else {
+                mainOeuvre.add(lineDTO);
+                sousTotalMainOeuvre = sousTotalMainOeuvre.add(subtotal);
+            }
+        }
+
+        // 7. Construire et retourner le DTO
+        return CoOwnerQuoteDetailDTO.builder()
+                .quoteStatus(quote.getStatus())
+                .totalAmount(quote.getTotalAmount())
+                .createdAt(quote.getCreatedAt())
+                .providerName(quote.getProvider().getFirstName() + " " + quote.getProvider().getLastName())
+                .companyName(profil.getCompanyName())
+                .providerPhotoUrl(quote.getProvider().getProfilePhotoUrl())
+                .providerPhone(quote.getProvider().getPhone())
+                .providerEmail(quote.getProvider().getEmail())
+                .providerCity(profil.getInterventionZone())
+                .rating(profil.getRating())
+                .reviewCount(profil.getReviewCount() != null ? profil.getReviewCount().intValue() : 0)
+                .interventionCount(profil.getInterventionCount())
+                .satisfaction(satisfaction)
+                .averageTimeHours(averageTimeMinutes / 60.0)
+                .materiaux(materiaux)
+                .sousTotalMateriaux(sousTotalMateriaux)
+                .mainOeuvre(mainOeuvre)
+                .sousTotalMainOeuvre(sousTotalMainOeuvre)
+                .totalTTC(quote.getTotalAmount())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public void acceptQuote(Long interventionId, Long quoteId) {
+
+        // 1. Récupérer la demande
+        InterventionRequest request = interventionRequestRepository.findByIdForUpdate(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        // 2. Vérifier que c'est le propriétaire qui a créé cette demande
+        User currentOwner = getCurrentUser();
+        if (!request.getOwner().getId().equals(currentOwner.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accepter un devis sur cette demande");
+        }
+
+        // 2.Bloquer si l'intervention est gérée par le syndic (partie commune)
+        if (request.getManagementMode() == InterventionManagementMode.SYNDIC) {
+            throw new ForbiddenException("Les devis de cette intervention sont gérés par le syndic.");
+        }
+
+        // 3. Vérifier qu'aucun prestataire n'est déjà sélectionné
+        if (request.getSelectedProvider() != null) {
+            throw new BadRequestException("Cette intervention a déjà un prestataire assigné");
+        }
+
+        // 4. Récupérer le devis à accepter
+        Quote acceptedQuote = quoteRepository.findById(quoteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Devis introuvable"));
+
+        if (acceptedQuote.getInterventionRequest() == null
+                || !acceptedQuote.getInterventionRequest().getId().equals(request.getId())) {
+            throw new BadRequestException("Ce devis n'appartient pas à cette demande d'intervention.");
+        }
+
+        if (acceptedQuote.getStatus() != QuoteStatus.SENT) {
+            throw new BadRequestException("Seul un devis envoyé et en attente peut être accepté.");
+        }
+
+        // 5. Accepter ce devis
+        acceptedQuote.setStatus(QuoteStatus.ACCEPTED);
+
+        // 6. Refuser automatiquement tous les autres devis concurrents
+        List<Quote> otherQuotes = quoteRepository.findAllByInterventionRequestOrderByTotalAmountAsc(request);
+        otherQuotes.stream()
+                .filter(q -> !q.getId().equals(quoteId))
+                .filter(q -> q.getStatus() == QuoteStatus.SENT)
+                .forEach(q -> q.setStatus(QuoteStatus.REJECTED));
+
+        // 7. Finaliser la demande : assignation du prestataire, montant et changement de statut
+        request.setSelectedProvider(acceptedQuote.getProvider());
+        request.setQuoteAcceptedAt(LocalDateTime.now());
+        request.setTotalAmount(acceptedQuote.getTotalAmount());
+        request.addStatusHistory(InterventionStatus.QUOTE_VALIDATED, currentOwner);
+    }
+
+    @Override
+    @Transactional
+    public PaymentResponseDTO payDeposit(Long interventionId, PayDepositDTO dto) {
+        User currentOwner = getCurrentUser();
+
+        // 1. Vérifier que l'intervention existe et appartient au copropriétaire
+        InterventionRequest request = interventionRequestRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        if (!request.getOwner().getId().equals(currentOwner.getId())) {
+            throw new ForbiddenException("Accès non autorisé à cette intervention");
+        }
+
+        // 2. Bloquer le paiement si géré par le syndic
+        if (request.getManagementMode() == InterventionManagementMode.SYNDIC
+                || request.getLocationType() == IncidentLocationType.PARTIE_COMMUNE) {
+            throw new ForbiddenException("Cette intervention est gérée par le syndic. Le paiement doit être effectué par le syndic.");
+        }
+
+        // 3. Vérifier si un acompte existe déjà pour cette intervention
+        Optional<Payment> existingPayment = paymentRepository
+                .findByInterventionRequestIdAndType(interventionId, PaymentType.ACOMPTE);
+
+        if (existingPayment.isPresent()) {
+            Payment payment = existingPayment.get();
+            // Si le paiement est déjà COMPLETED, on bloque
+            if (payment.getStatus() == PaymentStatus.COMPLETED) {
+                throw new BadRequestException("Un acompte a déjà été versé pour cette intervention");
+            }
+            // Si le paiement est PENDING, on bloque (déjà en cours)
+            if (payment.getStatus() == PaymentStatus.PENDING) {
+                throw new BadRequestException("Un paiement est déjà en cours pour cette intervention");
+            }
+            // Si le paiement est FAILED, on permet de réinitier (réinitialisation plus bas)
+        }
+
+        // 4. Vérifier qu'un prestataire a été sélectionné
+        if (request.getSelectedProvider() == null) {
+            throw new BadRequestException("Aucun prestataire n'est sélectionné pour cette demande.");
+        }
+
+        // 5. Générer une référence unique de transaction
+        String transactionRef = genererReference("PAY");
+
+        // 6. Créer ou réinitialiser le paiement
+        Payment payment;
+        if (existingPayment.isPresent() && existingPayment.get().getStatus() == PaymentStatus.FAILED) {
+            // Paiement FAILED → réinitialiser pour une nouvelle tentative
+            payment = existingPayment.get();
+            payment.setReference(transactionRef);
+            payment.setMethod(dto.getMethode());
+            payment.setStatus(PaymentStatus.PENDING);
+            payment.setPaidAt(null); //le paiement n'est pas encore complété
+        } else {
+            // Nouveau paiement
+            payment = Payment.builder()
+                    .reference(transactionRef)
+                    .interventionRequest(request)
+                    .provider(request.getSelectedProvider())
+                    .paymentInitiator(currentOwner)
+                    .amount(dto.getMontant())
+                    .type(PaymentType.ACOMPTE)
+                    .method(dto.getMethode())
+                    .status(PaymentStatus.PENDING)
+                    .build();
+        }
+
+        paymentRepository.save(payment);
+
+        // 7. Construire l'URL de redirection TouchPay
+        String bridgeUrl = String.format(touchPayBridgeUrlTemplate, transactionRef);
+
+        return PaymentResponseDTO.builder()
+                .success(true)
+                .message("Paiement initié. Veuillez compléter via TouchPay.")
+                .transactionReference(transactionRef)
+                .amountToPay(dto.getMontant())
+                .paymentUrl(bridgeUrl)
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BalanceSummaryDTO getBalanceSummary(Long interventionId) {
+        User currentOwner = getCurrentUser();
+
+        // 1. Vérifier que l'intervention existe et appartient au copropriétaire
+        InterventionRequest request = interventionRequestRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        if (!request.getOwner().getId().equals(currentOwner.getId())) {
+            throw new ForbiddenException("Accès non autorisé à cette intervention");
+        }
+
+        // 2. Bloquer si l'intervention est gérée par le syndic (partie commune)
+        if (request.getManagementMode() == InterventionManagementMode.SYNDIC
+                || request.getLocationType() == IncidentLocationType.PARTIE_COMMUNE) {
+            throw new ForbiddenException("Cette intervention est gérée par le syndic. Le paiement doit être effectué par le syndic.");
+        }
+
+        // 3. Retourner le récapitulatif financier
+        return BalanceSummaryDTO.builder()
+                .interventionId(request.getId())
+                .montantDevis(request.getTotalAmount() != null ? request.getTotalAmount() : BigDecimal.ZERO)
+                .acompteVerse(request.getDepositAmount() != null ? request.getDepositAmount() : BigDecimal.ZERO)
+                .soldeRestant(request.getRemainingAmount() != null ? request.getRemainingAmount() : BigDecimal.ZERO)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public PaymentResponseDTO validateAndPayBalance(Long interventionId, ValiderTravauxDTO dto) {
+        User currentOwner = getCurrentUser();
+
+        // 1. Vérifier que l'intervention existe et appartient au copropriétaire
+        InterventionRequest request = interventionRequestRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        if (!request.getOwner().getId().equals(currentOwner.getId())) {
+            throw new ForbiddenException("Accès non autorisé à cette intervention");
+        }
+
+        // 2. Bloquer le paiement si géré par le syndic
+        if (request.getManagementMode() == InterventionManagementMode.SYNDIC
+                || request.getLocationType() == IncidentLocationType.PARTIE_COMMUNE) {
+            throw new ForbiddenException("Cette intervention est gérée par le syndic. Le paiement doit être effectué par le syndic.");
+        }
+
+        // 3. Vérifier que les travaux sont terminés
+        if (request.getStatus() != InterventionStatus.FINISHED) {
+            throw new BadRequestException("Les travaux ne sont pas encore terminés");
+        }
+
+        // 4. Récupérer le solde restant à payer
+        // remainingAmount = totalAmount - depositAmount (calculé auto par @PreUpdate).
+        // - Si un acompte a été versé : solde = montant restant (ex: 75 000 - 35 000 = 40 000)
+        // - Si AUCUN acompte n'a été versé : depositAmount = 0, donc solde = montant total du devis / ex: (remainingAmount = 75 000 (totalAmount)  - 0 (depositAmount) = 75000 le total)
+        BigDecimal solde = request.getRemainingAmount() != null
+                ? request.getRemainingAmount()
+                : BigDecimal.ZERO;
+
+        // 5. Vérifier si un solde existe déjà pour cette intervention
+        Optional<Payment> existingPayment = paymentRepository
+                .findByInterventionRequestIdAndType(interventionId, PaymentType.SOLDE);
+
+        if (existingPayment.isPresent()) {
+            Payment payment = existingPayment.get();
+            // Si le paiement est déjà COMPLETED, on bloque
+            if (payment.getStatus() == PaymentStatus.COMPLETED) {
+                throw new BadRequestException("Le solde a déjà été versé pour cette intervention");
+            }
+            // Si le paiement est PENDING, on bloque (déjà en cours)
+            if (payment.getStatus() == PaymentStatus.PENDING) {
+                throw new BadRequestException("Un paiement est déjà en cours pour cette intervention");
+            }
+            // Si le paiement est FAILED, on permet de réinitier (réinitialisation plus bas)
+        }
+
+        // 6. Générer une référence unique de transaction
+        String transactionRef = genererReference("SOL");
+
+        // 7. Créer ou réinitialiser le paiement
+        Payment payment;
+        if (existingPayment.isPresent() && existingPayment.get().getStatus() == PaymentStatus.FAILED) {
+            // Paiement FAILED → réinitialiser pour une nouvelle tentative
+            payment = existingPayment.get();
+            payment.setReference(transactionRef);
+            payment.setMethod(dto.getMethode());
+            payment.setStatus(PaymentStatus.PENDING);
+            payment.setPaidAt(null);
+        } else {
+            // Nouveau paiement
+            payment = Payment.builder()
+                    .reference(transactionRef)
+                    .interventionRequest(request)
+                    .provider(request.getSelectedProvider())
+                    .paymentInitiator(currentOwner)
+                    .amount(solde)
+                    .type(PaymentType.SOLDE)
+                    .method(dto.getMethode())
+                    .status(PaymentStatus.PENDING)
+                    .build();
+        }
+
+        paymentRepository.save(payment);
+
+        // 7. Construire l'URL de redirection TouchPay
+        String bridgeUrl = String.format(touchPayBridgeUrlTemplate, transactionRef);
+
+        return PaymentResponseDTO.builder()
+                .success(true)
+                .message("Paiement du solde initié. Veuillez compléter via TouchPay.")
+                .transactionReference(transactionRef)
+                .amountToPay(solde)
+                .paymentUrl(bridgeUrl)
+                .build();
+    }
+
+
 
     // =========================================================================
     // Méthodes utilitaires
@@ -336,10 +772,97 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
     }
 
-    /**
-     * Génère une référence unique pour la demande d'intervention.
-     * Format : TRV-XXX (ex: TRV-001, TRV-010, TRV-1000)
-     */
+    //Génération Référence pour le paiement
+    private String genererReference(String prefix) {
+        return prefix + "-" + (int)(Math.random() * 900000 + 100000);
+    }
+
+
+    // Met à jour le rating et le reviewCount du prestataire après création d'un avis.
+    private void updateProviderRating(User provider) {
+        ProviderProfile profile = providerProfileRepository.findByUser(provider)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil prestataire introuvable"));
+
+        // Calculer la nouvelle moyenne
+        Double averageRating = reviewRepository.calculateAverageRating(provider.getId());
+        double newRating = averageRating != null ? averageRating : 0.0;
+
+        // Compter le nombre d'avis
+        long count = reviewRepository.countByProviderId(provider.getId());
+
+        // Mettre à jour le profil
+        profile.setRating(newRating);
+        profile.setReviewCount(count);
+
+        providerProfileRepository.save(profile);
+    }
+
+    // =========================================================================
+    // MAPPER — Quote → CoOwnerQuoteCardDTO
+
+    // =========================================================================
+    private CoOwnerQuoteCardDTO mapToQuoteCardDTO(Quote quote, double maxAmount) {
+
+        // Récupérer le profil prestataire pour avoir rating et interventionZone
+        ProviderProfile profil = providerProfileRepository
+                .findByUser(quote.getProvider())
+                .orElseThrow(() -> new ResourceNotFoundException("Profil prestataire introuvable"));
+
+        // Utiliser le rating et reviewCount stockés sur le profil
+        double ratingValue = profil.getRating() != null ? profil.getRating() : 0.0;
+        long reviewCount = profil.getReviewCount() != null ? profil.getReviewCount() : 0;
+
+        // Vérifier si le prestataire a un abonnement actif
+        boolean isVerified = subscriptionRepository
+                .findFirstByProviderIdOrderByEndDateDesc(quote.getProvider().getId())
+                .map(Subscription::isCurrentlyActive)
+                .orElse(false);
+
+        // --- Calcul du score qualité/prix ---
+
+        // Score prix (40%) : plus le devis (prix) est bas par rapport au max, meilleur est le score
+        // Exemple : 75 000 / 120 000 = 0.625 → scorePrix = 1 - 0.625 = 0.375
+        double scorePrix = 1.0 - (quote.getTotalAmount().doubleValue() / maxAmount);
+
+        // Score note (40%) : 4.8 étoiles / 5 = 0.96 (moyenne des étoiles du prestatire /nombre total d'étoiles)
+        double scoreNote = ratingValue / 5.0;
+
+        // Score délai (20%) : délai de 2 jours (nombre délai)/ 30 (delai max 30 jours) = 0.067 → scoreDelai = 1 - 0.067 = 0.933
+        // Plus le délai est court, meilleur est le score
+        double scoreDelai = quote.getEstimatedDelay() != null
+                ? 1.0 - (quote.getEstimatedDelay().getDays() / 30.0)
+                : 0.0;
+
+        // Score final pondéré
+        double scoreFinal = (scorePrix * 0.40) + (scoreNote * 0.40) + (scoreDelai * 0.20);
+
+        // Score affiché en % (ex: 0.74 → 74%)
+        int scoreQualitePrix = (int) Math.round(scoreFinal * 100);
+
+        return CoOwnerQuoteCardDTO.builder()
+                .id(quote.getId())
+                .providerId(quote.getProvider().getId())
+                .providerName(quote.getProvider().getFirstName() + " " + quote.getProvider().getLastName())
+                .companyName(profil.getCompanyName())
+                .providerPhotoUrl(quote.getProvider().getProfilePhotoUrl())
+                .providerCity(profil.getInterventionZone())
+                .providerRating(ratingValue)
+                .reviewCount(reviewCount)
+                .totalAmount(quote.getTotalAmount())
+                .estimatedDelayLabel(quote.getEstimatedDelay() != null ? quote.getEstimatedDelay().getLabel() : null)
+                .scoreFinal(scoreFinal)
+                .scoreQualitePrix(scoreQualitePrix)
+                .isVerified(isVerified)
+                .isBestOffer(false) // sera mis à true après dans le stream
+                .build();
+
+    }
+
+
+        /**
+         * Génère une référence unique pour la demande d'intervention.
+         * Format : TRV-XXX (ex: TRV-001, TRV-010, TRV-1000)
+         */
     private String genererReference() {
         // On compte le nombre total de demandes déjà existantes en base
         long totalExistant = interventionRequestRepository.count();
@@ -574,7 +1097,16 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
                 .completed(true)
                 .build());
 
-        // Étape 2 : Devis reçu (complété si au moins un devis existe)
+        // Étape 2 : Envoyé au syndic (complété si c'est une partie commune gérée par le syndic)
+        boolean isSyndicManaged = request.getLocationType() == IncidentLocationType.PARTIE_COMMUNE
+                && request.getManagementMode() == InterventionManagementMode.SYNDIC;
+        timeline.add(OwnerTimelineStepDTO.builder()
+                .label("Envoyé au syndic")
+                .date(isSyndicManaged ? request.getCreatedAt() : null)
+                .completed(isSyndicManaged)
+                .build());
+
+        // Étape 3 : Devis reçu (complété si au moins un devis existe)
         Optional<Quote> firstQuote = quoteRepository.findFirstByInterventionRequestOrderByCreatedAtAsc(request);
         boolean hasQuote = firstQuote.isPresent();
         timeline.add(OwnerTimelineStepDTO.builder()
@@ -583,7 +1115,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
                 .completed(hasQuote)
                 .build());
 
-        // Étape 3 : Validation devis (complété si un prestataire est sélectionné)
+        // Étape 4 : Validation devis (complété si un prestataire est sélectionné)
         boolean hasSelectedProvider = request.getSelectedProvider() != null;
         timeline.add(OwnerTimelineStepDTO.builder()
                 .label("Validation devis")
@@ -591,7 +1123,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
                 .completed(hasSelectedProvider)
                 .build());
 
-        // Étape 4 : Intervention démarrée (complété si startedAt est renseigné)
+        // Étape 5 : Intervention démarrée (complété si startedAt est renseigné)
         boolean started = request.getStartedAt() != null;
         timeline.add(OwnerTimelineStepDTO.builder()
                 .label("Intervention démarrée")
@@ -599,7 +1131,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
                 .completed(started)
                 .build());
 
-        // Étape 5 : Travail terminé (complété si finishedAt est renseigné)
+        // Étape 6 : Travail terminé (complété si finishedAt est renseigné)
         boolean finished = request.getFinishedAt() != null;
         timeline.add(OwnerTimelineStepDTO.builder()
                 .label("Travail terminé")
@@ -607,7 +1139,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
                 .completed(finished)
                 .build());
 
-        // Étape 6 : Validation finale (complété si statut est FINAL_VALIDATION)
+        // Étape 7 : Validation finale (complété si statut est FINAL_VALIDATION)
         boolean completed = request.getStatus() == InterventionStatus. FINAL_VALIDATION;
         timeline.add(OwnerTimelineStepDTO.builder()
                 .label("Validation finale")

@@ -39,10 +39,10 @@ public class Payment {
     @JoinColumn(name = "provider_id", nullable = false)
     private User provider;
 
-    // Le syndic qui paie
+    // Celui qui effectue le paiement (syndic OU copropriétaire)
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "syndic_id", nullable = false)
-    private User syndic;
+    @JoinColumn(name = "payment_initiator_id", nullable = false)
+    private User paymentInitiator;
 
     // Montant de ce paiement
     @Column(nullable = false)

@@ -8,24 +8,52 @@ import com.example.solimus.dtos.admin.EstimatedDelayDTO;
 import com.example.solimus.dtos.admin.UserListResponseDTO;
 import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanDTO;
 import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanRequestDTO;
+import com.example.solimus.dtos.provider.wallet.WithdrawalRequestDTO;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.UserStatus;
 import com.example.solimus.services.admin.AdminService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ROLE_ADMIN')")
+@Tag(name = "Admin - Utilisateurs")
 public class AdminController {
 
     private final AdminService adminService;
+
+    // ============================================================================
+    //  GESTION DES RETRAITS WALLET
+    // ============================================================================
+
+    @Operation(summary = "Valider une demande de retrait wallet", tags = {"2.d Administration - Retraits Wallet"})
+    @PostMapping(value = "/wallet-withdrawals/{withdrawalId}/approve", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<WithdrawalRequestDTO> approveWalletWithdrawal(
+            @PathVariable Long withdrawalId,
+            @RequestPart MultipartFile receipt,
+            @RequestPart(required = false) String comment) {
+        return ResponseEntity.ok(adminService.approveWalletWithdrawal(withdrawalId, receipt, comment));
+    }
+
+    @Operation(summary = "Refuser une demande de retrait wallet", tags = {"2.d Administration - Retraits Wallet"})
+    @PostMapping("/wallet-withdrawals/{withdrawalId}/reject")
+    public ResponseEntity<WithdrawalRequestDTO> rejectWalletWithdrawal(
+            @PathVariable Long withdrawalId,
+            @RequestParam String rejectionReason) {
+        return ResponseEntity.ok(adminService.rejectWalletWithdrawal(withdrawalId, rejectionReason));
+    }
 
     // ============================================================================
     //  GESTION DES Abonnements
@@ -92,5 +120,4 @@ public class AdminController {
         return ResponseEntity.ok().build();
     }
 
-    
 }

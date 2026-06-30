@@ -55,8 +55,18 @@ public class WithdrawalRequest {
     private LocalDateTime createdAt;
 
     @Column(name = "processed_at")
-    private LocalDateTime processedAt;
+    private LocalDateTime processedAt; // Date et heure de traitement
+
+    @Column(name = "receipt_url")
+    private String receiptUrl; // Reçu de paiement uploadé par l'admin
+
+    @Column(name = "admin_comment")
+    private String adminComment; // Commentaire ajouté par l'admin lors de la validation
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "processed_by_id")
+    private User processedBy; // Admin qui a traité la demande
 
     @Column(name = "motif_refus")
-    private String motifRefus;
+    private String motifRefus; //Motif de refus en cas de refus
 }

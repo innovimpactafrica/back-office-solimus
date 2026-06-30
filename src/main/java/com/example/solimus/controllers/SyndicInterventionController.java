@@ -3,10 +3,9 @@ package com.example.solimus.controllers;
 import com.example.solimus.dtos.intervention.InterventionRequestDTO;
 import com.example.solimus.dtos.intervention.NearbyProviderDTO;
 import com.example.solimus.dtos.intervention.SyndicQuoteDTO;
-import com.example.solimus.dtos.syndic.PayerAcompteDTO;
+import com.example.solimus.dtos.syndic.travaux.PayDepositDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
-import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.syndic.SyndicService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -29,19 +28,12 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic")
 @RequiredArgsConstructor
-@Tag(name = "4.c Syndic - Interventions", description = "Gestion des interventions par le syndic")
+@Tag(name = "Syndic - Travaux", description = "Gestion des interventions par le syndic")
 public class SyndicInterventionController {
 
     private final SyndicService syndicService;
 
 
-    @Operation(summary = "Trouver les prestataires proches (Rayon 30km + Spécialité)", tags = {"4.c Syndic - Interventions"})
-    @GetMapping("/nearby-providers")
-    public ResponseEntity<List<NearbyProviderDTO>> getNearbyProviders(
-            @RequestParam Long residenceId,
-            @RequestParam Long specialtyId) {
-        return ResponseEntity.ok(syndicService.findNearbyProviders(residenceId, specialtyId));
-    }
 
 
     @Operation(summary = "Accepter un devis et valider le prestataire", tags = {"4.c Syndic - Interventions"})
@@ -79,16 +71,16 @@ public class SyndicInterventionController {
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<PaymentResponseDTO> payerAcompte(
             @PathVariable Long requestId,
-            @RequestBody @Valid PayerAcompteDTO dto) {
+            @RequestBody @Valid PayDepositDTO dto) {
         return ResponseEntity.ok(syndicService.payerAcompte(requestId, dto));
     }
 
     @Operation(summary = "Valider les travaux et payer le solde", tags = {"4.c Syndic - Interventions"})
     @PostMapping("/interventions/{requestId}/valider-solde")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
-    public ResponseEntity<PaymentResponseDTO> validerEtPayerSolde(
+    public ResponseEntity<PaymentResponseDTO> validateAndPayBalance(
             @PathVariable Long requestId,
             @RequestBody @Valid ValiderTravauxDTO dto) {
-        return ResponseEntity.ok(syndicService.validerEtPayerSolde(requestId, dto));
+        return ResponseEntity.ok(syndicService.validateAndPayBalance(requestId, dto));
     }
 }

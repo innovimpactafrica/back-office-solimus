@@ -9,6 +9,7 @@ import java.util.Optional;
 
 @Repository
 public interface WithdrawalRequestRepository extends JpaRepository<WithdrawalRequest, Long> {
+
     List<WithdrawalRequest> findAllByProviderIdOrderByCreatedAtDesc(Long providerId);
-    Optional<WithdrawalRequest> findByReference(String reference);
+
 }
