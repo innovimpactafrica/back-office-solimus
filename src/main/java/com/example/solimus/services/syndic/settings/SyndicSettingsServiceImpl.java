@@ -17,6 +17,7 @@ import com.example.solimus.entities.SyndicFinancialSettings;
 import com.example.solimus.entities.User;
 import com.example.solimus.enums.ChargeFrequency;
 import com.example.solimus.enums.Currency;
+import com.example.solimus.enums.FacilityCategory;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.CommonFacilityRepository;
@@ -25,12 +26,14 @@ import com.example.solimus.repositories.PropertyTypeRepository;
 import com.example.solimus.repositories.SpecialtyRepository;
 import com.example.solimus.repositories.SyndicFinancialSettingsRepository;
 import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -48,6 +51,7 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     private final SyndicFinancialSettingsRepository syndicFinancialSettingsRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final MinioService minioService;
 
     //--------------------------------------------------------
     // ===== TYPES D'ÉQUIPEMENTS =====
@@ -62,53 +66,59 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
                 .collect(Collectors.toList());
     }
 
-    //Création
     @Override
     @Transactional
-    public void createFacilityType(CreateFacilityTypeDTO dto) {
+    public void createFacilityType(String name, FacilityCategory category, String description, Boolean isActive, MultipartFile icon) {
 
-        // Vérifier l'unicité du nom
-        if (facilityTypeRepository.existsByNameIgnoreCase(dto.getName())) {
+        if (facilityTypeRepository.existsByNameIgnoreCase(name)) {
             throw new BadRequestException("Un type d'équipement avec ce nom existe déjà");
         }
 
         FacilityType facilityType = new FacilityType();
-        facilityType.setName(dto.getName());
-        facilityType.setCategory(dto.getCategory());
-        facilityType.setIcon(dto.getIcon());
-        facilityType.setDescription(dto.getDescription());
-        facilityType.setIsActive(dto.getIsActive() != null ? dto.getIsActive() : true);
+        facilityType.setName(name);
+        facilityType.setCategory(category);
+        facilityType.setDescription(description);
+            facilityType.setIsActive(isActive != null ? isActive : true);
+
+        if (icon != null && !icon.isEmpty()) {
+            String iconUrl = minioService.uploadFile(icon, "facility-types");
+            facilityType.setIcon(iconUrl);
+        }
 
         FacilityType saved = facilityTypeRepository.save(facilityType);
         log.info("Type d'équipement créé : {}", saved.getName());
     }
 
     //Modification
+    //Modification
     @Override
     @Transactional
-    public void updateFacilityType(Long id, CreateFacilityTypeDTO dto) {
-        
+    public void updateFacilityType(Long id, String name, FacilityCategory category, String description, Boolean isActive, MultipartFile icon) {
+
         //Récupérer le type d'équipement
         FacilityType facilityType = facilityTypeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Type d'équipement introuvable"));
 
         // Vérifier l'unicité du nom si modifié
-        if (dto.getName() != null
-                && !facilityType.getName().equalsIgnoreCase(dto.getName())
-                && facilityTypeRepository.existsByNameIgnoreCase(dto.getName())) {
+        if (name != null
+                && !facilityType.getName().equalsIgnoreCase(name)
+                && facilityTypeRepository.existsByNameIgnoreCase(name)) {
             throw new BadRequestException("Un type d'équipement avec ce nom existe déjà");
         }
 
-        if (dto.getName() != null) facilityType.setName(dto.getName());
-        if (dto.getCategory() != null) facilityType.setCategory(dto.getCategory());
-        if (dto.getIcon() != null) facilityType.setIcon(dto.getIcon());
-        if (dto.getDescription() != null) facilityType.setDescription(dto.getDescription());
-        if (dto.getIsActive() != null) facilityType.setIsActive(dto.getIsActive());
+        if (name != null) facilityType.setName(name);
+        if (category != null) facilityType.setCategory(category);
+        if (description != null) facilityType.setDescription(description);
+        if (isActive != null) facilityType.setIsActive(isActive);
+
+        if (icon != null && !icon.isEmpty()) {
+            String iconUrl = minioService.uploadFile(icon, "facility-types");
+            facilityType.setIcon(iconUrl);
+        }
 
         FacilityType saved = facilityTypeRepository.save(facilityType);
         log.info("Type d'équipement modifié : {}", saved.getName());
     }
-
     //Suppression
     @Override
     @Transactional

@@ -34,42 +34,10 @@ public class LoginResponseDTO {
      */
     private String accessToken;
 
-
-    // =========================================================================
-    // INFORMATIONS UTILISATEUR
-    // =========================================================================
-
     /**
-     * Adresse email de l'utilisateur connecté.
+     * Token de rafraîchissement pour obtenir un nouvel access token.
      */
-    private String email;
-
-    /**
-     * Rôle de l'utilisateur :
-     * ADMIN, SYNDIC, PRESTATAIRE, COPROPRIETAIRE...
-     */
-    private String role;
-
-    /**
-     * Identifiant unique de l'utilisateur.
-     */
-    private Long id;
-
-    /**
-     * Prénom de l'utilisateur.
-     */
-    private String firstName;
-
-    /**
-     * Nom de famille de l'utilisateur.
-     */
-    private String lastName;
-
-    /**
-     * Statut actuel du compte :
-     * PENDING, ACTIVE, SUSPENDED, etc.
-     */
-    private UserStatus status;
+    private String refreshToken;
 
 
     // =========================================================================
@@ -95,8 +63,7 @@ public class LoginResponseDTO {
      * Utilisé lorsqu'un utilisateur a passé la première étape
      * d'authentification mais doit encore valider son OTP.
      */
-    public LoginResponseDTO(String email, boolean otpRequired) {
-        this.email = email;
+    public LoginResponseDTO(boolean otpRequired) {
         this.otpRequired = otpRequired;
     }
 }

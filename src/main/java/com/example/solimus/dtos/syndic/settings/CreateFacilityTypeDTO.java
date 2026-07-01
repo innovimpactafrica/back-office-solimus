@@ -21,8 +21,6 @@ public class CreateFacilityTypeDTO {
     @NotNull(message = "La catégorie est obligatoire")
     private FacilityCategory category; // Catégorie de l'équipement (ÉQUIPEMENT, LOISIRS, SÉCURITÉ, etc.)
 
-    private String icon; // Icône représentant l'équipement (nom de l'icône FontAwesome/Material)
-
     private String description; // Description détaillée du type d'équipement
 
     private Boolean isActive; // Statut d'activation (true = disponible, false = désactivé)

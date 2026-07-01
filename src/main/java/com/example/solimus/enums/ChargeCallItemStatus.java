@@ -6,7 +6,8 @@ package com.example.solimus.enums;
 public enum ChargeCallItemStatus {
     PENDING("En attente"),   // Aucun paiement effectué
     PARTIAL("Partiel"),      // Paiement partiel effectué
-    PAID("Payé");            // Paiement complet effectué
+    PAID("Payé"),           // Paiement complet effectué
+    OVERDUE("En retard");   //En retard
 
     private final String label;
 

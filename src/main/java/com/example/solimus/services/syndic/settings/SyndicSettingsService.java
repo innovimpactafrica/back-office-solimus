@@ -10,6 +10,8 @@ import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicFinancialSettingsDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicProfileDTO;
 import com.example.solimus.dtos.syndic.settings.UpdateSyndicProfileDTO;
+import com.example.solimus.enums.FacilityCategory;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -20,9 +22,9 @@ public interface SyndicSettingsService {
     //--------------------------------------------------
     List<FacilityTypeDTO> getAllFacilityTypes();
 
-    void createFacilityType(CreateFacilityTypeDTO dto);
+    void createFacilityType(String name, FacilityCategory category, String description, Boolean isActive, MultipartFile icon);
 
-    void updateFacilityType(Long id, CreateFacilityTypeDTO dto);
+    void updateFacilityType(Long id, String name, FacilityCategory category, String description, Boolean isActive, MultipartFile icon);
 
     void deleteFacilityType(Long id);
 

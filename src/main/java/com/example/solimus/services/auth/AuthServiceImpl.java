@@ -316,7 +316,7 @@ public class AuthServiceImpl implements AuthService {
             emailService.sendActivationCode(user.getEmail(), otpCode, user.getFirstName());
             log.info("OTP de connexion généré pour l'administrateur : {}", user.getEmail());
             // otpRequired = true signale au front d'afficher l'écran de saisie OTP
-            return new LoginResponseDTO(user.getEmail(), true);
+            return new LoginResponseDTO(true);
         }
 
         // ---------------------------------------------------------------------
@@ -733,14 +733,11 @@ public class AuthServiceImpl implements AuthService {
                 user.getId()
         );
 
+        String refreshToken = jwtService.generateRefreshToken(user.getEmail());
+
         return LoginResponseDTO.builder()
                 .accessToken(accessToken)
-                .email(user.getEmail())
-                .role(user.getRole().getName().name())
-                .id(user.getId())
-                .firstName(user.getFirstName())
-                .lastName(user.getLastName())
-                .status(user.getStatus())
+                .refreshToken(refreshToken)
                 .otpRequired(false) // false = pas besoin d'OTP supplémentaire
                 .build();
     }

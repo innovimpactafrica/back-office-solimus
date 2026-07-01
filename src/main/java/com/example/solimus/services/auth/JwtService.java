@@ -14,6 +14,11 @@ public interface JwtService {
     String generateToken(String email, String role, Long id);
 
     /**
+     * Génère un token de rafraîchissement avec une durée de vie plus longue.
+     */
+    String generateRefreshToken(String email);
+
+    /**
      * Extrait l'email (subject) du token.
      */
     String extractEmail(String token);
