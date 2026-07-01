@@ -1,5 +1,6 @@
 package com.example.solimus.services.syndic.settings;
 
+import com.example.solimus.dtos.syndic.settings.ChangePasswordDTO;
 import com.example.solimus.dtos.syndic.settings.CreateFacilityTypeDTO;
 import com.example.solimus.dtos.syndic.settings.CreatePropertyTypeDTO;
 import com.example.solimus.dtos.syndic.settings.CreateSpecialtyDTO;
@@ -7,6 +8,8 @@ import com.example.solimus.dtos.syndic.settings.FacilityTypeDTO;
 import com.example.solimus.dtos.syndic.settings.PropertyTypeDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicFinancialSettingsDTO;
+import com.example.solimus.dtos.syndic.settings.SyndicProfileDTO;
+import com.example.solimus.dtos.syndic.settings.UpdateSyndicProfileDTO;
 import com.example.solimus.entities.FacilityType;
 import com.example.solimus.entities.PropertyType;
 import com.example.solimus.entities.Specialty;
@@ -21,9 +24,11 @@ import com.example.solimus.repositories.FacilityTypeRepository;
 import com.example.solimus.repositories.PropertyTypeRepository;
 import com.example.solimus.repositories.SpecialtyRepository;
 import com.example.solimus.repositories.SyndicFinancialSettingsRepository;
+import com.example.solimus.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,6 +46,8 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     private final SpecialtyRepository specialtyRepository;
     private final PropertyTypeRepository propertyTypeRepository;
     private final SyndicFinancialSettingsRepository syndicFinancialSettingsRepository;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     //--------------------------------------------------------
     // ===== TYPES D'ÉQUIPEMENTS =====
@@ -295,6 +302,68 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
         syndicFinancialSettingsRepository.save(settings);
     }
 
+    // =========================================================================
+    // PROFIL SYNDIC
+    // =========================================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public SyndicProfileDTO getSyndicProfile() {
+        User currentSyndic = getCurrentUser();
+        return SyndicProfileDTO.builder()
+                .id(currentSyndic.getId())
+                .firstName(currentSyndic.getFirstName())
+                .lastName(currentSyndic.getLastName())
+                .fullName(currentSyndic.getFirstName() + " " + currentSyndic.getLastName())
+                .email(currentSyndic.getEmail())
+                .phone(currentSyndic.getPhone())
+                .role(currentSyndic.getRole().getName().name())
+                .photoUrl(currentSyndic.getProfilePhotoUrl())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public void updateSyndicProfile(UpdateSyndicProfileDTO dto) {
+        User currentSyndic = getCurrentUser();
+
+        if (dto.getFirstName() != null) {
+            currentSyndic.setFirstName(dto.getFirstName());
+        }
+        if (dto.getLastName() != null) {
+            currentSyndic.setLastName(dto.getLastName());
+        }
+        if (dto.getPhone() != null) {
+            currentSyndic.setPhone(dto.getPhone());
+        }
+        if (dto.getPhotoUrl() != null) {
+            currentSyndic.setProfilePhotoUrl(dto.getPhotoUrl());
+        }
+
+        userRepository.save(currentSyndic);
+        log.info("Profil syndic mis à jour : {}", currentSyndic.getEmail());
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(ChangePasswordDTO dto) {
+        User currentSyndic = getCurrentUser();
+
+        // Vérifier que le mot de passe actuel est correct
+        if (!passwordEncoder.matches(dto.getCurrentPassword(), currentSyndic.getPassword())) {
+            throw new BadRequestException("Le mot de passe actuel est incorrect");
+        }
+
+        // Vérifier que confirmPassword correspond à newPassword si fourni
+        if (dto.getConfirmPassword() != null && !dto.getConfirmPassword().equals(dto.getNewPassword())) {
+            throw new BadRequestException("La confirmation du mot de passe ne correspond pas");
+        }
+
+        // Encoder et définir le nouveau mot de passe
+        currentSyndic.setPassword(passwordEncoder.encode(dto.getNewPassword()));
+        userRepository.save(currentSyndic);
+        log.info("Mot de passe changé pour le syndic : {}", currentSyndic.getEmail());
+    }
 
     //--------------------------------------------------------
     // Méthodes Utilitaires
@@ -348,6 +417,7 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     }
 
     private User getCurrentUser() {
-        return (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
     }
 }

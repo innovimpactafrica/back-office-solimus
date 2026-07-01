@@ -64,6 +64,13 @@ public class Budget {
     @OneToMany(mappedBy = "budget", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<BudgetItem> items = new ArrayList<>();
 
+    /**
+     * Appels de charges générés à partir de ce budget.
+     * Un budget peut avoir plusieurs ChargeCall (un par période).
+     */
+    @OneToMany(mappedBy = "budget", cascade = CascadeType.ALL)
+    private List<ChargeCall> chargeCalls = new ArrayList<>();
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

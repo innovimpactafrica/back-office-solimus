@@ -1,5 +1,6 @@
 package com.example.solimus.controllers;
 
+import com.example.solimus.dtos.syndic.settings.ChangePasswordDTO;
 import com.example.solimus.dtos.syndic.settings.CreateFacilityTypeDTO;
 import com.example.solimus.dtos.syndic.settings.CreatePropertyTypeDTO;
 import com.example.solimus.dtos.syndic.settings.CreateSpecialtyDTO;
@@ -7,6 +8,8 @@ import com.example.solimus.dtos.syndic.settings.FacilityTypeDTO;
 import com.example.solimus.dtos.syndic.settings.PropertyTypeDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicFinancialSettingsDTO;
+import com.example.solimus.dtos.syndic.settings.SyndicProfileDTO;
+import com.example.solimus.dtos.syndic.settings.UpdateSyndicProfileDTO;
 import com.example.solimus.services.syndic.settings.SyndicSettingsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -145,6 +148,31 @@ public class SyndicSettingsController {
     @PutMapping("/financial")
     public ResponseEntity<Void> saveFinancialSettings(@Valid @RequestBody SyndicFinancialSettingsDTO dto) {
         syndicSettingsService.saveFinancialSettings(dto);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ===== PROFIL SYNDIC =====
+
+    @Operation(summary = "Récupérer le profil du syndic connecté")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/profile")
+    public ResponseEntity<SyndicProfileDTO> getSyndicProfile() {
+        return ResponseEntity.ok(syndicSettingsService.getSyndicProfile());
+    }
+
+    @Operation(summary = "Mettre à jour le profil du syndic connecté")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PutMapping("/profile")
+    public ResponseEntity<Void> updateSyndicProfile(@Valid @RequestBody UpdateSyndicProfileDTO dto) {
+        syndicSettingsService.updateSyndicProfile(dto);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Changer le mot de passe du syndic connecté")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PutMapping("/change-password")
+    public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordDTO dto) {
+        syndicSettingsService.changePassword(dto);
         return ResponseEntity.noContent().build();
     }
 }
