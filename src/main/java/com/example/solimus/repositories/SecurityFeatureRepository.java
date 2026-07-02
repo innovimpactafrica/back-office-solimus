@@ -14,4 +14,7 @@ public interface SecurityFeatureRepository extends JpaRepository<SecurityFeature
 
     // Vérifier si un label existe déjà
     boolean existsByLabel(String label);
+
+    // Vérifier si un label existe déjà (insensible à la casse)
+    boolean existsByLabelIgnoreCase(String label);
 }

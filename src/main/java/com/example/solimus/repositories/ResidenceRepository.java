@@ -16,4 +16,8 @@ public interface ResidenceRepository extends JpaRepository<Residence, Long> {
     /** Récupérer sans doublon les résidences qui ont au moins un bien vacant */
     @Query("SELECT DISTINCT r FROM Residence r JOIN r.properties p WHERE p.status = 'VACANT'")
     List<Residence> findResidencesWithVacantProperties();
+
+    /** Compter le nombre de résidences utilisant une option de sécurité */
+    @Query("SELECT COUNT(r) FROM Residence r JOIN r.securityFeatures sf WHERE sf.id = :securityFeatureId")
+    long countBySecurityFeatureId(@org.springframework.data.repository.query.Param("securityFeatureId") Long securityFeatureId);
 }

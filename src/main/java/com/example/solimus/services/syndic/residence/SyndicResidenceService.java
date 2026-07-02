@@ -38,6 +38,9 @@ public interface SyndicResidenceService {
     //  Étape 3 — Ajouter un équipement commun à une résidence
     void addFacility(Long residenceId, AddFacilityDTO dto);
 
+    //  Étape 3 — Mettre à jour les options de sécurité d'une résidence
+    void updateSecurityFeatures(Long residenceId, UpdateSecurityFeaturesDTO dto);
+
     // Lister les résidences du syndic connecté
     List<ResidenceDTO> getMesResidences();
 

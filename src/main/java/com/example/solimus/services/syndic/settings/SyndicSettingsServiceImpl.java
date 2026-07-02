@@ -6,6 +6,7 @@ import com.example.solimus.dtos.syndic.settings.CreatePropertyTypeDTO;
 import com.example.solimus.dtos.syndic.settings.CreateSpecialtyDTO;
 import com.example.solimus.dtos.syndic.settings.FacilityTypeDTO;
 import com.example.solimus.dtos.syndic.settings.PropertyTypeDTO;
+import com.example.solimus.dtos.syndic.settings.SecurityFeatureDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicFinancialSettingsDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicProfileDTO;
@@ -13,6 +14,7 @@ import com.example.solimus.dtos.syndic.settings.UpdateSyndicFinancialSettingsDTO
 import com.example.solimus.dtos.syndic.settings.UpdateSyndicProfileDTO;
 import com.example.solimus.entities.FacilityType;
 import com.example.solimus.entities.PropertyType;
+import com.example.solimus.entities.SecurityFeature;
 import com.example.solimus.entities.Specialty;
 import com.example.solimus.entities.SyndicFinancialSettings;
 import com.example.solimus.entities.User;
@@ -24,6 +26,8 @@ import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.CommonFacilityRepository;
 import com.example.solimus.repositories.FacilityTypeRepository;
 import com.example.solimus.repositories.PropertyTypeRepository;
+import com.example.solimus.repositories.ResidenceRepository;
+import com.example.solimus.repositories.SecurityFeatureRepository;
 import com.example.solimus.repositories.SpecialtyRepository;
 import com.example.solimus.repositories.SyndicFinancialSettingsRepository;
 import com.example.solimus.repositories.UserRepository;
@@ -49,6 +53,8 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     private final CommonFacilityRepository commonFacilityRepository;
     private final SpecialtyRepository specialtyRepository;
     private final PropertyTypeRepository propertyTypeRepository;
+    private final SecurityFeatureRepository securityFeatureRepository;
+    private final ResidenceRepository residenceRepository;
     private final SyndicFinancialSettingsRepository syndicFinancialSettingsRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -270,6 +276,98 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
         }
         propertyTypeRepository.deleteById(id);
         log.info("Type d'appartement supprimé : id={}", id);
+    }
+
+    // =========================================================================
+    // OPTIONS DE SÉCURITÉ
+    // =========================================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SecurityFeatureDTO> getAllSecurityFeatures() {
+        return securityFeatureRepository.findAll()
+                .stream()
+                .map(sf -> SecurityFeatureDTO.builder()
+                        .id(sf.getId())
+                        .label(sf.getLabel())
+                        .description(sf.getDescription())
+                        .active(sf.isActive())
+                        .icon(sf.getIcon())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public void createSecurityFeature(String label, String description, Boolean isActive, MultipartFile icon) {
+        // Vérifier que le label n'existe pas déjà (insensible à la casse)
+        if (securityFeatureRepository.existsByLabelIgnoreCase(label)) {
+            throw new BadRequestException("Une option de sécurité avec ce label existe déjà");
+        }
+
+        SecurityFeature securityFeature = new SecurityFeature();
+        securityFeature.setLabel(label);
+        securityFeature.setDescription(description);
+        securityFeature.setActive(isActive != null ? isActive : true);
+
+        // Upload de l'icône si fournie
+        if (icon != null && !icon.isEmpty()) {
+            String iconUrl = minioService.uploadFile(icon, "security-features");
+            securityFeature.setIcon(iconUrl);
+        }
+
+        securityFeatureRepository.save(securityFeature);
+        log.info("Option de sécurité créée : label={}", label);
+    }
+
+    @Override
+    @Transactional
+    public void updateSecurityFeature(Long id, String label, String description, Boolean isActive, MultipartFile icon) {
+        SecurityFeature securityFeature = securityFeatureRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Option de sécurité introuvable"));
+
+        // Mise à jour partielle des champs
+        if (label != null) {
+            // Vérifier que le nouveau label n'existe pas déjà (insensible à la casse)
+            if (!label.equalsIgnoreCase(securityFeature.getLabel()) &&
+                securityFeatureRepository.existsByLabelIgnoreCase(label)) {
+                throw new BadRequestException("Une option de sécurité avec ce label existe déjà");
+            }
+            securityFeature.setLabel(label);
+        }
+        if (description != null) {
+            securityFeature.setDescription(description);
+        }
+        if (isActive != null) {
+            securityFeature.setActive(isActive);
+        }
+
+        // Upload de la nouvelle icône si fournie
+        if (icon != null && !icon.isEmpty()) {
+            String iconUrl = minioService.uploadFile(icon, "security-features");
+            securityFeature.setIcon(iconUrl);
+        }
+
+        securityFeatureRepository.save(securityFeature);
+        log.info("Option de sécurité modifiée : id={}", id);
+    }
+
+    @Override
+    @Transactional
+    public void deleteSecurityFeature(Long id) {
+        SecurityFeature securityFeature = securityFeatureRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Option de sécurité introuvable"));
+
+        // Vérifier si des résidences utilisent cette option de sécurité
+        long residenceCount = residenceRepository.countBySecurityFeatureId(id);
+        if (residenceCount > 0) {
+            throw new BadRequestException(
+                "Impossible de supprimer cette option de sécurité car elle est utilisée par " +
+                residenceCount + " résidence(s)");
+        }
+
+        securityFeatureRepository.delete(securityFeature);
+        log.info("Option de sécurité supprimée : id={}", id);
     }
 
     // =========================================================================

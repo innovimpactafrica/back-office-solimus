@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 //  SECURITY FEATURE — Option de sécurité
 //
 //  Représente une option de sécurité disponible pour une résidence.
-//  Créée et gérée par l'ADMIN.
+//  Gérée par le syndic via les paramètres.
 //
 //  Exemples :
 //  → Vidéosurveillance
@@ -60,12 +60,19 @@ public class SecurityFeature {
 
     /**
      * Indique si cette option est active et visible pour les syndics.
-     * false → l'option est désactivée par l'admin, elle n'apparaît plus
+     * false → l'option est désactivée, elle n'apparaît plus
      *         dans le formulaire mais les résidences qui l'avaient gardent
      *         leur association.
      */
     @Column(nullable = false)
     private boolean active = true;
+
+    /**
+     * URL de l'icône stockée dans MinIO.
+     * Optionnel, peut être null.
+     */
+    @Column
+    private String icon;
 
 
     // =========================================================================
@@ -73,7 +80,7 @@ public class SecurityFeature {
     // =========================================================================
 
     /**
-     * Date de création par l'admin.
+     * Date de création par le syndic.
      */
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

@@ -38,10 +38,11 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     private final PropertyTypeRepository propertyTypeRepository;
     private final ResidenceContactRepository contactRepository;
     private final ChargeAllocationRepository allocationRepository;
-    private final InterventionRequestRepository interventionRepository;
+    private final InterventionRequestRepository interventionRequestRepository;
     private final UserRepository userRepository;
     private final MinioService minioService;
     private final SyndicCoOwnerRelationRepository syndicCoOwnerRelationRepository;
+    private final SecurityFeatureRepository securityFeatureRepository;
     // =========================================================================
     // ÉTAPE 1 — CRÉER LA RÉSIDENCE COMPLÈTE (avec photo et contacts)
     // =========================================================================
@@ -368,6 +369,36 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         facilityRepository.save(facility);
         log.info("Équipement '{}' sauvegardé pour la résidence '{}'",
                 facilityType.getName(), residence.getName());
+    }
+
+    // =========================================================================
+    // ÉTAPE 3 — METTRE À JOUR LES OPTIONS DE SÉCURITÉ D'UNE RÉSIDENCE
+    // =========================================================================
+    @Override
+    @Transactional
+    public void updateSecurityFeatures(Long residenceId, UpdateSecurityFeaturesDTO dto) {
+
+        // Récupérer la résidence
+        Residence residence = residenceRepository.findById(residenceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+
+        // Vérifier que le syndic est bien le propriétaire de la résidence
+        User currentSyndic = getCurrentUser();
+        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à modifier cette résidence");
+        }
+
+        // Récupérer les options de sécurité à partir des IDs
+        List<SecurityFeature> securityFeatures = securityFeatureRepository.findAllById(
+                dto.getSecurityFeatureIds() != null ? dto.getSecurityFeatureIds() : List.of()
+        );
+
+        // Remplacer la liste complète des options de sécurité
+        residence.setSecurityFeatures(securityFeatures);
+        residenceRepository.save(residence);
+
+        log.info("Options de sécurité mises à jour pour la résidence '{}' ({} options)",
+                residence.getName(), securityFeatures.size());
     }
 
     // =========================================================================

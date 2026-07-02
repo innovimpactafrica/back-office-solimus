@@ -140,5 +140,15 @@ public class SyndicResidenceController {
         return ResponseEntity.ok().build();
     }
 
+    @Operation(summary = "Mettre à jour les options de sécurité d'une résidence (Étape 3)", tags = {"Syndic - Résidences"})
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PutMapping("/residences/{id}/security-features")
+    public ResponseEntity<Void> updateSecurityFeatures(
+            @PathVariable Long id,
+            @RequestBody UpdateSecurityFeaturesDTO dto) {
+        residenceService.updateSecurityFeatures(id, dto);
+        return ResponseEntity.ok().build();
+    }
+
 
 }

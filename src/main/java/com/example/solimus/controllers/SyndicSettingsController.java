@@ -6,6 +6,7 @@ import com.example.solimus.dtos.syndic.settings.CreatePropertyTypeDTO;
 import com.example.solimus.dtos.syndic.settings.CreateSpecialtyDTO;
 import com.example.solimus.dtos.syndic.settings.FacilityTypeDTO;
 import com.example.solimus.dtos.syndic.settings.PropertyTypeDTO;
+import com.example.solimus.dtos.syndic.settings.SecurityFeatureDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicFinancialSettingsDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicProfileDTO;
@@ -151,6 +152,48 @@ public class SyndicSettingsController {
     @DeleteMapping("/property-types/{id}")
     public ResponseEntity<Void> deletePropertyType(@PathVariable Long id) {
         syndicSettingsService.deletePropertyType(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ===== OPTIONS DE SÉCURITÉ =====
+
+    @Operation(summary = "Lister toutes les options de sécurité")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/security-features")
+    public ResponseEntity<List<SecurityFeatureDTO>> getAllSecurityFeatures() {
+        return ResponseEntity.ok(syndicSettingsService.getAllSecurityFeatures());
+    }
+
+    @Operation(summary = "Créer une option de sécurité")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PostMapping(value = "/security-features", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Void> createSecurityFeature(
+            @RequestParam("label") @NotBlank String label,
+            @RequestParam(value = "description", required = false) String description,
+            @RequestParam(value = "isActive", required = false) Boolean isActive,
+            @RequestPart(value = "icon", required = false) MultipartFile icon) {
+        syndicSettingsService.createSecurityFeature(label, description, isActive, icon);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Mettre à jour une option de sécurité")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PutMapping(value = "/security-features/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Void> updateSecurityFeature(
+            @PathVariable Long id,
+            @RequestParam(value = "label", required = false) String label,
+            @RequestParam(value = "description", required = false) String description,
+            @RequestParam(value = "isActive", required = false) Boolean isActive,
+            @RequestPart(value = "icon", required = false) MultipartFile icon) {
+        syndicSettingsService.updateSecurityFeature(id, label, description, isActive, icon);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Supprimer une option de sécurité")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @DeleteMapping("/security-features/{id}")
+    public ResponseEntity<Void> deleteSecurityFeature(@PathVariable Long id) {
+        syndicSettingsService.deleteSecurityFeature(id);
         return ResponseEntity.noContent().build();
     }
 

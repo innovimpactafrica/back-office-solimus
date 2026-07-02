@@ -3,12 +3,15 @@ package com.example.solimus.services.syndic.settings;
 import com.example.solimus.dtos.syndic.settings.ChangePasswordDTO;
 import com.example.solimus.dtos.syndic.settings.CreateFacilityTypeDTO;
 import com.example.solimus.dtos.syndic.settings.CreatePropertyTypeDTO;
+import com.example.solimus.dtos.syndic.settings.CreateSecurityFeatureDTO;
 import com.example.solimus.dtos.syndic.settings.CreateSpecialtyDTO;
 import com.example.solimus.dtos.syndic.settings.FacilityTypeDTO;
 import com.example.solimus.dtos.syndic.settings.PropertyTypeDTO;
+import com.example.solimus.dtos.syndic.settings.SecurityFeatureDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicFinancialSettingsDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicProfileDTO;
+import com.example.solimus.dtos.syndic.settings.UpdateSecurityFeatureDTO;
 import com.example.solimus.dtos.syndic.settings.UpdateSyndicFinancialSettingsDTO;
 import com.example.solimus.dtos.syndic.settings.UpdateSyndicProfileDTO;
 import com.example.solimus.enums.FacilityCategory;
@@ -50,6 +53,17 @@ public interface SyndicSettingsService {
     void updatePropertyType(Long id, CreatePropertyTypeDTO dto);
 
     void deletePropertyType(Long id);
+
+    //--------------------------------------------------
+    // ===== OPTIONS DE SÉCURITÉ =====
+    //--------------------------------------------------
+    List<SecurityFeatureDTO> getAllSecurityFeatures();
+
+    void createSecurityFeature(String label, String description, Boolean isActive, MultipartFile icon);
+
+    void updateSecurityFeature(Long id, String label, String description, Boolean isActive, MultipartFile icon);
+
+    void deleteSecurityFeature(Long id);
 
     //--------------------------------------------------
     // ===== Paramètres financiers =====
