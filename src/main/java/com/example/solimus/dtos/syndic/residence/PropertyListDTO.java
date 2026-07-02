@@ -18,7 +18,7 @@ public class PropertyListDTO {
     private Long id;
     private String reference;
     private String bloc;
-    private String floor;
+    private Integer floor;
     private String typeName;
     private BigDecimal superficie;
     private BigDecimal tantieme;

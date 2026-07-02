@@ -1,6 +1,5 @@
 package com.example.solimus.dtos.syndic.residence;
 
-import com.example.solimus.enums.PropertyStatus;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -46,9 +45,9 @@ public class AddPropertyDTO {
 
     /**
      * Étage du lot.
-     * Exemple : "1", "4ème", "RDC"
+     * 0 = rez-de-chaussée, les étages positifs montent normalement.
      */
-    private String floor;
+    private Integer floor;
 
     /**
      * Type de bien.
@@ -76,15 +75,8 @@ public class AddPropertyDTO {
 
 
     // -------------------------------------------------------------------------
-    // STATUT ET PROPRIÉTAIRE
+    // PROPRIÉTAIRE
     // -------------------------------------------------------------------------
-
-    /**
-     * Statut initial du lot.
-     * OCCUPE si un copropriétaire est assigné, VACANT sinon.
-     * Par défaut → VACANT
-     */
-    private PropertyStatus status = PropertyStatus.VACANT;
 
     /**
      * ID du copropriétaire propriétaire de ce lot (optionnel).

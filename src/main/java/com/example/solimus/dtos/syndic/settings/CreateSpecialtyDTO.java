@@ -14,9 +14,4 @@ public class CreateSpecialtyDTO {
     private String name;
 
     private String description;
-
-    /**
-     * Nom de l'icône pour l'affichage frontend (ex: "plumbing", "electrical")
-     */
-    private String icon;
 }

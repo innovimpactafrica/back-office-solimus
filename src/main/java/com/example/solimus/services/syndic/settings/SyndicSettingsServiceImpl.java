@@ -9,6 +9,7 @@ import com.example.solimus.dtos.syndic.settings.PropertyTypeDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicFinancialSettingsDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicProfileDTO;
+import com.example.solimus.dtos.syndic.settings.UpdateSyndicFinancialSettingsDTO;
 import com.example.solimus.dtos.syndic.settings.UpdateSyndicProfileDTO;
 import com.example.solimus.entities.FacilityType;
 import com.example.solimus.entities.PropertyType;
@@ -68,15 +69,17 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
 
     @Override
     @Transactional
-    public void createFacilityType(String name, FacilityCategory category, String description, Boolean isActive, MultipartFile icon) {
+    public void createFacilityType(String name, String category, String description, Boolean isActive, MultipartFile icon) {
 
         if (facilityTypeRepository.existsByNameIgnoreCase(name)) {
             throw new BadRequestException("Un type d'équipement avec ce nom existe déjà");
         }
 
+        FacilityCategory facilityCategory = FacilityCategory.valueOf(category.toUpperCase());
+
         FacilityType facilityType = new FacilityType();
         facilityType.setName(name);
-        facilityType.setCategory(category);
+        facilityType.setCategory(facilityCategory);
         facilityType.setDescription(description);
             facilityType.setIsActive(isActive != null ? isActive : true);
 
@@ -93,7 +96,7 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     //Modification
     @Override
     @Transactional
-    public void updateFacilityType(Long id, String name, FacilityCategory category, String description, Boolean isActive, MultipartFile icon) {
+    public void updateFacilityType(Long id, String name, String category, String description, Boolean isActive, MultipartFile icon) {
 
         //Récupérer le type d'équipement
         FacilityType facilityType = facilityTypeRepository.findById(id)
@@ -107,7 +110,10 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
         }
 
         if (name != null) facilityType.setName(name);
-        if (category != null) facilityType.setCategory(category);
+        if (category != null) {
+            FacilityCategory facilityCategory = FacilityCategory.valueOf(category.toUpperCase());
+            facilityType.setCategory(facilityCategory);
+        }
         if (description != null) facilityType.setDescription(description);
         if (isActive != null) facilityType.setIsActive(isActive);
 
@@ -158,34 +164,40 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     //Création
     @Override
     @Transactional
-    public void createSpecialty(CreateSpecialtyDTO dto) {
-        if (specialtyRepository.existsByNameIgnoreCase(dto.getName())) {
-            throw new BadRequestException("La spécialité '" + dto.getName() + "' existe déjà.");
+    public void createSpecialty(String name, String description, MultipartFile icon) {
+        if (specialtyRepository.existsByNameIgnoreCase(name)) {
+            throw new BadRequestException("La spécialité '" + name + "' existe déjà.");
         }
         Specialty specialty = new Specialty();
-        specialty.setName(dto.getName());
-        specialty.setDescription(dto.getDescription());
-        specialty.setIcon(dto.getIcon());
+        specialty.setName(name);
+        specialty.setDescription(description);
+        if (icon != null && !icon.isEmpty()) {
+            String iconUrl = minioService.uploadFile(icon, "specialties");
+            specialty.setIcon(iconUrl);
+        }
         specialtyRepository.save(specialty);
-        log.info("Spécialité créée : {}", dto.getName());
+        log.info("Spécialité créée : {}", name);
     }
 
     //Modification
     @Override
     @Transactional
-    public void updateSpecialty(Long id, CreateSpecialtyDTO dto) {
+    public void updateSpecialty(Long id, String name, String description, MultipartFile icon) {
         //Vérifier que la spécialité existe
         Specialty specialty = specialtyRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Spécialité non trouvée"));
         //Vérifier que le nom de la spécialité n'est pas déjà utilisé
-        if (dto.getName() != null
-                && !specialty.getName().equalsIgnoreCase(dto.getName())
-                && specialtyRepository.existsByNameIgnoreCase(dto.getName())) {
-            throw new BadRequestException("La spécialité '" + dto.getName() + "' existe déjà.");
+        if (name != null
+                && !specialty.getName().equalsIgnoreCase(name)
+                && specialtyRepository.existsByNameIgnoreCase(name)) {
+            throw new BadRequestException("La spécialité '" + name + "' existe déjà.");
         }
-        if (dto.getName() != null) specialty.setName(dto.getName());
-        if (dto.getDescription() != null) specialty.setDescription(dto.getDescription());
-        if (dto.getIcon() != null) specialty.setIcon(dto.getIcon());
+        if (name != null) specialty.setName(name);
+        if (description != null) specialty.setDescription(description);
+        if (icon != null && !icon.isEmpty()) {
+            String iconUrl = minioService.uploadFile(icon, "specialties");
+            specialty.setIcon(iconUrl);
+        }
         specialtyRepository.save(specialty);
         log.info("Spécialité modifiée : {}", specialty.getName());
     }
@@ -279,7 +291,7 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
 
     @Override
     @Transactional
-    public void saveFinancialSettings(SyndicFinancialSettingsDTO dto) {
+    public void saveFinancialSettings(UpdateSyndicFinancialSettingsDTO dto) {
 
         User currentSyndic = getCurrentUser();
 
@@ -334,24 +346,44 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
 
     @Override
     @Transactional
-    public void updateSyndicProfile(UpdateSyndicProfileDTO dto) {
+    public void updateSyndicProfile(String firstName, String lastName, String phone, MultipartFile photo) {
         User currentSyndic = getCurrentUser();
 
-        if (dto.getFirstName() != null) {
-            currentSyndic.setFirstName(dto.getFirstName());
+        if (firstName != null) {
+            currentSyndic.setFirstName(firstName);
         }
-        if (dto.getLastName() != null) {
-            currentSyndic.setLastName(dto.getLastName());
+        if (lastName != null) {
+            currentSyndic.setLastName(lastName);
         }
-        if (dto.getPhone() != null) {
-            currentSyndic.setPhone(dto.getPhone());
+        if (phone != null) {
+            // Vérifier si le téléphone existe déjà pour un autre utilisateur
+            if (userRepository.existsByPhoneAndIdNot(phone, currentSyndic.getId())) {
+                throw new BadRequestException("Ce numéro de téléphone est déjà utilisé par un autre utilisateur");
+            }
+            currentSyndic.setPhone(phone);
         }
-        if (dto.getPhotoUrl() != null) {
-            currentSyndic.setProfilePhotoUrl(dto.getPhotoUrl());
+        if (photo != null && !photo.isEmpty()) {
+            String photoUrl = minioService.uploadFile(photo, "syndic-photos");
+            currentSyndic.setProfilePhotoUrl(photoUrl);
         }
 
         userRepository.save(currentSyndic);
         log.info("Profil syndic mis à jour : {}", currentSyndic.getEmail());
+    }
+
+    @Override
+    @Transactional
+    public void updateProfilePhoto(MultipartFile photo) {
+        User currentSyndic = getCurrentUser();
+
+        if (photo == null || photo.isEmpty()) {
+            throw new BadRequestException("Aucune photo fournie");
+        }
+
+        String photoUrl = minioService.uploadFile(photo, "syndic-photos");
+        currentSyndic.setProfilePhotoUrl(photoUrl);
+        userRepository.save(currentSyndic);
+        log.info("Photo de profil mise à jour pour le syndic : {}", currentSyndic.getEmail());
     }
 
     @Override

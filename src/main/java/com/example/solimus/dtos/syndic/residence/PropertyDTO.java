@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 public class PropertyDTO {
     private Long id;
     private String reference;
+    private Integer floor;
     private BigDecimal superficie;
     private String typeName;
     private Long residenceId;

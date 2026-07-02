@@ -9,6 +9,7 @@ import com.example.solimus.dtos.syndic.settings.PropertyTypeDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicFinancialSettingsDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicProfileDTO;
+import com.example.solimus.dtos.syndic.settings.UpdateSyndicFinancialSettingsDTO;
 import com.example.solimus.dtos.syndic.settings.UpdateSyndicProfileDTO;
 import com.example.solimus.enums.FacilityCategory;
 import org.springframework.web.multipart.MultipartFile;
@@ -22,9 +23,9 @@ public interface SyndicSettingsService {
     //--------------------------------------------------
     List<FacilityTypeDTO> getAllFacilityTypes();
 
-    void createFacilityType(String name, FacilityCategory category, String description, Boolean isActive, MultipartFile icon);
+    void createFacilityType(String name, String category, String description, Boolean isActive, MultipartFile icon);
 
-    void updateFacilityType(Long id, String name, FacilityCategory category, String description, Boolean isActive, MultipartFile icon);
+    void updateFacilityType(Long id, String name, String category, String description, Boolean isActive, MultipartFile icon);
 
     void deleteFacilityType(Long id);
 
@@ -33,9 +34,9 @@ public interface SyndicSettingsService {
     //--------------------------------------------------
     List<SpecialtyDTO> getAllSpecialties();
 
-    void createSpecialty(CreateSpecialtyDTO dto);
+    void createSpecialty(String name, String description, MultipartFile icon);
 
-    void updateSpecialty(Long id, CreateSpecialtyDTO dto);
+    void updateSpecialty(Long id, String name, String description, MultipartFile icon);
 
     void deleteSpecialty(Long id);
 
@@ -65,7 +66,7 @@ public interface SyndicSettingsService {
      * Crée ou met à jour les paramètres financiers du syndic connecté.
      * Un seul syndic = une seule configuration (logique create-or-update,
      */
-    void saveFinancialSettings(SyndicFinancialSettingsDTO dto);
+    void saveFinancialSettings(UpdateSyndicFinancialSettingsDTO dto);
 
     //--------------------------------------------------
     // ===== PROFIL SYNDIC =====
@@ -80,7 +81,12 @@ public interface SyndicSettingsService {
      * Met à jour le profil du syndic connecté.
      * Seuls les champs non null sont mis à jour.
      */
-    void updateSyndicProfile(UpdateSyndicProfileDTO dto);
+    void updateSyndicProfile(String firstName, String lastName, String phone, MultipartFile photo);
+
+    /**
+     * Ajoute ou remplace la photo de profil du syndic.
+     */
+    void updateProfilePhoto(MultipartFile photo);
 
     /**
      * Change le mot de passe du syndic connecté.

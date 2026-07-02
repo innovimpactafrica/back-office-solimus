@@ -13,6 +13,9 @@ import com.example.solimus.repositories.*;
 import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,21 +43,21 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     private final MinioService minioService;
     private final SyndicCoOwnerRelationRepository syndicCoOwnerRelationRepository;
     // =========================================================================
-    // ÉTAPE 1 — CRÉER LA RÉSIDENCE
+    // ÉTAPE 1 — CRÉER LA RÉSIDENCE COMPLÈTE (avec photo et contacts)
     // =========================================================================
     @Override
     @Transactional
-    public ResidenceDTO createResidence(CreateResidenceDTO dto) {
+    public ResidenceDTO createResidenceComplete(CreateResidenceDTO dto, MultipartFile photo) {
 
-        //Récupérer le syndic connecté
+        // 1. Récupérer le syndic connecté
         User currentSyndic = getCurrentUser();
 
-        // Construire l'adresse complète côté back
-        // Le front envoie fullAddress, city et country séparément
+        // 2. Construire l'adresse complète
         String adresseComplete = dto.getFullAddress()
             + ", " + dto.getCity()
             + ", " + dto.getCountry();
 
+        // 3. Créer et sauvegarder l'entité Residence
         Residence residence = new Residence();
         residence.setName(dto.getName());
         residence.setDescription(dto.getDescription());
@@ -63,66 +66,37 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         residence.setCountry(dto.getCountry());
         residence.setLatitude(dto.getLatitude());
         residence.setLongitude(dto.getLongitude());
-        residence.setLotsCount(dto.getLotsCount());
         residence.setConstructionYear(dto.getConstructionYear());
         residence.setRenovationYear(dto.getRenovationYear());
-        residence.setAnnualBudget(dto.getAnnualBudget());
         residence.setHealthStatus(ResidenceHealthStatus.EXCELLENT);
         residence.setSyndic(currentSyndic);
 
         Residence saved = residenceRepository.save(residence);
 
-        log.info("Résidence '{}' créée par le syndic {}",
-            saved.getName(), currentSyndic.getEmail());
-
-        return mapToResidenceDTO(saved);
-    }
-
-    // =========================================================================
-    // ÉTAPE 1 — UPLOADER LA PHOTO
-    // =========================================================================
-    @Override
-    @Transactional
-    public ResidenceDTO uploadPhoto(Long residenceId, MultipartFile photo) {
-
-        // Récupère une résidence ou lève une exception si introuvable
-        Residence residence = getResidenceOrThrow(residenceId);
-
-        // Vérifie que la résidence appartient au syndic connecté
-        verifyResidenceOwnership(residence);
-
-        // Upload vers Minio
+        // 4. Uploader la photo vers MinIO et l'associer à la résidence
         String photoUrl = minioService.uploadFile(photo, "residences");
-        residence.setPhotoUrl(photoUrl);
+        saved.setPhotoUrl(photoUrl);
+        saved = residenceRepository.save(saved);
 
-        return mapToResidenceDTO(residenceRepository.save(residence));
-    }
+        // 5. Créer les contacts liés à cette résidence
+        if (dto.getContacts() != null && !dto.getContacts().isEmpty()) {
+            for (ContactInputDTO contactDto : dto.getContacts()) {
+                ResidenceContact contact = new ResidenceContact();
+                contact.setFullName(contactDto.getFullName());
+                contact.setRole(contactDto.getRole());
+                contact.setEmail(contactDto.getEmail());
+                contact.setPhone(contactDto.getPhone());
+                contact.setResidence(saved);
+                contactRepository.save(contact);
+            }
+        }
 
-    // =========================================================================
-    // ÉTAPE 1 AJOUTER UN CONTACT CLÉ
-    // =========================================================================
-    @Override
-    @Transactional
-    public AddResidenceContactDTO addContact(
-            Long residenceId, AddResidenceContactDTO dto) {
+        log.info("Résidence '{}' créée par le syndic {} avec {} contacts",
+            saved.getName(), currentSyndic.getEmail(),
+            dto.getContacts() != null ? dto.getContacts().size() : 0);
 
-        //Récupérer la résidence
-        Residence residence = getResidenceOrThrow(residenceId);
-
-        //Vérifier si elle est géré par le Syndic
-        verifyResidenceOwnership(residence);
-
-        ResidenceContact contact = new ResidenceContact();
-        contact.setFullName(dto.getFullName());
-        contact.setRole(dto.getRole());
-        contact.setEmail(dto.getEmail());
-        contact.setPhone(dto.getPhone());
-        contact.setPhotoUrl(dto.getPhotoUrl());
-        contact.setResidence(residence);
-
-        contactRepository.save(contact);
-
-        return dto;
+        // 6. Retourner le DTO de la résidence créée
+        return mapToResidenceDTO(saved);
     }
 
     // =========================================================================
@@ -140,8 +114,10 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
         Property property = new Property();
         property.setReference(dto.getReference());
+        property.setBloc(dto.getBloc());
         property.setFloor(dto.getFloor());
         property.setSuperficie(dto.getSuperficie());
+        property.setTantieme(dto.getTantieme());
         property.setResidence(residence);
 
         // Récupérer le type de bien
@@ -149,7 +125,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 .orElseThrow(() -> new ResourceNotFoundException("Type de bien introuvable"));
         property.setTypeBien(propertyType);
 
-        // Assigner un propriétaire si fourni
+        // Assigner un propriétaire si fourni et calculer le statut
         if (dto.getOwnerId() != null) {
             User owner = userRepository.findById(dto.getOwnerId())
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -168,6 +144,9 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             }
 
             property.setOwner(owner);
+            property.setStatus(PropertyStatus.OCCUPE);
+        } else {
+            property.setStatus(PropertyStatus.VACANT);
         }
 
         Property saved = propertyRepository.save(property);
@@ -176,6 +155,131 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             saved.getReference(), residence.getName());
 
         return mapToPropertyDTO(saved);
+    }
+
+    // =========================================================================
+    // ÉTAPE 2 — MODIFIER UN LOT / APPARTEMENT
+    // =========================================================================
+    @Override
+    @Transactional
+    public PropertyDTO updateProperty(Long residenceId, Long propertyId, UpdatePropertyDTO dto) {
+
+        // Récupérer la résidence
+        Residence residence = getResidenceOrThrow(residenceId);
+        verifyResidenceOwnership(residence);
+
+        // Récupérer le bien
+        Property property = propertyRepository.findById(propertyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Bien introuvable"));
+
+        // Vérifier que le bien appartient à la résidence
+        if (!property.getResidence().getId().equals(residenceId)) {
+            throw new BadRequestException("Ce bien n'appartient pas à cette résidence");
+        }
+
+        // Mettre à jour uniquement les champs non-null (mise à jour partielle)
+        if (dto.getReference() != null) {
+            property.setReference(dto.getReference());
+        }
+        if (dto.getBloc() != null) {
+            property.setBloc(dto.getBloc());
+        }
+        if (dto.getFloor() != null) {
+            property.setFloor(dto.getFloor());
+        }
+        if (dto.getSuperficie() != null) {
+            property.setSuperficie(dto.getSuperficie());
+        }
+        if (dto.getTantieme() != null) {
+            property.setTantieme(dto.getTantieme());
+        }
+
+        // Mettre à jour le type de bien si fourni
+        if (dto.getPropertyTypeId() != null) {
+            PropertyType propertyType = propertyTypeRepository.findById(dto.getPropertyTypeId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Type de bien introuvable"));
+            property.setTypeBien(propertyType);
+        }
+
+        // Mettre à jour le propriétaire et recalculer le statut si ownerId fourni
+        if (dto.getOwnerId() != null) {
+            User owner = userRepository.findById(dto.getOwnerId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
+
+            // Vérifier que c'est bien un copropriétaire
+            if (!owner.getRole().getName().equals(ERole.ROLE_COPROPRIETAIRE)) {
+                throw new BadRequestException("Seul un copropriétaire peut être propriétaire d'un lot");
+            }
+
+            // Vérifier que le compte est actif
+            if (owner.getStatus() != UserStatus.ACTIVE) {
+                throw new BadRequestException("Le copropriétaire doit avoir un compte actif");
+            }
+
+            property.setOwner(owner);
+            property.setStatus(PropertyStatus.OCCUPE);
+        }
+
+        Property saved = propertyRepository.save(property);
+
+        log.info("Lot '{}' modifié dans la résidence '{}'",
+                saved.getReference(), residence.getName());
+
+        return mapToPropertyDTO(saved);
+    }
+
+    // =========================================================================
+    // ÉTAPE 2 — SUPPRIMER UN LOT / APPARTEMENT
+    // =========================================================================
+    @Override
+    @Transactional
+    public void deleteProperty(Long residenceId, Long propertyId) {
+
+        // Récupérer la résidence
+        Residence residence = getResidenceOrThrow(residenceId);
+        verifyResidenceOwnership(residence);
+
+        // Récupérer le bien
+        Property property = propertyRepository.findById(propertyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Bien introuvable"));
+
+        // Vérifier que le bien appartient à la résidence
+        if (!property.getResidence().getId().equals(residenceId)) {
+            throw new BadRequestException("Ce bien n'appartient pas à cette résidence");
+        }
+
+        // Vérifier si le bien a un historique financier (ChargeAllocation)
+        long allocationCount = allocationRepository.countByPropertyId(propertyId);
+        if (allocationCount > 0) {
+            throw new BadRequestException(
+                "Impossible de supprimer ce lot car il est lié à un historique financier (charges).");
+        }
+
+        propertyRepository.delete(property);
+
+        log.info("Lot '{}' supprimé de la résidence '{}'",
+                property.getReference(), residence.getName());
+    }
+
+    // =========================================================================
+    // ÉTAPE 2 — LISTER LES LOTS D'UNE RÉSIDENCE (PAGINÉ)
+    // =========================================================================
+    @Override
+    @Transactional(readOnly = true)
+    public Page<PropertyListDTO> getPropertiesPaginated(Long residenceId, Integer page, Integer size) {
+
+        // Récupérer la résidence
+        Residence residence = getResidenceOrThrow(residenceId);
+        verifyResidenceOwnership(residence);
+
+        // Construire Pageable manuellement
+        Pageable pageable = PageRequest.of(page, size);
+
+        // Récupérer les lots paginés
+        Page<Property> propertiesPage = propertyRepository.findByResidenceId(residenceId, pageable);
+
+        // Mapper vers DTO
+        return propertiesPage.map(this::mapToPropertyListDTO);
     }
 
     // =========================================================================
@@ -191,55 +295,6 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                         .name(type.getName())
                         .build())
                 .collect(Collectors.toList());
-    }
-
-    // =========================================================================
-    // ÉTAPE 2 - AFFECTER UN COPROPRIÉTAIRE À UN LOT
-    // =========================================================================
-    @Override
-    public PropertyListDTO assignOwnerToProperty(Long residenceId, Long propertyId, Long ownerId) {
-        // Récupérer la résidence
-        Residence residence = getResidenceOrThrow(residenceId);
-        // Vérifier si elle est géré par le Syndic
-        verifyResidenceOwnership(residence);
-
-        // Récupérer le bien
-        Property property = propertyRepository.findById(propertyId)
-                .orElseThrow(() -> new ResourceNotFoundException("Bien introuvable"));
-
-        // Vérifier que le bien appartient à la résidence
-        if (!property.getResidence().getId().equals(residenceId)) {
-            throw new BadRequestException("Ce bien n'appartient pas à cette résidence");
-        }
-
-        // Vérifier que le lot n'est pas déjà occupé par un autre copropriétaire
-        if (property.getOwner() != null && !property.getOwner().getId().equals(ownerId)) {
-            throw new BadRequestException("Ce lot est déjà affecté à un propriétaire");
-        }
-
-        // Récupérer le copropriétaire au cas où le lot n'est pas occupé
-        User owner = userRepository.findById(ownerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
-
-        // Vérifier que c'est bien un copropriétaire
-        if (owner.getRole() == null || !owner.getRole().getName().equals(ERole.ROLE_COPROPRIETAIRE)) {
-            throw new BadRequestException("Seul un copropriétaire peut être propriétaire d'un lot");
-        }
-
-        // Vérifier que le compte est actif
-        if (owner.getStatus() != UserStatus.ACTIVE) {
-            throw new BadRequestException("Le copropriétaire doit avoir un compte actif");
-        }
-
-        property.setOwner(owner); // affecté le lot au propriétaire
-        property.setStatus(PropertyStatus.OCCUPE); // Mettre le statut du lot à "occupé"
-
-        Property saved = propertyRepository.save(property);
-
-        log.info("Copropriétaire '{}' affecté au lot '{}' dans la résidence '{}'",
-                owner.getEmail(), saved.getReference(), residence.getName());
-
-        return mapToPropertyListDTO(saved);
     }
 
     // =========================================================================
@@ -481,6 +536,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         return PropertyDTO.builder()
             .id(p.getId())
             .reference(p.getReference())
+            .floor(p.getFloor())
             .superficie(p.getSuperficie())
             .typeName(p.getTypeBien() != null ? p.getTypeBien().getName() : null)
             .residenceId(p.getResidence().getId())

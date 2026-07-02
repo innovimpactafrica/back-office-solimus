@@ -61,10 +61,11 @@ public class Property {
 
     /**
      * Étage du lot.
-     * Exemple : "1", "4ème", "RDC"
+     * 0 = rez-de-chaussée, les étages positifs montent normalement.
+     * La conversion d'affichage ("RDC" au lieu de "0") est gérée côté front.
      */
     @Column(name = "floor")
-    private String floor;
+    private Integer floor;
 
     /**
      * Type de bien.

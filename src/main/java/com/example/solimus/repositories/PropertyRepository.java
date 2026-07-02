@@ -2,6 +2,8 @@ package com.example.solimus.repositories;
 
 import com.example.solimus.entities.Property;
 import com.example.solimus.enums.PropertyStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -13,6 +15,9 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
 
     // Lister les biens d'une résidence
     List<Property> findByResidenceId(Long residenceId);
+
+    // Lister les biens d'une résidence (paginé)
+    Page<Property> findByResidenceId(Long residenceId, Pageable pageable);
 
     // Lister les biens d'un propriétaire dans une résidence spécifique
     List<Property> findByOwnerIdAndResidenceId(Long ownerId, Long residenceId);

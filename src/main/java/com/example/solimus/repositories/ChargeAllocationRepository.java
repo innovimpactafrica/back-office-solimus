@@ -189,4 +189,12 @@ public interface ChargeAllocationRepository extends JpaRepository<ChargeAllocati
      * @return le nombre d'allocations avec ce statut
      */
     long countByChargeResidenceIdAndStatus(Long residenceId, ChargeStatus status);
+
+    /**
+     * Compte le nombre d'allocations pour un bien donné.
+     *
+     * @param propertyId l'ID du bien
+     * @return le nombre d'allocations
+     */
+    long countByPropertyId(Long propertyId);
 }

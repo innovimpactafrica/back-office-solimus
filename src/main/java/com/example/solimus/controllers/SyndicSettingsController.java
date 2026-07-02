@@ -9,6 +9,7 @@ import com.example.solimus.dtos.syndic.settings.PropertyTypeDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicFinancialSettingsDTO;
 import com.example.solimus.dtos.syndic.settings.SyndicProfileDTO;
+import com.example.solimus.dtos.syndic.settings.UpdateSyndicFinancialSettingsDTO;
 import com.example.solimus.dtos.syndic.settings.UpdateSyndicProfileDTO;
 import com.example.solimus.enums.FacilityCategory;
 import com.example.solimus.services.syndic.settings.SyndicSettingsService;
@@ -18,6 +19,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -44,12 +46,12 @@ public class SyndicSettingsController {
 
     @Operation(summary = "Créer un nouveau type d'équipement")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
-    @PostMapping(value = "/facility-types", consumes = "multipart/form-data")
+    @PostMapping(value = "/facility-types", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Void> createFacilityType(
-            @RequestPart("name") @NotBlank String name,
-            @RequestPart("category") @NotNull FacilityCategory category,
-            @RequestPart(value = "description", required = false) String description,
-            @RequestPart(value = "isActive", required = false) Boolean isActive,
+            @RequestParam("name") @NotBlank String name,
+            @RequestParam("category") @NotBlank String category,
+            @RequestParam(value = "description", required = false) String description,
+            @RequestParam(value = "isActive", required = false) Boolean isActive,
             @RequestPart(value = "icon", required = false) MultipartFile icon) {
         syndicSettingsService.createFacilityType(name, category, description, isActive, icon);
         return ResponseEntity.noContent().build();
@@ -57,13 +59,13 @@ public class SyndicSettingsController {
 
     @Operation(summary = "Mettre à jour un type d'équipement")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
-    @PutMapping(value = "/facility-types/{id}", consumes = "multipart/form-data")
+    @PutMapping(value = "/facility-types/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Void> updateFacilityType(
             @PathVariable Long id,
-            @RequestPart(value = "name", required = false) String name,
-            @RequestPart(value = "category", required = false) FacilityCategory category,
-            @RequestPart(value = "description", required = false) String description,
-            @RequestPart(value = "isActive", required = false) Boolean isActive,
+            @RequestParam(value = "name", required = false) String name,
+            @RequestParam(value = "category", required = false) String category,
+            @RequestParam(value = "description", required = false) String description,
+            @RequestParam(value = "isActive", required = false) Boolean isActive,
             @RequestPart(value = "icon", required = false) MultipartFile icon) {
         syndicSettingsService.updateFacilityType(id, name, category, description, isActive, icon);
         return ResponseEntity.noContent().build();
@@ -88,19 +90,24 @@ public class SyndicSettingsController {
 
     @Operation(summary = "Créer une spécialité")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
-    @PostMapping("/specialties")
-    public ResponseEntity<Void> createSpecialty(@Valid @RequestBody CreateSpecialtyDTO dto) {
-        syndicSettingsService.createSpecialty(dto);
+    @PostMapping(value = "/specialties", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Void> createSpecialty(
+            @RequestParam("name") @NotBlank String name,
+            @RequestParam(value = "description", required = false) String description,
+            @RequestPart(value = "icon", required = false) MultipartFile icon) {
+        syndicSettingsService.createSpecialty(name, description, icon);
         return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "Mettre à jour une spécialité")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
-    @PutMapping("/specialties/{id}")
+    @PutMapping(value = "/specialties/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Void> updateSpecialty(
             @PathVariable Long id,
-            @Valid @RequestBody CreateSpecialtyDTO dto) {
-        syndicSettingsService.updateSpecialty(id, dto);
+            @RequestParam(value = "name", required = false) String name,
+            @RequestParam(value = "description", required = false) String description,
+            @RequestPart(value = "icon", required = false) MultipartFile icon) {
+        syndicSettingsService.updateSpecialty(id, name, description, icon);
         return ResponseEntity.noContent().build();
     }
 
@@ -159,7 +166,7 @@ public class SyndicSettingsController {
     @Operation(summary = "Enregistrer les paramètres financiers du syndic")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PutMapping("/financial")
-    public ResponseEntity<Void> saveFinancialSettings(@Valid @RequestBody SyndicFinancialSettingsDTO dto) {
+    public ResponseEntity<Void> saveFinancialSettings(@Valid @RequestBody UpdateSyndicFinancialSettingsDTO dto) {
         syndicSettingsService.saveFinancialSettings(dto);
         return ResponseEntity.noContent().build();
     }
@@ -175,9 +182,21 @@ public class SyndicSettingsController {
 
     @Operation(summary = "Mettre à jour le profil du syndic connecté")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
-    @PutMapping("/profile")
-    public ResponseEntity<Void> updateSyndicProfile(@Valid @RequestBody UpdateSyndicProfileDTO dto) {
-        syndicSettingsService.updateSyndicProfile(dto);
+    @PutMapping(value = "/profile", consumes = "multipart/form-data")
+    public ResponseEntity<Void> updateSyndicProfile(
+            @RequestPart(value = "firstName", required = false) String firstName,
+            @RequestPart(value = "lastName", required = false) String lastName,
+            @RequestPart(value = "phone", required = false) String phone,
+            @RequestPart(value = "photo", required = false) MultipartFile photo) {
+        syndicSettingsService.updateSyndicProfile(firstName, lastName, phone, photo);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Ajouter ou remplacer la photo de profil du syndic")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PostMapping(value = "/profile/photo", consumes = "multipart/form-data")
+    public ResponseEntity<Void> updateProfilePhoto(@RequestPart("photo") MultipartFile photo) {
+        syndicSettingsService.updateProfilePhoto(photo);
         return ResponseEntity.noContent().build();
     }
 
