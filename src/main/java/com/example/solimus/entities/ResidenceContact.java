@@ -26,7 +26,6 @@ public class ResidenceContact {
     private String fullName;
 
     // Fonction ou responsabilité du contact dans la résidence
-    @Column(nullable = false)
     private String role;
 
     // Adresse email utilisée pour contacter cette personne

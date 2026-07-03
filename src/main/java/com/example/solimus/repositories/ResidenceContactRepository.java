@@ -10,4 +10,6 @@ import java.util.List;
 public interface ResidenceContactRepository extends JpaRepository<ResidenceContact, Long> {
 
     List<ResidenceContact> findByResidenceId(Long residenceId);
+
+    void deleteByResidenceId(Long residenceId);
 }

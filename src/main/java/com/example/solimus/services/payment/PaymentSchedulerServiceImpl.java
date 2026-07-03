@@ -1,6 +1,6 @@
 package com.example.solimus.services.payment;
 
-import com.example.solimus.entities.Payment;
+import com.example.solimus.entities.PaymentProvider;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.repositories.PaymentRepository;
 import lombok.RequiredArgsConstructor;
@@ -33,7 +33,7 @@ public class PaymentSchedulerServiceImpl implements PaymentSchedulerService {
         LocalDateTime timeoutThreshold = LocalDateTime.now().minusMinutes(5);
 
         // 2. Récupérer les paiements encore PENDING mais créés avant ce seuil
-        List<Payment> stalePayments = paymentRepository
+        List<PaymentProvider> stalePayments = paymentRepository
                 .findByStatusAndCreatedAtBefore(PaymentStatus.PENDING, timeoutThreshold);
 
         if (stalePayments.isEmpty()) {
@@ -41,7 +41,7 @@ public class PaymentSchedulerServiceImpl implements PaymentSchedulerService {
         }
 
         // 3. Les faire toutes basculer en FAILED — l'initiateur devra réinitier un paiement
-        for (Payment payment : stalePayments) {
+        for (PaymentProvider payment : stalePayments) {
             payment.setStatus(PaymentStatus.FAILED);
         }
 

@@ -26,6 +26,35 @@ public interface SyndicResidenceService {
     // Étape 2 — Lister les lots d'une résidence (paginé)
     Page<PropertyListDTO> getPropertiesPaginated(Long residenceId, Integer page, Integer size);
 
+    // Étape 2 — Lister les lots d'une résidence avec filtres (paginé, pour onglet Appartements)
+    Page<PropertyListItemDTO> getPropertiesPaginatedWithFilters(
+            Long residenceId, String search, Integer floor, String status, Integer page, Integer size);
+
+    // Lister les équipements communs d'une résidence avec filtres (onglet Biens communs)
+    List<CommonFacilityListItemDTO> getCommonFacilitiesWithFilters(
+            Long residenceId, String search, String status);
+
+    // Détail d'un équipement commun (onglet Biens communs)
+    CommonFacilityDetailDTO getCommonFacilityDetail(Long residenceId, Long facilityId);
+
+    // Kanban des interventions (onglet Travaux)
+    InterventionKanbanResponseDTO getInterventionsKanban(Long residenceId);
+
+    // Évolution mensuelle des paiements collectés (onglet Finances)
+    List<MonthlyPaymentDTO> getMonthlyPaymentsEvolution(Long residenceId, Integer year);
+
+    // Répartition du budget prévisionnel par catégorie (onglet Finances)
+    ExpenseBreakdownDTO getExpensesBreakdown(Long residenceId, Integer year);
+
+    // Liste des appels de charges par copropriétaire (onglet Finances)
+    List<ChargeCallItemSummaryDTO> getChargeCallsSummary(Long residenceId);
+
+    // Liste des transactions récentes du wallet (onglet Finances)
+    List<WalletTransactionDTO> getRecentWalletTransactions(Long residenceId, Integer limit);
+
+    // Modifier les informations générales d'une résidence (mise à jour partielle)
+    void updateResidence(Long residenceId, CreateResidenceDTO dto, MultipartFile photo);
+
     //Étape 2 _ Lister tous les types de biens (pour dropdown lors de la création d'un lot)
     List<PropertyTypeDTO> getAllPropertyTypes();
 
@@ -41,9 +70,23 @@ public interface SyndicResidenceService {
     //  Étape 3 — Mettre à jour les options de sécurité d'une résidence
     void updateSecurityFeatures(Long residenceId, UpdateSecurityFeaturesDTO dto);
 
-    // Lister les résidences du syndic connecté
+    //  Étape 3 — Sauvegarder l'étape 3 complète (équipements + sécurité)
+    void saveStep3(Long residenceId, Step3DTO dto);
+
+    // Lister les résidences du syndic connecté (pour dropdowns)
     List<ResidenceDTO> getMesResidences();
 
-    // Détail complet d'une résidence
-    ResidenceDTO getResidenceDetail(Long residenceId);
+    // Statistiques du bandeau d'indicateurs (appelé une seule fois au chargement)
+    ResidenceHeaderStatsDTO getResidenceStats(Long residenceId);
+
+    // Contenu de l'onglet Vue générale (indépendant du bandeau)
+    ResidenceDetailDTO getResidenceGeneralView(Long residenceId);
+
+    // ===== DASHBOARD RÉSIDENCES =====
+
+    // Statistiques globales du dashboard (bandeau de KPIs)
+    ResidenceDashboardStatsDTO getDashboardStats();
+
+    // Liste paginée et filtrée des résidences (cartes)
+    Page<ResidenceCardDTO> getResidencesPaginated(String search, String city, String status, Integer page, Integer size);
 }

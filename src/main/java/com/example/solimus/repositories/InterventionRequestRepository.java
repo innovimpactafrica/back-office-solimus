@@ -20,6 +20,81 @@ import java.util.Optional;
 @Repository
 public interface InterventionRequestRepository extends JpaRepository<InterventionRequest, Long> {
 
+    /**
+     * Récupérer les 4 interventions les plus récentes pour un bien commun
+     * Triées par date de création décroissante
+     */
+    @Query("SELECT i FROM InterventionRequest i " +
+           "WHERE i.commonFacility.id = :facilityId " +
+           "ORDER BY i.createdAt DESC")
+    List<InterventionRequest> findRecentByCommonFacilityId(@Param("facilityId") Long facilityId, Pageable pageable);
+
+    /**
+     * Récupérer toutes les interventions pour un bien commun
+     */
+    @Query("SELECT i FROM InterventionRequest i WHERE i.commonFacility.id = :facilityId")
+    List<InterventionRequest> findByCommonFacilityId(@Param("facilityId") Long facilityId);
+
+    // ============================================================
+    // KANBAN — Méthodes pour le tableau Kanban d'interventions
+    // ============================================================
+
+    /**
+     * Compter les interventions de la colonne "Signalé" pour une résidence
+     * Statuts: PENDING, SYNDIC_ASSIGNED, QUOTE_VALIDATED
+     */
+    @Query("SELECT COUNT(i) FROM InterventionRequest i " +
+           "WHERE i.residence.id = :residenceId " +
+           "AND i.status IN (com.example.solimus.enums.InterventionStatus.PENDING, com.example.solimus.enums.InterventionStatus.SYNDIC_ASSIGNED, com.example.solimus.enums.InterventionStatus.QUOTE_VALIDATED)")
+    Long countReportedByResidenceId(@Param("residenceId") Long residenceId);
+
+    /**
+     * Compter les interventions de la colonne "En cours" pour une résidence
+     * Statuts: STARTED
+     */
+    @Query("SELECT COUNT(i) FROM InterventionRequest i " +
+           "WHERE i.residence.id = :residenceId " +
+           "AND i.status = com.example.solimus.enums.InterventionStatus.STARTED")
+    Long countInProgressByResidenceId(@Param("residenceId") Long residenceId);
+
+    /**
+     * Compter les interventions de la colonne "Résolu" pour une résidence
+     * Statuts: FINISHED, FINAL_VALIDATION
+     */
+    @Query("SELECT COUNT(i) FROM InterventionRequest i " +
+           "WHERE i.residence.id = :residenceId " +
+           "AND i.status IN (com.example.solimus.enums.InterventionStatus.FINISHED, com.example.solimus.enums.InterventionStatus.FINAL_VALIDATION)")
+    Long countResolvedByResidenceId(@Param("residenceId") Long residenceId);
+
+    /**
+     * Récupérer les interventions de la colonne "Signalé" pour une résidence (limité)
+     * Statuts: PENDING, SYNDIC_ASSIGNED, QUOTE_VALIDATED
+     */
+    @Query("SELECT i FROM InterventionRequest i " +
+           "WHERE i.residence.id = :residenceId " +
+           "AND i.status IN (com.example.solimus.enums.InterventionStatus.PENDING, com.example.solimus.enums.InterventionStatus.SYNDIC_ASSIGNED, com.example.solimus.enums.InterventionStatus.QUOTE_VALIDATED) " +
+           "ORDER BY i.createdAt DESC")
+    List<InterventionRequest> findReportedByResidenceId(@Param("residenceId") Long residenceId, Pageable pageable);
+
+    /**
+     * Récupérer les interventions de la colonne "En cours" pour une résidence (limité)
+     * Statuts: STARTED
+     */
+    @Query("SELECT i FROM InterventionRequest i " +
+           "WHERE i.residence.id = :residenceId " +
+           "AND i.status = com.example.solimus.enums.InterventionStatus.STARTED " +
+           "ORDER BY i.createdAt DESC")
+    List<InterventionRequest> findInProgressByResidenceId(@Param("residenceId") Long residenceId, Pageable pageable);
+
+    /**
+     * Récupérer les interventions de la colonne "Résolu" pour une résidence (limité)
+     * Statuts: FINISHED, FINAL_VALIDATION
+     */
+    @Query("SELECT i FROM InterventionRequest i " +
+           "WHERE i.residence.id = :residenceId " +
+           "AND i.status IN (com.example.solimus.enums.InterventionStatus.FINISHED, com.example.solimus.enums.InterventionStatus.FINAL_VALIDATION) " +
+           "ORDER BY i.createdAt DESC")
+    List<InterventionRequest> findResolvedByResidenceId(@Param("residenceId") Long residenceId, Pageable pageable);
 
     // ============================================================
     // PRESTATAIRE
@@ -235,4 +310,37 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
         @Param("status") InterventionStatus status,
         Pageable pageable
     );
+
+    // Compter les interventions par statut pour une résidence
+    long countByResidenceIdAndStatus(Long residenceId, InterventionStatus status);
+
+    // Lister toutes les interventions d'une résidence
+    List<InterventionRequest> findAllByResidenceId(Long residenceId);
+
+    // ===== DASHBOARD SYNDIC - STATS GLOBALES =====
+
+    // Compter les interventions ouvertes pour un syndic (non clôturées ni annulées)
+    @Query("SELECT COUNT(ir) FROM InterventionRequest ir WHERE ir.residence.syndic = :syndic " +
+           "AND ir.status NOT IN ('FINAL_VALIDATION', 'CANCELLED')")
+    long countOpenBySyndic(@Param("syndic") User syndic);
+
+    // Compter les interventions en cours (STARTED) pour un syndic
+    @Query("SELECT COUNT(ir) FROM InterventionRequest ir WHERE ir.residence.syndic = :syndic " +
+           "AND ir.status = 'STARTED'")
+    long countStartedBySyndic(@Param("syndic") User syndic);
+
+    // Compter les interventions planifiées (PENDING) pour un syndic
+    @Query("SELECT COUNT(ir) FROM InterventionRequest ir WHERE ir.residence.syndic = :syndic " +
+           "AND ir.status = 'PENDING'")
+    long countPendingBySyndic(@Param("syndic") User syndic);
+
+    // Compter les interventions ouvertes pour une résidence
+    @Query("SELECT COUNT(ir) FROM InterventionRequest ir WHERE ir.residence.id = :residenceId " +
+           "AND ir.status NOT IN ('FINAL_VALIDATION', 'CANCELLED')")
+    long countOpenByResidenceId(@Param("residenceId") Long residenceId);
+
+    // Lister toutes les interventions liées aux équipements communs d'une résidence
+    // (pour calculer le statut et la date de dernière maintenance des équipements)
+    @Query("SELECT ir FROM InterventionRequest ir WHERE ir.commonFacility.residence.id = :residenceId")
+    List<InterventionRequest> findByCommonFacilityResidenceId(@Param("residenceId") Long residenceId);
 }

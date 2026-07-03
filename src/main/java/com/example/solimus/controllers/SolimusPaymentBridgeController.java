@@ -2,7 +2,7 @@ package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.syndic.PaymentBridgeDTO;
 import com.example.solimus.entities.ChargePayment;
-import com.example.solimus.entities.Payment;
+import com.example.solimus.entities.PaymentProvider;
 
 import com.example.solimus.entities.User;
 
@@ -82,7 +82,7 @@ public class SolimusPaymentBridgeController {
         log.info("🌉 Requête Bridge reçue pour le paiement d'intervention avec la référence : {}", transactionRef);
 
         // 1. Rechercher la transaction de paiement en base de données
-        Payment payment = paymentRepository
+        PaymentProvider payment = paymentRepository
                 .findByReference(transactionRef)
                 .orElseThrow(() -> new ResourceNotFoundException("Paiement introuvable avec la référence : " + transactionRef));
 

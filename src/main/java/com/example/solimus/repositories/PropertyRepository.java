@@ -5,6 +5,8 @@ import com.example.solimus.enums.PropertyStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -48,4 +50,27 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
 
     // Lister les biens occupés des résidences d'un syndic (pour lister les copropriétaires)
     List<Property> findByResidence_SyndicIdAndOwnerIsNotNull(Long syndicId);
+
+    // Compter les propriétaires distincts d'une résidence
+    @Query("SELECT COUNT(DISTINCT p.owner) FROM Property p WHERE p.residence.id = :residenceId AND p.owner IS NOT NULL")
+    long countDistinctOwnersByResidenceId(@Param("residenceId") Long residenceId);
+
+    // Compter les biens d'un syndic (toutes résidences confondues)
+    @Query("SELECT COUNT(p) FROM Property p WHERE p.residence.syndic.id = :syndicId")
+    long countByResidenceSyndicId(@Param("syndicId") Long syndicId);
+
+    // Lister les biens d'une résidence avec filtres (paginé)
+    // search : reference du lot OU nom du owner, LIKE insensible casse
+    // floor : exact match
+    @Query("SELECT p FROM Property p WHERE p.residence.id = :residenceId " +
+           "AND (:search IS NULL OR LOWER(p.reference) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR LOWER(p.owner.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR LOWER(p.owner.lastName) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "AND (:floor IS NULL OR p.floor = :floor) " +
+           "ORDER BY p.reference ASC")
+    Page<Property> findByResidenceIdWithFilters(
+            @Param("residenceId") Long residenceId,
+            @Param("search") String search,
+            @Param("floor") Integer floor,
+            Pageable pageable);
 }

@@ -4,7 +4,7 @@ import com.example.solimus.dtos.provider.wallet.RequestWithdrawalDTO;
 import com.example.solimus.dtos.provider.wallet.WithdrawalRequestDTO;
 import com.example.solimus.dtos.provider.wallet.WalletDTO;
 import com.example.solimus.dtos.provider.wallet.WalletTransactionDTO;
-import com.example.solimus.entities.Payment;
+import com.example.solimus.entities.PaymentProvider;
 import com.example.solimus.entities.User;
 import com.example.solimus.entities.Wallet;
 import com.example.solimus.entities.WithdrawalRequest;
@@ -222,7 +222,7 @@ public class WalletServiceImpl implements WalletService {
     private Page<WalletTransactionDTO> getTransactions(Long providerId, int page, int size) {
 
         // 1. Récupérer tous les paiements reçus
-        List<Payment> paiements = paymentRepository.findAllByProviderIdOrderByCreatedAtDesc(providerId);
+        List<PaymentProvider> paiements = paymentRepository.findAllByProviderIdOrderByCreatedAtDesc(providerId);
 
         // 2. Récupérer tous les retraits
         List<WithdrawalRequest> retraits = withdrawalRequestRepository.findAllByProviderIdOrderByCreatedAtDesc(providerId);

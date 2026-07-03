@@ -36,7 +36,7 @@ import com.example.solimus.services.geolocation.GeolocationService;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.provider.ProviderService;
 import com.example.solimus.repositories.PaymentRepository;
-import com.example.solimus.entities.Payment;
+import com.example.solimus.entities.PaymentProvider;
 import com.example.solimus.enums.PaymentType;
 import com.example.solimus.enums.PaymentStatus;
 import lombok.RequiredArgsConstructor;
@@ -488,11 +488,11 @@ public class SyndicServiceImpl implements SyndicService {
         }
 
         // 3. Vérifier si un acompte existe déjà pour cette intervention
-        Optional<Payment> existingPayment = paymentRepository
+        Optional<PaymentProvider> existingPaymentProvider = paymentRepository
             .findByInterventionRequestIdAndType(requestId, PaymentType.ACOMPTE);
 
-        if (existingPayment.isPresent()) {
-            Payment payment = existingPayment.get();
+        if (existingPaymentProvider.isPresent()) {
+            PaymentProvider payment = existingPaymentProvider.get();
             // Si le paiement est déjà COMPLETED, on bloque
             if (payment.getStatus() == PaymentStatus.COMPLETED) {
                 throw new BadRequestException("Un acompte a déjà été versé pour cette intervention");
@@ -513,17 +513,17 @@ public class SyndicServiceImpl implements SyndicService {
         String transactionRef = genererReference("PAY");
 
         // 6. Créer ou réinitialiser le paiement
-        Payment payment;
-        if (existingPayment.isPresent() && existingPayment.get().getStatus() == PaymentStatus.FAILED) {
+        PaymentProvider payment;
+        if (existingPaymentProvider.isPresent() && existingPaymentProvider.get().getStatus() == PaymentStatus.FAILED) {
             // Paiement FAILED → réinitialiser pour une nouvelle tentative
-            payment = existingPayment.get();
+            payment = existingPaymentProvider.get();
             payment.setReference(transactionRef);
             payment.setMethod(dto.getMethode());
             payment.setStatus(PaymentStatus.PENDING);
             payment.setPaidAt(null);
         } else {
             // Nouveau paiement
-            payment = Payment.builder()
+            payment = PaymentProvider.builder()
                 .reference(transactionRef)                       // Référence unique générée pour InTouch/TouchPay
                 .interventionRequest(request)                     // Demande d'intervention liée à ce paiement
                 .provider(request.getSelectedProvider())          // Prestataire qui doit recevoir l'argent
@@ -580,11 +580,11 @@ public class SyndicServiceImpl implements SyndicService {
             : BigDecimal.ZERO;
 
         // Vérifier si un solde existe déjà pour cette intervention
-        Optional<Payment> existingPayment = paymentRepository
+        Optional<PaymentProvider> existingPaymentProvider = paymentRepository
             .findByInterventionRequestIdAndType(requestId, PaymentType.SOLDE);
 
-        if (existingPayment.isPresent()) {
-            Payment payment = existingPayment.get();
+        if (existingPaymentProvider.isPresent()) {
+            PaymentProvider payment = existingPaymentProvider.get();
             // Si le paiement est déjà COMPLETED, on bloque
             if (payment.getStatus() == PaymentStatus.COMPLETED) {
                 throw new BadRequestException("Le solde a déjà été versé pour cette intervention");
@@ -599,17 +599,17 @@ public class SyndicServiceImpl implements SyndicService {
         String transactionRef = genererReference("SOL");
 
         // Créer ou réinitialiser le paiement
-        Payment payment;
-        if (existingPayment.isPresent() && existingPayment.get().getStatus() == PaymentStatus.FAILED) {
+        PaymentProvider payment;
+        if (existingPaymentProvider.isPresent() && existingPaymentProvider.get().getStatus() == PaymentStatus.FAILED) {
             // Paiement FAILED → réinitialiser pour une nouvelle tentative
-            payment = existingPayment.get();
+            payment = existingPaymentProvider.get();
             payment.setReference(transactionRef);
             payment.setMethod(dto.getMethode());
             payment.setStatus(PaymentStatus.PENDING);
             payment.setPaidAt(null);
         } else {
             // Nouveau paiement
-            payment = Payment.builder()
+            payment = PaymentProvider.builder()
                 .reference(transactionRef)
                 .interventionRequest(request)
                 .provider(request.getSelectedProvider())
@@ -799,7 +799,7 @@ public class SyndicServiceImpl implements SyndicService {
 
    
 
-    private PaymentDTO toDTO(Payment payment) {
+    private PaymentDTO toDTO(PaymentProvider payment) {
         return PaymentDTO.builder()
                 .id(payment.getId())
                 .reference(payment.getReference())

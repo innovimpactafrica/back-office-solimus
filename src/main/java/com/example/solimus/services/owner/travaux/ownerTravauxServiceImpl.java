@@ -581,11 +581,11 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
         }
 
         // 3. Vérifier si un acompte existe déjà pour cette intervention
-        Optional<Payment> existingPayment = paymentRepository
+        Optional<PaymentProvider> existingPayment = paymentRepository
                 .findByInterventionRequestIdAndType(interventionId, PaymentType.ACOMPTE);
 
         if (existingPayment.isPresent()) {
-            Payment payment = existingPayment.get();
+            PaymentProvider payment = existingPayment.get();
             // Si le paiement est déjà COMPLETED, on bloque
             if (payment.getStatus() == PaymentStatus.COMPLETED) {
                 throw new BadRequestException("Un acompte a déjà été versé pour cette intervention");
@@ -606,7 +606,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
         String transactionRef = genererReference("PAY");
 
         // 6. Créer ou réinitialiser le paiement
-        Payment payment;
+        PaymentProvider payment;
         if (existingPayment.isPresent() && existingPayment.get().getStatus() == PaymentStatus.FAILED) {
             // Paiement FAILED → réinitialiser pour une nouvelle tentative
             payment = existingPayment.get();
@@ -616,7 +616,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
             payment.setPaidAt(null); //le paiement n'est pas encore complété
         } else {
             // Nouveau paiement
-            payment = Payment.builder()
+            payment = PaymentProvider.builder()
                     .reference(transactionRef)
                     .interventionRequest(request)
                     .provider(request.getSelectedProvider())
@@ -703,11 +703,11 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
                 : BigDecimal.ZERO;
 
         // 5. Vérifier si un solde existe déjà pour cette intervention
-        Optional<Payment> existingPayment = paymentRepository
+        Optional<PaymentProvider> existingPayment = paymentRepository
                 .findByInterventionRequestIdAndType(interventionId, PaymentType.SOLDE);
 
         if (existingPayment.isPresent()) {
-            Payment payment = existingPayment.get();
+            PaymentProvider payment = existingPayment.get();
             // Si le paiement est déjà COMPLETED, on bloque
             if (payment.getStatus() == PaymentStatus.COMPLETED) {
                 throw new BadRequestException("Le solde a déjà été versé pour cette intervention");
@@ -723,7 +723,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
         String transactionRef = genererReference("SOL");
 
         // 7. Créer ou réinitialiser le paiement
-        Payment payment;
+        PaymentProvider payment;
         if (existingPayment.isPresent() && existingPayment.get().getStatus() == PaymentStatus.FAILED) {
             // Paiement FAILED → réinitialiser pour une nouvelle tentative
             payment = existingPayment.get();
@@ -733,7 +733,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
             payment.setPaidAt(null);
         } else {
             // Nouveau paiement
-            payment = Payment.builder()
+            payment = PaymentProvider.builder()
                     .reference(transactionRef)
                     .interventionRequest(request)
                     .provider(request.getSelectedProvider())
