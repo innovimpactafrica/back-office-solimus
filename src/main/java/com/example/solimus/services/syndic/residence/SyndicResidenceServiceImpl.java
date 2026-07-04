@@ -26,8 +26,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.Year;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -52,7 +54,10 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     private final ChargeCallRepository chargeCallRepository;
     private final ChargeCallPaymentRepository chargeCallPaymentRepository;
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
+    private final SyndicWalletRepository syndicWalletRepository;
+    private final SyndicWithdrawalRequestRepository syndicWithdrawalRequestRepository;
     private final InterventionStatusHistoryRepository interventionStatusHistoryRepository;
+    private final ActivityLogRepository activityLogRepository;
     // =========================================================================
     // ÉTAPE 1 — CRÉER LA RÉSIDENCE COMPLÈTE (avec photo et contacts)
     // =========================================================================
@@ -77,8 +82,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         residence.setCountry(dto.getCountry());
         residence.setLatitude(dto.getLatitude());
         residence.setLongitude(dto.getLongitude());
-        residence.setConstructionYear(dto.getConstructionYear());
-        residence.setRenovationYear(dto.getRenovationYear());
+        residence.setConstructionDate(dto.getConstructionDate());
+        residence.setRenovationDate(dto.getRenovationDate());
         residence.setHealthStatus(ResidenceHealthStatus.EXCELLENT);
         residence.setSyndic(currentSyndic);
 
@@ -94,8 +99,6 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             for (ContactInputDTO contactDto : dto.getContacts()) {
                 ResidenceContact contact = new ResidenceContact();
                 contact.setFullName(contactDto.getFullName());
-                contact.setRole(contactDto.getRole());
-                contact.setEmail(contactDto.getEmail());
                 contact.setPhone(contactDto.getPhone());
                 contact.setResidence(saved);
                 contactRepository.save(contact);
@@ -152,11 +155,11 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         if (dto.getLongitude() != null) {
             residence.setLongitude(dto.getLongitude());
         }
-        if (dto.getConstructionYear() != null) {
-            residence.setConstructionYear(dto.getConstructionYear());
+        if (dto.getConstructionDate() != null) {
+            residence.setConstructionDate(dto.getConstructionDate());
         }
-        if (dto.getRenovationYear() != null) {
-            residence.setRenovationYear(dto.getRenovationYear());
+        if (dto.getRenovationDate() != null) {
+            residence.setRenovationDate(dto.getRenovationDate());
         }
 
         // Gestion des contacts : remplacement complet si fourni, sinon rien
@@ -168,8 +171,6 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             for (ContactInputDTO contactDto : dto.getContacts()) {
                 ResidenceContact contact = new ResidenceContact();
                 contact.setFullName(contactDto.getFullName());
-                contact.setRole(contactDto.getRole());
-                contact.setEmail(contactDto.getEmail());
                 contact.setPhone(contactDto.getPhone());
                 contact.setResidence(residence);
                 contactRepository.save(contact);
@@ -634,10 +635,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 .stream()
                 .map(contact -> ResidenceDetailDTO.KeyContactDTO.builder()
                         .fullName(contact.getFullName())
-                        .role(contact.getRole())
-                        .email(contact.getEmail())
                         .phone(contact.getPhone())
-                        .photo(contact.getPhotoUrl())
                         .build())
                 .collect(Collectors.toList());
 
@@ -647,8 +645,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 .country(residence.getCountry())
                 .latitude(residence.getLatitude() != null ? residence.getLatitude().doubleValue() : null)
                 .longitude(residence.getLongitude() != null ? residence.getLongitude().doubleValue() : null)
-                .constructionYear(residence.getConstructionYear())
-                .renovationYear(residence.getRenovationYear())
+                .constructionDate(residence.getConstructionDate())
+                .renovationDate(residence.getRenovationDate())
                 .securityLevel(securityLevel)
                 .keyContacts(keyContacts)
                 .build();
@@ -670,12 +668,36 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         // 2. Nombre total d'appartements (lots) du syndic
         long totalAppartements = propertyRepository.countByResidenceSyndicId(currentSyndic.getId());
 
-        // 3. Trésorerie globale (somme des paidAmount des ChargeCallItem)
-        // NOTE : cumul provisoire en attendant le module Wallet
-        BigDecimal tresorerieGlobale = chargeCallItemRepository.sumPaidAmountBySyndic(currentSyndic);
-        if (tresorerieGlobale == null) {
-            tresorerieGlobale = BigDecimal.ZERO;
-        }
+        // 3. Trésorerie globale basée sur le module Wallet
+        // Récupérer le wallet du syndic
+        SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId()).orElse(null);
+        Long walletId = (wallet != null) ? wallet.getId() : null;
+
+        // Calculer le solde actuel et le solde à la fin du mois précédent
+        LocalDateTime maintenant = LocalDateTime.now();
+        LocalDateTime finMoisPrecedent = maintenant.withDayOfMonth(1).minusNanos(1);
+
+        // ===== CALCUL DE LA TRÉSORERIE DISPONIBLE (le chiffre affiché maintenant) =====
+
+        // On additionne toutes les transactions du wallet (charges reçues + travaux payés) jusqu'à aujourd'hui. C'est tout l'argent qui est
+        // passé dans la caisse, entrées et sorties confondues.
+        BigDecimal totalTransactions = calculerSoldeADate(walletId, maintenant);
+
+         // On regarde combien d'argent est déjà "réservé" pour un retrait (demandé ou déjà validé). Cet argent ne doit plus compter comme disponible, même si le virement n'est pas encore parti.
+        BigDecimal totalRetraitsEnCours = (walletId != null)
+                ? syndicWithdrawalRequestRepository.sumPendingAndValidatedByWallet(walletId)
+                : BigDecimal.ZERO;
+
+        // La vraie trésorerie disponible = ce qu'il y a dans la caisse, moins ce qui est déjà réservé pour partir.
+        BigDecimal tresorerieGlobale = totalTransactions.subtract(totalRetraitsEnCours);
+
+
+        // ===== CALCUL DE LA VARIATION (le pourcentage +...% mois précédent) =====
+
+       // Ici on ne regarde QUE les transactions, sans les retraits.on veut juste savoir si l'argent qui rentre et sort
+        // a augmenté ou diminué par rapport au mois dernier — pas combien est "réservé" en ce moment.
+        BigDecimal soldePrecedent = calculerSoldeADate(walletId, finMoisPrecedent);
+        BigDecimal variationTresoreriePourcentage = calculerVariation(totalTransactions, soldePrecedent);
 
         // 4. Résidences avec impayés et pourcentage
         long residencesAvecImpayes = chargeCallItemRepository.countResidencesWithUnpaidBySyndic(
@@ -699,6 +721,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 .totalResidences(totalResidences)
                 .totalApartments(totalAppartements)
                 .globalTreasury(tresorerieGlobale)
+                .variationTresoreriePourcentage(variationTresoreriePourcentage)
                 .residencesWithUnpaid(residencesAvecImpayes)
                 .percentageResidencesWithUnpaid(pourcentageResidencesImpayees)
                 .openInterventions(interventionsOuvertes)
@@ -1064,7 +1087,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     }
 
     // =========================================================================
-    // RÉPARTITION DU BUDGET PRÉVISIONNEL PAR CATÉGORIE (ONGLET FINANCES)
+    // RÉPARTITION DES VRAIES DÉPENSES PAR CATÉGORIE (ONGLET FINANCES)
+    // Basé sur les transactions Wallet (TRAVAUX) et non sur le budget prévisionnel
     // =========================================================================
     @Override
     @Transactional(readOnly = true)
@@ -1075,106 +1099,68 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         verifyResidenceOwnership(residence);
 
         // Année courante par défaut si non fournie
-        int targetYear = (year != null) ? year : java.time.Year.now().getValue();
+        int targetYear = (year != null) ? year : Year.now().getValue();
 
-        // Récupérer le budget pour cette résidence et cette année
-        // S'il n'existe pas, on retourne une réponse vide (total à zéro, liste vide)
-        Optional<Budget> budgetOptional = budgetRepository
-                .findByResidenceIdAndAnnee(residenceId, targetYear);
+        // Récupérer toutes les transactions TRAVAUX de cette résidence pour l'année demandée
+        List<SyndicWalletTransaction> transactions = syndicWalletTransactionRepository
+                .findTravauxByResidenceAndYear(residenceId, targetYear);
 
-        if (budgetOptional.isEmpty()) {
-            // Aucun budget trouvé pour cette année
+        // Si aucune transaction trouvée, retourner une réponse vide
+        if (transactions == null || transactions.isEmpty()) {
             return ExpenseBreakdownDTO.builder()
                     .totalAmount(BigDecimal.ZERO)
                     .categories(List.of())
                     .build();
         }
+        //Sinon
+        // Regrouper les transactions par label et calculer les montants
+        // Les montants TRAVAUX sont négatifs, on utilise la valeur absolue pour afficher des dépenses positives
+        Map<String, BigDecimal> groupedAmounts = new HashMap<>();
 
-        Budget budget = budgetOptional.get();
+        for (SyndicWalletTransaction tx : transactions) {
+            String label = tx.getLabel();
+            // Valeur absolue car les dépenses TRAVAUX sont stockées négatives
+            BigDecimal amount = tx.getAmount().abs();
 
-        // Récupérer tous les postes de budget (BudgetItem) de ce budget
-        List<BudgetItem> budgetItems = budget.getItems();
-
-        // Si le budget n'a aucun poste, on retourne une réponse vide
-        if (budgetItems == null || budgetItems.isEmpty()) {
-            return ExpenseBreakdownDTO.builder()
-                    .totalAmount(budget.getBudgetTotal() != null ? budget.getBudgetTotal() : BigDecimal.ZERO)
-                    .categories(List.of())
-                    .build();
-        }
-
-        // Étape 1 : Regrouper les postes par leur libellé
-        // On utilise une Map pour accumuler les montants par libellé
-        // La clé est le libellé (String), la valeur est le montant total (BigDecimal)
-        Map<String, BigDecimal> amountsByLabel = new HashMap<>();
-
-        // On parcourt tous les postes de budget un par un
-        for (BudgetItem item : budgetItems) {
-            String label = item.getLibelle();
-            BigDecimal amount = item.getMontant();
-
-            // Si le libellé est null ou vide, on l'ignore
-            if (label == null || label.trim().isEmpty()) {
-                continue;
+            if (groupedAmounts.containsKey(label)) {
+                // Additionner au montant existant pour ce label
+                BigDecimal current = groupedAmounts.get(label);
+                groupedAmounts.put(label, current.add(amount));
+            } else {
+                // Nouveau label, initialiser avec ce montant
+                groupedAmounts.put(label, amount);
             }
-
-            // Si le montant est null, on considère que c'est zéro
-            if (amount == null) {
-                amount = BigDecimal.ZERO;
-            }
-
-            // On ajoute ce montant au total déjà accumulé pour ce libellé
-            // Si c'est la première fois qu'on voit ce libellé, on part de zéro
-            BigDecimal currentTotal = amountsByLabel.getOrDefault(label, BigDecimal.ZERO);
-            amountsByLabel.put(label, currentTotal.add(amount));
         }
 
-        // Étape 2 : Calculer le montant total du budget
-        // On peut soit additionner tous les BudgetItem, soit utiliser budgetTotal
-        // Ici on additionne les montants regroupés pour être cohérent
-        BigDecimal totalBudgetAmount = BigDecimal.ZERO;
-        for (BigDecimal amount : amountsByLabel.values()) {
-            totalBudgetAmount = totalBudgetAmount.add(amount);
+        // Calculer le montant total des dépenses
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        for (BigDecimal amount : groupedAmounts.values()) {
+            totalAmount = totalAmount.add(amount);
         }
 
-        // Si le total est zéro (cas rare mais possible), on retourne une réponse vide
-        if (totalBudgetAmount.compareTo(BigDecimal.ZERO) == 0) {
-            return ExpenseBreakdownDTO.builder()
-                    .totalAmount(BigDecimal.ZERO)
-                    .categories(List.of())
-                    .build();
-        }
-
-        // Étape 3 : Construire la liste des catégories avec leurs pourcentages
-       List<ExpenseCategoryDTO> categories = new java.util.ArrayList<>();
-
-        // On parcourt chaque libellé regroupé pour créer un DTO
-        for (Map.Entry<String, BigDecimal> entry : amountsByLabel.entrySet()) {
+        // Construire la liste des catégories avec leurs pourcentages
+        List<ExpenseCategoryDTO> categories = new ArrayList<>();
+        for (Map.Entry<String, BigDecimal> entry : groupedAmounts.entrySet()) {
             String label = entry.getKey();
             BigDecimal amount = entry.getValue();
 
-            // Calcul du pourcentage : (montant de la catégorie / total) * 100
-            // On utilise divide avec une précision de 2 décimales pour l'arrondi
-            BigDecimal percentageDecimal = amount
-                    .multiply(new java.math.BigDecimal("100"))
-                    .divide(totalBudgetAmount, 2, java.math.RoundingMode.HALF_UP);
+            // Calculer le pourcentage (éviter division par zéro)
+            Double percentage = 0.0;
+            if (totalAmount.compareTo(BigDecimal.ZERO) > 0) {
+                percentage = amount.divide(totalAmount, 4,RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(100))
+                        .doubleValue();
+            }
 
-            // On convertit en Double pour le DTO
-            Double percentage = percentageDecimal.doubleValue();
-
-            // On crée le DTO pour cette catégorie
-            ExpenseCategoryDTO categoryDTO = ExpenseCategoryDTO.builder()
+            categories.add(ExpenseCategoryDTO.builder()
                     .label(label)
                     .amount(amount)
                     .percentage(percentage)
-                    .build();
-
-            categories.add(categoryDTO);
+                    .build());
         }
 
-        // Étape 4 : Retourner le résultat final
         return ExpenseBreakdownDTO.builder()
-                .totalAmount(totalBudgetAmount)
+                .totalAmount(totalAmount)
                 .categories(categories)
                 .build();
     }
@@ -1463,22 +1449,71 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         return transactionDTOs;
     }
 
+    // =========================================================================
+    // JOURNAL D'ACTIVITÉ D'UNE RÉSIDENCE (PANNEAU ACTIVITÉ RÉCENTE)
+    // =========================================================================
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ActivityLogItemDTO> getActivityLog(Long residenceId, int page, int size, String scope) {
+
+        // Vérifier l'appartenance de la résidence au syndic
+        Residence residence = getResidenceOrThrow(residenceId);
+        verifyResidenceOwnership(residence);
+
+        // Déterminer le filtre relatedEntityType selon le scope
+        // scope=interventions → filtre sur "INTERVENTION"
+        // autre ou null → pas de filtre (tout le journal)
+        String relatedEntityType = null;
+        if ("interventions".equals(scope)) {
+            relatedEntityType = "INTERVENTION";
+        }
+
+        // Créer un Pageable pour la pagination
+        Pageable pageable = PageRequest.of(page, size);
+
+        // Récupérer les logs selon le filtre
+        Page<ActivityLog> logsPage;
+        if (relatedEntityType != null) {
+            logsPage = activityLogRepository.findByResidenceIdAndRelatedEntityTypeOrderByCreatedAtDesc(
+                    residenceId, relatedEntityType, pageable);
+        } else {
+            logsPage = activityLogRepository.findByResidenceIdOrderByCreatedAtDesc(residenceId, pageable);
+        }
+
+        // Convertir en DTOs
+        List<ActivityLogItemDTO> dtoList = new ArrayList<>();
+        for (ActivityLog log : logsPage.getContent()) {
+            // Nom complet de l'acteur (null si pas d'acteur)
+            String actorName = null;
+            if (log.getActor() != null) {
+                actorName = log.getActor().getFirstName() + " " + log.getActor().getLastName();
+            }
+
+            dtoList.add(ActivityLogItemDTO.builder()
+                    .id(log.getId())
+                    .type(log.getType())
+                    .message(log.getMessage())
+                    .detail(log.getDetail())
+                    .actorName(actorName)
+                    .createdAt(log.getCreatedAt())
+                    .build());
+        }
+
+        // Retourner une nouvelle Page avec les DTOs
+        return new PageImpl<>(dtoList, pageable, logsPage.getTotalElements());
+    }
+
     /**
      * Convertit une SyndicWalletTransaction en WalletTransactionDTO
-     * Le montant est signé : positif pour CHARGES, négatif pour TRAVAUX et RETRAIT
+     * Le montant est stocké avec son signe (positif pour entrées, négatif pour sorties)
      */
     private WalletTransactionDTO toDTO(SyndicWalletTransaction tw) {
-        BigDecimal signedAmount = switch (tw.getCategory()) {
-            case CHARGES -> tw.getAmount();
-            case TRAVAUX, RETRAIT -> tw.getAmount().negate();
-        };
-
         return WalletTransactionDTO.builder()
                 .id(tw.getId())
                 .label(tw.getLabel())
                 .reference(tw.getReference())
                 .transactionDate(tw.getTransactionDate())
-                .amount(signedAmount)
+                .amount(tw.getAmount())
                 .mode(tw.getMode())
                 .category(tw.getCategory())
                 .build();
@@ -1488,6 +1523,30 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     // =========================================================================
     // MÉTHODES PRIVÉES UTILITAIRES
     // =========================================================================
+
+    /**
+     * Calcule le solde du wallet à une date donnée
+     * Si walletId est null (pas de wallet créé), retourne ZERO
+     */
+    private BigDecimal calculerSoldeADate(Long walletId, LocalDateTime asOfDate) {
+        if (walletId == null) return BigDecimal.ZERO;
+        return syndicWalletTransactionRepository.sumTransactionsUpTo(walletId, asOfDate);
+    }
+
+    /**
+     * Calcule la variation en pourcentage entre deux montants
+     * Si le montant précédent est ZERO, retourne ZERO (évite division par zéro)
+     * Le résultat peut être négatif (baisse) ou positif (hausse)
+     */
+    private BigDecimal calculerVariation(BigDecimal actuel, BigDecimal precedent) {
+        if (precedent.compareTo(BigDecimal.ZERO) == 0) {
+            return BigDecimal.ZERO;
+        }
+        return actuel.subtract(precedent)
+                .divide(precedent, 4, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100))
+                .setScale(2,RoundingMode.HALF_UP);
+    }
 
     /**
      * Calcule le statut composite d'un lot
@@ -1691,8 +1750,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             .latitude(res.getLatitude())
             .longitude(res.getLongitude())
             .lotsCount(res.getLotsCount())
-            .constructionYear(res.getConstructionYear())
-            .renovationYear(res.getRenovationYear())
+            .constructionDate(res.getConstructionDate())
+            .renovationDate(res.getRenovationDate())
             .annualBudget(res.getAnnualBudget())
             .healthStatus(res.getHealthStatus())
             .syndicId(res.getSyndic() != null

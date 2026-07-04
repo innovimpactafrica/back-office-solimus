@@ -20,6 +20,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -49,8 +51,8 @@ public class SyndicResidenceController {
             @RequestParam String country,
             @RequestParam BigDecimal latitude,
             @RequestParam BigDecimal longitude,
-            @RequestParam(required = false) Integer constructionYear,
-            @RequestParam(required = false) Integer renovationYear,
+            @RequestParam(required = false) String constructionDate,
+            @RequestParam(required = false) String renovationDate,
             @Parameter(
                 description = "Liste des contacts clés au format JSON (optionnel)",
                 schema = @Schema(
@@ -68,6 +70,13 @@ public class SyndicResidenceController {
                     objectMapper.getTypeFactory().constructCollectionType(List.class, ContactInputDTO.class));
         }
 
+        // Parser les dates si fournies
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        LocalDate parsedConstructionDate = (constructionDate != null && !constructionDate.trim().isEmpty())
+                ? LocalDate.parse(constructionDate, formatter) : null;
+        LocalDate parsedRenovationDate = (renovationDate != null && !renovationDate.trim().isEmpty())
+                ? LocalDate.parse(renovationDate, formatter) : null;
+
         // Construire le DTO
         CreateResidenceDTO dto = CreateResidenceDTO.builder()
                 .name(name)
@@ -77,8 +86,8 @@ public class SyndicResidenceController {
                 .country(country)
                 .latitude(latitude)
                 .longitude(longitude)
-                .constructionYear(constructionYear)
-                .renovationYear(renovationYear)
+                .constructionDate(parsedConstructionDate)
+                .renovationDate(parsedRenovationDate)
                 .contacts(contacts)
                 .build();
 
@@ -186,8 +195,8 @@ public class SyndicResidenceController {
             @RequestParam(required = false) String country,
             @RequestParam(required = false) BigDecimal latitude,
             @RequestParam(required = false) BigDecimal longitude,
-            @RequestParam(required = false) Integer constructionYear,
-            @RequestParam(required = false) Integer renovationYear,
+            @RequestParam(required = false) String constructionDate,
+            @RequestParam(required = false) String renovationDate,
             @Parameter(
                 description = "Liste des contacts clés au format JSON (optionnel)",
                 schema = @Schema(
@@ -205,6 +214,13 @@ public class SyndicResidenceController {
                     objectMapper.getTypeFactory().constructCollectionType(List.class, ContactInputDTO.class));
         }
 
+        // Parser les dates si fournies
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        LocalDate parsedConstructionDate = (constructionDate != null && !constructionDate.trim().isEmpty())
+                ? LocalDate.parse(constructionDate, formatter) : null;
+        LocalDate parsedRenovationDate = (renovationDate != null && !renovationDate.trim().isEmpty())
+                ? LocalDate.parse(renovationDate, formatter) : null;
+
         // Construire le DTO
         CreateResidenceDTO dto = CreateResidenceDTO.builder()
                 .name(name)
@@ -214,8 +230,8 @@ public class SyndicResidenceController {
                 .country(country)
                 .latitude(latitude)
                 .longitude(longitude)
-                .constructionYear(constructionYear)
-                .renovationYear(renovationYear)
+                .constructionDate(parsedConstructionDate)
+                .renovationDate(parsedRenovationDate)
                 .contacts(contacts)
                 .build();
 
@@ -323,7 +339,7 @@ public class SyndicResidenceController {
         return ResponseEntity.ok(residenceService.getMonthlyPaymentsEvolution(residenceId, year));
     }
 
-    @Operation(summary = "Répartition du budget prévisionnel par catégorie (onglet Finances)", tags = {"Syndic - Résidences"})
+    @Operation(summary = "Répartition des vraies dépenses par catégorie (onglet Finances)", tags = {"Syndic - Résidences"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/finances/expenses-breakdown")
     public ResponseEntity<ExpenseBreakdownDTO> getExpensesBreakdown(
@@ -347,6 +363,18 @@ public class SyndicResidenceController {
             @PathVariable Long residenceId,
             @RequestParam(required = false, defaultValue = "5") Integer limit) {
         return ResponseEntity.ok(residenceService.getRecentWalletTransactions(residenceId, limit));
+    }
+
+    @Operation(summary = "Journal d'activité d'une résidence (panneau Activité Récente)", tags = {"Syndic - Résidences"},
+            description = "scope=interventions filtre par 'INTERVENTION' pour avoir les travaux")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/residences/{residenceId}/activity-log")
+    public ResponseEntity<Page<ActivityLogItemDTO>> getActivityLog(
+            @PathVariable Long residenceId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "5") int size,
+            @RequestParam(required = false) String scope) {
+        return ResponseEntity.ok(residenceService.getActivityLog(residenceId, page, size, scope));
     }
 
 

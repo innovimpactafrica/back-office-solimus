@@ -3,13 +3,14 @@ package com.example.solimus.services.syndic.owner;
 import com.example.solimus.dtos.syndic.owner.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
 public interface SyndicOwnerService {
 
     /** Créer un copropriétaire avec son profil et affecter les biens */
-    void addCoOwner(CreateCoOwnerDTO dto);
+    void addCoOwner(CreateCoOwnerDTO dto, MultipartFile photo);
 
     /** Lister les biens disponibles (VACANT) d'une résidence */
     List<PropertySummaryDTO> getAvailableProperties(Long residenceId);

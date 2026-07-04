@@ -10,13 +10,16 @@ import com.example.solimus.exceptions.CoOwnerAlreadyExistsException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
+
 import com.example.solimus.services.auth.ActivationCodeService;
 import com.example.solimus.services.auth.EmailService;
+import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -38,6 +41,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
     private final SyndicCoOwnerRelationRepository syndicCoOwnerRelationRepository;
     private final ActivationCodeService activationCodeService;
     private final EmailService emailService;
+    private final MinioService minioService;
 
 
     //----------------------------------------------------------------------
@@ -119,7 +123,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
     //------------------------------------------------------------------------------------------------------------------------
     @Override
     @Transactional
-    public void addCoOwner(CreateCoOwnerDTO dto) {
+    public void addCoOwner(CreateCoOwnerDTO dto, MultipartFile photo) {
 
         // Vérifications préliminaires
         // on vérifie si l'email existe déjà — si oui on retourne l'ID du copropriétaire existant
@@ -138,6 +142,12 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             );
         });
 
+        // Upload de la photo vers MinIO si fournie
+        String photoUrl = null;
+        if (photo != null && !photo.isEmpty()) {
+            photoUrl = minioService.uploadFile(photo, "co-owners");
+        }
+
         // Création du compte User
         Role role = roleRepository.findByName(ERole.ROLE_COPROPRIETAIRE)
                 .orElseThrow(() -> new ResourceNotFoundException("Rôle introuvable"));
@@ -149,7 +159,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         user.setPhone(dto.getPhone());
         user.setRole(role);
         user.setStatus(UserStatus.PENDING);
-        user.setProfilePhotoUrl(dto.getPhotoUrl());
+        user.setProfilePhotoUrl(photoUrl);
 
         User saved = userRepository.save(user);
 
@@ -161,7 +171,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         profile.setNationality(dto.getNationality());
         profile.setSecondaryPhone(dto.getSecondaryPhone());
         profile.setAddress(dto.getAddress());
-        profile.setPhotoUrl(dto.getPhotoUrl());
+        profile.setPhotoUrl(photoUrl);
         coOwnerProfileRepository.save(profile);
 
         // Créer la relation entre le syndic et le copropriétaire

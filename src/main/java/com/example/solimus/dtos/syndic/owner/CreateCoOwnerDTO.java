@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -16,6 +17,7 @@ import java.util.List;
 
 //DTO de création d'un copropriétaire
 @Data
+@Builder
 @AllArgsConstructor
 @NoArgsConstructor
 public class CreateCoOwnerDTO {
@@ -58,9 +60,6 @@ public class CreateCoOwnerDTO {
 
     /** Adresse personnelle */
     private String address;
-
-    /** Photo de profil — URL Minio après upload */
-    private String photoUrl;
 
 
     // -------------------------------------------------------------------------

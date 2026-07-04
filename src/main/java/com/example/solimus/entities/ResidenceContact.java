@@ -25,18 +25,9 @@ public class ResidenceContact {
     @Column(nullable = false)
     private String fullName;
 
-    // Fonction ou responsabilité du contact dans la résidence
-    private String role;
-
-    // Adresse email utilisée pour contacter cette personne
-    private String email;
-
     // Numéro de téléphone utilisé pour contacter cette personne
+    @Column(nullable = false)
     private String phone;
-
-    // Photo ou avatar du contact
-    @Column(name = "photo_url")
-    private String photoUrl;
 
     // Résidence à laquelle ce contact est rattaché
     @ManyToOne(fetch = FetchType.LAZY)

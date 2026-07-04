@@ -22,11 +22,13 @@ public class ResidenceDashboardStatsDTO {
     // Nombre total d'appartements (lots) dans toutes les résidences du syndic
     private Long totalApartments;
 
-    // Cumul historique des encaissements (somme des paidAmount des ChargeCallItem)
-    // NOTE : ceci est un cumul provisoire en attendant le module Wallet.
-    // Ce champ ne baisse jamais (sauf annulation de paiement).
-    // Pas de sous-texte de variation pour l'instant (pas d'historisation mensuelle).
+    // Trésorerie globale actuelle basée sur le module Wallet
+    // Somme des transactions (positives pour entrées, négatives pour sorties)
     private BigDecimal globalTreasury;
+
+    // Variation de la trésorerie en pourcentage par rapport au mois précédent
+    // Peut être négatif (ex: -12.50 pour une baisse) — le front gère l'affichage (couleur/flèche)
+    private BigDecimal variationTresoreriePourcentage;
 
     // Nombre de résidences ayant au moins un impayé (ChargeCallItem non payé)
     private Long residencesWithUnpaid;

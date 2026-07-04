@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -28,8 +29,8 @@ public class ResidenceDTO {
     private BigDecimal longitude;
     private String photoUrl;
     private Integer lotsCount;
-    private Integer constructionYear;
-    private Integer renovationYear;
+    private LocalDate constructionDate;
+    private LocalDate renovationDate;
     private BigDecimal annualBudget;
     private ResidenceHealthStatus healthStatus;
     private Long syndicId;

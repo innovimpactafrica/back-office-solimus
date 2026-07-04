@@ -9,6 +9,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -121,16 +122,16 @@ public class Residence {
     private Integer lotsCount;
 
     /**
-     * Année de construction du bâtiment.
+     * Date de construction du bâtiment.
      */
-    @Column(name = "construction_year")
-    private Integer constructionYear;
+    @Column(name = "construction_date")
+    private LocalDate constructionDate;
 
     /**
-     * Année de la dernière rénovation connue.
+     * Date de la dernière rénovation connue.
      */
-    @Column(name = "renovation_year")
-    private Integer renovationYear;
+    @Column(name = "renovation_date")
+    private LocalDate renovationDate;
 
 
     // =========================================================================

@@ -40,9 +40,8 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // Routes d'authentification publiques (Inscription, OTP, Login...)
-                        // /api/auth/me et /api/auth/logout seront protégés par le filtre
+                        // /api/auth/me sera protégé par le filtre
                         .requestMatchers("/api/auth/me/**").authenticated()
-                        .requestMatchers("/api/auth/logout").authenticated()
                         .requestMatchers("/api/auth/**").permitAll()
 
                         // Paiements (Callbacks InTouch et Bridge public pour TouchPay)

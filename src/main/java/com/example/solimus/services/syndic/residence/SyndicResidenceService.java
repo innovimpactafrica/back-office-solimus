@@ -52,6 +52,9 @@ public interface SyndicResidenceService {
     // Liste des transactions récentes du wallet (onglet Finances)
     List<WalletTransactionDTO> getRecentWalletTransactions(Long residenceId, Integer limit);
 
+    // Journal d'activité d'une résidence (panneau Activité Récente)
+    Page<ActivityLogItemDTO> getActivityLog(Long residenceId, int page, int size, String scope);
+
     // Modifier les informations générales d'une résidence (mise à jour partielle)
     void updateResidence(Long residenceId, CreateResidenceDTO dto, MultipartFile photo);
 

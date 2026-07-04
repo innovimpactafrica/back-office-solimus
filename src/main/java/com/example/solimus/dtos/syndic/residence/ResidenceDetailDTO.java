@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -22,8 +23,8 @@ public class ResidenceDetailDTO {
     private String country;
     private Double latitude;
     private Double longitude;
-    private Integer constructionYear;
-    private Integer renovationYear;
+    private LocalDate constructionDate;
+    private LocalDate renovationDate;
 
     // Champs calculés
     // Niveau de sécurité obtenu en concaténant les noms des SecurityFeature actives

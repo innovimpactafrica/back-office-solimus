@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -33,8 +34,8 @@ public class CreateResidenceDTO {
     private BigDecimal latitude;      // fourni par l'autocomplete front
     private BigDecimal longitude;
 
-    private Integer constructionYear; // "Année de construction" — année seule
-    private Integer renovationYear;   // "Année de rénovation" — année seule, optionnel
+    private LocalDate constructionDate; // Date de construction complète
+    private LocalDate renovationDate;   // Date de rénovation complète, optionnel
 
     private List<ContactInputDTO> contacts; // "Contact clé" — un ou plusieurs (bouton "+ Contact")
 }

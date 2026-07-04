@@ -7,6 +7,7 @@ import com.example.solimus.dtos.syndic.travaux.CreateInterventionRequestDTO;
 import com.example.solimus.dtos.syndic.travaux.CreateReviewDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicResidenceDTO;
 import com.example.solimus.entities.*;
+import com.example.solimus.enums.ActivityType;
 import com.example.solimus.enums.IncidentLocationType;
 import com.example.solimus.enums.InitiatedBy;
 import com.example.solimus.enums.InterventionManagementMode;
@@ -48,6 +49,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     private final EmailService emailService;
     private final NotificationService notificationService;
     private final ReviewRepository reviewRepository;
+    private final ActivityLogRepository activityLogRepository;
 
     @Value("${solimus.geolocation.search-radius-km:30.0}")
     private double searchRadiusKm;//Rayon de recherche des prestataires
@@ -221,8 +223,22 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             request.setManagementMode(InterventionManagementMode.SYNDIC);
         }
 
+        // Sauvegarder la demande pour obtenir un ID valide avant le log d'activité
+        interventionRepository.save(request);
+
         // Diffusion automatique aux prestataires proches
         notifyNearbyProviders(request, residence, specialty);
+
+        // Enregistrer l'événement dans le journal d'activité de la résidence
+        ActivityLog log = new ActivityLog();
+        log.setResidence(residence);
+        log.setType(ActivityType.INTERVENTION_REPORTED);
+        log.setRelatedEntityType("INTERVENTION");
+        log.setRelatedEntityId(request.getId());
+        log.setActor(currentSyndic);
+        log.setMessage("Nouveau signalement");
+        log.setDetail(request.getTitle());
+        activityLogRepository.save(log);
     }
 
     // =========================================================================
@@ -341,8 +357,6 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
             request.getNotifiedProviders().add(user);
         }
-
-        interventionRepository.save(request);
     }
 
     // =========================================================================

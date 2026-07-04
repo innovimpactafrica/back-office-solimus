@@ -14,7 +14,5 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class ContactInputDTO {
     private String fullName;
-    private String role;
-    private String email;
     private String phone;
 }
