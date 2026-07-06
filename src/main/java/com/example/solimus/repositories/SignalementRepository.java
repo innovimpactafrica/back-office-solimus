@@ -19,9 +19,23 @@ public interface SignalementRepository extends JpaRepository<Signalement, Long> 
 
     List<Signalement> findByResidenceId(Long residenceId);
 
-    long countByDeclaredBy(User declaredBy, Long residenceId);
+    @Query("SELECT COUNT(s) FROM Signalement s " +
+           "WHERE s.declaredBy = :declaredBy " +
+           "AND (:residenceId IS NULL OR s.residence.id = :residenceId)")
+    long countByDeclaredBy(
+            @Param("declaredBy") User declaredBy,
+            @Param("residenceId") Long residenceId
+    );
 
-    long countByDeclaredByAndStatus(User declaredBy, SignalementStatus status, Long residenceId);
+    @Query("SELECT COUNT(s) FROM Signalement s " +
+           "WHERE s.declaredBy = :declaredBy " +
+           "AND s.status = :status " +
+           "AND (:residenceId IS NULL OR s.residence.id = :residenceId)")
+    long countByDeclaredByAndStatus(
+            @Param("declaredBy") User declaredBy,
+            @Param("status") SignalementStatus status,
+            @Param("residenceId") Long residenceId
+    );
 
     @Query("SELECT s FROM Signalement s WHERE s.declaredBy = :user " +
            "AND (:residenceId IS NULL OR s.residence.id = :residenceId) " +

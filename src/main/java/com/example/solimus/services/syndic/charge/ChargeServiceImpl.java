@@ -169,8 +169,8 @@ public class ChargeServiceImpl implements ChargeService {
                 item.setCommonFacility(facility);
             }
 
-            budgetItems.add(item);
-            budgetTotal = budgetTotal.add(itemDto.getMontant());
+            budgetItems.add(item); //on regroupe les postes budgetaires
+            budgetTotal = budgetTotal.add(itemDto.getMontant()); //On cumule le total
         }
 
         budget.setBudgetTotal(budgetTotal);
