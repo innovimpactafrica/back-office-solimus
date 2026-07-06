@@ -1,4 +1,4 @@
-package com.example.solimus.services.owner;
+/**package com.example.solimus.services.owner;
 
 import com.example.solimus.dtos.meeting.*;
 import com.example.solimus.entities.*;
@@ -8,6 +8,7 @@ import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.*;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,7 +36,7 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
     public List<MeetingSummaryDTO> getMyMeetings() {
         User currentOwner = getCurrentUser();
 
-        List<com.example.solimus.entities.MeetingParticipant> participations = participantRepository.findByUserId(currentOwner.getId());
+        List<MeetingParticipant> participations = participantRepository.findByUserId(currentOwner.getId());
 
         return participations.stream()
             .map(p -> toSummaryDTO(p.getMeeting()))
@@ -62,17 +63,17 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
 
     @Override
     @Transactional(readOnly = true)
-    public org.springframework.data.domain.Page<MeetingSummaryDTO> getMeetingsByResidence(
+    public Page<MeetingSummaryDTO> getMeetingsByResidence(
             Long residenceId,
             int page,
             int size) {
         Residence residence = residenceRepository.findById(residenceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
 
-        org.springframework.data.domain.Pageable pageable =
-                org.springframework.data.domain.PageRequest.of(page, size, org.springframework.data.domain.Sort.by("meetingDate").ascending());
+        Pageable pageable =
+             PageRequest.of(page, size, Sort.by("meetingDate").ascending());
 
-        org.springframework.data.domain.Page<Meeting> meetings =
+      Page<Meeting> meetings =
                 meetingRepository.findByResidence(residence, pageable);
 
         return meetings.map(this::toSummaryDTO);
@@ -80,7 +81,7 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
 
     @Override
     @Transactional(readOnly = true)
-    public org.springframework.data.domain.Page<MeetingCalendarDayDTO> getMeetingsCalendar(
+    public Page<MeetingCalendarDayDTO> getMeetingsCalendar(
             int year,
             int month,
             int page,
@@ -121,13 +122,13 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
                 .collect(Collectors.toList());
 
         // Appliquer la pagination
-        int startIdx = (int) org.springframework.data.domain.PageRequest.of(page, size).getOffset();
+        int startIdx = (int) PageRequest.of(page, size).getOffset();
         int endIdx = Math.min(startIdx + size, calendarDays.size());
         List<MeetingCalendarDayDTO> pagedDays = calendarDays.subList(startIdx, endIdx);
 
-        return new org.springframework.data.domain.PageImpl<>(
+        return new PageImpl<>(
                 pagedDays,
-                org.springframework.data.domain.PageRequest.of(page, size),
+                PageRequest.of(page, size),
                 calendarDays.size());
     }
 
@@ -194,13 +195,11 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
             .location(meeting.getLocation())
             .type(meeting.getType())
             .status(meeting.getStatus())
-            .mode(meeting.getMode())
-            .meetingDate(meeting.getMeetingDate())
+             .meetingDate(meeting.getMeetingDate())
             .meetingStartTime(meeting.getStartTime() != null ? meeting.getStartTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) : null)
             .meetingEndTime(meeting.getEndTime() != null ? meeting.getEndTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) : null)
             .organizerName(meeting.getSyndic().getFirstName() + " " + meeting.getSyndic().getLastName())
-            .description(meeting.getDescription())
-            .participantCount(allParticipants.size())
+                       .participantCount(allParticipants.size())
             .agendaItems(agendaItems)
             .documents(documents)
             .participants(participants)
@@ -214,7 +213,7 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
      * 2. Externes avec rôle spécial (Mme Fall, M. Sow...)
      * 3. Copropriétaires ordinaires → groupés
      */
-    private List<MeetingParticipantDTO> buildParticipants(List<MeetingParticipant> all) {
+   /** private List<MeetingParticipantDTO> buildParticipants(List<MeetingParticipant> all) {
 
         List<MeetingParticipantDTO> result = new ArrayList<>();
 
@@ -269,3 +268,4 @@ public class CoOwnerMeetingServiceImpl implements CoOwnerMeetingService {
             .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
     }
 }
+*/

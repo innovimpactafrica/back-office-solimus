@@ -42,4 +42,9 @@ public interface EmailService {
      * Envoie une notification au syndic pour une nouvelle demande de travaux sur partie commune créée par un copropriétaire.
      */
     void sendSyndicInterventionNotification(String email, String syndicName, String title, String residenceName, String ownerName);
+
+    /**
+     * Envoie une notification à un copropriétaire pour un signalement résolu par le syndic.
+     */
+    void sendSignalementResoluNotification(String email, String firstName, String signalementTitle, String noteCloture);
 }

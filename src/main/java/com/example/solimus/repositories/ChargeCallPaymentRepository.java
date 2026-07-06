@@ -2,6 +2,8 @@ package com.example.solimus.repositories;
 
 import com.example.solimus.entities.ChargeCallPayment;
 import com.example.solimus.enums.PaymentStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -50,4 +52,34 @@ public interface ChargeCallPaymentRepository extends JpaRepository<ChargeCallPay
     List<Object[]> sumCompletedPaymentsByMonth(
             @Param("residenceId") Long residenceId,
             @Param("year") Integer year);
+
+    /**
+     * Somme des paiements COMPLETED par mois pour un copropriétaire, une résidence et une année
+     */
+    @Query("SELECT MONTH(p.paidAt) as month, SUM(p.amount) as total " +
+           "FROM ChargeCallPayment p " +
+           "WHERE p.status = 'COMPLETED' " +
+           "AND YEAR(p.paidAt) = :year " +
+           "AND p.chargeCallItem.chargeCall.budget.residence.id = :residenceId " +
+           "AND p.chargeCallItem.coOwner.id = :coOwnerId " +
+           "GROUP BY MONTH(p.paidAt) " +
+           "ORDER BY MONTH(p.paidAt)")
+    List<Object[]> sumCompletedPaymentsByMonthForCoOwner(
+            @Param("coOwnerId") Long coOwnerId,
+            @Param("residenceId") Long residenceId,
+            @Param("year") Integer year);
+
+    /**
+     * Paginer les paiements d'un copropriétaire, restreint au syndic connecté, avec filtre de statut
+     */
+    @Query("SELECT p FROM ChargeCallPayment p " +
+           "WHERE p.chargeCallItem.coOwner.id = :coOwnerId " +
+           "AND p.chargeCallItem.chargeCall.budget.residence.syndic.id = :syndicId " +
+           "AND (:status IS NULL OR p.status = :status) " +
+           "ORDER BY COALESCE(p.paidAt, p.createdAt) DESC")
+    Page<ChargeCallPayment> findByCoOwnerAndSyndicAndStatus(
+            @Param("coOwnerId") Long coOwnerId,
+            @Param("syndicId") Long syndicId,
+            @Param("status") String status,
+            Pageable pageable);
 }

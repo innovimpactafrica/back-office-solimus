@@ -83,7 +83,7 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
         List<Meeting> upcomingMeetings = meetingRepository
                 .findTop2ByResidenceIdAndStatusOrderByMeetingDateAsc(
                         selectedProperty.getResidence().getId(),
-                        MeetingStatus.A_VENIR
+                        MeetingStatus.UPCOMING
                 );
         List<MeetingSummaryDTO> meetingSummaries = upcomingMeetings.stream()
                 .map(this::toMeetingSummaryDTO)

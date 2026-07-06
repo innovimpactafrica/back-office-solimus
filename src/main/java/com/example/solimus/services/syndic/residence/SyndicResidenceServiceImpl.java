@@ -1,5 +1,6 @@
 package com.example.solimus.services.syndic.residence;
 
+import com.example.solimus.dtos.syndic.charge.CommonFacilitySuggestionDTO;
 import com.example.solimus.dtos.syndic.residence.*;
 import com.example.solimus.dtos.syndic.settings.FacilityTypeDTO;
 import com.example.solimus.entities.*;
@@ -240,6 +241,14 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             property.setStatus(PropertyStatus.VACANT);
         }
 
+        // Vérifier que la somme des tantièmes ne dépasse pas 100
+        BigDecimal currentSum = propertyRepository.sumTantiemesByResidenceId(residenceId);
+        BigDecimal newSum = currentSum.add(dto.getTantieme());
+        if (newSum.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new BadRequestException(
+                "La somme des tantièmes ne peut pas dépasser 100%. Actuel : " + currentSum + "%, ajouté : " + dto.getTantieme() + "%");
+        }
+
         Property saved = propertyRepository.save(property);
 
         log.info("Lot '{}' ajouté à la résidence '{}'",
@@ -282,6 +291,17 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             property.setSuperficie(dto.getSuperficie());
         }
         if (dto.getTantieme() != null) {
+            // Vérifier que la somme des tantièmes ne dépasse pas 100
+            // currentSum : somme actuelle de tous les tantièmes de la résidence (inclut l'ancien tantième de ce lot)
+            BigDecimal currentSum = propertyRepository.sumTantiemesByResidenceId(residenceId);
+            // oldTantieme : ancien tantième de ce lot avant modification (0 si jamais renseigné)
+            BigDecimal oldTantieme = property.getTantieme() != null ? property.getTantieme() : BigDecimal.ZERO;
+            // newSum : nouvelle somme = somme actuelle - ancien tantième + nouveau tantième
+            BigDecimal newSum = currentSum.subtract(oldTantieme).add(dto.getTantieme());
+            if (newSum.compareTo(BigDecimal.valueOf(100)) > 0) {
+                throw new BadRequestException(
+                    "La somme des tantièmes ne peut pas dépasser 100%. Actuel : " + currentSum + "%, nouveau : " + dto.getTantieme() + "%");
+            }
             property.setTantieme(dto.getTantieme());
         }
 
@@ -810,6 +830,22 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 filteredCards,
                 pageable,
                 filteredCards.size());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SecurityFeatureLabelDTO> getSecurityFeatures() {
+        List<SecurityFeature> features = securityFeatureRepository.findByActiveTrue();
+        List<SecurityFeatureLabelDTO> result = new ArrayList<>();
+        for (SecurityFeature feature : features) {
+            SecurityFeatureLabelDTO dto = SecurityFeatureLabelDTO.builder()
+                    .id(feature.getId())
+                    .label(feature.getLabel())
+                    .icon(feature.getIcon())
+                    .build();
+            result.add(dto);
+        }
+        return result;
     }
 
     // =========================================================================
@@ -1739,11 +1775,16 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
     // DTO simple — pour la liste
     private ResidenceDTO mapToResidenceDTO(Residence res) {
+        String presignedPhotoUrl = null;
+        if (res.getPhotoUrl() != null) {
+            presignedPhotoUrl = minioService.getPresignedDownloadUrl(res.getPhotoUrl(), 3600);
+        }
+
         return ResidenceDTO.builder()
             .id(res.getId())
             .name(res.getName())
             .description(res.getDescription())
-            .photoUrl(res.getPhotoUrl())
+            .photoUrl(presignedPhotoUrl)
             .fullAddress(res.getFullAddress())
             .city(res.getCity())
             .country(res.getCountry())
@@ -1802,6 +1843,11 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             .profilePhotoUrl(user.getProfilePhotoUrl())
             .ownedPropertiesCount(propertyRepository.countByOwnerId(user.getId()))
             .build();
+    }
+    //Signature Miniio pour retourner les images des résidences
+    private String toPresignedUrl(String url) {
+        if (url == null || url.isEmpty()) return null;
+        return minioService.getPresignedDownloadUrl(url, 3600);
     }
 
 

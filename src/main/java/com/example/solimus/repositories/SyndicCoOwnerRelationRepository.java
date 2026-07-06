@@ -43,4 +43,19 @@ public interface SyndicCoOwnerRelationRepository extends JpaRepository<SyndicOwn
            "WHERE r.syndic.id = :syndicId " +
            "AND EXISTS (SELECT 1 FROM Property p WHERE p.owner = r.coOwner)")
     Page<SyndicOwnerRelation> findCoOwnersWithPropertiesBySyndicId(@Param("syndicId") Long syndicId, Pageable pageable);
+
+    // Récupérer TOUS les copropriétaires avec biens, filtrés par search et residenceId (sans pagination)
+    // Utilisé pour le filtrage par status en mémoire avant pagination manuelle
+    @Query("SELECT r FROM SyndicOwnerRelation r " +
+           "JOIN r.coOwner co " +
+           "WHERE r.syndic.id = :syndicId " +
+           "AND EXISTS (SELECT 1 FROM Property p WHERE p.owner = co AND p.residence.syndic.id = :syndicId " +
+           "  AND (:residenceId IS NULL OR p.residence.id = :residenceId)) " +
+           "AND (:search IS NULL OR :search = '' " +
+           "  OR LOWER(co.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "  OR LOWER(co.lastName) LIKE LOWER(CONCAT('%', :search, '%')))")
+    List<SyndicOwnerRelation> findCoOwnersWithPropertiesBySyndicId(
+            @Param("syndicId") Long syndicId,
+            @Param("search") String search,
+            @Param("residenceId") Long residenceId);
 }

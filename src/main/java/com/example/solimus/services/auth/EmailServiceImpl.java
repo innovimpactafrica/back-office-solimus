@@ -239,4 +239,44 @@ public class EmailServiceImpl implements EmailService {
             log.error("Erreur lors de l'envoi de la notification au syndic {} : {}", email, e.getMessage());
         }
     }
+
+    @Override
+    public void sendSignalementResoluNotification(String email, String firstName, String signalementTitle, String noteCloture) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(mailFrom);
+            helper.setTo(email);
+            helper.setSubject("Signalement résolu - " + appName);
+
+            String safeFirstName = HtmlUtils.htmlEscape(firstName != null ? firstName : "");
+            String safeTitle = HtmlUtils.htmlEscape(signalementTitle != null ? signalementTitle : "");
+            String safeNote = HtmlUtils.htmlEscape(noteCloture != null ? noteCloture : "");
+            String safeApp = HtmlUtils.htmlEscape(appName);
+
+            String htmlBody = "<html><body style=\"font-family:sans-serif;line-height:1.6;color:#333;\">" +
+                    "<div style=\"max-width:600px;margin:auto;border:1px solid #eee;padding:20px;border-radius:10px;\">" +
+                    "<h2 style=\"color:#1a56db;\">Bonjour " + safeFirstName + ",</h2>" +
+                    "<p>Votre signalement a été traité par le syndic.</p>" +
+                    "<div style=\"background-color:#f9f9f9;padding:15px;border-left:4px solid #1a56db;margin:20px 0;\">" +
+                    "<strong>Titre :</strong> " + safeTitle + "<br>";
+
+            if (noteCloture != null && !noteCloture.trim().isEmpty()) {
+                htmlBody += "<strong>Note de clôture :</strong> " + safeNote + "<br>";
+            }
+
+            htmlBody += "</div>" +
+                    "<p>Connectez-vous à votre application pour consulter les détails.</p>" +
+                    "<p>Cordialement,<br>L'équipe <strong>" + safeApp + "</strong></p>" +
+                    "</div></body></html>";
+
+            helper.setText(htmlBody, true);
+            mailSender.send(message);
+            log.info("Notification de signalement résolu envoyée à : {}", email);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de l'envoi de la notification de signalement résolu à {} : {}", email, e.getMessage());
+        }
+    }
 }

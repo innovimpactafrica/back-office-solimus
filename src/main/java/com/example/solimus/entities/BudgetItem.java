@@ -33,4 +33,13 @@ public class BudgetItem {
 
     @Column(nullable = false)
     private BigDecimal montant;
+
+    /**
+     * Équipement commun de la résidence auquel ce poste budgétaire est éventuellement rattaché.
+     * Nullable — rempli uniquement si le syndic a sélectionné une suggestion d'autocomplétion.
+     * Si null, le poste reste un texte libre (libelle), sans lien avec un équipement précis.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "common_facility_id")
+    private CommonFacility commonFacility;
 }

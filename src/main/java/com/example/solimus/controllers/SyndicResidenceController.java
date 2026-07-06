@@ -57,7 +57,7 @@ public class SyndicResidenceController {
                 description = "Liste des contacts clés au format JSON (optionnel)",
                 schema = @Schema(
                     type = "string",
-                    example = "[{\"fullName\":\"Seydina Fall\",\"role\":\"Gardien\",\"phone\":\"+221774569909\"}]"
+                    example = "[{\"fullName\":\"Seydina Fall\",\"phone\":\"+221774569909\"}]"
                 )
             )
             @RequestPart(value = "contactsJson", required = false) String contactsJson,
@@ -260,6 +260,13 @@ public class SyndicResidenceController {
             @RequestParam(defaultValue = "0") Integer page,
             @RequestParam(defaultValue = "12") Integer size) {
         return ResponseEntity.ok(residenceService.getResidencesPaginated(search, city, status, page, size));
+    }
+
+    @Operation(summary = "Lister les options de sécurité disponibles (Étape 3)", tags = {"Syndic - Résidences"})
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/security-features")
+    public ResponseEntity<List<SecurityFeatureLabelDTO>> getSecurityFeatures() {
+        return ResponseEntity.ok(residenceService.getSecurityFeatures());
     }
 
     // =========================================================================

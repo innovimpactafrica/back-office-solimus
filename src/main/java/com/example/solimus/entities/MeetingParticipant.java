@@ -1,6 +1,6 @@
 package com.example.solimus.entities;
 
-import com.example.solimus.enums.ParticipantRole;
+import com.example.solimus.enums.MeetingParticipantRole;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -24,23 +24,24 @@ public class MeetingParticipant {
     @JoinColumn(name = "meeting_id", nullable = false)
     private Meeting meeting;
 
-    // Null si participant externe (pas un user du système)
+    /**
+     * Le copropriétaire convoqué à cette AG.
+     * Toujours renseigné — décision V1 : pas de participants externes,
+     * uniquement les copropriétaires de la résidence.
+     */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = true)
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    // Uniquement ORGANISATEUR pour le syndic
-    // Null pour tous les autres participants
-    @Enumerated(EnumType.STRING)
-    private ParticipantRole role;
 
-    // Renseigné uniquement pour les externes (Mme Fall, M. Sow...)
-    // Null si c'est un user du système
+    /**
+     * Nom externe si le participant n'est pas un utilisateur enregistré
+     */
     private String externalName;
 
-    // Rôle libre écrit par le syndic
-    // Ex: "Présidente du conseil", "Trésorier", "Responsable technique"
-    // Null si copropriétaire ordinaire sans rôle spécial
+    /**
+     * Libellé du rôle pour affichage
+     */
     private String roleLabel;
 
     @CreationTimestamp

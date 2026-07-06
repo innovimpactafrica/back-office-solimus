@@ -343,4 +343,20 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
     // (pour calculer le statut et la date de dernière maintenance des équipements)
     @Query("SELECT ir FROM InterventionRequest ir WHERE ir.commonFacility.residence.id = :residenceId")
     List<InterventionRequest> findByCommonFacilityResidenceId(@Param("residenceId") Long residenceId);
+
+    // =========================================================================
+    // DÉTAIL COPROPRIÉTAIRE — ONGLET TRAVAUX
+    // =========================================================================
+
+    // Trouver les interventions sur les appartements d'un copropriétaire
+    // (exclut les parties communes et les interventions annulées)
+    @Query("SELECT ir FROM InterventionRequest ir " +
+           "WHERE ir.locationType = 'APPARTEMENT' " +
+           "AND ir.property.owner = :owner " +
+           "AND ir.residence.syndic = :syndic " +
+           "AND ir.status != 'CANCELLED' " +
+           "ORDER BY ir.createdAt DESC")
+    List<InterventionRequest> findByPropertyOwnerAndSyndic(
+            @Param("owner") User owner,
+            @Param("syndic") User syndic);
 }

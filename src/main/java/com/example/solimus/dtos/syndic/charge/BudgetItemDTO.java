@@ -19,4 +19,6 @@ public class BudgetItemDTO {
     private Long id;
     private String libelle;
     private BigDecimal montant;
+    private Long commonFacilityId;   // null si texte libre
+    private String commonFacilityName; // null si texte libre, sinon facilityType.name
 }

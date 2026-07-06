@@ -32,6 +32,9 @@ public class ActivityLogItemDTO {
     // Nom complet de l'acteur (null si pas d'acteur)
     private String actorName;
 
+    // Photo URL de l'acteur (null si pas d'acteur)
+    private String actorPhotoUrl;
+
     // Date de création (brute, calcul relatif côté front)
     private LocalDateTime createdAt;
 }

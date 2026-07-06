@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
+
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> {
 
     // Utilisé par l'endpoint de lecture du panneau Activité Récente (prompt séparé, à venir).
@@ -20,4 +22,30 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> 
             @Param("residenceId") Long residenceId,
             @Param("relatedEntityType") String relatedEntityType,
             Pageable pageable);
+
+    // Filtrer par type d'entité liée et ID de l'entité (ex: pour l'historique d'une AG précise)
+    List<ActivityLog> findByRelatedEntityTypeAndRelatedEntityIdOrderByCreatedAtDesc(
+            String relatedEntityType,
+            Long relatedEntityId);
+
+    // =========================================================================
+    // ACTIVITÉ RÉCENTE COPROPRIÉTAIRE — RÈGLE HYBRIDE
+    // =========================================================================
+
+    // Logs où le copropriétaire est l'acteur direct
+    List<ActivityLog> findByActorIdOrderByCreatedAtDesc(Long actorId);
+
+    // Logs de type CHARGE_CALL_GENERATED pour une liste de résidences
+    @Query("SELECT a FROM ActivityLog a WHERE a.type = 'CHARGE_CALL_GENERATED' " +
+           "AND a.residence.id IN :residenceIds " +
+           "ORDER BY a.createdAt DESC")
+    List<ActivityLog> findChargeCallGeneratedByResidenceIdsOrderByCreatedAtDesc(
+            @Param("residenceIds") List<Long> residenceIds);
+
+    // Logs de type MEETING_DOCUMENT_ADDED pour une liste d'AGs
+    @Query("SELECT a FROM ActivityLog a WHERE a.type = 'MEETING_DOCUMENT_ADDED' " +
+           "AND a.relatedEntityId IN :meetingIds " +
+           "ORDER BY a.createdAt DESC")
+    List<ActivityLog> findMeetingDocumentAddedByMeetingIdsOrderByCreatedAtDesc(
+            @Param("meetingIds") List<Long> meetingIds);
 }

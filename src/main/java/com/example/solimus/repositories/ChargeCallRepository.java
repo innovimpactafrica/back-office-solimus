@@ -35,4 +35,13 @@ public interface ChargeCallRepository extends JpaRepository<ChargeCall, Long> {
            "WHERE cc.budget.residence.id = :residenceId " +
            "ORDER BY cc.year DESC, cc.periodNumber DESC")
     Optional<ChargeCall> findMostRecentByResidenceId(@Param("residenceId") Long residenceId);
+
+    /**
+     * Lister tous les appels de charges d'une résidence pour une année, triés par période
+     */
+    @Query("SELECT cc FROM ChargeCall cc " +
+           "WHERE cc.budget.residence.id = :residenceId " +
+           "AND cc.year = :year " +
+           "ORDER BY cc.periodNumber ASC")
+    List<ChargeCall> findByResidenceIdAndYear(@Param("residenceId") Long residenceId, @Param("year") Integer year);
 }

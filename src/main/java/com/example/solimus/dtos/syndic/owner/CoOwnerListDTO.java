@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
+
 //DTO pour la liste des copropriétaires du syndic connecté
 @Data
 @Builder
@@ -22,5 +24,16 @@ public class CoOwnerListDTO {
 
     private String phone;
 
-    private int propertyCount; // Nombre de propriétés du copropriétaire
+    // Nombre d'appartements (lots) du copropriétaire, restreint aux résidences du syndic
+    private int apartmentsCount;
+
+    // Nombre de résidences distinctes où le copropriétaire a des lots, restreint au syndic
+    private int residencesCount;
+
+    // Statut calculé : "A_JOUR", "RETARD", "IMPAYE"
+    private String status;
+
+    // Solde global : SUM(paidAmount) - SUM(quotePart) pour tous les ChargeCallItems
+    // Négatif = doit de l'argent, Zéro ou positif = à jour
+    private BigDecimal solde;
 }

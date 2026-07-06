@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -73,4 +74,33 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
             @Param("search") String search,
             @Param("floor") Integer floor,
             Pageable pageable);
+
+    // Trouver la date de première acquisition d'un copropriétaire chez un syndic
+    // MIN(assignedAt) restreint au syndic
+    @Query("SELECT MIN(p.assignedAt) FROM Property p " +
+           "WHERE p.owner.id = :coOwnerId " +
+           "AND p.residence.syndic.id = :syndicId " +
+           "AND p.assignedAt IS NOT NULL")
+    Optional<LocalDateTime> findFirstAcquisitionDateByCoOwnerAndSyndic(
+            @Param("coOwnerId") Long coOwnerId,
+            @Param("syndicId") Long syndicId);
+
+    // Compter les appartements (lots) d'un copropriétaire, restreint aux résidences du syndic
+    @Query("SELECT COUNT(p) FROM Property p " +
+           "WHERE p.owner.id = :coOwnerId " +
+           "AND p.residence.syndic.id = :syndicId")
+    long countApartmentsByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
+
+    // Compter les résidences distinctes d'un copropriétaire, restreint au syndic
+    @Query("SELECT COUNT(DISTINCT p.residence.id) FROM Property p " +
+           "WHERE p.owner.id = :coOwnerId " +
+           "AND p.residence.syndic.id = :syndicId")
+    long countResidencesByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
+
+    // Calculer la somme des tantièmes d'une résidence
+    @Query("SELECT COALESCE(SUM(p.tantieme), 0) FROM Property p WHERE p.residence.id = :residenceId")
+    java.math.BigDecimal sumTantiemesByResidenceId(@Param("residenceId") Long residenceId);
+
+    // Lister les biens d'un propriétaire dans les résidences d'un syndic
+    List<Property> findByOwnerIdAndResidenceSyndicId(Long ownerId, Long syndicId);
 }

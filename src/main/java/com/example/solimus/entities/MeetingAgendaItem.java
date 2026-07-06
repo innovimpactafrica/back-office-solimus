@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+//"Ordre du jour AG"
 @Entity
 @Table(name = "meeting_agenda_items")
 @Data

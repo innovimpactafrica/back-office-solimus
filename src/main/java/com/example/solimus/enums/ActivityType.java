@@ -9,5 +9,8 @@ public enum ActivityType {
     INTERVENTION_RESOLVED,  // pas encore implémenté — aucun service de transition FINISHED/FINAL_VALIDATION existant
     PROVIDER_ASSIGNED,      // branché sur SyndicServiceImpl.acceptQuote()
     PAYMENT_RECEIVED,       // à brancher une fois le service de paiement ChargeCall identifié
-    CHARGE_CALL_GENERATED   // à brancher une fois le service de génération ChargeCall identifié
+    CHARGE_CALL_GENERATED,  // à brancher une fois le service de génération ChargeCall identifié
+    MEETING_CREATED,        // branché sur SyndicMeetingServiceImpl.createMeeting()
+    MEETING_PUBLISHED,      // branché sur SyndicMeetingServiceImpl.publishMeeting()
+    MEETING_DOCUMENT_ADDED  // pas encore branché — aucun service d'ajout de document AG existant
 }

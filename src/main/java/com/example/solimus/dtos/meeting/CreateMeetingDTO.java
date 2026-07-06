@@ -1,6 +1,5 @@
 package com.example.solimus.dtos.meeting;
 
-import com.example.solimus.enums.MeetingMode;
 import com.example.solimus.enums.MeetingType;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.NotBlank;
@@ -13,6 +12,10 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
+/**
+ * DTO pour créer une nouvelle réunion.
+ * Contient les informations de base de la réunion (titre, date, lieu, etc.).
+ */
 @Data
 @Builder
 @NoArgsConstructor
@@ -34,14 +37,11 @@ public class CreateMeetingDTO {
     @NotNull(message = "L'heure de début est obligatoire")
     private LocalTime startTime;
 
-    @NotNull(message = "L'heure de fin est obligatoire")
+    // Optionnel — la maquette étape 1 n'a qu'un seul champ heure
     private LocalTime endTime;
 
     @NotBlank(message = "Le lieu est obligatoire")
     private String location;
-
-    @NotNull(message = "Le mode est obligatoire")
-    private MeetingMode mode;
 
     @NotNull(message = "L'ID de la résidence est obligatoire")
     private Long residenceId;

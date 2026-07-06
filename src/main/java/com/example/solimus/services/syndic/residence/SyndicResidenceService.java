@@ -73,6 +73,9 @@ public interface SyndicResidenceService {
     //  Étape 3 — Mettre à jour les options de sécurité d'une résidence
     void updateSecurityFeatures(Long residenceId, UpdateSecurityFeaturesDTO dto);
 
+    // Étape 3 — Lister les options de sécurité disponibles (labels)
+    List<SecurityFeatureLabelDTO> getSecurityFeatures();
+
     //  Étape 3 — Sauvegarder l'étape 3 complète (équipements + sécurité)
     void saveStep3(Long residenceId, Step3DTO dto);
 

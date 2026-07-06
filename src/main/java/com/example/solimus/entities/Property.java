@@ -25,7 +25,9 @@ import java.time.LocalDateTime;
 //
 // =============================================================================
 @Entity
-@Table(name = "properties")
+@Table(name = "properties", uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"reference", "residence_id"})
+})
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -48,6 +50,7 @@ public class Property {
     /**
      * Numéro unique du lot dans la résidence.
      * Exemple : "A103", "B204", "C22"
+     * Unique par résidence (deux résidences peuvent avoir le même numéro).
      */
     @Column(nullable = false)
     private String reference;
@@ -129,6 +132,14 @@ public class Property {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id", nullable = true)
     private User owner;
+
+    /**
+     * Date à laquelle ce lot a été affecté à son propriétaire actuel.
+     * Renseigné automatiquement au moment de l'affectation (jamais saisi manuellement).
+     * Reste null tant que le lot est VACANT.
+     */
+    @Column(name = "assigned_at")
+    private LocalDateTime assignedAt;
 
 
     // =========================================================================

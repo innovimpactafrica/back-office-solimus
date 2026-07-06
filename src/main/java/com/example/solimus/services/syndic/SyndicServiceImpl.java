@@ -900,5 +900,10 @@ public class SyndicServiceImpl implements SyndicService {
                 .collect(Collectors.toList());
     }
 
+    private String toPresignedUrl(String url) {
+        if (url == null || url.isEmpty()) return null;
+        return minioService.getPresignedDownloadUrl(url, 3600);
+    }
+
 
 }

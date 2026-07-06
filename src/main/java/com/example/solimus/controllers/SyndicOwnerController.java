@@ -1,11 +1,20 @@
 package com.example.solimus.controllers;
 
+import com.example.solimus.dtos.owner.CoOwnerDocumentItemDTO;
+import com.example.solimus.dtos.owner.CoOwnerInterventionsResponseDTO;
+import com.example.solimus.dtos.owner.CoOwnerMeetingsDTO;
 import com.example.solimus.dtos.syndic.owner.CreateCoOwnerDTO;
+import com.example.solimus.dtos.syndic.residence.ActivityLogItemDTO;
+import com.example.solimus.enums.CoOwnerDocumentCategory;
 import com.example.solimus.dtos.syndic.owner.PropertySummaryDTO;
 import com.example.solimus.dtos.syndic.owner.ResidenceSummaryDTO;
 import com.example.solimus.dtos.syndic.owner.CoOwnerListDTO;
 import com.example.solimus.dtos.syndic.owner.CoOwnerSearchResultDTO;
+import com.example.solimus.dtos.syndic.owner.CoOwnerDetailDTO;
 import com.example.solimus.dtos.syndic.owner.CoOwnerPropertyAssignmentDTO;
+import com.example.solimus.dtos.syndic.owner.CoOwnerPropertyItemDTO;
+import com.example.solimus.dtos.syndic.owner.CoOwnerFinancesDTO;
+import com.example.solimus.dtos.syndic.owner.CoOwnerPaymentItemDTO;
 import com.example.solimus.enums.Nationality;
 import com.example.solimus.enums.Title;
 import com.example.solimus.services.syndic.owner.SyndicOwnerService;
@@ -15,13 +24,13 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
+
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -48,9 +57,13 @@ public class SyndicOwnerController {
             @RequestParam String lastName,
             @RequestParam String email,
             @RequestParam String phone,
-            @RequestParam(required = false) String title,
-            @RequestParam(required = false) LocalDate birthDate,
-            @RequestParam(required = false) String nationality,
+            @Parameter(description = "Civilité")
+            @RequestParam(required = false) Title title,
+            @Parameter(description = "Date de naissance au format jj/mm/aaaa", schema = @Schema(type = "string", example = "14/05/1988"))
+            @RequestParam(required = false)
+            @DateTimeFormat(pattern = "dd/MM/yyyy") LocalDate birthDate,
+            @Parameter(description = "Nationalité")
+            @RequestParam(required = false) Nationality nationality,
             @RequestParam(required = false) String secondaryPhone,
             @RequestParam(required = false) String address,
             @Parameter(
@@ -76,9 +89,9 @@ public class SyndicOwnerController {
                 .lastName(lastName)
                 .email(email)
                 .phone(phone)
-                .title(title != null ? Title.valueOf(title.toUpperCase()) : null)
+                .title(title)
                 .birthDate(birthDate)
-                .nationality(nationality != null ? Nationality.valueOf(nationality.toUpperCase()) : null)
+                .nationality(nationality)
                 .secondaryPhone(secondaryPhone)
                 .address(address)
                 .properties(properties)
@@ -103,16 +116,95 @@ public class SyndicOwnerController {
         return ResponseEntity.ok(syndicOwnerService.getResidencesWithVacantProperties());
     }
 
-    @Operation(summary = "Lister les copropriétaires (recherche + filtre résidence + pagination)", tags = {"Syndic - Copropriétaires"})
+    @Operation(summary = "Lister les copropriétaires (recherche + filtre résidence + statut + pagination)", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners")
     public ResponseEntity<Page<CoOwnerListDTO>> getCoOwners(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Long residenceId,
-            @RequestParam(defaultValue = "0")  int page,
-            @RequestParam(defaultValue = "10") int size) {
-        PageRequest pageable = PageRequest.of(page, size, Sort.by("firstName").ascending());
-        return ResponseEntity.ok(syndicOwnerService.getCoOwners(search, residenceId, pageable));
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        return ResponseEntity.ok(syndicOwnerService.getCoOwners(search, residenceId, status, page, size));
+    }
+
+    @Operation(summary = "Détail d'un copropriétaire (en-tête + KPIs)", tags = {"Syndic - Copropriétaires"})
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/co-owners/{coOwnerId}")
+    public ResponseEntity<CoOwnerDetailDTO> getCoOwnerDetail(@PathVariable Long coOwnerId) {
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerDetail(coOwnerId));
+    }
+
+    @Operation(summary = "Lister les lots d'un copropriétaire (onglet Appartements du détail)", tags = {"Syndic - Copropriétaires"})
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/co-owners/{coOwnerId}/properties")
+    public ResponseEntity<List<CoOwnerPropertyItemDTO>> getCoOwnerProperties(@PathVariable Long coOwnerId) {
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerProperties(coOwnerId));
+    }
+
+    @Operation(summary = "Finances d'un copropriétaire pour une résidence (onglet Finances du détail)", tags = {"Syndic - Copropriétaires"})
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/co-owners/{coOwnerId}/finances")
+    public ResponseEntity<CoOwnerFinancesDTO> getCoOwnerFinances(
+            @PathVariable Long coOwnerId,
+            @RequestParam Long residenceId) {
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerFinances(coOwnerId, residenceId));
+    }
+
+    @Operation(summary = "Historique des paiements d'un copropriétaire (onglet Paiements du détail)", tags = {"Syndic - Copropriétaires"})
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/co-owners/{coOwnerId}/payments")
+    public ResponseEntity<Page<CoOwnerPaymentItemDTO>> getCoOwnerPayments(
+            @PathVariable Long coOwnerId,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerPayments(coOwnerId, status, page, size));
+    }
+
+    @Operation(summary = "Assemblées Générales d'un copropriétaire (onglet AG du détail)", tags = {"Syndic - Copropriétaires"})
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/co-owners/{coOwnerId}/meetings")
+    public ResponseEntity<CoOwnerMeetingsDTO> getCoOwnerMeetings(@PathVariable Long coOwnerId) {
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerMeetings(coOwnerId));
+    }
+
+    @Operation(summary = "Travaux d'un copropriétaire (onglet Travaux du détail)", tags = {"Syndic - Copropriétaires"})
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/co-owners/{coOwnerId}/interventions")
+    public ResponseEntity<CoOwnerInterventionsResponseDTO> getCoOwnerInterventions(@PathVariable Long coOwnerId) {
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerInterventions(coOwnerId));
+    }
+
+    @Operation(summary = "Documents d'un copropriétaire (onglet Documents du détail)", tags = {"Syndic - Copropriétaires"})
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/co-owners/{coOwnerId}/documents")
+    public ResponseEntity<List<CoOwnerDocumentItemDTO>> getCoOwnerDocuments(
+            @PathVariable Long coOwnerId,
+            @RequestParam(required = false) String category) {
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerDocuments(coOwnerId, category));
+    }
+
+    @Operation(summary = "Ajouter un document à un copropriétaire", tags = {"Syndic - Copropriétaires"})
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PostMapping(value = "/co-owners/{coOwnerId}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<CoOwnerDocumentItemDTO> addDocument(
+            @PathVariable Long coOwnerId,
+            @RequestParam CoOwnerDocumentCategory category,
+            @RequestParam String title,
+            @RequestPart("file") MultipartFile file) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(syndicOwnerService.addDocument(coOwnerId, category, title, file));
+    }
+
+    @Operation(summary = "Activité récente d'un copropriétaire (panneau Activité Récente du détail)", tags = {"Syndic - Copropriétaires"})
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/co-owners/{coOwnerId}/activity-log")
+    public ResponseEntity<Page<ActivityLogItemDTO>> getCoOwnerActivityLog(
+            @PathVariable Long coOwnerId,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "5") Integer size) {
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerActivityLog(coOwnerId, page, size));
     }
 
     @Operation(summary = "Autocomplete — rechercher un copropriétaire par nom, email ou téléphone", tags = {"Syndic - Copropriétaires"})

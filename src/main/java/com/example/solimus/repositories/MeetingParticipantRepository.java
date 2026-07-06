@@ -1,6 +1,7 @@
 package com.example.solimus.repositories;
 
 import com.example.solimus.entities.MeetingParticipant;
+import com.example.solimus.entities.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -12,4 +13,6 @@ public interface MeetingParticipantRepository extends JpaRepository<MeetingParti
     List<MeetingParticipant> findByMeetingId(Long meetingId);
 
     List<MeetingParticipant> findByUserId(Long userId);
+
+    List<MeetingParticipant> findByUser(User user);
 }

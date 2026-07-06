@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class OwnerTimelineStepDTO {
 
+    private String type;
     private String label;
 
     @JsonFormat(pattern = "dd/MM/yyyy HH:mm")

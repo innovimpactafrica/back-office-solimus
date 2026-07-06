@@ -16,15 +16,6 @@ import java.util.List;
 @Repository
 public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, Long> {
 
-    /**
-     * Lister toutes les lignes d'un appel de charges.
-     */
-    List<ChargeCallItem> findByChargeCallId(Long chargeCallId);
-
-    /**
-     * Lister toutes les lignes pour un copropriétaire.
-     */
-    List<ChargeCallItem> findByCoOwnerId(Long coOwnerId);
 
     /**
      * Lister toutes les lignes d'appel de charges pour une résidence
@@ -86,4 +77,96 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
            "JOIN cc.budget b " +
            "WHERE b.residence.id = :residenceId")
     BigDecimal sumPaidAmountByResidenceId(@Param("residenceId") Long residenceId);
+
+    // ===== CALCULS PAR COPROPRIÉTAIRE (LISTE COPROPRIÉTAIRES) =====
+
+    /**
+     * Compter les ChargeCallItems en retard pour un copropriétaire, restreint au syndic
+     * Retard = dueDate < aujourd'hui ET status != PAID
+     */
+    @Query("SELECT COUNT(cci) FROM ChargeCallItem cci " +
+           "JOIN cci.chargeCall cc " +
+           "JOIN cc.budget b " +
+           "WHERE cci.coOwner.id = :coOwnerId " +
+           "AND b.residence.syndic.id = :syndicId " +
+           "AND cc.dueDate < CURRENT_DATE " +
+           "AND cci.status != 'PAID'")
+    long countLateItemsByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
+
+    /**
+     * Calculer le solde global d'un copropriétaire, restreint au syndic
+     * Solde = SUM(paidAmount) - SUM(quotePart)
+     */
+    @Query("SELECT COALESCE(SUM(cci.paidAmount), 0) - COALESCE(SUM(cci.quotePart), 0) " +
+           "FROM ChargeCallItem cci " +
+           "JOIN cci.chargeCall cc " +
+           "JOIN cc.budget b " +
+           "WHERE cci.coOwner.id = :coOwnerId " +
+           "AND b.residence.syndic.id = :syndicId")
+    BigDecimal calculateSoldeByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
+
+    // ===== CALCULS POUR DÉTAIL COPROPRIÉTAIRE (KPIs) =====
+
+    /**
+     * Somme des paiements effectués par un copropriétaire, restreint au syndic
+     */
+    @Query("SELECT COALESCE(SUM(cci.paidAmount), 0) " +
+           "FROM ChargeCallItem cci " +
+           "JOIN cci.chargeCall cc " +
+           "JOIN cc.budget b " +
+           "WHERE cci.coOwner.id = :coOwnerId " +
+           "AND b.residence.syndic.id = :syndicId")
+    BigDecimal sumPaymentsMadeByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
+
+    /**
+     * Somme des impayés (quotePart - paidAmount) pour les lignes en retard, restreint au syndic
+     * Retard = dueDate < aujourd'hui ET status != PAID
+     */
+    @Query("SELECT COALESCE(SUM(cci.quotePart - cci.paidAmount), 0) " +
+           "FROM ChargeCallItem cci " +
+           "JOIN cci.chargeCall cc " +
+           "JOIN cc.budget b " +
+           "WHERE cci.coOwner.id = :coOwnerId " +
+           "AND b.residence.syndic.id = :syndicId " +
+           "AND cc.dueDate < CURRENT_DATE " +
+           "AND cci.status != 'PAID'")
+    BigDecimal sumUnpaidAmountByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
+
+    // ===== CALCULS PAR RÉSIDENCE POUR FINANCES COPROPRIÉTAIRE =====
+
+    /**
+     * Solde d'un copropriétaire pour une résidence
+     * Solde = SUM(paidAmount) - SUM(quotePart)
+     */
+    @Query("SELECT COALESCE(SUM(cci.paidAmount), 0) - COALESCE(SUM(cci.quotePart), 0) " +
+           "FROM ChargeCallItem cci " +
+           "JOIN cci.chargeCall cc " +
+           "JOIN cc.budget b " +
+           "WHERE cci.coOwner.id = :coOwnerId " +
+           "AND b.residence.id = :residenceId")
+    BigDecimal calculateSoldeByCoOwnerAndResidence(@Param("coOwnerId") Long coOwnerId, @Param("residenceId") Long residenceId);
+
+    /**
+     * Somme des paiements effectués par un copropriétaire pour une résidence et une année
+     */
+    @Query("SELECT COALESCE(SUM(cci.paidAmount), 0) " +
+           "FROM ChargeCallItem cci " +
+           "JOIN cci.chargeCall cc " +
+           "JOIN cc.budget b " +
+           "WHERE cci.coOwner.id = :coOwnerId " +
+           "AND b.residence.id = :residenceId " +
+           "AND cc.year = :year")
+    BigDecimal sumPaymentsMadeByCoOwnerAndResidence(@Param("coOwnerId") Long coOwnerId, @Param("residenceId") Long residenceId, @Param("year") Integer year);
+
+    /**
+     * Somme des quote-parts générées pour un copropriétaire, une résidence et une année
+     */
+    @Query("SELECT COALESCE(SUM(cci.quotePart), 0) " +
+           "FROM ChargeCallItem cci " +
+           "JOIN cci.chargeCall cc " +
+           "JOIN cc.budget b " +
+           "WHERE cci.coOwner.id = :coOwnerId " +
+           "AND b.residence.id = :residenceId " +
+           "AND cc.year = :year")
+    BigDecimal sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(@Param("coOwnerId") Long coOwnerId, @Param("residenceId") Long residenceId, @Param("year") Integer year);
 }

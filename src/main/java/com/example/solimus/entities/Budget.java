@@ -35,6 +35,9 @@ public class Budget {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(nullable = false, unique = true)
+    private String reference; // Référence unique du budget (ex: BUD-2026-123456)
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "residence_id", nullable = false)
     private Residence residence;

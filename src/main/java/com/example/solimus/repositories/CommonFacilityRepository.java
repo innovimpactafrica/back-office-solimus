@@ -39,4 +39,14 @@ public interface CommonFacilityRepository extends JpaRepository<CommonFacility, 
      */
     @Query("SELECT COUNT(cf.residence.id) FROM CommonFacility cf WHERE cf.facilityType.id = :facilityTypeId")
     int countResidenceByFacilityTypeId(@Param("facilityTypeId") Long facilityTypeId);
+
+    /**
+     * Recherche d'équipements par résidence et nom de type contenant la requête (insensible à la casse).
+     * Pour autocomplétion des postes budgétaires.
+     *
+     * @param residenceId identifiant de la résidence
+     * @param namePart partie du nom à rechercher
+     * @return liste des équipements correspondants
+     */
+    List<CommonFacility> findByResidenceIdAndFacilityTypeNameContainingIgnoreCase(Long residenceId, String namePart);
 }

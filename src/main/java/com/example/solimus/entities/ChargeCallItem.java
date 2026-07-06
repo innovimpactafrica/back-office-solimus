@@ -39,6 +39,12 @@ public class ChargeCallItem {
     @JoinColumn(name = "charge_call_id", nullable = false)
     private ChargeCall chargeCall;
 
+    /**
+     * Référence de la ligne (ex: "ACI-2025-001-123")
+     */
+    @Column(name = "reference", nullable = false, unique = true)
+    private String reference;
+
     // =========================================================================
     // COPROPRIÉTAIRE
     // =========================================================================

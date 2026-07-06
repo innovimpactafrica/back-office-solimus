@@ -7,6 +7,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * DTO pour créer un point de l'ordre du jour lors de la création d'une réunion.
+ */
 @Data
 @Builder
 @NoArgsConstructor

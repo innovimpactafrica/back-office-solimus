@@ -3,6 +3,7 @@ package com.example.solimus.services.owner;
 import com.example.solimus.dtos.meeting.MeetingCalendarDayDTO;
 import com.example.solimus.dtos.meeting.MeetingDetailDTO;
 import com.example.solimus.dtos.meeting.MeetingSummaryDTO;
+import org.springframework.data.domain.Page;
 
 import java.util.List;
 
@@ -13,13 +14,13 @@ public interface CoOwnerMeetingService {
     MeetingDetailDTO getMeetingDetail(Long meetingId);
 
     /** Liste des réunions d'une résidence triées par date (plus proche en premier) */
-    org.springframework.data.domain.Page<MeetingSummaryDTO> getMeetingsByResidence(
+   Page<MeetingSummaryDTO> getMeetingsByResidence(
             Long residenceId,
             int page,
             int size);
 
     /** Vue calendrier — réunions groupées par jour pour un mois donné */
-    org.springframework.data.domain.Page<MeetingCalendarDayDTO> getMeetingsCalendar(
+   Page<MeetingCalendarDayDTO> getMeetingsCalendar(
             int year,
             int month,
             int page,
