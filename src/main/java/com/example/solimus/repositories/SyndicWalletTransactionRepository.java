@@ -45,4 +45,6 @@ public interface SyndicWalletTransactionRepository extends JpaRepository<SyndicW
     List<SyndicWalletTransaction> findTravauxByResidenceAndYear(
             @Param("residenceId") Long residenceId,
             @Param("year") int year);
+
+
 }

@@ -1,5 +1,6 @@
 package com.example.solimus.entities;
 
+import com.example.solimus.enums.BudgetStatus;
 import com.example.solimus.enums.RepartitionMode;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -44,6 +45,13 @@ public class Budget {
 
     @Column(nullable = false)
     private Integer annee; // Ex: 2026
+
+    /**
+     * Statut du budget
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private BudgetStatus status = BudgetStatus.DRAFT;
 
     /**
      * Mode de répartition des charges entre copropriétaires.

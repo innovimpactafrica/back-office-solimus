@@ -3,6 +3,7 @@ package com.example.solimus.services.syndic.charge;
 import com.example.solimus.dtos.charge.*;
 import com.example.solimus.dtos.syndic.charge.*;
 import com.example.solimus.entities.*;
+import com.example.solimus.enums.BudgetStatus;
 import com.example.solimus.enums.ChargeFrequency;
 import com.example.solimus.enums.ExceptionalCallCategory;
 import com.example.solimus.enums.ExceptionalCallStatus;
@@ -14,12 +15,17 @@ import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +47,7 @@ public class ChargeServiceImpl implements ChargeService {
     private final ExceptionalCallRepository exceptionalCallRepository;
     private final MinioService minioService;
     private final CommonFacilityRepository commonFacilityRepository;
+    private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
 
     // ============================================================
     // 1. ÉTAPE 1  — APERÇU RÉSIDENCE
@@ -131,6 +138,14 @@ public class ChargeServiceImpl implements ChargeService {
                 });
 
         // ------------------------------------------------------------  
+        // ÉTAPE 2.3.1 — Vérifier qu'un budget ACTIF n'existe pas déjà
+        // ------------------------------------------------------------
+        budgetRepository.findByResidenceIdAndAnneeAndStatus(dto.getResidenceId(), dto.getAnnee(), "ACTIVE")
+                .ifPresent(budget -> {
+                    throw new RuntimeException("Un budget actif existe déjà pour cette résidence et cette année");
+                });
+
+        // ------------------------------------------------------------  
         // ÉTAPE 2.4 — Créer l'entité Budget
         // ------------------------------------------------------------
         Budget budget = new Budget();
@@ -139,6 +154,7 @@ public class ChargeServiceImpl implements ChargeService {
         budget.setRepartitionMode(dto.getRepartitionMode());
         budget.setSyndic(currentSyndic);
         budget.setBudgetTotal(BigDecimal.ZERO);
+        budget.setStatus(BudgetStatus.ACTIVE);
 
         // Générer la référence unique du budget (ex: BUD-2026-123456)
         String reference = "BUD-" + dto.getAnnee() + "-" + (int)(Math.random() * 900000 + 100000);
@@ -185,6 +201,106 @@ public class ChargeServiceImpl implements ChargeService {
         // ÉTAPE 2.7 — Retourner le détail complet
         // ------------------------------------------------------------
         return buildBudgetDetailDTO(savedBudget);
+    }
+
+    // ============================================================
+    // LISTE DES BUDGETS (page cartes)
+    // ============================================================
+
+    @Override
+    public BudgetListResponse getBudgetsForSyndic(int page, int size) {
+
+        // Récupère le syndic actuellement connecté
+        User currentSyndic = getCurrentUser();
+
+        // Construit la pagination : page demandée, taille demandée, tri du plus récent au plus ancien
+        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+
+        // Récupère uniquement les budgets de la page demandée (pas tous les budgets en mémoire)
+        Page<Budget> budgetPage = budgetRepository.findBySyndicId(currentSyndic.getId(), pageable);
+
+        // Compte le nombre total de budgets du syndic (toutes pages confondues)
+        Integer totalBudgets = budgetRepository.countBySyndicId(currentSyndic.getId());
+
+        // Compte le nombre de budgets ACTIVE du syndic (toutes pages confondues)
+        Integer activeBudgetsCount = budgetRepository.countBySyndicIdAndStatus(currentSyndic.getId(), BudgetStatus.ACTIVE);
+
+        // Transforme chaque Budget de la page courante en BudgetCardDTO
+        List<BudgetCardDTO> cardDtos = budgetPage.getContent().stream() // récupère la liste des budgets de la page et ouvre un flux dessus
+                .map(this::buildBudgetCard) // pour chaque budget, applique buildBudgetCard() et récupère la carte correspondante
+                .toList(); // rassemble tous les résultats dans une nouvelle liste
+
+        // Crée l'objet de réponse final
+        BudgetListResponse response = new BudgetListResponse();
+        // Renseigne le nombre total de budgets
+        response.setTotalBudgets(totalBudgets);
+        // Renseigne le nombre de budgets actifs
+        response.setActiveBudgetsCount(activeBudgetsCount);
+        // Renseigne la liste des cartes de la page courante
+        response.setBudgets(cardDtos);
+        // Renseigne le numéro de la page actuelle
+        response.setCurrentPage(page);
+        // Renseigne le nombre total de pages disponibles
+        response.setTotalPages(budgetPage.getTotalPages());
+
+        // Retourne la réponse complète
+        return response;
+    }
+
+    // ============================================================
+// DÉTAIL D'UN BUDGET AVEC KPIs (carte "Budget 2026 — Résidence X")
+// ============================================================
+    @Override
+    public BudgetOverviewDTO getBudgetOverview(Long budgetId) {
+
+        // Récupérer le budget, erreur si introuvable
+        Budget budget = budgetRepository.findById(budgetId)
+                .orElseThrow(() -> new RuntimeException("Budget non trouvé"));
+
+        // Vérifier que ce budget appartient bien au syndic connecté (sécurité — même pattern que getBudgetDetail)
+        User currentSyndic = getCurrentUser();
+        if (!budget.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à ce budget");
+        }
+
+        // Récupère toutes les transactions TRAVAUX de cette résidence pour l'année du budget
+        List<SyndicWalletTransaction> transactionsTravaux = syndicWalletTransactionRepository
+                .findTravauxByResidenceAndYear(budget.getResidence().getId(), budget.getAnnee());
+
+        // Additionne tous les montants de la liste (chaque montant est négatif en base, sortie d'argent)
+        BigDecimal depensesBrutes = transactionsTravaux.stream()
+                .map(SyndicWalletTransaction::getAmount) // récupère le montant de chaque transaction
+                .reduce(BigDecimal.ZERO, BigDecimal::add); // additionne tous les montants, en partant de 0
+
+        // On repasse en valeur positive pour l'affichage — c'est la seule donnée "réelle" calculée de la page
+        BigDecimal depensesReellesGlobal = depensesBrutes.abs();
+
+        // --- Construction du DTO principal (les 4 KPI) ---
+        BudgetOverviewDTO dto = new BudgetOverviewDTO();
+        dto.setId(budget.getId());
+        dto.setReference(budget.getReference());
+        dto.setAnnee(budget.getAnnee());
+        dto.setStatus(budget.getStatus().name());
+        dto.setResidenceName(budget.getResidence().getName());
+        dto.setBudgetTotal(budget.getBudgetTotal());
+        dto.setDepensesReellesGlobal(depensesReellesGlobal);
+
+        // Écart budgétaire = budget total - dépenses réelles globales
+        BigDecimal ecartGlobal = budget.getBudgetTotal().subtract(depensesReellesGlobal);
+        dto.setEcartBudgetaire(ecartGlobal);
+
+        // Pourcentage de consommation global (protection contre division par zéro si budgetTotal = 0)
+        dto.setConsommationPercentage(calculatePercentage(depensesReellesGlobal, budget.getBudgetTotal()));
+
+        // --- Construction du tableau des postes ---
+        // Transforme chaque BudgetItem en BudgetItemOverviewDTO
+        List<BudgetItemOverviewDTO> itemDtos = budget.getItems().stream() // ouvre un flux sur la liste des postes
+                .map(item -> buildItemOverview(item, budget.getBudgetTotal())) // transforme chaque poste en DTO
+                .toList(); // rassemble les résultats dans une nouvelle liste
+
+        dto.setItems(itemDtos);
+
+        return dto;
     }
 
     @Override
@@ -886,6 +1002,147 @@ public class ChargeServiceImpl implements ChargeService {
         return toExceptionalCallDetailDTO(saved);
     }
 
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CommonFacilitySuggestionDTO> searchCommonFacilities(Long residenceId, String q) {
+        // Récupérer la résidence
+        Residence residence = residenceRepository.findById(residenceId)
+                .orElseThrow(() -> new RuntimeException("Résidence introuvable"));
+
+        // Vérifier que le syndic est bien le propriétaire de la résidence
+        User currentSyndic = getCurrentUser();
+        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
+        }
+
+        // Récupérer les équipements communs
+        List<CommonFacility> facilities;
+        if (q == null || q.trim().isEmpty()) {
+            facilities = commonFacilityRepository.findByResidenceId(residenceId);
+        } else {
+            facilities = commonFacilityRepository.findByResidenceIdAndFacilityTypeNameContainingIgnoreCase(residenceId, q.trim());
+        }
+
+        // Mapper vers DTO
+        List<CommonFacilitySuggestionDTO> result = new ArrayList<>();
+        for (CommonFacility facility : facilities) {
+            CommonFacilitySuggestionDTO dto = CommonFacilitySuggestionDTO.builder()
+                    .id(facility.getId())
+                    .name(facility.getFacilityType().getName())
+                    .icon(facility.getFacilityType().getIcon())
+                    .build();
+            result.add(dto);
+        }
+
+        return result;
+    }
+
+    // ============================================================
+    // Méthodes Utilitaires
+    // ============================================================
+
+    // Construit une ligne du tableau des postes (montantReel = montantPrevu en V1)
+    private BudgetItemOverviewDTO buildItemOverview(BudgetItem item, BigDecimal budgetTotal) {
+        BudgetItemOverviewDTO itemDto = new BudgetItemOverviewDTO();
+        itemDto.setLibelle(item.getLibelle());
+        itemDto.setMontantPrevu(item.getMontant());
+
+        // V1 : montant réel = montant prévu (voir commentaire de justification dans le DTO)
+        itemDto.setMontantReel(item.getMontant());
+        itemDto.setEcart(BigDecimal.ZERO);
+
+        // Pourcentage du poste par rapport au budget total
+        itemDto.setPercentage(calculatePercentage(item.getMontant(), budgetTotal));
+
+        return itemDto;
+    }
+
+    // Construit la carte d'un seul budget — extrait dans sa propre méthode pour rester lisible
+    private BudgetCardDTO buildBudgetCard(Budget budget) {
+
+        // Crée le DTO de carte vide
+        BudgetCardDTO dto = new BudgetCardDTO();
+        // Renseigne l'identifiant du budget
+        dto.setId(budget.getId());
+        // Renseigne la référence (ex: BUD-2026-001)
+        dto.setReference(budget.getReference());
+        // Renseigne le statut sous forme de texte (DRAFT, ACTIVE, CLOSED)
+        dto.setStatus(budget.getStatus().name());
+        // Renseigne l'année du budget
+        dto.setAnnee(budget.getAnnee());
+        // Renseigne le nom de la résidence liée au budget
+        dto.setResidenceName(budget.getResidence().getName());
+        // Renseigne le libellé du mode de répartition (fixe en V1, un seul mode actif)
+        dto.setRepartitionModeLabel("Tantièmes");
+
+        // Récupère la liste des postes budgétaires du budget
+        List<BudgetItem> items = budget.getItems();
+        // Renseigne le nombre total de postes
+        dto.setTotalPostes(items.size());
+        // Renseigne le montant total du budget
+        dto.setBudgetTotal(budget.getBudgetTotal());
+
+        // Prend les 4 premiers postes et les transforme en aperçus
+        List<BudgetItemPreviewDTO> topItems = items.stream() // ouvre un flux sur la liste des postes
+                .limit(4) // garde uniquement les 4 premiers éléments du flux
+                .map(item -> buildItemPreview(item, budget.getBudgetTotal())) // transforme chaque poste en DTO d'aperçu
+                .toList(); // rassemble les résultats dans une nouvelle liste
+
+        // Renseigne les 4 postes affichés sur la carte
+        dto.setTopItems(topItems);
+        // Calcule combien de postes restent au-delà des 4 déjà affichés (jamais négatif)
+        dto.setAutresPostesCount(Math.max(0, items.size() - 4));
+
+        // Récupère toutes les transactions TRAVAUX de cette résidence pour l'année du budget
+        List<SyndicWalletTransaction> transactionsTravaux = syndicWalletTransactionRepository
+                .findTravauxByResidenceAndYear(budget.getResidence().getId(), budget.getAnnee());
+
+        // Additionne tous les montants de la liste (chaque montant est négatif en base, sortie d'argent)
+        BigDecimal depensesBrutes = transactionsTravaux.stream()
+                .map(SyndicWalletTransaction::getAmount) // récupère le montant de chaque transaction
+                .reduce(BigDecimal.ZERO, BigDecimal::add); // additionne tous les montants, en partant de 0
+
+        // Convertit la somme en valeur positive pour l'affichage
+        BigDecimal depensesReelles = depensesBrutes.abs();
+        // Renseigne les dépenses réelles globales du budget
+        dto.setDepensesReelles(depensesReelles);
+
+        // Calcule le pourcentage de consommation du budget (dépenses réelles / budget total)
+        int consommationPercentage = calculatePercentage(depensesReelles, budget.getBudgetTotal());
+        // Renseigne ce pourcentage dans le DTO
+        dto.setDepensesReellesPercentage(consommationPercentage);
+
+        // Retourne la carte complète
+        return dto;
+    }
+
+    // Construit un poste d'aperçu (libellé, montant, pourcentage) pour une ligne de la carte
+    private BudgetItemPreviewDTO buildItemPreview(BudgetItem item, BigDecimal budgetTotal) {
+        // Crée le DTO de poste vide
+        BudgetItemPreviewDTO itemDto = new BudgetItemPreviewDTO();
+        // Renseigne le libellé du poste
+        itemDto.setLibelle(item.getLibelle());
+        // Renseigne le montant du poste
+        itemDto.setMontant(item.getMontant());
+        // Renseigne le pourcentage du poste par rapport au budget total (sert à dessiner la barre)
+        itemDto.setPercentage(calculatePercentage(item.getMontant(), budgetTotal));
+        // Retourne le poste construit
+        return itemDto;
+    }
+
+    // Calcule un pourcentage (montant / total * 100), protégé contre la division par zéro
+    private int calculatePercentage(BigDecimal montant, BigDecimal total) {
+        // Si le total est nul ou négatif, on retourne 0 pour éviter une division par zéro
+        if (total.compareTo(BigDecimal.ZERO) <= 0) {
+            return 0;
+        }
+        // Multiplie le montant par 100, divise par le total, arrondit à l'entier le plus proche
+        return montant.multiply(BigDecimal.valueOf(100))
+                .divide(total, 0, RoundingMode.HALF_UP)
+                .intValue();
+    }
+
     /**
      * Helper method — convertit ExceptionalCall entity en ExceptionalCallDetailDTO
      * Réutilisé par createExceptionalCall, updateExceptionalCallFinancialInfo et activateExceptionalCall
@@ -941,38 +1198,5 @@ public class ChargeServiceImpl implements ChargeService {
                 .build();
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public List<CommonFacilitySuggestionDTO> searchCommonFacilities(Long residenceId, String q) {
-        // Récupérer la résidence
-        Residence residence = residenceRepository.findById(residenceId)
-                .orElseThrow(() -> new RuntimeException("Résidence introuvable"));
 
-        // Vérifier que le syndic est bien le propriétaire de la résidence
-        User currentSyndic = getCurrentUser();
-        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
-            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
-        }
-
-        // Récupérer les équipements communs
-        List<CommonFacility> facilities;
-        if (q == null || q.trim().isEmpty()) {
-            facilities = commonFacilityRepository.findByResidenceId(residenceId);
-        } else {
-            facilities = commonFacilityRepository.findByResidenceIdAndFacilityTypeNameContainingIgnoreCase(residenceId, q.trim());
-        }
-
-        // Mapper vers DTO
-        List<CommonFacilitySuggestionDTO> result = new ArrayList<>();
-        for (CommonFacility facility : facilities) {
-            CommonFacilitySuggestionDTO dto = CommonFacilitySuggestionDTO.builder()
-                    .id(facility.getId())
-                    .name(facility.getFacilityType().getName())
-                    .icon(facility.getFacilityType().getIcon())
-                    .build();
-            result.add(dto);
-        }
-
-        return result;
-    }
 }

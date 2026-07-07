@@ -28,7 +28,7 @@ public class BudgetItem {
     @JoinColumn(name = "budget_id", nullable = false)
     private Budget budget;
 
-    @Column(nullable = false)
+   
     private String libelle; // Ex: "Entretien parties communes", "Assurances"
 
     @Column(nullable = false)

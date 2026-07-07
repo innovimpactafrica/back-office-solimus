@@ -58,6 +58,25 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.createBudget(dto));
     }
 
+    @Operation(summary = "Lister les budgets", description = "Retourne la liste paginée des budgets du syndic connecté avec les totaux globaux (nombre de budgets, nombre de budgets actifs)")
+    @GetMapping("/budgets")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    public ResponseEntity<BudgetListResponse> getBudgets(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+
+        BudgetListResponse response = chargeService.getBudgetsForSyndic(page, size);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Détail d'un budget avec KPIs", description = "Retourne le détail d'un budget avec les 4 KPIs (total, dépenses réelles, écart, consommation) et le tableau des postes budgétaires")
+    @GetMapping("/budgets/{id}/overview")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    public ResponseEntity<BudgetOverviewDTO> getBudgetOverview(@PathVariable Long id) {
+        BudgetOverviewDTO overview = chargeService.getBudgetOverview(id);
+        return ResponseEntity.ok(overview);
+    }
+
     @Operation(summary = "Détail d'un budget", description = "Récupère le détail complet d'un budget avec la répartition par copropriétaire")
     @GetMapping("/{budgetId}")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")

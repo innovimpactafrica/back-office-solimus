@@ -3,12 +3,7 @@ package com.example.solimus.services.syndic.charge;
 import com.example.solimus.dtos.charge.CreateExceptionalCallDTO;
 import com.example.solimus.dtos.charge.ExceptionalCallDetailDTO;
 import com.example.solimus.dtos.charge.UpdateExceptionalCallFinancialDTO;
-import com.example.solimus.dtos.syndic.charge.BudgetDetailDTO;
-import com.example.solimus.dtos.syndic.charge.BudgetResidencePreviewDTO;
-import com.example.solimus.dtos.syndic.charge.ChargeCallPreviewDTO;
-import com.example.solimus.dtos.syndic.charge.CommonFacilitySuggestionDTO;
-import com.example.solimus.dtos.syndic.charge.CreateBudgetDTO;
-import com.example.solimus.dtos.syndic.charge.GenerateChargeCallDTO;
+import com.example.solimus.dtos.syndic.charge.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -78,4 +73,13 @@ public interface ChargeService {
      * Recherche d'équipements communs pour autocomplétion des postes budgétaires
      */
     List<CommonFacilitySuggestionDTO> searchCommonFacilities(Long residenceId, String q);
+
+    /**
+     * Retourne la liste paginée des budgets du syndic + totaux globaux (nb budgets, nb actifs)
+     */
+    BudgetListResponse getBudgetsForSyndic( int page, int size);
+
+    /** Retourne le détail complet d'un budget pour la vue "carte KPI" : budget total, dépenses réelles
+     globales, écart, consommation, et le tableau des postes (montantReel = montantPrevu en V1)*/
+    BudgetOverviewDTO getBudgetOverview(Long budgetId);
 }
