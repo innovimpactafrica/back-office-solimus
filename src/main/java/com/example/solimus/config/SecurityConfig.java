@@ -40,9 +40,8 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // Routes d'authentification publiques (Inscription, OTP, Login...)
-                        // /api/auth/me sera protégé par le filtre
-                        .requestMatchers("/api/auth/me/**").authenticated()
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/auth/me/**").authenticated() // protégé par le filtre JWT
 
                         // Paiements (Callbacks InTouch et Bridge public pour TouchPay)
                         .requestMatchers("/api/payments/bridge/**", "/api/payments/intouch/**").permitAll()
@@ -56,9 +55,12 @@ public class SecurityConfig {
                         // Documentation
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
+                        // 🔥 NOUVEAU : Accès aux endpoints Actuator réservé aux administrateurs
+                        .requestMatchers("/actuator/**").hasRole("ADMIN")
+
                         // Zones Admin : Seuls les utilisateurs avec le rôle ADMIN peuvent effectuer ces actions
                         .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN")
-                        
+
                         // Zones Syndic : Seuls les utilisateurs avec le rôle SYNDIC peuvent effectuer ces actions
                         .requestMatchers("/api/syndic/**").hasAnyAuthority("ROLE_SYNDIC")
 
@@ -77,7 +79,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(Arrays.asList(
-                "http://localhost:4200", 
+                "http://localhost:4200",
                 "http://localhost:8080",
                 "https://solimus.innovimpactdev.cloud"
         ));
