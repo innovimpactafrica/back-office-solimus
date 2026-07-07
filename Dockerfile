@@ -30,11 +30,17 @@ FROM eclipse-temurin:17-jre
 # 8. Dossier de travail
 WORKDIR /app
 
-# 9. Copie du fichier JAR généré à l'étape 1
+# 9. Installation de wget pour le healthcheck Docker
+#    (utile pour que Dockploy puisse vérifier que l'application est saine)
+RUN apt-get update && \
+    apt-get install -y wget && \
+    rm -rf /var/lib/apt/lists/*
+
+# 10. Copie du fichier JAR généré à l'étape 1
 COPY --from=build /app/target/*.jar /app/app.jar
 
-# 10. Port d'écoute
+# 11. Port d'écoute
 EXPOSE 8082
 
-# 11. Lancement de l'application avec la configuration docker
+# 12. Lancement de l'application avec la configuration docker
 ENTRYPOINT ["java", "-jar", "/app/app.jar", "--spring.config.location=classpath:/application-docker.properties"]

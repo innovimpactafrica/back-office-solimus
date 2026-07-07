@@ -13,8 +13,6 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD:-solimus_pass}
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_pass}
     ports:
-      # 3308 est le port exposé sur votre machine locale pour ne pas entrer en conflit 
-      # avec une autre base de données locale tournant déjà sur le port 3306.
       - "3308:3306"
     volumes:
       - solimus_db_data:/var/lib/mysql
@@ -24,7 +22,8 @@ services:
       timeout: 5s
       retries: 15
       start_period: 30s
-
+    networks:
+      - solimus-network
 
   # ==========================================
   # SERVICE 2 : L'APPLICATION SPRING BOOT
@@ -37,37 +36,51 @@ services:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      
-      # Configuration de la base de données pour l'app
-      DB_HOST: db
-      DB_PORT: 3306
-      DB_NAME: ${DB_NAME:-solimus}
-      DB_USER: ${DB_USER:-solimus_user}
-      DB_PASSWORD: ${DB_PASSWORD:-solimus_pass}
-      
+
+      # Connexion à la base (explicite)
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/${DB_NAME:-solimus}?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-solimus_user}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-solimus_pass}
+
+      # Dialecte MySQL forcé
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.MySQL8Dialect
+
       # Clé JWT
       JWT_SECRET: ${JWT_SECRET:-solimus-secret-key-256-bits-minimum-required-for-security-2026}
-      
+
       # Configuration Email
       MAIL_HOST: ${MAIL_HOST}
       MAIL_PORT: ${MAIL_PORT}
       MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
-      
+
       # Configuration MinIO
       MINIO_URL: ${MINIO_URL}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_BUCKET: ${MINIO_BUCKET}
-      
+
     ports:
-      # Expose le port 8086 en externe (pour éviter les conflits avec l'IDE local sur 8085)
-      # et le redirige vers le port interne 8082 configuré dans le conteneur.
       - "8086:8082"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - solimus-network
 
 # ==========================================
 # VOLUMES POUR PERSISTER LES DONNÉES
 # ==========================================
 volumes:
   solimus_db_data:
+
+# ==========================================
+# RÉSEAU DÉDIÉ POUR LA COMMUNICATION INTERNE
+# ==========================================
+networks:
+  solimus-network:
+    driver: bridge
