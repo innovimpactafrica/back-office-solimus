@@ -27,7 +27,7 @@ public interface BudgetRepository extends JpaRepository<Budget, Long> {
     /**
      * Trouver un budget actif par résidence et année.
      */
-    Optional<Budget> findByResidenceIdAndAnneeAndStatus(Long residenceId, Integer annee, String status);
+    Optional<Budget> findByResidenceIdAndAnneeAndStatus(Long residenceId, Integer annee, BudgetStatus status);
 
     /**
      * Lister tous les budgets d'une résidence.

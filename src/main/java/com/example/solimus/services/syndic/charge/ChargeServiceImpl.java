@@ -140,7 +140,7 @@ public class ChargeServiceImpl implements ChargeService {
         // ------------------------------------------------------------  
         // ÉTAPE 2.3.1 — Vérifier qu'un budget ACTIF n'existe pas déjà
         // ------------------------------------------------------------
-        budgetRepository.findByResidenceIdAndAnneeAndStatus(dto.getResidenceId(), dto.getAnnee(), "ACTIVE")
+        budgetRepository.findByResidenceIdAndAnneeAndStatus(dto.getResidenceId(), dto.getAnnee(), BudgetStatus.ACTIVE)
                 .ifPresent(budget -> {
                     throw new RuntimeException("Un budget actif existe déjà pour cette résidence et cette année");
                 });
@@ -169,7 +169,6 @@ public class ChargeServiceImpl implements ChargeService {
         for (BudgetItemInputDTO itemDto : dto.getItems()) {
             BudgetItem item = new BudgetItem();
             item.setBudget(budget);
-            item.setLibelle(itemDto.getLibelle());
             item.setMontant(itemDto.getMontant());
 
             // Si le syndic a sélectionné une suggestion d'équipement commun, la lier
@@ -183,6 +182,14 @@ public class ChargeServiceImpl implements ChargeService {
                 }
 
                 item.setCommonFacility(facility);
+                // Utiliser le nom du type d'équipement si aucun libellé n'est fourni
+                item.setLibelle(itemDto.getLibelle() != null ? itemDto.getLibelle() : facility.getFacilityType().getName());
+            } else {
+                // Si pas d'équipement commun, le libellé est obligatoire
+                if (itemDto.getLibelle() == null || itemDto.getLibelle().isBlank()) {
+                    throw new BadRequestException("Le libellé est obligatoire pour les postes sans équipement commun");
+                }
+                item.setLibelle(itemDto.getLibelle());
             }
 
             budgetItems.add(item); //on regroupe les postes budgetaires

@@ -8,9 +8,9 @@ services:
     image: mysql:8.0
     container_name: solimus-db
     environment:
-      MYSQL_DATABASE: ${DB_NAME:-solimus}
-      MYSQL_USER: ${DB_USER:-solimus_user}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-solimus_pass}
+      MYSQL_DATABASE: ${DB_NAME:-solimus_db}
+      MYSQL_USER: ${DB_USER:-solimus}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-solimus}
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_pass}
     ports:
       - "3308:3306"

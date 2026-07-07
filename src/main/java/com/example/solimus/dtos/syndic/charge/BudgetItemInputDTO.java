@@ -18,7 +18,7 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 public class BudgetItemInputDTO {
 
-    @NotBlank(message = "Le libellé du poste est obligatoire")
+    // Le libellé est obligatoire seulement si commonFacilityId n'est pas fourni
     private String libelle;
 
     @NotNull(message = "Le montant est obligatoire")
