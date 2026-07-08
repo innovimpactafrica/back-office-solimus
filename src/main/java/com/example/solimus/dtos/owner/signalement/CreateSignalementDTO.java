@@ -11,30 +11,31 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+//DTO création signalement côté owner
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class CreateSignalementDTO {
 
+    @NotBlank(message = "Le titre est obligatoire")
+    private String title;
+
+    @NotBlank(message = "La description est obligatoire")
+    private String description;
+
     @NotNull(message = "La résidence est obligatoire")
     private Long residenceId;
-
-    @NotNull(message = "Le type de localisation est obligatoire")
-    private IncidentLocationType locationType;
 
     private Long propertyId;
 
     private Long commonFacilityId;
 
-    @NotBlank(message = "Le titre est obligatoire")
-    private String title;
+    @NotNull(message = "Le type de localisation est obligatoire")
+    private IncidentLocationType locationType;
 
     @NotNull(message = "Le niveau d'urgence est obligatoire")
     private UrgencyLevel urgencyLevel;
-
-    @NotBlank(message = "La description est obligatoire")
-    private String description;
 
     private List<String> photoUrls;
 }

@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -43,6 +44,9 @@ public class CommonFacilityDetailDTO {
 
     // Date de la dernière maintenance
     private LocalDate lastMaintenanceDate;
+
+    // Dans CommonFacilityDetailDTO
+    private BigDecimal budgetAmount; // Montant du poste budgétaire lié à cet équipement (le plus récent, null si aucun)
 
     // Historique des interventions (4 plus récentes)
     private List<InterventionHistoryItemDTO> interventionHistory;

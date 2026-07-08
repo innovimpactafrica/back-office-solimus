@@ -202,4 +202,13 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
            "AND i.remainingAmount > :threshold")
     List<ChargeCallItem> findByChargeCallBudgetSyndicIdAndRemainingAmountGreaterThan(
             @Param("syndicId") Long syndicId, @Param("threshold") BigDecimal threshold);
+
+    // Récupère le nombre de jours de retard le plus important parmi tous les ChargeCallItem non soldés
+    // de ce copropriétaire, restreint aux résidences de ce syndic. Retourne null si aucun item en retard.
+    @Query("SELECT MAX(DATEDIFF(CURRENT_DATE, i.chargeCall.dueDate)) FROM ChargeCallItem i " +
+            "WHERE i.coOwner.id = :coOwnerId " +
+            "AND i.chargeCall.budget.syndic.id = :syndicId " +
+            "AND i.paidAmount < i.quotePart " +
+            "AND i.chargeCall.dueDate < CURRENT_DATE")
+    Integer findMaxDaysLateByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
 }

@@ -1,7 +1,6 @@
 package com.example.solimus.entities;
 
 import com.example.solimus.enums.IncidentLocationType;
-import com.example.solimus.enums.SignalementEventType;
 import com.example.solimus.enums.SignalementStatus;
 import com.example.solimus.enums.UrgencyLevel;
 import jakarta.persistence.*;
@@ -14,77 +13,93 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+// ============================================================
+// Signalement
+// Représente un signalement créé par un copropriétaire, adressé au syndic.
+// Peut être résolu directement, ou transformé en InterventionRequest si des travaux sont nécessaires.
+// ============================================================
 @Entity
 @Table(name = "signalements")
 @Data
-@NoArgsConstructor
 @AllArgsConstructor
+@NoArgsConstructor
 public class Signalement {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String reference; // ex: SIG-2025-001
+    @Column(name = "reference", unique = true)
+    private String reference; // Référence unique, ex: SIG-2026-001
 
-    private String title;
+    @Column(nullable = false)
+    private String title; // Titre court, ex: "Bruit excessif"
 
     @Column(columnDefinition = "TEXT")
-    private String description;
+    private String description; // Description détaillée du problème
 
     @Enumerated(EnumType.STRING)
-    private SignalementStatus status; // EN_ATTENTE, EN_TRAVAUX, TRAITE
+    @Column(nullable = false)
+    private SignalementStatus status;
 
     @Enumerated(EnumType.STRING)
-    private UrgencyLevel urgencyLevel; // réutilisé depuis le module Travaux
+    @Column(name = "urgency_level", nullable = false)
+    private UrgencyLevel urgencyLevel;
 
     @Enumerated(EnumType.STRING)
-    private IncidentLocationType locationType; // réutilisé depuis le module Travaux
+    @Column(name = "location_type", nullable = false)
+    private IncidentLocationType locationType; // Réutilisé depuis le module Travaux
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "property_id")
+    private Property property; // Rempli si APPARTEMENT
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "common_facility_id")
+    private CommonFacility commonFacility; // Rempli si PARTIE_COMMUNE
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "residence_id", nullable = false)
     private Residence residence;
 
-    @ManyToOne
-    private Property property; // rempli si APPARTEMENT
-
-    @ManyToOne
-    private CommonFacility commonFacility; // rempli si PARTIE_COMMUNE
-
-    @ManyToOne
-    private User declaredBy; // le copropriétaire
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id", nullable = false)
+    private User owner; // Copropriétaire qui a créé le signalement
 
     @ElementCollection
+    @CollectionTable(name = "signalement_photos", joinColumns = @JoinColumn(name = "signalement_id"))
+    @Column(name = "photo_url")
     private List<String> photoUrls = new ArrayList<>();
 
-    @ManyToOne
-    private InterventionRequest interventionRequest; // rempli si transformé en travaux
+    // Note laissée par le syndic à la clôture (si résolu sans travaux)
+    @Column(name = "closing_note", columnDefinition = "TEXT")
+    private String closingNote;
 
-    @Column(columnDefinition = "TEXT")
-    private String noteCloture; // note de clôture lors de la résolution sans travaux
+    // Lien vers l'intervention créée si le signalement a été transformé en travaux
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "linked_intervention_id")
+    private InterventionRequest linkedIntervention;
 
     @OneToMany(mappedBy = "signalement", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<SignalementHistorique> historique = new ArrayList<>();
+    private List<SignalementStatusHistory> history = new ArrayList<>();
 
     @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
-    public void addHistorique(SignalementEventType type, String commentaire, User auteur) {
-        this.status = mapEventToStatus(type);
+    @Column(name = "closed_at")
+    private LocalDateTime closedAt;
 
-        SignalementHistorique record = new SignalementHistorique();
+    // Helper pour tracer un changement de statut, même pattern que InterventionRequest
+    public void addStatusHistory(SignalementStatus newStatus, User user, String note) {
+        this.status = newStatus;
+
+        SignalementStatusHistory record = new SignalementStatusHistory();
         record.setSignalement(this);
-        record.setTypeEvenement(type);
-        record.setCommentaire(commentaire);
-        record.setAuteur(auteur);
+        record.setStatus(newStatus);
+        record.setChangedBy(user);
+        record.setNote(note);
 
-        this.historique.add(record);
-    }
-
-    private SignalementStatus mapEventToStatus(SignalementEventType type) {
-        return switch (type) {
-            case CREATION -> SignalementStatus.PENDING;
-            case TRANSFORME_EN_TRAVAUX -> SignalementStatus.IN_TRAVAUX;
-            case RESOLU_SANS_TRAVAUX, TRAVAUX_TERMINES -> SignalementStatus.RESOLVED;
-        };
+        this.history.add(record);
     }
 }

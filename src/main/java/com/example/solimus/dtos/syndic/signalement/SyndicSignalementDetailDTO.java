@@ -1,6 +1,6 @@
 package com.example.solimus.dtos.syndic.signalement;
 
-import com.example.solimus.dtos.owner.signalement.SignalementTimelineStepDTO;
+
 import com.example.solimus.enums.IncidentLocationType;
 import com.example.solimus.enums.SignalementStatus;
 import com.example.solimus.enums.UrgencyLevel;
@@ -33,5 +33,5 @@ public class SyndicSignalementDetailDTO {
     private String description;
     private List<String> photoUrls;
     private LocalDateTime createdAt;
-    private List<SignalementTimelineStepDTO> historique;
+
 }

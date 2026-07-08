@@ -99,13 +99,13 @@ public class SyndicResidenceController {
     // ÉTAPE 2 — LOTS
     // =========================================================================
 
-    @Operation(summary = "Ajouter un lot/appartement (Étape 2)", tags = {"Syndic - Résidences"})
+    @Operation(summary = "Ajouter un ou plusieurs lots/appartements (Étape 2)", tags = {"Syndic - Résidences"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/residences/{id}/properties")
-    public ResponseEntity<PropertyDTO> addProperty(
+    public ResponseEntity<List<PropertyDTO>> addProperties(
             @PathVariable Long id,
-            @RequestBody @Valid AddPropertyDTO dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(residenceService.addProperty(id, dto));
+            @RequestBody @Valid List<AddPropertyDTO> properties) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(residenceService.addProperties(id, properties));
     }
 
     @Operation(summary = "Modifier un lot/appartement (Étape 2)", tags = {"Syndic - Résidences"})

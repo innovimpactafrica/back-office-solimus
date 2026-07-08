@@ -14,7 +14,11 @@ import com.example.solimus.dtos.syndic.residence.CommonFacilityDTO;
 import com.example.solimus.dtos.syndic.residence.PropertyDTO;
 import com.example.solimus.dtos.syndic.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
+import com.example.solimus.enums.IncidentLocationType;
+import com.example.solimus.enums.InterventionManagementMode;
 import com.example.solimus.enums.InterventionStatus;
+import com.example.solimus.enums.UrgencyLevel;
+import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.owner.travaux.ownerTraveauxService;
 import com.example.solimus.services.syndic.settings.SyndicSettingsService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,16 +28,13 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -44,6 +45,7 @@ public class OwnerTravauxController {
 
     private final SyndicSettingsService syndicParametreService;
     private final ownerTraveauxService ownerTraveauxService;
+    private final MinioService minioService;
 
     @Operation(summary = "Lister toutes les spécialités disponibles")
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
@@ -73,14 +75,47 @@ public class OwnerTravauxController {
         return ResponseEntity.ok(ownerTraveauxService.getMyPropertiesByResidence(residenceId));
     }
 
-    @Operation(summary = "Créer une demande d'intervention")
+    @Operation(summary = "Créer une demande d'intervention (copropriétaire)")
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
-    @PostMapping("/interventions")
-    public ResponseEntity<Void> createIntervention(@Valid @RequestBody CreateOwnerInterventionRequestDTO dto) {
+    @PostMapping(value = "/interventions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Void> createIntervention(
+            @RequestParam String title,
+            @RequestParam String description,
+            @RequestParam Long residenceId,
+            @RequestParam(required = false) Long propertyId,
+            @RequestParam(required = false) Long commonFacilityId,
+            @RequestParam Long specialtyId,
+            @RequestParam IncidentLocationType locationType,
+            @RequestParam(required = false) InterventionManagementMode managementMode,
+            @RequestParam UrgencyLevel urgencyLevel,
+            @RequestPart(value = "photos", required = false) List<MultipartFile> photos) {
+
+        // Upload chaque photo vers MinIO et récupère leurs URLs
+        List<String> photoUrls = new ArrayList<>();
+        if (photos != null) {
+            for (MultipartFile photo : photos) {
+                String url = minioService.uploadFile(photo, "interventions");
+                photoUrls.add(url);
+            }
+        }
+
+        // Construit le DTO à partir des paramètres reçus, pour la couche service
+        CreateOwnerInterventionRequestDTO dto = CreateOwnerInterventionRequestDTO.builder()
+                .title(title)
+                .description(description)
+                .residenceId(residenceId)
+                .propertyId(propertyId)
+                .commonFacilityId(commonFacilityId)
+                .specialtyId(specialtyId)
+                .locationType(locationType)
+                .managementMode(managementMode)
+                .urgencyLevel(urgencyLevel)
+                .photoUrls(photoUrls)
+                .build();
+
         ownerTraveauxService.createIntervention(dto);
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
-
     @Operation(summary = "Lister mes demandes de travaux (recherche + filtres + pagination)")
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/interventions")

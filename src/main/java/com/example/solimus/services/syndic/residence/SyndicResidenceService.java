@@ -14,8 +14,8 @@ public interface SyndicResidenceService {
     // Retourne l'ID de la résidence créée pour les étapes suivantes
     ResidenceDTO createResidenceComplete(CreateResidenceDTO dto, MultipartFile photo);
 
-    // Étape 2 — Ajouter un lot/appartement à la résidence
-    PropertyDTO addProperty(Long residenceId, AddPropertyDTO dto);
+    // Étape 2 — Ajouter plusieurs lots/appartements à la résidence
+    List<PropertyDTO> addProperties(Long residenceId, List<AddPropertyDTO> dtos);
 
     // Étape 2 — Modifier un lot/appartement
     PropertyDTO updateProperty(Long residenceId, Long propertyId, UpdatePropertyDTO dto);

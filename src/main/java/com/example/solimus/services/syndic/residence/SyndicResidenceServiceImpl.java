@@ -59,6 +59,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     private final SyndicWithdrawalRequestRepository syndicWithdrawalRequestRepository;
     private final InterventionStatusHistoryRepository interventionStatusHistoryRepository;
     private final ActivityLogRepository activityLogRepository;
+    private final BudgetItemRepository budgetItemRepository;
+
     // =========================================================================
     // ÉTAPE 1 — CRÉER LA RÉSIDENCE COMPLÈTE (avec photo et contacts)
     // =========================================================================
@@ -191,12 +193,13 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 dto.getContacts() != null ? dto.getContacts().size() : "aucun");
     }
 
+
     // =========================================================================
-    // ÉTAPE 2 — AJOUTER UN LOT / APPARTEMENT à une résidence géré par le syndic
-    // =========================================================================
+    // ÉTAPE 2 — AJOUTER PLUSIEURS LOTS / APPARTEMENTS à une résidence gérée par le syndic
+   // =========================================================================
     @Override
     @Transactional
-    public PropertyDTO addProperty(Long residenceId, AddPropertyDTO dto) {
+    public List<PropertyDTO> addProperties(Long residenceId, List<AddPropertyDTO> dtos) {
 
         // Récupère une résidence ou lève une exception si introuvable
         Residence residence = getResidenceOrThrow(residenceId);
@@ -204,59 +207,73 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         // Vérifie que la résidence appartient au syndic connecté
         verifyResidenceOwnership(residence);
 
-        Property property = new Property();
-        property.setReference(dto.getReference());
-        property.setBloc(dto.getBloc());
-        property.setFloor(dto.getFloor());
-        property.setSuperficie(dto.getSuperficie());
-        property.setTantieme(dto.getTantieme());
-        property.setResidence(residence);
-
-        // Récupérer le type de bien
-        PropertyType propertyType = propertyTypeRepository.findById(dto.getPropertyTypeId())
-                .orElseThrow(() -> new ResourceNotFoundException("Type de bien introuvable"));
-        property.setTypeBien(propertyType);
-
-        // Assigner un propriétaire si fourni et calculer le statut
-        if (dto.getOwnerId() != null) {
-            User owner = userRepository.findById(dto.getOwnerId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                    "Copropriétaire introuvable"));
-
-            // Vérifier que c'est bien un copropriétaire
-            if (!owner.getRole().getName().equals(ERole.ROLE_COPROPRIETAIRE)) {
-                throw new BadRequestException(
-                    "Seul un copropriétaire peut être propriétaire d'un lot");
-            }
-
-            // Vérifier que le compte est actif
-            if (owner.getStatus() != UserStatus.ACTIVE) {
-                throw new BadRequestException(
-                    "Le copropriétaire doit avoir un compte actif");
-            }
-
-            property.setOwner(owner);
-            property.setStatus(PropertyStatus.OCCUPE);
-        } else {
-            property.setStatus(PropertyStatus.VACANT);
-        }
-
-        // Vérifier que la somme des tantièmes ne dépasse pas 100
+        // Récupère la somme actuelle des tantièmes déjà présents pour cette résidence
         BigDecimal currentSum = propertyRepository.sumTantiemesByResidenceId(residenceId);
-        BigDecimal newSum = currentSum.add(dto.getTantieme());
-        if (newSum.compareTo(BigDecimal.valueOf(100)) > 0) {
-            throw new BadRequestException(
-                "La somme des tantièmes ne peut pas dépasser 100%. Actuel : " + currentSum + "%, ajouté : " + dto.getTantieme() + "%");
+
+        // Additionne les tantièmes de tous les nouveaux lots de la liste, pour vérifier la limite globale avant d'insérer quoi que ce soit
+        BigDecimal totalNewTantiemes = BigDecimal.ZERO;
+        for (AddPropertyDTO dto : dtos) {
+            totalNewTantiemes = totalNewTantiemes.add(dto.getTantieme());
         }
 
-        Property saved = propertyRepository.save(property);
+        BigDecimal projectedSum = currentSum.add(totalNewTantiemes);
+        if (projectedSum.compareTo(BigDecimal.valueOf(100)) > 0) {
+            throw new BadRequestException(
+                    "La somme des tantièmes ne peut pas dépasser 100%. Actuel : " + currentSum
+                            + "%, total à ajouter : " + totalNewTantiemes + "%");
+        }
 
-        log.info("Lot '{}' ajouté à la résidence '{}'",
-            saved.getReference(), residence.getName());
+        // Construit chaque Property à partir de son DTO
+        List<Property> propertiesToSave = new ArrayList<>();
+        for (AddPropertyDTO dto : dtos) {
 
-        return mapToPropertyDTO(saved);
+            Property property = new Property();
+            property.setReference(dto.getReference());
+            property.setBloc(dto.getBloc());
+            property.setFloor(dto.getFloor());
+            property.setSuperficie(dto.getSuperficie());
+            property.setTantieme(dto.getTantieme());
+            property.setResidence(residence);
+
+            // Récupérer le type de bien
+            PropertyType propertyType = propertyTypeRepository.findById(dto.getPropertyTypeId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Type de bien introuvable"));
+            property.setTypeBien(propertyType);
+
+            // Assigner un propriétaire si fourni et calculer le statut
+            if (dto.getOwnerId() != null) {
+                User owner = userRepository.findById(dto.getOwnerId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
+
+                // Vérifier que c'est bien un copropriétaire
+                if (!owner.getRole().getName().equals(ERole.ROLE_COPROPRIETAIRE)) {
+                    throw new BadRequestException("Seul un copropriétaire peut être propriétaire d'un lot");
+                }
+
+                // Vérifier que le compte est actif
+                if (owner.getStatus() != UserStatus.ACTIVE) {
+                    throw new BadRequestException("Le copropriétaire doit avoir un compte actif");
+                }
+
+                property.setOwner(owner);
+                property.setStatus(PropertyStatus.OCCUPE);
+            } else {
+                property.setStatus(PropertyStatus.VACANT);
+            }
+
+            propertiesToSave.add(property);
+        }
+
+        // Sauvegarde tous les lots en une seule opération
+        List<Property> savedProperties = propertyRepository.saveAll(propertiesToSave);
+
+        log.info("{} lot(s) ajouté(s) à la résidence '{}'", savedProperties.size(), residence.getName());
+
+        // Transforme chaque Property sauvegardée en DTO de réponse
+        return savedProperties.stream()
+                .map(this::mapToPropertyDTO)
+                .toList();
     }
-
     // =========================================================================
     // ÉTAPE 2 — MODIFIER UN LOT / APPARTEMENT
     // =========================================================================
@@ -1048,6 +1065,12 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         // Calculer la date de dernière maintenance (réutiliser la méthode existante)
         LocalDate lastMaintenanceDate = calculateLastMaintenanceDate(facilityInterventions);
 
+        // Récupérer le poste budgétaire le plus récent lié à cet équipement, s'il existe
+        Optional<BudgetItem> linkedBudgetItem = budgetItemRepository
+                .findFirstByCommonFacilityIdOrderByBudgetAnneeDesc(facilityId);
+
+        BigDecimal budgetAmount = linkedBudgetItem.map(BudgetItem::getMontant).orElse(BigDecimal.ZERO);
+
         // Récupérer les 4 interventions les plus récentes pour l'historique
         Pageable pageable = PageRequest.of(0, 4);
         List<InterventionRequest> recentInterventions = interventionRequestRepository
@@ -1079,6 +1102,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 .status(status)
                 .lastMaintenanceDate(lastMaintenanceDate)
                 .interventionHistory(interventionHistory)
+                .budgetAmount(budgetAmount)
                 .build();
     }
 

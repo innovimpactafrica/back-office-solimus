@@ -1,6 +1,6 @@
 package com.example.solimus.entities;
 
-import com.example.solimus.enums.SignalementEventType;
+import com.example.solimus.enums.SignalementStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -10,11 +10,11 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "signalement_historique")
+@Table(name = "signalement_status_history")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class SignalementHistorique {
+public class SignalementStatusHistory {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -25,16 +25,17 @@ public class SignalementHistorique {
     private Signalement signalement;
 
     @Enumerated(EnumType.STRING)
-    private SignalementEventType typeEvenement;
-
-    @Column(columnDefinition = "TEXT")
-    private String commentaire;
+    @Column(nullable = false)
+    private SignalementStatus status;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "auteur_id")
-    private User auteur;
+    @JoinColumn(name = "changed_by_id")
+    private User changedBy;
+
+    @Column(columnDefinition = "TEXT")
+    private String note;
 
     @CreationTimestamp
-    @Column(updatable = false)
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 }

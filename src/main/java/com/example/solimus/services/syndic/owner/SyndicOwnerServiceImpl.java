@@ -885,17 +885,18 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         // Calculer les métriques de base (réutilisées de la liste)
         long residencesCount = propertyRepository
                 .countResidencesByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
-        long nbEnRetard = chargeCallItemRepository
-                .countLateItemsByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
+        // Récupère le nombre de jours de retard le plus important parmi tous ses items impayés
+        Integer maxDaysLate = chargeCallItemRepository
+                .findMaxDaysLateByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
 
-        // Statut
+       // Applique la même logique de statut que le reste de l'application (Paiements/Impayés)
         String status;
-        if (nbEnRetard == 0) {
+        if (maxDaysLate == null || maxDaysLate <= 0) {
             status = "A_JOUR";
-        } else if (nbEnRetard == 1) {
+        } else if (maxDaysLate <= 30) {
             status = "RETARD";
         } else {
-            status = "IMPAYE";
+            status = "CRITIQUE";
         }
 
         // Calculer annualCharges (basé sur le budget annuel et tantièmes)
@@ -1007,22 +1008,22 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         long residencesCount = propertyRepository
                 .countResidencesByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
 
-        // Compter les ChargeCallItems en retard pour déterminer le statut
-        long nbEnRetard = chargeCallItemRepository
-                .countLateItemsByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
+        // Récupère le nombre de jours de retard le plus important parmi tous ses items impayés
+        Integer maxDaysLate = chargeCallItemRepository
+                .findMaxDaysLateByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
 
-        // Appliquer la règle de statut : 0 = A_JOUR, 1 = RETARD, >1 = IMPAYE
+        // Applique la même logique de statut que le reste de l'application (Paiements/Impayés)
         String status;
-        if (nbEnRetard == 0) {
+        if (maxDaysLate == null || maxDaysLate <= 0) {
             status = "A_JOUR";
-        } else if (nbEnRetard == 1) {
+        } else if (maxDaysLate <= 30) {
             status = "RETARD";
         } else {
-            status = "IMPAYE";
+            status = "CRITIQUE";
         }
 
         // Calculer le solde global : SUM(paidAmount) - SUM(quotePart)
-        // Négatif = doit de l'argent, Zéro = il doint pas de l'argent
+        // Négatif = doit de l'argent, Zéro = il ne doit pas d'argent
         BigDecimal solde = chargeCallItemRepository
                 .calculateSoldeByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
 
@@ -1039,7 +1040,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 .solde(solde)
                 .build();
     }
-
     @Override
     @Transactional(readOnly = true)
     public List<CoOwnerPropertyItemDTO> getCoOwnerProperties(Long coOwnerId) {
