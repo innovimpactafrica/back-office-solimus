@@ -53,6 +53,9 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
     // Compter les AG d'un syndic par statut
     long countBySyndicIdAndStatus(Long syndicId, MeetingStatus status);
 
+    // Lister les AG d'un syndic par statut
+    List<Meeting> findBySyndicIdAndStatus(Long syndicId, MeetingStatus status);
+
     // Compter les AG terminées d'un syndic dans l'année en cours
     @Query("SELECT COUNT(m) FROM Meeting m WHERE m.syndic.id = :syndicId " +
            "AND m.status = :status " +

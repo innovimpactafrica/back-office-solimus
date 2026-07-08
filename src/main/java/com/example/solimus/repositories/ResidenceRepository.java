@@ -17,6 +17,9 @@ public interface ResidenceRepository extends JpaRepository<Residence, Long> {
     // Récupérer toutes les résidences par ID de syndic
     List<Residence> findAllBySyndicId(Long syndicId);
 
+    // Récupérer toutes les résidences par ID de syndic (alias)
+    List<Residence> findBySyndicId(Long syndicId);
+
     // Compter les résidences par syndic
     long countBySyndicId(Long syndicId);
 

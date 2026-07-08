@@ -4,5 +4,6 @@ public enum ExceptionalCallStatus {
     BROUILLON,
     EN_ATTENTE_VOTE,
     ACTIVE,
+    CLOTURE
 
 }

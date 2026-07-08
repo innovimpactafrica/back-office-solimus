@@ -48,4 +48,13 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> 
            "ORDER BY a.createdAt DESC")
     List<ActivityLog> findMeetingDocumentAddedByMeetingIdsOrderByCreatedAtDesc(
             @Param("meetingIds") List<Long> meetingIds);
+
+    // ===== MÉTHODES SUPPLÉMENTAIRES =====
+
+    /**
+     * Lister les logs d'activité des résidences d'un syndic
+     */
+    @Query("SELECT a FROM ActivityLog a WHERE a.residence.syndic.id = :syndicId " +
+           "ORDER BY a.createdAt DESC")
+    List<ActivityLog> findByResidenceSyndicIdOrderByCreatedAtDesc(@Param("syndicId") Long syndicId, Pageable pageable);
 }

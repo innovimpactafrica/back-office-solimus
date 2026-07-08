@@ -35,6 +35,13 @@ public interface SyndicWalletTransactionRepository extends JpaRepository<SyndicW
     BigDecimal sumTransactionsUpTo(@Param("walletId") Long walletId, @Param("asOfDate") LocalDateTime asOfDate);
 
     /**
+     * Somme toutes les transactions d'une résidence jusqu'à une date donnée
+     */
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM SyndicWalletTransaction t " +
+           "WHERE t.residence.id = :residenceId AND t.transactionDate <= :asOfDate")
+    BigDecimal sumAllByResidenceId(@Param("residenceId") Long residenceId, @Param("asOfDate") LocalDateTime asOfDate);
+
+    /**
      * Récupérer les transactions de catégorie TRAVAUX pour une résidence et une année donnée
      * Utilisé pour calculer la répartition des vraies dépenses (graphique camembert)
      */

@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -169,4 +170,36 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
            "AND b.residence.id = :residenceId " +
            "AND cc.year = :year")
     BigDecimal sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(@Param("coOwnerId") Long coOwnerId, @Param("residenceId") Long residenceId, @Param("year") Integer year);
+
+    // ===== MÉTHODES SUPPLÉMENTAIRES =====
+
+    /**
+     * Tous les items d'une résidence, toutes périodes confondues
+     */
+    @Query("SELECT cci FROM ChargeCallItem cci " +
+           "JOIN cci.chargeCall cc " +
+           "JOIN cc.budget b " +
+           "WHERE b.residence.id = :residenceId")
+    List<ChargeCallItem> findByChargeCallBudgetResidenceId(@Param("residenceId") Long residenceId);
+
+    /**
+     * Items d'une résidence créés dans une période précise (via la date de création du ChargeCall parent)
+     */
+    @Query("SELECT cci FROM ChargeCallItem cci " +
+           "JOIN cci.chargeCall cc " +
+           "JOIN cc.budget b " +
+           "WHERE b.residence.id = :residenceId " +
+           "AND cc.createdAt BETWEEN :start AND :end")
+    List<ChargeCallItem> findByChargeCallBudgetResidenceIdAndChargeCallCreatedAtBetween(
+            @Param("residenceId") Long residenceId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
+    /**
+     * Items du syndic dont le solde impayé dépasse un seuil donné
+     */
+    @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId " +
+           "AND i.remainingAmount > :threshold")
+    List<ChargeCallItem> findByChargeCallBudgetSyndicIdAndRemainingAmountGreaterThan(
+            @Param("syndicId") Long syndicId, @Param("threshold") BigDecimal threshold);
 }

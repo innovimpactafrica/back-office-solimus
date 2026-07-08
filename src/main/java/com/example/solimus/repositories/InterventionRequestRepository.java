@@ -2,7 +2,9 @@ package com.example.solimus.repositories;
 
 import com.example.solimus.entities.InterventionRequest;
 import com.example.solimus.entities.User;
+import com.example.solimus.enums.InterventionManagementMode;
 import com.example.solimus.enums.InterventionStatus;
+import com.example.solimus.enums.UrgencyLevel;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -359,4 +361,34 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
     List<InterventionRequest> findByPropertyOwnerAndSyndic(
             @Param("owner") User owner,
             @Param("syndic") User syndic);
+
+    // ===== MÉTHODES SUPPLÉMENTAIRES =====
+
+    /**
+     * Compte les interventions d'une résidence ayant l'un des statuts donnés
+     */
+    long countByResidenceIdAndStatusIn(Long residenceId, List<InterventionStatus> statuses);
+
+    /**
+     * Compte les interventions d'une résidence, avec statut + niveau d'urgence donnés
+     */
+    long countByResidenceIdAndStatusInAndUrgencyLevel(
+            Long residenceId, List<InterventionStatus> statuses, UrgencyLevel urgencyLevel);
+
+    /**
+     * Compte les interventions d'une résidence créées dans une période donnée
+     */
+    long countByResidenceIdAndCreatedAtBetween(Long residenceId, LocalDateTime start, LocalDateTime end);
+
+    /**
+     * Compte les interventions d'une résidence créées dans une période donnée, avec un statut précis
+     */
+    long countByResidenceIdAndCreatedAtBetweenAndStatus(
+            Long residenceId, LocalDateTime start, LocalDateTime end, InterventionStatus status);
+
+    /**
+     * Dernières interventions gérées par le syndic (via la résidence), filtrées sur le mode de gestion
+     */
+    List<InterventionRequest> findByResidenceSyndicIdAndManagementModeOrderByCreatedAtDesc(
+            Long syndicId, InterventionManagementMode managementMode, Pageable pageable);
 }
