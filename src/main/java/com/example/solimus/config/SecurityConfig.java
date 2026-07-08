@@ -17,9 +17,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
 
-/**
- * Configuration de la sécurité Spring Security pour SOLIMUS.
- */
+import static org.springframework.security.config.Customizer.withDefaults;
+
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
@@ -37,37 +36,21 @@ public class SecurityConfig {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
+                .httpBasic(withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Routes d'authentification publiques (Inscription, OTP, Login...)
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/auth/me/**").authenticated() // protégé par le filtre JWT
-
-                        // Paiements (Callbacks InTouch et Bridge public pour TouchPay)
+                        .requestMatchers("/api/auth/me/**").authenticated()
                         .requestMatchers("/api/payments/bridge/**", "/api/payments/intouch/**").permitAll()
                         .requestMatchers("/touchpay-bridge.html", "/payment-success.html", "/payment-failed.html").permitAll()
-
-                        // Ressources publiques pour l'inscription
                         .requestMatchers(HttpMethod.GET, "/api/admin/specialties", "/api/admin/intervention-zones").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/coowner/residences").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/coowner/residences/*/properties").permitAll()
-
-                        // Documentation
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-
-                        // 🔥 NOUVEAU : Accès aux endpoints Actuator réservé aux administrateurs
-                        .requestMatchers("/actuator/**").hasRole("ADMIN")
-
-                        // Zones Admin : Seuls les utilisateurs avec le rôle ADMIN peuvent effectuer ces actions
+                        .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN")
-
-                        // Zones Syndic : Seuls les utilisateurs avec le rôle SYNDIC peuvent effectuer ces actions
                         .requestMatchers("/api/syndic/**").hasAnyAuthority("ROLE_SYNDIC")
-
-                        // Zones Copropriétaire : Seuls les utilisateurs avec le rôle COPROPRIETAIRE peuvent effectuer ces actions
                         .requestMatchers("/api/coOwner/**").hasAnyAuthority("ROLE_COPROPRIETAIRE")
-
-                        // Tout le reste nécessite une authentification
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

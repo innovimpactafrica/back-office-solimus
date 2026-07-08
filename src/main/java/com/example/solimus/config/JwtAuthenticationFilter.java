@@ -52,6 +52,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
 
+        // ════════════════════════════════════════════════════════════════════════
+        // 🔥 EXCLURE L'ACTUATOR DU FILTRE JWT (permet Basic Auth)
+        // ════════════════════════════════════════════════════════════════════════
+        String path = request.getServletPath();
+        if (path.startsWith("/actuator")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+        // ════════════════════════════════════════════════════════════════════════
+
         String requestPath = request.getRequestURI();
 
         // 1. Laisser passer les routes publiques sans validation
@@ -67,7 +77,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         // 3. Vérifier si le format du token est correct (Bearer)
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            filterChain.doFilter(request, response); 
+            filterChain.doFilter(request, response);
             return;
         }
 
@@ -85,7 +95,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             // 6. Si l'utilisateur n'est pas encore authentifié dans le contexte actuel
             if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                
+
                 // 7. Valider la signature et l'expiration du token
                 if (jwtService.isTokenValid(jwt)) {
                     // Extraire le rôle pour les autorisations
@@ -103,12 +113,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     log.info("🔐 Authentification réussie pour {} avec l'autorité : {}", userEmail, authority);
 
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    
+
                     // Enregistrer l'utilisateur dans le contexte de sécurité
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
             }
-            
+
             // Continuer la chaîne de filtres
             filterChain.doFilter(request, response);
 
@@ -132,12 +142,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
      * Identifie les chemins qui ne nécessitent pas de jeton d'accès.
      */
     private boolean isPublicPath(String path) {
-        return path.startsWith("/api/auth/") 
-                && !path.equals("/api/auth/logout") 
+        return path.startsWith("/api/auth/")
+                && !path.equals("/api/auth/logout")
                 && !path.equals("/api/auth/me")
                 || path.startsWith("/api/payments/bridge/")
                 || path.startsWith("/api/payments/intouch/")
-                || path.startsWith("/swagger-ui") 
+                || path.startsWith("/swagger-ui")
                 || path.startsWith("/v3/api-docs");
     }
 

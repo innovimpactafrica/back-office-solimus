@@ -8,10 +8,10 @@ services:
     image: mysql:8.0
     container_name: solimus-db
     environment:
-      MYSQL_DATABASE: ${DB_NAME:-solimus_db}
+      MYSQL_DATABASE: ${DB_NAME:-solimus}
       MYSQL_USER: ${DB_USER:-solimus}
       MYSQL_PASSWORD: ${DB_PASSWORD:-solimus}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_pass}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpass}
     ports:
       - "3308:3306"
     volumes:
@@ -37,10 +37,10 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: docker
 
-      # Connexion à la base (explicite)
+      # Connexion à la base (cohérent avec MySQL)
       SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/${DB_NAME:-solimus}?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
-      SPRING_DATASOURCE_USERNAME: ${DB_USER:-solimus_user}
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-solimus_pass}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-solimus}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-solimus}
 
       # Dialecte MySQL forcé
       SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.MySQL8Dialect
