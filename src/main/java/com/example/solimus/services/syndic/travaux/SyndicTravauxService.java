@@ -6,6 +6,10 @@ import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.dtos.syndic.travaux.CreateInterventionRequestDTO;
 import com.example.solimus.dtos.syndic.travaux.CreateReviewDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicResidenceDTO;
+import com.example.solimus.dtos.syndic.travaux.SyndicDepositSummaryDTO;
+import com.example.solimus.dtos.syndic.travaux.SyndicPayDepositDTO;
+import com.example.solimus.dtos.syndic.travaux.SyndicBalancePaymentSummaryDTO;
+import com.example.solimus.dtos.syndic.travaux.SyndicPaymentResultDTO;
 
 import java.util.List;
 
@@ -66,5 +70,35 @@ public interface SyndicTravauxService {
      * Créer un avis pour une intervention terminée.
      */
     void createReview(Long interventionId, CreateReviewDTO dto);
+
+    // =========================================================================
+    // VALIDATION DE DEVIS ET PAIEMENTS (partie commune, géré par le syndic)
+    // =========================================================================
+
+    /**
+     * Valide un devis pour une intervention gérée par le syndic (partie commune).
+     * Rejette automatiquement les autres devis concurrents.
+     */
+    void validateQuote(Long interventionId, Long quoteId);
+
+    /**
+     * Retourne le récapitulatif à afficher dans le modal "Acompte" après validation du devis.
+     */
+    SyndicDepositSummaryDTO getDepositSummary(Long interventionId);
+
+    /**
+     * Verse un acompte au prestataire depuis le wallet du syndic.
+     */
+    SyndicPaymentResultDTO payDeposit(Long interventionId, SyndicPayDepositDTO dto);
+
+    /**
+     * Retourne le récapitulatif à afficher dans le modal "Paiement" (solde final).
+     */
+    SyndicBalancePaymentSummaryDTO getBalanceSummary(Long interventionId);
+
+    /**
+     * Paie le solde restant depuis le wallet du syndic et clôture l'intervention (FINAL_VALIDATION).
+     */
+    SyndicPaymentResultDTO payBalanceAndClose(Long interventionId);
 
 }

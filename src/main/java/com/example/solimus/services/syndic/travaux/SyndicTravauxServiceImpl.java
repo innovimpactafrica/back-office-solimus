@@ -6,12 +6,18 @@ import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.dtos.syndic.travaux.CreateInterventionRequestDTO;
 import com.example.solimus.dtos.syndic.travaux.CreateReviewDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicResidenceDTO;
+import com.example.solimus.dtos.syndic.travaux.SyndicDepositSummaryDTO;
+import com.example.solimus.dtos.syndic.travaux.SyndicPayDepositDTO;
+import com.example.solimus.dtos.syndic.travaux.SyndicBalancePaymentSummaryDTO;
+import com.example.solimus.dtos.syndic.travaux.SyndicPaymentResultDTO;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.ActivityType;
 import com.example.solimus.enums.IncidentLocationType;
 import com.example.solimus.enums.InitiatedBy;
 import com.example.solimus.enums.InterventionManagementMode;
 import com.example.solimus.enums.InterventionStatus;
+import com.example.solimus.enums.QuoteStatus;
+import com.example.solimus.enums.WalletTransactionCategory;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
@@ -26,6 +32,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,6 +57,9 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     private final NotificationService notificationService;
     private final ReviewRepository reviewRepository;
     private final ActivityLogRepository activityLogRepository;
+    private final QuoteRepository quoteRepository;
+    private final SyndicWalletRepository syndicWalletRepository;
+    private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
 
     @Value("${solimus.geolocation.search-radius-km:30.0}")
     private double searchRadiusKm;//Rayon de recherche des prestataires
@@ -465,6 +475,263 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                 .residenceName(property.getResidence().getName())
                 .ownerId(property.getOwner() != null ? property.getOwner().getId() : null)
                 .ownerName(property.getOwner() != null ? property.getOwner().getFirstName() + " " + property.getOwner().getLastName() : null)
+                .build();
+    }
+
+    // =========================================================================
+    // VALIDER UN DEVIS
+    // =========================================================================
+
+    @Override
+    @Transactional
+    public void validateQuote(Long interventionId, Long quoteId) {
+
+        // Récupère le syndic connecté
+        User currentSyndic = getCurrentUser();
+
+        // Récupère l'intervention, erreur si introuvable
+        InterventionRequest request = interventionRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        // Vérifie que la résidence appartient bien au syndic connecté
+        if (!request.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à gérer cette intervention");
+        }
+
+        // Vérifie que c'est bien une intervention de partie commune gérée par le syndic
+        if (request.getManagementMode() != InterventionManagementMode.SYNDIC) {
+            throw new BadRequestException("Cette intervention n'est pas gérée par le syndic");
+        }
+
+        // Vérifie qu'aucun prestataire n'est déjà sélectionné
+        if (request.getSelectedProvider() != null) {
+            throw new BadRequestException("Un prestataire est déjà sélectionné pour cette intervention");
+        }
+
+        // Récupère le devis à valider
+        Quote acceptedQuote = quoteRepository.findById(quoteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Devis introuvable"));
+
+        // Vérifie que ce devis appartient bien à cette intervention
+        if (!acceptedQuote.getInterventionRequest().getId().equals(interventionId)) {
+            throw new BadRequestException("Ce devis n'appartient pas à cette intervention");
+        }
+
+        // Vérifie que le devis est bien en attente
+        if (acceptedQuote.getStatus() != QuoteStatus.SENT) {
+            throw new BadRequestException("Seul un devis envoyé et en attente peut être validé");
+        }
+
+        // Accepte ce devis
+        acceptedQuote.setStatus(QuoteStatus.ACCEPTED);
+
+        // Rejette automatiquement tous les autres devis concurrents en attente
+        List<Quote> otherQuotes = quoteRepository.findAllByInterventionRequestOrderByTotalAmountAsc(request);
+        otherQuotes.stream()
+                .filter(q -> !q.getId().equals(quoteId))
+                .filter(q -> q.getStatus() == QuoteStatus.SENT)
+                .forEach(q -> q.setStatus(QuoteStatus.REJECTED));
+
+        // Finalise l'intervention : assigne le prestataire, le montant, change le statut
+        request.setSelectedProvider(acceptedQuote.getProvider());
+        request.setQuoteAcceptedAt(LocalDateTime.now());
+        request.setTotalAmount(acceptedQuote.getTotalAmount());
+        request.addStatusHistory(InterventionStatus.QUOTE_VALIDATED, currentSyndic);
+
+        interventionRepository.save(request);
+    }
+
+    // =========================================================================
+    // RÉSUMÉ POUR LE MODAL ACOMPTE
+    // =========================================================================
+
+    @Override
+    public SyndicDepositSummaryDTO getDepositSummary(Long interventionId) {
+
+        User currentSyndic = getCurrentUser();
+
+        InterventionRequest request = interventionRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        if (!request.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette intervention");
+        }
+
+        if (request.getSelectedProvider() == null) {
+            throw new BadRequestException("Aucun devis n'a encore été validé pour cette intervention");
+        }
+
+        ProviderProfile providerProfile = providerProfileRepository.findByUser(request.getSelectedProvider())
+                .orElse(null);
+
+        // Récupère le solde disponible du wallet syndic
+        SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId()).orElse(null);
+        BigDecimal soldeDisponible = wallet != null
+                ? syndicWalletTransactionRepository.sumTransactionsUpTo(wallet.getId(), LocalDateTime.now())
+                : BigDecimal.ZERO;
+
+        return SyndicDepositSummaryDTO.builder()
+                .providerName(request.getSelectedProvider().getFirstName() + " " + request.getSelectedProvider().getLastName())
+                .companyName(providerProfile != null ? providerProfile.getCompanyName() : null)
+                .totalAmount(request.getTotalAmount())
+                .emisLe(request.getQuoteAcceptedAt())
+                .walletBalanceAvailable(soldeDisponible)
+                .build();
+    }
+
+    // =========================================================================
+    // PAYER L'ACOMPTE
+    // =========================================================================
+
+    @Override
+    @Transactional
+    public SyndicPaymentResultDTO payDeposit(Long interventionId, SyndicPayDepositDTO dto) {
+
+        User currentSyndic = getCurrentUser();
+
+        InterventionRequest request = interventionRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        if (!request.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à effectuer ce paiement");
+        }
+
+        if (request.getSelectedProvider() == null) {
+            throw new BadRequestException("Aucun prestataire n'est sélectionné pour cette intervention");
+        }
+
+        // Vérifie qu'aucun acompte n'a déjà été versé
+        if (request.getDepositAmount() != null && request.getDepositAmount().compareTo(BigDecimal.ZERO) > 0) {
+            throw new BadRequestException("Un acompte a déjà été versé pour cette intervention");
+        }
+
+        // Récupère le wallet syndic
+        SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId())
+                .orElseThrow(() -> new BadRequestException("Aucun wallet trouvé pour ce syndic"));
+
+        // Vérifie que le solde est suffisant
+        BigDecimal soldeDisponible = syndicWalletTransactionRepository.sumTransactionsUpTo(wallet.getId(), LocalDateTime.now());
+        if (soldeDisponible.compareTo(dto.getMontant()) < 0) {
+            throw new BadRequestException("Solde du wallet insuffisant pour verser cet acompte");
+        }
+
+        // Débite le wallet (transaction négative, catégorie TRAVAUX)
+        SyndicWalletTransaction transaction = new SyndicWalletTransaction();
+        transaction.setWallet(wallet);
+        transaction.setResidence(request.getResidence());
+        transaction.setCategory(WalletTransactionCategory.TRAVAUX);
+        transaction.setAmount(dto.getMontant().negate());
+        transaction.setLabel("Acompte — " + request.getTitle());
+        transaction.setTransactionDate(LocalDateTime.now());
+        syndicWalletTransactionRepository.save(transaction);
+
+        // Met à jour l'intervention (depositAmount, remainingAmount recalculé automatiquement via @PrePersist/@PreUpdate)
+        request.setDepositAmount(dto.getMontant());
+        interventionRepository.save(request);
+
+        BigDecimal nouveauSolde = soldeDisponible.subtract(dto.getMontant());
+
+        return SyndicPaymentResultDTO.builder()
+                .success(true)
+                .message("Acompte versé avec succès")
+                .montantPaye(dto.getMontant())
+                .nouveauSoldeWallet(nouveauSolde)
+                .build();
+    }
+
+    // =========================================================================
+    // RÉSUMÉ POUR LE MODAL PAIEMENT FINAL
+    // =========================================================================
+
+    @Override
+    public SyndicBalancePaymentSummaryDTO getBalanceSummary(Long interventionId) {
+
+        User currentSyndic = getCurrentUser();
+
+        InterventionRequest request = interventionRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        if (!request.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette intervention");
+        }
+
+        if (request.getStatus() != InterventionStatus.FINISHED) {
+            throw new BadRequestException("Les travaux ne sont pas encore terminés");
+        }
+
+        SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId()).orElse(null);
+        BigDecimal soldeDisponible = wallet != null
+                ? syndicWalletTransactionRepository.sumTransactionsUpTo(wallet.getId(), LocalDateTime.now())
+                : BigDecimal.ZERO;
+
+        return SyndicBalancePaymentSummaryDTO.builder()
+                .montantDevis(request.getTotalAmount())
+                .acompteVerse(request.getDepositAmount() != null ? request.getDepositAmount() : BigDecimal.ZERO)
+                .soldeRestant(request.getRemainingAmount() != null ? request.getRemainingAmount() : BigDecimal.ZERO)
+                .walletBalanceAvailable(soldeDisponible)
+                .build();
+    }
+
+    // =========================================================================
+    // PAYER LE SOLDE ET CLÔTURER
+    // =========================================================================
+
+    @Override
+    @Transactional
+    public SyndicPaymentResultDTO payBalanceAndClose(Long interventionId) {
+
+        User currentSyndic = getCurrentUser();
+
+        InterventionRequest request = interventionRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        if (!request.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à effectuer ce paiement");
+        }
+
+        if (request.getStatus() != InterventionStatus.FINISHED) {
+            throw new BadRequestException("Les travaux ne sont pas encore terminés");
+        }
+
+        BigDecimal solde = request.getRemainingAmount() != null ? request.getRemainingAmount() : BigDecimal.ZERO;
+
+        if (solde.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Aucun solde restant à payer pour cette intervention");
+        }
+
+        // Récupère le wallet syndic
+        SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId())
+                .orElseThrow(() -> new BadRequestException("Aucun wallet trouvé pour ce syndic"));
+
+        // Vérifie que le solde du wallet est suffisant
+        BigDecimal soldeDisponible = syndicWalletTransactionRepository.sumTransactionsUpTo(wallet.getId(), LocalDateTime.now());
+        if (soldeDisponible.compareTo(solde) < 0) {
+            throw new BadRequestException("Solde du wallet insuffisant pour payer le solde restant");
+        }
+
+        // Débite le wallet
+        SyndicWalletTransaction transaction = new SyndicWalletTransaction();
+        transaction.setWallet(wallet);
+        transaction.setResidence(request.getResidence());
+        transaction.setCategory(WalletTransactionCategory.TRAVAUX);
+        transaction.setAmount(solde.negate());
+        transaction.setLabel("Solde final — " + request.getTitle());
+        transaction.setTransactionDate(LocalDateTime.now());
+        syndicWalletTransactionRepository.save(transaction);
+
+        // Met à jour le montant payé et clôture l'intervention
+        request.setDepositAmount(request.getTotalAmount()); // tout est désormais payé
+        request.addStatusHistory(InterventionStatus.FINAL_VALIDATION, currentSyndic);
+        request.setValidatedAt(LocalDateTime.now());
+        interventionRepository.save(request);
+
+        BigDecimal nouveauSolde = soldeDisponible.subtract(solde);
+
+        return SyndicPaymentResultDTO.builder()
+                .success(true)
+                .message("Paiement effectué, intervention clôturée")
+                .montantPaye(solde)
+                .nouveauSoldeWallet(nouveauSolde)
                 .build();
     }
 }

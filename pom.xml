@@ -170,7 +170,7 @@
 				<directory>src/main/resources</directory>
 				<filtering>false</filtering>
 				<includes>
-					<include>**/*.properties</include>
+					<include>**/*</include>
 				</includes>
 			</resource>
 		</resources>

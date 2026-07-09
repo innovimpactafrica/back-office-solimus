@@ -60,14 +60,6 @@ public class ProviderServiceImpl implements ProviderService {
     private final com.example.solimus.repositories.ProviderProfileRepository providerProfileRepository;
 
 
-
-
-    // =========================================================================
-
-
-
-
-
     /**
      * Récupère les données consolidées du tableau de bord pour le prestataire connecté.
      * Calcule les compteurs principaux, les montants financiers en cours et les tendances d'évolution mensuelle.

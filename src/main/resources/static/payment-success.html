@@ -30,9 +30,9 @@
             const amount = Number(params.get('amount') || 0);
 
             // 🌍 URL du backend (API)
-            // Si absente → on utilise la production
+            // Si absente → on utilise localhost pour tests
             const apiBaseUrl = params.get('apiBaseUrl')
-                || 'https://api.solimus.innovimpactdev.cloud';
+                || 'http://localhost:8085';
 
             // ❌ Si aucune référence, on ne peut pas continuer
             if (!reference) {
@@ -66,9 +66,9 @@
                     : "Paiement réussi, mais la confirmation backend a échoué.";
 
                  // 📱 Redirection vers l'application mobile même en cas d'erreur , on ajoute la référence car ça permet  de savoir quel paiement a réussi/échoué  et d'afficher les détails si nécessaire
-                setTimeout(() => {
-                    window.location.href = `solimus://payment-success?ref=${reference}`;
-                }, 0);
+                // setTimeout(() => {
+                //     window.location.href = `solimus://payment-success?ref=${reference}`;
+                // }, 0);
 
             } catch (error) {
                 // 🔴 Erreur réseau ou backend inaccessible
@@ -76,9 +76,9 @@
                     "Paiement réussi, mais impossible de contacter le backend.";
 
                   // 📱 Redirection vers l'application mobile même en cas d'erreur , on ajoute la référence car ça permet  de savoir quel paiement a réussi/échoué  et d'afficher les détails si nécessaire
-                setTimeout(() => {
-                    window.location.href = `solimus://payment-success?ref=${reference}`;
-                }, 0);
+                // setTimeout(() => {
+                //     window.location.href = `solimus://payment-success?ref=${reference}`;
+                // }, 0);
             }
         }
 

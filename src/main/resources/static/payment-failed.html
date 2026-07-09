@@ -25,9 +25,9 @@
             const amount = Number(params.get('amount') || 0);
 
             // 🌍 URL du backend
-            // Si absente → on utilise la production
+            // Si absente → on utilise localhost pour tests
             const apiBaseUrl = params.get('apiBaseUrl')
-                || 'https://api.solimus.innovimpactdev.cloud';
+                || 'http://localhost:8085';
 
             // ❌ Si pas de référence → impossible de traiter
             if (!reference) {

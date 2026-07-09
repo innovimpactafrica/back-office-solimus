@@ -1,37 +1,48 @@
 package com.example.solimus.services.syndic.dashboard;
 
 import com.example.solimus.dtos.syndic.dashboard.*;
+import com.example.solimus.dtos.syndic.travaux.SyndicResidenceDTO;
 
 import java.util.List;
 
 public interface DashboardService {
 
     /**
-     * Retourne les 6 KPIs principaux du tableau de bord, filtrés sur une résidence précise
-     * (Trésorerie, Taux de recouvrement, Impayés, Résidences gérées, Incidents ouverts, Interventions du jour).
+     * Retourne les 6 KPIs principaux du tableau de bord pour UNE résidence précise.
+     * residenceId est OBLIGATOIRE.
      */
     MainDashboardDTO getMainDashboard(Long residenceId);
 
     /**
-     * Retourne le graphique "Évolution Financière" (Trésorerie vs Appels de charges cumulés),
-     * filtré sur une résidence précise, sur les 6 premiers mois de l'année en cours.
+     * Retourne le graphique "Évolution Financière" pour UNE résidence précise.
+     * residenceId est OBLIGATOIRE.
      */
     List<TreasuryEvolutionPointDTO> getFinancialEvolution(Long residenceId);
 
     /**
-     * Retourne les alertes importantes du syndic (impayés significatifs + AG à préparer),
-     * toutes résidences confondues.
+     * Retourne les alertes importantes du syndic, toutes résidences confondues.
      */
     List<AlertDTO> getImportantAlerts();
 
     /**
-     * Retourne les dernières activités du syndic (journal d'activité), toutes résidences confondues.
+     * Retourne les dernières activités du syndic, toutes résidences confondues.
      */
     List<ActivityRowDTO> getRecentActivities(int limit);
 
     /**
-     * Retourne les derniers incidents gérés par le syndic (managementMode = SYNDIC),
-     * toutes résidences confondues.
+     * Retourne les derniers incidents gérés par le syndic, toutes résidences confondues.
      */
     List<RecentIncidentDTO> getRecentIncidents(int limit);
+
+    /**
+     * Retourne l'ID de la résidence la plus récemment créée par le syndic connecté,
+     * à utiliser comme sélection par défaut dans le dropdown du front à l'ouverture de la page.
+     */
+    Long getDefaultResidenceId();
+
+    /**
+     * Retourne la liste des résidences du syndic connecté (id + nom uniquement),
+     * pour peupler le dropdown de sélection de résidence.
+     */
+    List<SyndicResidenceDTO> getMyResidencesForDropdown();
 }

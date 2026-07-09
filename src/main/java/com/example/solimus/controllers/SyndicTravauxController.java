@@ -6,10 +6,13 @@ import com.example.solimus.dtos.syndic.residence.PropertyDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.dtos.syndic.travaux.CreateInterventionRequestDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicResidenceDTO;
+import com.example.solimus.dtos.syndic.travaux.SyndicDepositSummaryDTO;
+import com.example.solimus.dtos.syndic.travaux.SyndicPayDepositDTO;
+import com.example.solimus.dtos.syndic.travaux.SyndicBalancePaymentSummaryDTO;
+import com.example.solimus.dtos.syndic.travaux.SyndicPaymentResultDTO;
 import com.example.solimus.enums.IncidentLocationType;
 import com.example.solimus.enums.UrgencyLevel;
 import com.example.solimus.services.minio.MinioService;
-import com.example.solimus.services.syndic.SyndicService;
 import com.example.solimus.services.syndic.travaux.SyndicTravauxService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -83,58 +86,41 @@ public class SyndicTravauxController {
     @PostMapping(value = "/interventions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> createIntervention(
             @Parameter(description = "Titre court de l'intervention (ex: Fuite d'eau)")
-            @RequestPart("title") String title,
+            @RequestParam("title") String title,
 
             @Parameter(description = "Description détaillée du problème")
-            @RequestPart("description") String description,
+            @RequestParam("description") String description,
 
             @Parameter(description = "ID de la résidence concernée")
-            @RequestPart("residenceId") Long residenceId,
+            @RequestParam("residenceId") Long residenceId,
 
             @Parameter(description = "ID du bien concerné (obligatoire si APPARTEMENT)")
-            @RequestPart(value = "propertyId", required = false) Long propertyId,
+            @RequestParam(value = "propertyId", required = false) Long propertyId,
 
             @Parameter(description = "ID de la partie commune concernée (obligatoire si PARTIE_COMMUNE)")
-            @RequestPart(value = "commonFacilityId", required = false) Long commonFacilityId,
+            @RequestParam(value = "commonFacilityId", required = false) Long commonFacilityId,
 
             @Parameter(description = "ID de la spécialité requise (Plomberie, Électricité, etc.)")
-            @RequestPart("specialtyId") Long specialtyId,
+            @RequestParam("specialtyId") Long specialtyId,
 
             @Parameter(description = "Type de localisation (APPARTEMENT ou PARTIE_COMMUNE)")
-            @RequestPart("locationType") IncidentLocationType locationType,
+            @RequestParam("locationType") IncidentLocationType locationType,
 
             @Parameter(description = "Niveau d'urgence (LOW, MEDIUM, HIGH)")
-            @RequestPart("urgencyLevel") UrgencyLevel urgencyLevel,
+            @RequestParam("urgencyLevel") UrgencyLevel urgencyLevel,
 
             @Parameter(description = "Photos du problème (JPG, PNG uniquement)")
-            @RequestPart(value = "photos", required = false) MultipartFile[] photos) {
+            @RequestPart(value = "photos", required = false) List<MultipartFile> photos) {
+
 
         try {
-            // Liste pour stocker les noms des photos uploadées
-            List<String> photoNames = new ArrayList<>();
 
-            // Vérification et traitement des photos si présentes
-            if (photos != null && photos.length > 0) {
+            // Upload chaque photo vers MinIO et récupère leurs URLs
+            List<String> photoUrls = new ArrayList<>();
+            if (photos != null) {
                 for (MultipartFile photo : photos) {
-                    if (photo.isEmpty()) continue; // Ignorer les fichiers vides
-
-                    // Récupération du nom original du fichier
-                    String originalFilename = photo.getOriginalFilename();
-                    if (originalFilename != null) {
-                        // Extraction de l'extension du fichier
-                        String extension = originalFilename.substring(originalFilename.lastIndexOf(".") + 1).toLowerCase();
-                        // Vérification du format (JPG, JPEG, PNG uniquement)
-                        if (!extension.equals("jpg") && !extension.equals("jpeg") && !extension.equals("png")) {
-                            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                                    .body("Format d'image non supporté. Formats acceptés: JPG, PNG, JPEG");
-                        }
-                    }
-
-                    // Upload du fichier sur Minio dans le dossier "interventions"
-                    String uploadedFileName = minioService.uploadFile(photo, "interventions");
-                    if (uploadedFileName != null) {
-                        photoNames.add(uploadedFileName); // Ajout du nom du fichier uploadé à la liste
-                    }
+                    String url = minioService.uploadFile(photo, "interventions");
+                    photoUrls.add(url);
                 }
             }
 
@@ -148,7 +134,7 @@ public class SyndicTravauxController {
             dto.setSpecialtyId(specialtyId);
             dto.setLocationType(locationType);
             dto.setUrgencyLevel(urgencyLevel);
-            dto.setPhotoUrls(photoNames); // Ajout des noms des photos uploadées
+            dto.setPhotoUrls(photoUrls); // Ajout des noms des photos uploadées
 
             // Appel du service pour créer la demande de travaux
             syndicTravauxService.createInterventionRequest(dto);
@@ -187,5 +173,46 @@ public class SyndicTravauxController {
             @RequestBody @Valid CreateReviewDTO dto) {
         syndicTravauxService.createReview(interventionId, dto);
         return ResponseEntity.ok("Avis créé avec succès");
+    }
+
+    // =========================================================================
+    // VALIDATION DE DEVIS ET PAIEMENTS
+    // =========================================================================
+
+    @Operation(summary = "Valider un devis", description = "Valide un devis pour une intervention de partie commune, rejette les autres")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PatchMapping("/interventions/{id}/quotes/{quoteId}/validate")
+    public ResponseEntity<Void> validateQuote(@PathVariable Long id, @PathVariable Long quoteId) {
+        syndicTravauxService.validateQuote(id, quoteId);
+        return ResponseEntity.ok().build();
+    }
+
+    @Operation(summary = "Résumé pour le modal Acompte")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/interventions/{id}/deposit-summary")
+    public ResponseEntity<SyndicDepositSummaryDTO> getDepositSummary(@PathVariable Long id) {
+        return ResponseEntity.ok(syndicTravauxService.getDepositSummary(id));
+    }
+
+    @Operation(summary = "Payer un acompte")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PostMapping("/interventions/{id}/deposit")
+    public ResponseEntity<SyndicPaymentResultDTO> payDeposit(
+            @PathVariable Long id, @Valid @RequestBody SyndicPayDepositDTO dto) {
+        return ResponseEntity.ok(syndicTravauxService.payDeposit(id, dto));
+    }
+
+    @Operation(summary = "Résumé pour le modal Paiement final")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/interventions/{id}/balance-summary")
+    public ResponseEntity<SyndicBalancePaymentSummaryDTO> getBalanceSummary(@PathVariable Long id) {
+        return ResponseEntity.ok(syndicTravauxService.getBalanceSummary(id));
+    }
+
+    @Operation(summary = "Payer le solde final et clôturer")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PostMapping("/interventions/{id}/pay-balance")
+    public ResponseEntity<SyndicPaymentResultDTO> payBalanceAndClose(@PathVariable Long id) {
+        return ResponseEntity.ok(syndicTravauxService.payBalanceAndClose(id));
     }
 }

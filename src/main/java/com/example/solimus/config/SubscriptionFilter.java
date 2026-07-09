@@ -82,8 +82,13 @@ public class SubscriptionFilter extends OncePerRequestFilter {
         // on cherche le dernier abonnement de cet utilisateur via son ID
         boolean isActive = subscriptionRepository
                 .findFirstByProviderIdOrderByEndDateDesc(user.getId()) // on utilise l'ID du provider
-                .map(Subscription::isCurrentlyActive) // on vérifie s'il est encore valide
+                .map(sub -> {
+                    System.out.println("DEBUG: Subscription found - Status: " + sub.getStatus() + ", EndDate: " + sub.getEndDate() + ", CurrentlyActive: " + sub.isCurrentlyActive());
+                    return sub.isCurrentlyActive(); // on vérifie s'il est encore valide
+                })
                 .orElse(false); // pas d'abonnement = inactif
+
+        System.out.println("DEBUG: User ID: " + user.getId() + ", Email: " + user.getEmail() + ", isActive: " + isActive);
 
         if (!isActive) {
             // on bloque et on retourne une erreur 403 avec un message JSON clair

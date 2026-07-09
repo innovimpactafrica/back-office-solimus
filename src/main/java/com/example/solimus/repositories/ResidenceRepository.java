@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ResidenceRepository extends JpaRepository<Residence, Long> {
@@ -43,4 +44,7 @@ public interface ResidenceRepository extends JpaRepository<Residence, Long> {
             @Param("search") String search,
             @Param("city") String city,
             Pageable pageable);
+
+    // Récupère la résidence la plus récemment créée pour ce syndic (basé sur createdAt)
+    Optional<Residence> findFirstBySyndicIdOrderByCreatedAtDesc(Long syndicId);
 }

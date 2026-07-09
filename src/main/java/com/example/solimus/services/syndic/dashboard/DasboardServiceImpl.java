@@ -1,6 +1,7 @@
 package com.example.solimus.services.syndic.dashboard;
 
 import com.example.solimus.dtos.syndic.dashboard.*;
+import com.example.solimus.dtos.syndic.travaux.SyndicResidenceDTO;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.*;
 import com.example.solimus.repositories.*;
@@ -36,7 +37,7 @@ public class DasboardServiceImpl implements DashboardService {
     private final ExceptionalCallRepository exceptionalCallRepository;
 
     // =========================================================================
-    // TABLEAU DE BORD PRINCIPAL (KPIs, filtré par résidence)
+    // TABLEAU DE BORD PRINCIPAL (KPIs, UNE résidence précise, obligatoire)
     // =========================================================================
 
     @Override
@@ -61,7 +62,7 @@ public class DasboardServiceImpl implements DashboardService {
         // Crée le DTO de réponse vide
         MainDashboardDTO dto = new MainDashboardDTO();
 
-        // --- Trésorerie Totale (filtrée par résidence) ---
+        // --- Trésorerie Totale (filtrée sur cette résidence) ---
 
         // Calcule le solde actuel du wallet, uniquement les transactions de cette résidence
         BigDecimal treasuryBrute = syndicWalletTransactionRepository.sumAllByResidenceId(residenceId, LocalDateTime.now());
@@ -69,12 +70,12 @@ public class DasboardServiceImpl implements DashboardService {
 
         // Calcule la date de fin du mois précédent (= début du mois actuel)
         LocalDateTime finMoisPrecedent = LocalDate.now().withDayOfMonth(1).atStartOfDay();
-        // Calcule le solde qu'il y avait à cette date-là
+        // Calcule le solde qu'il y avait à cette date-là, pour cette résidence
         BigDecimal treasuryMoisPrecedent = syndicWalletTransactionRepository.sumAllByResidenceId(residenceId, finMoisPrecedent);
         // Calcule la variation en pourcentage entre les deux soldes
         dto.setTreasuryEvolutionPercent(calculerVariation(treasuryBrute, treasuryMoisPrecedent).doubleValue());
 
-        // --- Taux de Recouvrement + Impayés (filtrés par résidence) ---
+        // --- Taux de Recouvrement + Impayés (filtrés sur cette résidence) ---
 
         // Récupère tous les ChargeCallItem de cette résidence, toutes périodes confondues
         List<ChargeCallItem> allItems = chargeCallItemRepository.findByChargeCallBudgetResidenceId(residenceId);
@@ -99,9 +100,9 @@ public class DasboardServiceImpl implements DashboardService {
         dto.setRecoveryRateEvolutionPercent(calculateRecoveryRateEvolution(residenceId));
         dto.setUnpaidEvolutionPercent(calculateUnpaidEvolution(residenceId));
 
-        // --- Résidences Gérées (global syndic, indépendant du filtre résidence) ---
+        // --- Résidences Gérées (TOUJOURS global syndic, indépendant de la résidence sélectionnée) ---
 
-        // Récupère toutes les résidences du syndic, pas juste celle sélectionnée
+        // Récupère TOUTES les résidences du syndic, pas juste celle sélectionnée
         List<Residence> allResidences = residenceRepository.findBySyndicId(currentSyndic.getId());
         dto.setManagedResidencesCount(allResidences.size());
 
@@ -111,7 +112,7 @@ public class DasboardServiceImpl implements DashboardService {
                 .sum();
         dto.setTotalLotsCount(totalLots);
 
-        // --- Incidents Ouverts (filtrés par résidence) ---
+        // --- Incidents Ouverts (filtrés sur cette résidence) ---
 
         // Liste des statuts considérés comme "ouverts" (tout sauf clôturé ou annulé)
         List<InterventionStatus> openStatuses = List.of(
@@ -124,13 +125,13 @@ public class DasboardServiceImpl implements DashboardService {
         dto.setUrgentIncidentsCount(interventionRequestRepository
                 .countByResidenceIdAndStatusInAndUrgencyLevel(residenceId, openStatuses, UrgencyLevel.URGENT));
 
-        // --- Interventions du Jour (filtrées par résidence) ---
+        // --- Interventions du Jour (filtrées sur cette résidence) ---
 
         // Calcule les bornes de la journée actuelle (00h00 à 23h59)
         LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
         LocalDateTime endOfToday = startOfToday.plusDays(1);
 
-        // Compte le nombre d'interventions créées aujourd'hui
+        // Compte le nombre d'interventions créées aujourd'hui, pour cette résidence
         dto.setTodayInterventionsCount(interventionRequestRepository
                 .countByResidenceIdAndCreatedAtBetween(residenceId, startOfToday, endOfToday));
         // Compte parmi elles celles encore en attente de devis (considérées "planifiées")
@@ -142,7 +143,7 @@ public class DasboardServiceImpl implements DashboardService {
     }
 
     // =========================================================================
-    // ÉVOLUTION FINANCIÈRE (graphique Trésorerie vs Appels de charges)
+    // ÉVOLUTION FINANCIÈRE (graphique Trésorerie vs Appels de charges, UNE résidence)
     // =========================================================================
 
     @Override
@@ -164,12 +165,12 @@ public class DasboardServiceImpl implements DashboardService {
         SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId()).orElse(null);
         Long walletId = (wallet != null) ? wallet.getId() : null;
 
-        // Construit et retourne le graphique cumulatif pour l'année en cours
+        // Construit et retourne le graphique cumulatif pour l'année en cours, pour cette résidence
         return buildTreasuryEvolutionByResidence(residenceId, walletId, LocalDate.now().getYear());
     }
 
     // =========================================================================
-    // ALERTES IMPORTANTES (Impayés significatifs + AG à préparer)
+    // ALERTES IMPORTANTES (Impayés significatifs + AG à préparer, toutes résidences)
     // =========================================================================
 
     @Override
@@ -229,7 +230,7 @@ public class DasboardServiceImpl implements DashboardService {
     }
 
     // =========================================================================
-    // ACTIVITÉS RÉCENTES
+    // ACTIVITÉS RÉCENTES (toutes résidences confondues)
     // =========================================================================
 
     @Override
@@ -249,7 +250,7 @@ public class DasboardServiceImpl implements DashboardService {
     }
 
     // =========================================================================
-    // INCIDENTS RÉCENTS
+    // INCIDENTS RÉCENTS (toutes résidences confondues)
     // =========================================================================
 
     @Override
@@ -266,6 +267,38 @@ public class DasboardServiceImpl implements DashboardService {
         // Transforme chaque intervention en ligne de tableau
         return interventions.stream()
                 .map(this::buildRecentIncidentDto)
+                .toList();
+    }
+
+    // =========================================================================
+    // RÉSIDENCE PAR DÉFAUT (pour la sélection initiale du dropdown côté front)
+    // =========================================================================
+
+    @Override
+    public Long getDefaultResidenceId() {
+
+        // Récupère le syndic actuellement connecté
+        User currentSyndic = getCurrentUser();
+
+        // Récupère la résidence la plus récemment créée par ce syndic
+        return residenceRepository.findFirstBySyndicIdOrderByCreatedAtDesc(currentSyndic.getId())
+                .map(Residence::getId)
+                .orElseThrow(() -> new RuntimeException("Aucune résidence trouvée pour ce syndic"));
+    }
+
+    // =========================================================================
+    // LISTE DES RÉSIDENCES (pour peupler le dropdown de sélection)
+    // =========================================================================
+
+    @Override
+    public List<SyndicResidenceDTO> getMyResidencesForDropdown() {
+
+        // Récupère le syndic actuellement connecté
+        User currentSyndic = getCurrentUser();
+
+        // Récupère toutes les résidences de ce syndic, les transforme en DTO simplifié (id + nom)
+        return residenceRepository.findBySyndicId(currentSyndic.getId()).stream()
+                .map(r -> SyndicResidenceDTO.builder().id(r.getId()).name(r.getName()).build())
                 .toList();
     }
 
@@ -431,8 +464,7 @@ public class DasboardServiceImpl implements DashboardService {
         };
     }
 
-    // Résout le statut d'une activité en interrogeant l'entité liée (relatedEntityType + relatedEntityId).
-    // TODO : ajouter "MEETING" une fois la vraie valeur de relatedEntityType vérifiée dans SyndicMeetingServiceImpl.
+    // Résout le statut d'une activité en interrogeant l'entité liée (relatedEntityType + relatedEntityId)
     private String resolveActivityStatus(ActivityLog log) {
 
         // Si aucune entité n'est liée à cette activité, pas de statut à afficher
@@ -461,7 +493,7 @@ public class DasboardServiceImpl implements DashboardService {
                         .orElse(null);
 
             default:
-                // Type pas encore géré (PROVIDER, MEETING...) — retourne null en attendant
+                // Type pas encore géré — retourne null en attendant
                 return null;
         }
     }
