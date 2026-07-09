@@ -24,11 +24,12 @@ public class SyndicDashboardController {
     // KPIS PRINCIPAUX
     // =========================================================================
 
-    @Operation(summary = "KPIs du tableau de bord (UNE résidence précise, obligatoire)", tags = {"Syndic - Tableau de Bord"})
+    // residenceId est optionnel : si absent, le back utilise automatiquement la dernière résidence créée
+    @Operation(summary = "KPIs du tableau de bord (filtré par résidence, ou dernière résidence créée si non précisé)", tags = {"Syndic - Tableau de Bord"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/dashboard/main")
     public ResponseEntity<MainDashboardDTO> getMainDashboard(
-            @RequestParam Long residenceId) {
+            @RequestParam(required = false) Long residenceId) {
         return ResponseEntity.ok(dashboardService.getMainDashboard(residenceId));
     }
 
@@ -36,11 +37,12 @@ public class SyndicDashboardController {
     // ÉVOLUTION FINANCIÈRE
     // =========================================================================
 
-    @Operation(summary = "Graphique Trésorerie vs Appels de charges (UNE résidence précise, obligatoire)", tags = {"Syndic - Tableau de Bord"})
+    // residenceId est optionnel : même logique de repli automatique
+    @Operation(summary = "Graphique Trésorerie vs Appels de charges (filtré par résidence, ou dernière résidence créée si non précisé)", tags = {"Syndic - Tableau de Bord"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/dashboard/financial-evolution")
     public ResponseEntity<List<TreasuryEvolutionPointDTO>> getFinancialEvolution(
-            @RequestParam Long residenceId) {
+            @RequestParam(required = false) Long residenceId) {
         return ResponseEntity.ok(dashboardService.getFinancialEvolution(residenceId));
     }
 
@@ -80,21 +82,10 @@ public class SyndicDashboardController {
     }
 
     // =========================================================================
-    // RÉSIDENCE PAR DÉFAUT (sélection initiale du dropdown)
-    // =========================================================================
-
-    @Operation(summary = "Résidence par défaut", description = "Retourne l'ID de la résidence la plus récemment créée par le syndic, à sélectionner par défaut à l'ouverture de la page")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
-    @GetMapping("/dashboard/default-residence")
-    public ResponseEntity<Long> getDefaultResidenceId() {
-        return ResponseEntity.ok(dashboardService.getDefaultResidenceId());
-    }
-
-    // =========================================================================
     // LISTE DES RÉSIDENCES (dropdown de sélection)
     // =========================================================================
 
-    @Operation(summary = "Lister mes résidences", description = "Retourne la liste des résidences du syndic (id + nom), pour peupler le dropdown de sélection")
+    @Operation(summary = "Lister mes résidences", description = "Retourne la liste des résidences du syndic (id + nom), pour peupler le dropdown de sélection", tags = {"Syndic - Tableau de Bord"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/dashboard/residences")
     public ResponseEntity<List<SyndicResidenceDTO>> getMyResidencesForDropdown() {

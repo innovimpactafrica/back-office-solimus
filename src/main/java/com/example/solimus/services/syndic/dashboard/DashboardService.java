@@ -8,14 +8,15 @@ import java.util.List;
 public interface DashboardService {
 
     /**
-     * Retourne les 6 KPIs principaux du tableau de bord pour UNE résidence précise.
-     * residenceId est OBLIGATOIRE.
+     * Retourne les 6 KPIs principaux du tableau de bord.
+     * residenceId est OPTIONNEL : si fourni, filtre sur cette résidence ;
+     * si absent, utilise automatiquement la résidence la plus récemment créée par le syndic.
      */
     MainDashboardDTO getMainDashboard(Long residenceId);
 
     /**
-     * Retourne le graphique "Évolution Financière" pour UNE résidence précise.
-     * residenceId est OBLIGATOIRE.
+     * Retourne le graphique "Évolution Financière".
+     * residenceId est OPTIONNEL : même logique de repli que getMainDashboard.
      */
     List<TreasuryEvolutionPointDTO> getFinancialEvolution(Long residenceId);
 
@@ -33,12 +34,6 @@ public interface DashboardService {
      * Retourne les derniers incidents gérés par le syndic, toutes résidences confondues.
      */
     List<RecentIncidentDTO> getRecentIncidents(int limit);
-
-    /**
-     * Retourne l'ID de la résidence la plus récemment créée par le syndic connecté,
-     * à utiliser comme sélection par défaut dans le dropdown du front à l'ouverture de la page.
-     */
-    Long getDefaultResidenceId();
 
     /**
      * Retourne la liste des résidences du syndic connecté (id + nom uniquement),
