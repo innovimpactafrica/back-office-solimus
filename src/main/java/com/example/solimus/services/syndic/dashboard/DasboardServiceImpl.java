@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -141,6 +142,7 @@ public class DasboardServiceImpl implements DashboardService {
     // =========================================================================
 
     @Override
+    @Transactional(readOnly = true)
     public List<TreasuryEvolutionPointDTO> getFinancialEvolution(Long residenceId) {
 
         // Récupère le syndic actuellement connecté
@@ -162,6 +164,7 @@ public class DasboardServiceImpl implements DashboardService {
     // =========================================================================
 
     @Override
+    @Transactional(readOnly = true)
     public List<AlertDTO> getImportantAlerts() {
 
         // Récupère le syndic actuellement connecté
@@ -222,6 +225,7 @@ public class DasboardServiceImpl implements DashboardService {
     // =========================================================================
 
     @Override
+    @Transactional(readOnly = true)
     public List<ActivityRowDTO> getRecentActivities(int limit) {
 
         // Récupère le syndic actuellement connecté
@@ -242,6 +246,7 @@ public class DasboardServiceImpl implements DashboardService {
     // =========================================================================
 
     @Override
+    @Transactional(readOnly = true)
     public List<RecentIncidentDTO> getRecentIncidents(int limit) {
 
         // Récupère le syndic actuellement connecté
@@ -263,6 +268,7 @@ public class DasboardServiceImpl implements DashboardService {
     // =========================================================================
 
     @Override
+    @Transactional(readOnly = true)
     public List<SyndicResidenceDTO> getMyResidencesForDropdown() {
 
         // Récupère le syndic actuellement connecté

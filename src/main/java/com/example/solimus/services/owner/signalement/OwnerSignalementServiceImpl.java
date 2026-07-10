@@ -8,6 +8,7 @@ import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
+import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -30,6 +31,7 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
     private final PropertyRepository propertyRepository;
     private final CommonFacilityRepository commonFacilityRepository;
     private final UserRepository userRepository;
+    private final MinioService minioService;
 
     // =========================================================================
     // CRÉER UN SIGNALEMENT
@@ -187,6 +189,9 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
                         .build())
                 .toList();
 
+        // Convertir les photos en URLs presignées (7 jours)
+        List<String> photoUrls = minioService.toPresignedUrls(signalement.getPhotoUrls());
+
         // Construit le DTO de détail complet
         return SignalementDetailDTO.builder()
                 .id(signalement.getId())
@@ -198,7 +203,7 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
                 .urgencyLevel(signalement.getUrgencyLevel().name())
                 .status(signalement.getStatus().getLabel())
                 .description(signalement.getDescription())
-                .photoUrls(signalement.getPhotoUrls())
+                .photoUrls(photoUrls)
                 .declaredByName(signalement.getOwner().getFirstName() + " " + signalement.getOwner().getLastName())
                 .closingNote(signalement.getClosingNote())
                 .history(historyDtos)

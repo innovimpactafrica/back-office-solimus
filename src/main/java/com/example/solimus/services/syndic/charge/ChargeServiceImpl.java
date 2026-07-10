@@ -310,6 +310,7 @@ public class ChargeServiceImpl implements ChargeService {
     // ============================================================
 
     @Override
+    @Transactional(readOnly = true)
     public BudgetListResponse getBudgetsForSyndic(int page, int size) {
 
         // Récupère le syndic actuellement connecté

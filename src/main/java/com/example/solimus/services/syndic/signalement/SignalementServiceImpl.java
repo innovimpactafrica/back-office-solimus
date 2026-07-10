@@ -8,6 +8,7 @@ import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
+import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -30,6 +31,7 @@ public class SignalementServiceImpl implements SignalementService {
     private final SpecialtyRepository specialtyRepository;
     private final InterventionRequestRepository interventionRequestRepository;
     private final NotificationService notificationService;
+    private final MinioService minioService;
 
     // =========================================================================
     // DASHBOARD
@@ -289,6 +291,9 @@ public class SignalementServiceImpl implements SignalementService {
                         .build())
                 .toList();
 
+        // Convertir les photos en URLs presignées (7 jours)
+        List<String> photoUrls = minioService.toPresignedUrls(signalement.getPhotoUrls());
+
         return SyndicSignalementDetailDTO.builder()
                 .id(signalement.getId())
                 .reference(signalement.getReference())
@@ -299,7 +304,7 @@ public class SignalementServiceImpl implements SignalementService {
                 .createdAt(signalement.getCreatedAt())
                 .urgencyLevel(signalement.getUrgencyLevel().name())
                 .status(signalement.getStatus().getLabel())
-                .photoUrls(signalement.getPhotoUrls())
+                .photoUrls(photoUrls)
                 .declaredByName(signalement.getOwner().getFirstName() + " " + signalement.getOwner().getLastName())
                 .declaredByPhone(signalement.getOwner().getPhone())
                 .declaredByEmail(signalement.getOwner().getEmail())

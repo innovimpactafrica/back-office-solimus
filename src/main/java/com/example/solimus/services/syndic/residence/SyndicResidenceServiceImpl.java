@@ -435,6 +435,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     // ÉTAPE 2 - LISTER LES COPROPRIÉTAIRES POUR L'AFFECTATION D'UN LOT
     // =========================================================================
     @Override
+    @Transactional(readOnly = true)
     public List<CoOwnerSelectionDTO> searchCoOwnersForSelection(String search) {
 
         // Récupérer le syndic connecté

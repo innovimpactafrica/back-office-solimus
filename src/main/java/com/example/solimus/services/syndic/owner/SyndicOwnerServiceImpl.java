@@ -69,6 +69,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
     // Autocomplete — recherche un copropriétaire par nom, email ou téléphone
     //-----------------------------------------------------------------------
     @Override
+    @Transactional(readOnly = true)
     public List<CoOwnerSearchResultDTO> searchCoOwners(String q) {
 
         // on limite à 5 résultats — suffisant pour un autocomplete
