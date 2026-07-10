@@ -89,8 +89,8 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                             photoUrl = minioService.getPresignedDownloadUrl(r.getPhotoUrl(), 604800); // 7 jours
                         } catch (Exception e) {
                             log.error("Erreur lors de la génération de l'URL signée pour la résidence {}: {}", r.getId(), e.getMessage());
-                            // En cas d'erreur, utiliser l'URL directe comme fallback
-                            photoUrl = minioService.getFileUrl(r.getPhotoUrl());
+                            // En cas d'erreur, réessayer avec une nouvelle tentative
+                            photoUrl = minioService.getPresignedDownloadUrl(r.getPhotoUrl(), 604800);
                         }
                     }
                     return SyndicResidenceDTO.builder()
@@ -562,6 +562,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     // =========================================================================
 
     @Override
+    @Transactional(readOnly = true)
     public SyndicDepositSummaryDTO getDepositSummary(Long interventionId) {
 
         User currentSyndic = getCurrentUser();
@@ -660,6 +661,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     // =========================================================================
 
     @Override
+    @Transactional(readOnly = true)
     public SyndicBalancePaymentSummaryDTO getBalanceSummary(Long interventionId) {
 
         User currentSyndic = getCurrentUser();

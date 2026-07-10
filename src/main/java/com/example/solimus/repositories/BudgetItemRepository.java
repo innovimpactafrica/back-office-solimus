@@ -15,4 +15,7 @@ public interface BudgetItemRepository extends JpaRepository<BudgetItem, Long> {
     // Récupère le poste budgétaire le plus récent lié à cet équipement commun
    // (le plus récent = celui du budget avec l'année la plus élevée)
     Optional<BudgetItem> findFirstByCommonFacilityIdOrderByBudgetAnneeDesc(Long commonFacilityId);
+
+    // Supprime tous les postes budgétaires d'un budget donné
+    void deleteByBudgetId(Long budgetId);
 }

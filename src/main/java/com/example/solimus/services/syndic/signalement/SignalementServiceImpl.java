@@ -36,6 +36,7 @@ public class SignalementServiceImpl implements SignalementService {
     // =========================================================================
 
     @Override
+    @Transactional(readOnly = true)
     public SignalementDashboardDTO getDashboard() {
 
         // Récupère le syndic connecté
@@ -60,6 +61,7 @@ public class SignalementServiceImpl implements SignalementService {
     // =========================================================================
 
     @Override
+    @Transactional(readOnly = true)
     public SyndicSignalementListResponse getSignalementsForSyndic(
             String search, SignalementStatus status, Long residenceId, int page, int size) {
 
@@ -91,6 +93,7 @@ public class SignalementServiceImpl implements SignalementService {
     // =========================================================================
 
     @Override
+    @Transactional(readOnly = true)
     public SyndicSignalementDetailDTO getSignalementDetailForSyndic(Long id) {
 
         // Récupère le syndic connecté

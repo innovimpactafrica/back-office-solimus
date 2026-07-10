@@ -34,6 +34,12 @@ public interface ChargeService {
      */
     BudgetDetailDTO getBudgetDetail(Long budgetId);
 
+    /**
+     * Met à jour partiellement un budget prévisionnel existant.
+     * Seuls les champs fournis sont mis à jour.
+     */
+    BudgetDetailDTO updateBudget(Long budgetId, UpdateBudgetDTO dto);
+
     //--------------------------------------------------
     // ===== APPEL DE CHARGES =====
     //--------------------------------------------------

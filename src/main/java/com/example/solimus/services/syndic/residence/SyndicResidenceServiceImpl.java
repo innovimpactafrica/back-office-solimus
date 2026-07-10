@@ -834,7 +834,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                             photoUrl = minioService.getPresignedDownloadUrl(residence.getPhotoUrl(), 604800);
                         } catch (Exception e) {
                             log.error("Erreur lors de la génération de l'URL signée pour la résidence {}: {}", residence.getId(), e.getMessage());
-                            photoUrl = minioService.getFileUrl(residence.getPhotoUrl());
+                            photoUrl = minioService.getPresignedDownloadUrl(residence.getPhotoUrl(), 604800);
                         }
                     }
 
@@ -880,6 +880,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     // LISTER LES RÉSIDENCES DU SYNDIC (POUR DROPDOWNS)
     // =========================================================================
     @Override
+    @Transactional(readOnly = true)
     public List<ResidenceDTO> getMesResidences() {
         User currentSyndic = getCurrentUser();
         return residenceRepository.findAllBySyndicId(currentSyndic.getId())

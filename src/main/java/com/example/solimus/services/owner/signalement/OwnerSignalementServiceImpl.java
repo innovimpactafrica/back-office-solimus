@@ -57,22 +57,31 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
         signalement.setLocationType(dto.getLocationType());
         signalement.setPhotoUrls(dto.getPhotoUrls() != null ? dto.getPhotoUrls() : new ArrayList<>());
 
-        // Vérifie qu'un seul des deux (appartement OU partie commune) est renseigné
-        if (dto.getPropertyId() != null && dto.getCommonFacilityId() != null) {
-            throw new BadRequestException("Vous ne pouvez spécifier qu'un seul : un appartement OU un équipement commun");
-        }
-        if (dto.getPropertyId() == null && dto.getCommonFacilityId() == null) {
-            throw new BadRequestException("Vous devez spécifier un appartement OU un équipement commun");
+        // Vérifie la cohérence entre locationType et les IDs fournis
+        if (dto.getLocationType() == IncidentLocationType.APPARTEMENT) {
+            if (dto.getPropertyId() == null) {
+                throw new BadRequestException("propertyId est obligatoire lorsque locationType est APPARTEMENT");
+            }
+            if (dto.getCommonFacilityId() != null) {
+                throw new BadRequestException("commonFacilityId ne doit pas être fourni lorsque locationType est APPARTEMENT");
+            }
+        } else if (dto.getLocationType() == IncidentLocationType.PARTIE_COMMUNE) {
+            if (dto.getCommonFacilityId() == null) {
+                throw new BadRequestException("commonFacilityId est obligatoire lorsque locationType est PARTIE_COMMUNE");
+            }
+            if (dto.getPropertyId() != null) {
+                throw new BadRequestException("propertyId ne doit pas être fourni lorsque locationType est PARTIE_COMMUNE");
+            }
         }
 
         // Associe l'entité correspondante selon le type de localisation choisi
         if (dto.getLocationType() == IncidentLocationType.APPARTEMENT) {
             Property property = propertyRepository.findById(dto.getPropertyId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Appartement introuvable"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Appartement introuvable avec l'ID: " + dto.getPropertyId()));
             signalement.setProperty(property);
         } else {
             CommonFacility commonFacility = commonFacilityRepository.findById(dto.getCommonFacilityId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Équipement commun introuvable"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Équipement commun introuvable avec l'ID: " + dto.getCommonFacilityId()));
             signalement.setCommonFacility(commonFacility);
         }
 
@@ -88,6 +97,7 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
     // =========================================================================
 
     @Override
+    @Transactional(readOnly = true)
     public Page<SignalementCardDTO> getMySignalements(String search, Long residenceId, SignalementStatus status, int page, int size) {
 
         // Récupère le copropriétaire actuellement connecté
@@ -110,6 +120,7 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
     // =========================================================================
 
     @Override
+    @Transactional(readOnly = true)
     public SignalementDetailDTO getSignalementDetail(Long id) {
 
         // Récupère le copropriétaire actuellement connecté

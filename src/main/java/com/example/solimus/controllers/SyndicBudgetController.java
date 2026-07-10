@@ -58,6 +58,15 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.createBudget(dto));
     }
 
+    @Operation(summary = "Mettre à jour partiellement un budget prévisionnel", description = "Met à jour partiellement un budget existant. Seuls les champs fournis sont mis à jour.")
+    @PatchMapping("/{budgetId}")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    public ResponseEntity<BudgetDetailDTO> updateBudget(
+            @PathVariable Long budgetId,
+            @RequestBody UpdateBudgetDTO dto) {
+        return ResponseEntity.ok(chargeService.updateBudget(budgetId, dto));
+    }
+
     @Operation(summary = "Lister les budgets", description = "Retourne la liste paginée des budgets du syndic connecté avec les totaux globaux (nombre de budgets, nombre de budgets actifs)")
     @GetMapping("/budgets")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")

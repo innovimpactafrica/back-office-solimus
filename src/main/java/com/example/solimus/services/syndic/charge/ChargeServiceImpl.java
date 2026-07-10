@@ -48,6 +48,7 @@ public class ChargeServiceImpl implements ChargeService {
     private final MinioService minioService;
     private final CommonFacilityRepository commonFacilityRepository;
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
+    private final BudgetItemRepository budgetItemRepository;
 
     // ============================================================
     // 1. ÉTAPE 1  — APERÇU RÉSIDENCE
@@ -200,6 +201,106 @@ public class ChargeServiceImpl implements ChargeService {
 
         // ------------------------------------------------------------
         // ÉTAPE 2.7 — Retourner le détail complet
+        // ------------------------------------------------------------
+        return buildBudgetDetailDTO(savedBudget);
+    }
+
+    @Override
+    @Transactional
+    public BudgetDetailDTO updateBudget(Long budgetId, UpdateBudgetDTO dto) {
+        // ------------------------------------------------------------
+        // ÉTAPE 1 — Récupérer le budget existant
+        // ------------------------------------------------------------
+        Budget budget = budgetRepository.findById(budgetId)
+                .orElseThrow(() -> new RuntimeException("Budget non trouvé"));
+
+        // ------------------------------------------------------------
+        // ÉTAPE 2 — Vérifier l'autorisation du syndic
+        // ------------------------------------------------------------
+        User currentSyndic = getCurrentUser();
+        if (!budget.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à modifier ce budget");
+        }
+
+        // ------------------------------------------------------------
+        // ÉTAPE 3 — Mise à jour partielle des champs
+        // ------------------------------------------------------------
+        if (dto.getResidenceId() != null) {
+            Residence residence = residenceRepository.findById(dto.getResidenceId())
+                    .orElseThrow(() -> new RuntimeException("Résidence non trouvée"));
+            if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+                throw new ForbiddenException("Vous n'êtes pas autorisé à modifier vers cette résidence");
+            }
+            budget.setResidence(residence);
+        }
+
+        if (dto.getAnnee() != null) {
+            // Vérifier qu'un budget n'existe pas déjà pour cette résidence et cette nouvelle année
+            budgetRepository.findByResidenceIdAndAnnee(budget.getResidence().getId(), dto.getAnnee())
+                    .ifPresent(existingBudget -> {
+                        if (!existingBudget.getId().equals(budgetId)) {
+                            throw new RuntimeException("Un budget existe déjà pour cette résidence et cette année");
+                        }
+                    });
+            budget.setAnnee(dto.getAnnee());
+        }
+
+        if (dto.getRepartitionMode() != null) {
+            budget.setRepartitionMode(dto.getRepartitionMode());
+        }
+
+        // ------------------------------------------------------------
+        // ÉTAPE 4 — Mise à jour des postes budgétaires si fournis
+        // ------------------------------------------------------------
+        if (dto.getItems() != null && !dto.getItems().isEmpty()) {
+            // Supprimer les items existants
+            budgetItemRepository.deleteByBudgetId(budgetId);
+            budget.getItems().clear();
+
+            // Créer les nouveaux items
+            List<BudgetItem> budgetItems = new ArrayList<>();
+            BigDecimal budgetTotal = BigDecimal.ZERO;
+
+            for (BudgetItemInputDTO itemDto : dto.getItems()) {
+                BudgetItem item = new BudgetItem();
+                item.setBudget(budget);
+                item.setMontant(itemDto.getMontant());
+
+                // Si le syndic a sélectionné une suggestion d'équipement commun
+                if (itemDto.getCommonFacilityId() != null) {
+                    CommonFacility facility = commonFacilityRepository.findById(itemDto.getCommonFacilityId())
+                            .orElseThrow(() -> new RuntimeException("Équipement commun introuvable"));
+
+                    // Vérifier que l'équipement appartient bien à la résidence de ce budget
+                    if (!facility.getResidence().getId().equals(budget.getResidence().getId())) {
+                        throw new BadRequestException("Cet équipement commun n'appartient pas à cette résidence");
+                    }
+
+                    item.setCommonFacility(facility);
+                    item.setLibelle(facility.getFacilityType().getName());
+                } else {
+                    // Pas d'équipement commun : le libellé est obligatoire
+                    if (itemDto.getLibelle() == null || itemDto.getLibelle().isBlank()) {
+                        throw new BadRequestException("Le libellé est obligatoire pour les postes sans équipement commun");
+                    }
+                    item.setLibelle(itemDto.getLibelle());
+                }
+
+                budgetItems.add(item);
+                budgetTotal = budgetTotal.add(itemDto.getMontant());
+            }
+
+            budget.setBudgetTotal(budgetTotal);
+            budget.setItems(budgetItems);
+        }
+
+        // ------------------------------------------------------------
+        // ÉTAPE 5 — Sauvegarder le budget
+        // ------------------------------------------------------------
+        Budget savedBudget = budgetRepository.save(budget);
+
+        // ------------------------------------------------------------
+        // ÉTAPE 6 — Retourner le détail complet
         // ------------------------------------------------------------
         return buildBudgetDetailDTO(savedBudget);
     }
