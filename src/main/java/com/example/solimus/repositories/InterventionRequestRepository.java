@@ -389,6 +389,11 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
     /**
      * Dernières interventions gérées par le syndic (via la résidence), filtrées sur le mode de gestion
      */
+    @Query("SELECT i FROM InterventionRequest i JOIN FETCH i.residence WHERE i.residence.syndic.id = :syndicId " +
+           "AND i.managementMode = :managementMode " +
+           "ORDER BY i.createdAt DESC")
     List<InterventionRequest> findByResidenceSyndicIdAndManagementModeOrderByCreatedAtDesc(
-            Long syndicId, InterventionManagementMode managementMode, Pageable pageable);
+            @Param("syndicId") Long syndicId,
+            @Param("managementMode") InterventionManagementMode managementMode,
+            Pageable pageable);
 }

@@ -66,7 +66,7 @@ public class Signalement {
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner; // Copropriétaire qui a créé le signalement
 
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "signalement_photos", joinColumns = @JoinColumn(name = "signalement_id"))
     @Column(name = "photo_url")
     private List<String> photoUrls = new ArrayList<>();

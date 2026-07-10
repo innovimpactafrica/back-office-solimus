@@ -634,7 +634,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
         return ResidenceHeaderStatsDTO.builder()
                 .name(residence.getName())
-                .photoUrl(residence.getPhotoUrl())
+                .photoUrl(residence.getPhotoUrl() != null ? minioService.getPresignedDownloadUrl(residence.getPhotoUrl(), 604800) : null)
                 .fullAddress(residence.getFullAddress())
                 .city(residence.getCity())
                 .healthStatus(healthStatus)

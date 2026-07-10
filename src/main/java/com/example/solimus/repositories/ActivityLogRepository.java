@@ -12,7 +12,9 @@ import java.util.List;
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> {
 
     // Utilisé par l'endpoint de lecture du panneau Activité Récente (prompt séparé, à venir).
-    Page<ActivityLog> findByResidenceIdOrderByCreatedAtDesc(Long residenceId, Pageable pageable);
+    @Query("SELECT a FROM ActivityLog a JOIN FETCH a.residence WHERE a.residence.id = :residenceId " +
+           "ORDER BY a.createdAt DESC")
+    Page<ActivityLog> findByResidenceIdOrderByCreatedAtDesc(@Param("residenceId") Long residenceId, Pageable pageable);
 
     // Filtrer par résidence et type d'entité liée (ex: "INTERVENTION" pour scope=interventions)
     @Query("SELECT a FROM ActivityLog a WHERE a.residence.id = :residenceId " +
@@ -54,7 +56,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> 
     /**
      * Lister les logs d'activité des résidences d'un syndic
      */
-    @Query("SELECT a FROM ActivityLog a WHERE a.residence.syndic.id = :syndicId " +
+    @Query("SELECT a FROM ActivityLog a JOIN FETCH a.residence WHERE a.residence.syndic.id = :syndicId " +
            "ORDER BY a.createdAt DESC")
     List<ActivityLog> findByResidenceSyndicIdOrderByCreatedAtDesc(@Param("syndicId") Long syndicId, Pageable pageable);
 }
