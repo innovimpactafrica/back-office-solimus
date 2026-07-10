@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 //DTO pour afficher les demandes disponibles pour un prestataire
 @Data
@@ -30,4 +31,6 @@ public class ProviderRequestSummaryDTO {
 
     @JsonFormat(pattern = "dd/MM/yyyy HH:mm")
     private LocalDateTime createdAt;
+
+    private List<String> photoUrls; // URLs signées des photos pour affichage dans la liste
 }

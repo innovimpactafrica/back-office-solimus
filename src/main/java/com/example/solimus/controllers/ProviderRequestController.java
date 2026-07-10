@@ -4,6 +4,7 @@ import com.example.solimus.dtos.admin.EstimatedDelayDTO;
 import com.example.solimus.dtos.provider.request.CreateQuoteDTO;
 import com.example.solimus.dtos.provider.request.ProviderRequestDetailDTO;
 import com.example.solimus.dtos.provider.request.ProviderRequestsDTO;
+import com.example.solimus.dtos.provider.request.UpdateQuoteDTO;
 import com.example.solimus.enums.ProviderRequestDisplayStatus;
 import com.example.solimus.services.provider.request.ProviderRequestService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -70,5 +71,23 @@ public class ProviderRequestController {
     @PreAuthorize("hasRole('ROLE_PRESTATAIRE')")
     public ResponseEntity<List<EstimatedDelayDTO>> getEstimatedDelays() {
         return ResponseEntity.ok(providerRequestService.getEstimatedDelays());
+    }
+
+    @Operation(summary = "Mettre à jour partiellement un devis (uniquement si pas encore accepté)")
+    @PreAuthorize("hasRole('ROLE_PRESTATAIRE')")
+    @PatchMapping("/quote/{id}")
+    public ResponseEntity<Void> updateQuote(
+            @PathVariable Long id,
+            @RequestBody @Valid UpdateQuoteDTO dto) {
+        providerRequestService.updateQuote(id, dto);
+        return ResponseEntity.ok().build();
+    }
+
+    @Operation(summary = "Supprimer un devis (uniquement si pas encore accepté)")
+    @PreAuthorize("hasRole('ROLE_PRESTATAIRE')")
+    @DeleteMapping("/quote/{id}")
+    public ResponseEntity<Void> deleteQuote(@PathVariable Long id) {
+        providerRequestService.deleteQuote(id);
+        return ResponseEntity.noContent().build();
     }
 }

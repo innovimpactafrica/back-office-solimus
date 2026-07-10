@@ -34,6 +34,12 @@ public interface ProviderRequestService {
     /** Créer un devis (brouillon ou envoyé)*/
     void createQuote(CreateQuoteDTO dto);
 
+    /** Mettre à jour partiellement un devis (uniquement si pas encore accepté) */
+    void updateQuote(Long quoteId, UpdateQuoteDTO dto);
+
+    /** Supprimer un devis (uniquement si pas encore accepté) */
+    void deleteQuote(Long quoteId);
+
     /** Lister les délais d'estimation disponibles*/
     List<EstimatedDelayDTO> getEstimatedDelays();
 }

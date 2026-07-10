@@ -103,7 +103,19 @@ public class MinioServiceImpl implements MinioService {
         }
 
         return urls.stream()
-                .map(url -> getPresignedDownloadUrl(url, 3600))
+                .map(url -> getPresignedDownloadUrl(url, 604800)) // 7 jours
+                .collect(Collectors.toList());
+    }
+
+    // Transforme les chemins de fichiers MinIO en URLs publiques directes
+    // Utilisez cette méthode si le bucket est configuré en lecture publique
+    public List<String> toPublicUrls(List<String> urls) {
+        if (urls == null || urls.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        return urls.stream()
+                .map(this::getFileUrl)
                 .collect(Collectors.toList());
     }
     @Override

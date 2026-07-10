@@ -4,6 +4,7 @@ import com.example.solimus.dtos.admin.EstimatedDelayDTO;
 import com.example.solimus.dtos.provider.request.*;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.*;
+import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.EstimatedDelayRepository;
@@ -72,6 +73,10 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
             ProviderRequestDisplayStatus status = knownStatus != null
                     ? knownStatus
                     : calculateDisplayStatus(request, currentProvider);
+
+            // Convertir les chemins photos en URLs signées MinIO (7 jours)
+            List<String> photoUrls = minioService.toPresignedUrls(request.getPhotoUrls());
+
             return ProviderRequestSummaryDTO.builder()
                     .id(request.getId())
                     .title(request.getTitle())
@@ -79,6 +84,7 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
                     .status(status)
                     .statusLabel(status.getLabel())
                     .createdAt(request.getCreatedAt())
+                    .photoUrls(photoUrls)
                     .build();
         });
 
@@ -113,7 +119,7 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
                 ? request.getSyndic()
                 : request.getOwner();
 
-        // 5. Convertir les chemins photos en URLs signées MinIO affichables par le front
+        // 5. Convertir les chemins photos en URLs signées MinIO affichables par le front (7 jours)
         List<String> photoUrls = minioService.toPresignedUrls(request.getPhotoUrls());
 
         // 6. Calculer le statut affiché pour CE prestataire précis / Déjà en listant, on liste que les demandes où il n'a pas été choisi,
@@ -198,6 +204,80 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
 
         // 9. Sauvegarde finale (Hibernate calculera les totaux via @PrePersist)
         quoteRepository.save(quote);
+    }
+
+    // =========================================================================
+    // MISE À JOUR ET SUPPRESSION DE DEVIS
+    // =========================================================================
+
+    @Override
+    @Transactional
+    public void updateQuote(Long quoteId, UpdateQuoteDTO dto) {
+        User provider = getCurrentUser();
+
+        Quote quote = quoteRepository.findById(quoteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Devis introuvable"));
+
+        // Vérifier que le devis appartient au prestataire
+        if (!quote.getProvider().getId().equals(provider.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à modifier ce devis");
+        }
+
+        // Vérifier que le devis n'est pas encore accepté
+        if (quote.getStatus() == QuoteStatus.ACCEPTED) {
+            throw new BadRequestException("Impossible de modifier un devis qui a été accepté");
+        }
+
+        // Mise à jour partielle des champs
+        if (dto.getEstimatedDelayId() != null) {
+            EstimatedDelay delay = estimatedDelayRepository.findById(dto.getEstimatedDelayId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Délai estimé introuvable"));
+            quote.setEstimatedDelay(delay);
+        }
+        if (dto.getAdditionalComments() != null) {
+            quote.setAdditionalComments(dto.getAdditionalComments());
+        }
+        if (dto.getIsDraft() != null) {
+            quote.setStatus(dto.getIsDraft() ? QuoteStatus.DRAFT : QuoteStatus.SENT);
+        }
+        if (dto.getItems() != null) {
+            // Supprimer les anciens items
+            quote.getItems().clear();
+            // Ajouter les nouveaux items
+            List<QuoteItem> items = dto.getItems().stream().map(itemDto -> {
+                QuoteItem item = new QuoteItem();
+                item.setDescription(itemDto.getDescription());
+                item.setQuantity(itemDto.getQuantity());
+                item.setUnitPrice(itemDto.getUnitPrice());
+                item.setType(itemDto.getType());
+                item.setQuote(quote);
+                return item;
+            }).collect(Collectors.toList());
+            quote.setItems(items);
+        }
+
+        quoteRepository.save(quote);
+    }
+
+    @Override
+    @Transactional
+    public void deleteQuote(Long quoteId) {
+        User provider = getCurrentUser();
+
+        Quote quote = quoteRepository.findById(quoteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Devis introuvable"));
+
+        // Vérifier que le devis appartient au prestataire
+        if (!quote.getProvider().getId().equals(provider.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à supprimer ce devis");
+        }
+
+        // Vérifier que le devis n'est pas encore accepté
+        if (quote.getStatus() == QuoteStatus.ACCEPTED) {
+            throw new BadRequestException("Impossible de supprimer un devis qui a été accepté");
+        }
+
+        quoteRepository.delete(quote);
     }
 
     // =========================================================================

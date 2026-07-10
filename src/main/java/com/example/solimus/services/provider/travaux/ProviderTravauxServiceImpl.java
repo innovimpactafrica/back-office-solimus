@@ -118,7 +118,7 @@ public class ProviderTravauxServiceImpl implements ProviderTravauxService {
 
     @Override
     @Transactional
-    public void finishIntervention(Long requestId, String commentaire, MultipartFile[] photos) {
+    public void finishIntervention(Long requestId, String commentaire, List<MultipartFile> photos) {
 
         User currentProvider = getCurrentUser();
 
@@ -146,7 +146,7 @@ public class ProviderTravauxServiceImpl implements ProviderTravauxService {
         }
 
         // Ajouter les photos si fournies
-        if (photos != null && photos.length > 0) {
+        if (photos != null && !photos.isEmpty()) {
             for (MultipartFile photo : photos) {
                 try {
                     String photoUrl = minioService.uploadFile(photo, "interventions");
@@ -203,7 +203,7 @@ public class ProviderTravauxServiceImpl implements ProviderTravauxService {
             residentEmail = contact.getEmail();
         }
 
-        // Convertir les chemins photos en URLs signées MinIO
+        // Convertir les chemins photos en URLs signées MinIO (7 jours)
         List<String> photoUrls = toPresignedUrls(request.getPhotoUrls());
 
         return ProviderTravauxDetailDTO.builder()

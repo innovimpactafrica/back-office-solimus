@@ -1060,7 +1060,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
             commonFacilityName = request.getCommonFacility().getFacilityType().getName();
         }
 
-        // Convertir les chemins photos en URLs signées MinIO
+        // Convertir les chemins photos en URLs signées MinIO (7 jours)
         List<String> photoUrls = minioService.toPresignedUrls(request.getPhotoUrls());
 
         return OwnerInterventionDetailDTO.builder()

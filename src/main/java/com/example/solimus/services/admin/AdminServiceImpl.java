@@ -246,6 +246,14 @@ public class AdminServiceImpl implements AdminService {
         return new EstimatedDelayDTO(saved.getId(), saved.getLabel(), saved.getDays());
     }
 
+    @Override
+    @Transactional
+    public void deleteEstimatedDelay(Long id) {
+        EstimatedDelay delay = estimatedDelayRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Délai estimé introuvable"));
+        estimatedDelayRepository.delete(delay);
+    }
+
     // ============================================================================
     // PARTIE — AJOUT , CONSULTATION ET STATUT DES UTILISATEURS
     // ============================================================================

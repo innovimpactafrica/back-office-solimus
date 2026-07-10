@@ -6,10 +6,13 @@ import com.example.solimus.dtos.owner.CoOwnerMeetingsDTO;
 import com.example.solimus.dtos.syndic.owner.*;
 import com.example.solimus.dtos.syndic.residence.ActivityLogItemDTO;
 import com.example.solimus.enums.CoOwnerDocumentCategory;
+import com.example.solimus.enums.Nationality;
+import com.example.solimus.enums.Title;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public interface SyndicOwnerService {
@@ -58,4 +61,11 @@ public interface SyndicOwnerService {
 
     /** Lier un copropriétaire existant au syndic connecté via la relation */
      void linkCoOwner(Long coOwnerId);
+
+    /** Met à jour partiellement un copropriétaire (seuls les champs fournis sont modifiés) */
+    void updateCoOwner(Long coOwnerId, String firstName, String lastName, String email, String phone,
+                       Title title, LocalDate birthDate, Nationality nationality, String secondaryPhone, String address);
+
+    /** Supprime un copropriétaire et libère ses lots (statut VACANT) */
+    void deleteCoOwner(Long coOwnerId);
 }

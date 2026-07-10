@@ -10,6 +10,7 @@ import com.example.solimus.dtos.syndic.travaux.SyndicDepositSummaryDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicPayDepositDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicBalancePaymentSummaryDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicPaymentResultDTO;
+import com.example.solimus.dtos.syndic.travaux.UpdateInterventionRequestDTO;
 import com.example.solimus.enums.IncidentLocationType;
 import com.example.solimus.enums.UrgencyLevel;
 import com.example.solimus.services.minio.MinioService;
@@ -214,5 +215,27 @@ public class SyndicTravauxController {
     @PostMapping("/interventions/{id}/pay-balance")
     public ResponseEntity<SyndicPaymentResultDTO> payBalanceAndClose(@PathVariable Long id) {
         return ResponseEntity.ok(syndicTravauxService.payBalanceAndClose(id));
+    }
+
+    // =========================================================================
+    // MISE À JOUR ET SUPPRESSION D'INTERVENTION
+    // =========================================================================
+
+    @Operation(summary = "Mettre à jour partiellement une demande d'intervention (uniquement si en attente de devis)")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PatchMapping("/interventions/{id}")
+    public ResponseEntity<Void> updateIntervention(
+            @PathVariable Long id,
+            @RequestBody @Valid UpdateInterventionRequestDTO dto) {
+        syndicTravauxService.updateIntervention(id, dto);
+        return ResponseEntity.ok().build();
+    }
+
+    @Operation(summary = "Supprimer une demande d'intervention (uniquement si en attente de devis)")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @DeleteMapping("/interventions/{id}")
+    public ResponseEntity<Void> deleteIntervention(@PathVariable Long id) {
+        syndicTravauxService.deleteIntervention(id);
+        return ResponseEntity.noContent().build();
     }
 }

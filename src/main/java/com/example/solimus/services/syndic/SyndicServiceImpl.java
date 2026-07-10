@@ -896,7 +896,7 @@ public class SyndicServiceImpl implements SyndicService {
     private List<String> toPresignedUrls(List<String> urls) {
         if (urls == null || urls.isEmpty()) return new ArrayList<>();
         return urls.stream()
-                .map(url -> minioService.getPresignedDownloadUrl(url, 3600))
+                .map(url -> minioService.getPresignedDownloadUrl(url, 604800))
                 .collect(Collectors.toList());
     }
 

@@ -8,13 +8,7 @@ import com.example.solimus.dtos.owner.CoOwnerMeetingHistoryItemDTO;
 import com.example.solimus.dtos.syndic.owner.*;
 import com.example.solimus.dtos.syndic.residence.ActivityLogItemDTO;
 import com.example.solimus.entities.*;
-import com.example.solimus.enums.AttendanceStatus;
-import com.example.solimus.enums.CoOwnerDocumentCategory;
-import com.example.solimus.enums.ERole;
-import com.example.solimus.enums.IncidentLocationType;
-import com.example.solimus.enums.InterventionStatus;
-import com.example.solimus.enums.PropertyStatus;
-import com.example.solimus.enums.UserStatus;
+import com.example.solimus.enums.*;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.CoOwnerAlreadyExistsException;
 import com.example.solimus.exceptions.ForbiddenException;
@@ -38,6 +32,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Year;
 import java.util.ArrayList;
@@ -1318,5 +1313,100 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         }
         // CANCELLED ne devrait pas arriver ici (exclu des requêtes)
         return null;
+    }
+
+    @Override
+    @Transactional
+    public void updateCoOwner(Long coOwnerId, String firstName, String lastName, String email, String phone,
+                              Title title , LocalDate birthDate, Nationality nationality,
+                              String secondaryPhone, String address) {
+        User currentSyndic = getCurrentUser();
+
+        User coOwner = userRepository.findById(coOwnerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
+
+        // Vérifier que le copropriétaire a au moins un lot chez le syndic
+        long apartmentsCount = propertyRepository.countApartmentsByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
+        if (apartmentsCount == 0) {
+            throw new ForbiddenException("Ce copropriétaire n'a pas de lot dans vos résidences");
+        }
+
+        // Mise à jour partielle des champs User
+        if (firstName != null) {
+            coOwner.setFirstName(firstName);
+        }
+        if (lastName != null) {
+            coOwner.setLastName(lastName);
+        }
+        if (email != null) {
+            coOwner.setEmail(email);
+        }
+        if (phone != null) {
+            coOwner.setPhone(phone);
+        }
+
+        // Mise à jour partielle des champs CoOwnerProfile
+        CoOwnerProfile profile = coOwnerProfileRepository.findByUserId(coOwnerId)
+                .orElse(null);
+        
+        if (profile != null) {
+            if (title != null) {
+                profile.setTitle(title);
+            }
+            if (birthDate != null) {
+                profile.setBirthDate(birthDate);
+            }
+            if (nationality != null) {
+                profile.setNationality(nationality);
+            }
+            if (secondaryPhone != null) {
+                profile.setSecondaryPhone(secondaryPhone);
+            }
+            if (address != null) {
+                profile.setAddress(address);
+            }
+            coOwnerProfileRepository.save(profile);
+        }
+
+        userRepository.save(coOwner);
+    }
+
+    @Override
+    @Transactional
+    public void deleteCoOwner(Long coOwnerId) {
+        User currentSyndic = getCurrentUser();
+
+        User coOwner = userRepository.findById(coOwnerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
+
+        // Vérifier que le copropriétaire a au moins un lot chez le syndic
+        long apartmentsCount = propertyRepository.countApartmentsByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
+        if (apartmentsCount == 0) {
+            throw new ForbiddenException("Ce copropriétaire n'a pas de lot dans vos résidences");
+        }
+
+        // Libérer tous les lots du copropriétaire (mettre owner à null et status à VACANT)
+        List<Property> properties = propertyRepository.findByOwnerIdAndResidenceSyndicId(coOwnerId, currentSyndic.getId());
+        for (Property property : properties) {
+            property.setOwner(null);
+            property.setStatus(PropertyStatus.VACANT);
+            propertyRepository.save(property);
+        }
+
+        // Supprimer le profil du copropriétaire
+        CoOwnerProfile profile = coOwnerProfileRepository.findByUserId(coOwnerId)
+                .orElse(null);
+        if (profile != null) {
+            coOwnerProfileRepository.delete(profile);
+        }
+
+        // Supprimer les relations syndic-copropriétaire
+        List<SyndicOwnerRelation> relations = syndicCoOwnerRelationRepository.findAllBySyndicId(currentSyndic.getId(), Pageable.unpaged()).getContent();
+        relations.stream()
+                .filter(r -> r.getCoOwner().getId().equals(coOwnerId))
+                .forEach(syndicCoOwnerRelationRepository::delete);
+
+        // Supprimer l'utilisateur
+        userRepository.delete(coOwner);
     }
 }

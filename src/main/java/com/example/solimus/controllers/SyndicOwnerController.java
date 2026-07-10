@@ -222,4 +222,34 @@ public class SyndicOwnerController {
         syndicOwnerService.linkCoOwner(id);
         return ResponseEntity.ok("Copropriétaire lié avec succès");
     }
+
+    @Operation(summary = "Mettre à jour partiellement un copropriétaire", tags = {"Syndic - Copropriétaires"})
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PatchMapping("/co-owners/{id}")
+    public ResponseEntity<Void> updateCoOwner(
+            @PathVariable Long id,
+            @RequestParam(required = false) String firstName,
+            @RequestParam(required = false) String lastName,
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false) String phone,
+            @Parameter(description = "Civilité")
+            @RequestParam(required = false) Title title,
+            @Parameter(description = "Date de naissance au format jj/mm/aaaa", schema = @Schema(type = "string", example = "14/05/1988"))
+            @RequestParam(required = false)
+            @DateTimeFormat(pattern = "dd/MM/yyyy") LocalDate birthDate,
+            @Parameter(description = "Nationalité")
+            @RequestParam(required = false) Nationality nationality,
+            @RequestParam(required = false) String secondaryPhone,
+            @RequestParam(required = false) String address) {
+        syndicOwnerService.updateCoOwner(id, firstName, lastName, email, phone, title, birthDate, nationality, secondaryPhone, address);
+        return ResponseEntity.ok().build();
+    }
+
+    @Operation(summary = "Supprimer un copropriétaire et libérer ses lots", tags = {"Syndic - Copropriétaires"})
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @DeleteMapping("/co-owners/{id}")
+    public ResponseEntity<Void> deleteCoOwner(@PathVariable Long id) {
+        syndicOwnerService.deleteCoOwner(id);
+        return ResponseEntity.noContent().build();
+    }
 }

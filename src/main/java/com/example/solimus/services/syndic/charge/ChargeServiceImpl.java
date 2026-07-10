@@ -137,13 +137,6 @@ public class ChargeServiceImpl implements ChargeService {
                     throw new RuntimeException("Un budget existe déjà pour cette résidence et cette année");
                 });
 
-        // ------------------------------------------------------------  
-        // ÉTAPE 2.3.1 — Vérifier qu'un budget ACTIF n'existe pas déjà
-        // ------------------------------------------------------------
-        budgetRepository.findByResidenceIdAndAnneeAndStatus(dto.getResidenceId(), dto.getAnnee(), BudgetStatus.ACTIVE)
-                .ifPresent(budget -> {
-                    throw new RuntimeException("Un budget actif existe déjà pour cette résidence et cette année");
-                });
 
         // ------------------------------------------------------------  
         // ÉTAPE 2.4 — Créer l'entité Budget
@@ -171,7 +164,7 @@ public class ChargeServiceImpl implements ChargeService {
             item.setBudget(budget);
             item.setMontant(itemDto.getMontant());
 
-            // Si le syndic a sélectionné une suggestion d'équipement commun, la lier
+            // Si le syndic a sélectionné une suggestion d'équipement commun
             if (itemDto.getCommonFacilityId() != null) {
                 CommonFacility facility = commonFacilityRepository.findById(itemDto.getCommonFacilityId())
                         .orElseThrow(() -> new RuntimeException("Équipement commun introuvable"));
@@ -182,18 +175,19 @@ public class ChargeServiceImpl implements ChargeService {
                 }
 
                 item.setCommonFacility(facility);
-                // Utiliser le nom du type d'équipement si aucun libellé n'est fourni
-                item.setLibelle(itemDto.getLibelle() != null ? itemDto.getLibelle() : facility.getFacilityType().getName());
+                // Le libellé vient TOUJOURS du nom de l'équipement, jamais de itemDto.getLibelle()
+                item.setLibelle(facility.getFacilityType().getName());
+
             } else {
-                // Si pas d'équipement commun, le libellé est obligatoire
+                // Pas d'équipement commun : le libellé est obligatoire (texte libre)
                 if (itemDto.getLibelle() == null || itemDto.getLibelle().isBlank()) {
                     throw new BadRequestException("Le libellé est obligatoire pour les postes sans équipement commun");
                 }
                 item.setLibelle(itemDto.getLibelle());
             }
 
-            budgetItems.add(item); //on regroupe les postes budgetaires
-            budgetTotal = budgetTotal.add(itemDto.getMontant()); //On cumule le total
+            budgetItems.add(item);
+            budgetTotal = budgetTotal.add(itemDto.getMontant());
         }
 
         budget.setBudgetTotal(budgetTotal);
@@ -255,8 +249,8 @@ public class ChargeServiceImpl implements ChargeService {
     }
 
     // ============================================================
-// DÉTAIL D'UN BUDGET AVEC KPIs (carte "Budget 2026 — Résidence X")
-// ============================================================
+   // DÉTAIL D'UN BUDGET AVEC KPIs (carte "Budget 2026 — Résidence X")
+   // ============================================================
     @Override
     public BudgetOverviewDTO getBudgetOverview(Long budgetId) {
 

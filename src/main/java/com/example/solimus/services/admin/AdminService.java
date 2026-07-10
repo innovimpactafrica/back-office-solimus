@@ -39,6 +39,7 @@ public interface AdminService {
     // --- GESTION DES DÉLAIS ---
     List<EstimatedDelayDTO> getAllEstimatedDelays();
     EstimatedDelayDTO addEstimatedDelay(String label, Integer days);
+    void deleteEstimatedDelay(Long id);
 
     // --- GESTION DES UTILISATEURS ---
     /**

@@ -827,11 +827,22 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                     // Interventions ouvertes pour cette résidence
                     long openInterventions = interventionRequestRepository.countOpenByResidenceId(residence.getId());
 
+                    // Convertir l'URL de la photo en URL signée temporaire (7 jours)
+                    String photoUrl = null;
+                    if (residence.getPhotoUrl() != null) {
+                        try {
+                            photoUrl = minioService.getPresignedDownloadUrl(residence.getPhotoUrl(), 604800);
+                        } catch (Exception e) {
+                            log.error("Erreur lors de la génération de l'URL signée pour la résidence {}: {}", residence.getId(), e.getMessage());
+                            photoUrl = minioService.getFileUrl(residence.getPhotoUrl());
+                        }
+                    }
+
                     return ResidenceCardDTO.builder()
                             .id(residence.getId())
                             .name(residence.getName())
                             .city(residence.getCity())
-                            .photoUrl(residence.getPhotoUrl())
+                            .photoUrl(photoUrl)
                             .healthStatus(healthStatus)
                             .appartementsCount(appartementsCount)
                             .tauxImpayes(tauxImpayes)

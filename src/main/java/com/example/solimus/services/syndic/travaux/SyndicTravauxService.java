@@ -10,6 +10,7 @@ import com.example.solimus.dtos.syndic.travaux.SyndicDepositSummaryDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicPayDepositDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicBalancePaymentSummaryDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicPaymentResultDTO;
+import com.example.solimus.dtos.syndic.travaux.UpdateInterventionRequestDTO;
 
 import java.util.List;
 
@@ -100,5 +101,21 @@ public interface SyndicTravauxService {
      * Paie le solde restant depuis le wallet du syndic et clôture l'intervention (FINAL_VALIDATION).
      */
     SyndicPaymentResultDTO payBalanceAndClose(Long interventionId);
+
+    // =========================================================================
+    // MISE À JOUR ET SUPPRESSION D'INTERVENTION
+    // =========================================================================
+
+    /**
+     * Met à jour partiellement une demande d'intervention (seuls les champs fournis sont modifiés).
+     * Uniquement possible si l'intervention est en attente de devis (PENDING).
+     */
+    void updateIntervention(Long interventionId, UpdateInterventionRequestDTO dto);
+
+    /**
+     * Supprime une demande d'intervention.
+     * Uniquement possible si l'intervention est en attente de devis (PENDING).
+     */
+    void deleteIntervention(Long interventionId);
 
 }

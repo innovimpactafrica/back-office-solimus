@@ -10,6 +10,7 @@ import com.example.solimus.dtos.syndic.travaux.SyndicDepositSummaryDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicPayDepositDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicBalancePaymentSummaryDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicPaymentResultDTO;
+import com.example.solimus.dtos.syndic.travaux.UpdateInterventionRequestDTO;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.ActivityType;
 import com.example.solimus.enums.IncidentLocationType;
@@ -24,6 +25,7 @@ import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.geolocation.GeolocationService;
+import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -60,6 +62,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     private final QuoteRepository quoteRepository;
     private final SyndicWalletRepository syndicWalletRepository;
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
+    private final MinioService minioService;
 
     @Value("${solimus.geolocation.search-radius-km:30.0}")
     private double searchRadiusKm;//Rayon de recherche des prestataires
@@ -78,11 +81,24 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
         // Récupérer toutes les résidences qui appartiennent à ce syndic
         return residenceRepository.findAllBySyndicId(currentSyndic.getId()).stream()
-                // Pour chaque résidence, on ne retourne que l'id et le nom
-                .map(r -> SyndicResidenceDTO.builder()
-                        .id(r.getId())
-                        .name(r.getName())
-                        .build())
+                // Pour chaque résidence, on retourne l'id, le nom et la photo (convertie en URL signée)
+                .map(r -> {
+                    String photoUrl = null;
+                    if (r.getPhotoUrl() != null) {
+                        try {
+                            photoUrl = minioService.getPresignedDownloadUrl(r.getPhotoUrl(), 604800); // 7 jours
+                        } catch (Exception e) {
+                            log.error("Erreur lors de la génération de l'URL signée pour la résidence {}: {}", r.getId(), e.getMessage());
+                            // En cas d'erreur, utiliser l'URL directe comme fallback
+                            photoUrl = minioService.getFileUrl(r.getPhotoUrl());
+                        }
+                    }
+                    return SyndicResidenceDTO.builder()
+                            .id(r.getId())
+                            .name(r.getName())
+                            .photoUrl(photoUrl)
+                            .build();
+                })
                 .toList();
     }
 
@@ -733,6 +749,92 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                 .montantPaye(solde)
                 .nouveauSoldeWallet(nouveauSolde)
                 .build();
+    }
+
+    // =========================================================================
+    // MISE À JOUR ET SUPPRESSION D'INTERVENTION
+    // =========================================================================
+
+    @Override
+    @Transactional
+    public void updateIntervention(Long interventionId, UpdateInterventionRequestDTO dto) {
+        User currentSyndic = getCurrentUser();
+
+        InterventionRequest request = interventionRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        // Vérifier que l'intervention appartient au syndic
+        if (!request.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à modifier cette intervention");
+        }
+
+        // Vérifier que l'intervention est en attente de devis
+        if (request.getStatus() != InterventionStatus.PENDING) {
+            throw new BadRequestException("Impossible de modifier une intervention qui n'est plus en attente de devis");
+        }
+
+        // Mise à jour partielle des champs
+        if (dto.getTitle() != null) {
+            request.setTitle(dto.getTitle());
+        }
+        if (dto.getDescription() != null) {
+            request.setDescription(dto.getDescription());
+        }
+        if (dto.getResidenceId() != null) {
+            Residence residence = residenceRepository.findById(dto.getResidenceId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+            request.setResidence(residence);
+        }
+        if (dto.getPropertyId() != null) {
+            Property property = propertyRepository.findById(dto.getPropertyId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Bien introuvable"));
+            request.setProperty(property);
+        }
+        if (dto.getCommonFacilityId() != null) {
+            CommonFacility facility = commonFacilityRepository.findById(dto.getCommonFacilityId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Équipement commun introuvable"));
+            request.setCommonFacility(facility);
+        }
+        if (dto.getSpecialtyId() != null) {
+            Specialty specialty = specialtyRepository.findById(dto.getSpecialtyId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Spécialité introuvable"));
+            request.setSpecialty(specialty);
+        }
+        if (dto.getLocationType() != null) {
+            request.setLocationType(dto.getLocationType());
+        }
+        if (dto.getManagementMode() != null) {
+            request.setManagementMode(dto.getManagementMode());
+        }
+        if (dto.getUrgencyLevel() != null) {
+            request.setUrgencyLevel(dto.getUrgencyLevel());
+        }
+        if (dto.getPhotoUrls() != null) {
+            request.setPhotoUrls(dto.getPhotoUrls());
+        }
+
+        interventionRepository.save(request);
+    }
+
+    @Override
+    @Transactional
+    public void deleteIntervention(Long interventionId) {
+        User currentSyndic = getCurrentUser();
+
+        InterventionRequest request = interventionRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        // Vérifier que l'intervention appartient au syndic
+        if (!request.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à supprimer cette intervention");
+        }
+
+        // Vérifier que l'intervention est en attente de devis
+        if (request.getStatus() != InterventionStatus.PENDING) {
+            throw new BadRequestException("Impossible de supprimer une intervention qui n'est plus en attente de devis");
+        }
+
+        interventionRepository.delete(request);
     }
 }
 

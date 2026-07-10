@@ -17,4 +17,7 @@ public class SyndicResidenceDTO {
 
     // Nom de la résidence (ex: "Résidence Les Jardins")
     private String name;
+
+    // URL signée de la photo de la résidence
+    private String photoUrl;
 }

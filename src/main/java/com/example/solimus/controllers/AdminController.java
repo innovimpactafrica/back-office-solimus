@@ -29,7 +29,7 @@ import java.util.List;
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ROLE_ADMIN')")
-@Tag(name = "Administration - Utilisateurs")
+@Tag(name = "Administration")
 public class AdminController {
 
     private final AdminService adminService;
@@ -82,6 +82,13 @@ public class AdminController {
             @RequestParam String label,
             @RequestParam Integer days) {
         return ResponseEntity.status(HttpStatus.CREATED).body(adminService.addEstimatedDelay(label, days));
+    }
+
+    @Operation(summary = "Supprimer un délai estimé", tags = {"Administration - Délais"})
+    @DeleteMapping("/delays/{id}")
+    public ResponseEntity<Void> deleteEstimatedDelay(@PathVariable Long id) {
+        adminService.deleteEstimatedDelay(id);
+        return ResponseEntity.noContent().build();
     }
 
     // ============================================================================

@@ -3,6 +3,9 @@ package com.example.solimus.services.provider.travaux;
 import com.example.solimus.dtos.provider.travaux.ProviderTravauxDetailDTO;
 import com.example.solimus.dtos.provider.travaux.ProviderTravauxPageDTO;
 import com.example.solimus.enums.InterventionStatus;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 
 /**
  * Service de l'onglet "Travaux" du prestataire.
@@ -29,5 +32,5 @@ public interface ProviderTravauxService {
     /**
      * Terminer une intervention (passer de STARTED à FINISHED).
      */
-    void finishIntervention(Long requestId, String commentaire, org.springframework.web.multipart.MultipartFile[] photos);
+    void finishIntervention(Long requestId, String commentaire, List<MultipartFile> photos);
 }

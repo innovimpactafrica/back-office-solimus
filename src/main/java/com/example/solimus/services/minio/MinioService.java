@@ -67,4 +67,13 @@ public interface MinioService {
      * @return la liste des URLs pré-signées
      */
     List<String> toPresignedUrls(List<String> urls);
+
+    /**
+     * Transforme une liste de chemins de fichiers MinIO en URLs publiques directes.
+     * Utilisez cette méthode si le bucket est configuré en lecture publique.
+     *
+     * @param urls la liste des chemins/identifiants des fichiers
+     * @return la liste des URLs publiques
+     */
+    List<String> toPublicUrls(List<String> urls);
 }
