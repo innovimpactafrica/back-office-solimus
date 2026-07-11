@@ -62,7 +62,7 @@ public class CoOwnerDocumentServiceImpl implements CoOwnerDocumentService {
                 .map(doc -> CoOwnerDocumentDTO.builder()
                         .id(doc.getId())
                         .fileName(doc.getFileName())
-                        .fileUrl(doc.getFileUrl())
+                        .fileUrl(doc.getFileName())
                         .fileSizeKb(doc.getFileSizeKb())
                         .documentType(doc.getDocumentType() != null ? doc.getDocumentType().name() : "AUTRE")
                         .date(doc.getCreatedAt() != null ? doc.getCreatedAt().toLocalDate() : null)
@@ -82,7 +82,7 @@ public class CoOwnerDocumentServiceImpl implements CoOwnerDocumentService {
                     chargeDTOs.add(CoOwnerDocumentDTO.builder()
                             .id(document.getId())
                             .fileName(document.getOriginalFileName() != null ? document.getOriginalFileName() : document.getFileName())
-                            .fileUrl(document.getFileUrl())
+                            .fileUrl(document.getFileName())
                             .fileSizeKb(document.getFileSizeKb())
                             .documentType("Charges")
                             .date(charge.getDueDate() != null ? charge.getDueDate() : 
@@ -195,7 +195,7 @@ public class CoOwnerDocumentServiceImpl implements CoOwnerDocumentService {
         }
 
         return DocumentDownloadUrlDTO.builder()
-                .downloadUrl(minioService.getFileUrl(fileName))
+                .downloadUrl(fileName)
                 .expiresInSeconds((long) expiresInSeconds)
                 .build();
     }

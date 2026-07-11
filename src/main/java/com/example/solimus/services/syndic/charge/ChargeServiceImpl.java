@@ -1272,7 +1272,7 @@ public class ChargeServiceImpl implements ChargeService {
             ExceptionalCallDocumentDTO docDTO = ExceptionalCallDocumentDTO.builder()
                     .id(doc.getId())
                     .fileName(doc.getFileName())
-                    .fileUrl(doc.getFileUrl())
+                    .fileUrl(doc.getFileName())
                     .fileSizeKb(doc.getFileSizeKb())
                     .createdAt(doc.getCreatedAt())
                     .build();

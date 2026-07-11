@@ -83,10 +83,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         return residenceRepository.findAllBySyndicId(currentSyndic.getId()).stream()
                 // Pour chaque résidence, on retourne l'id, le nom et la photo (convertie en URL signée)
                 .map(r -> {
-                    String photoUrl = null;
-                    if (r.getPhotoUrl() != null) {
-                        photoUrl = minioService.getFileUrl(r.getPhotoUrl());
-                    }
+                    String photoUrl = r.getPhotoUrl();
                     return SyndicResidenceDTO.builder()
                             .id(r.getId())
                             .name(r.getName())

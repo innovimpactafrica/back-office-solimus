@@ -135,7 +135,7 @@ public class SyndicServiceImpl implements SyndicService {
                 document.setCharge(savedCharge);
                 document.setFileName(documentDTO.getFileName());
                 document.setOriginalFileName(documentDTO.getOriginalFileName());
-                document.setFileUrl(documentDTO.getFileUrl());
+                document.setFileUrl(documentDTO.getFileName());
                 document.setFileSizeKb(documentDTO.getFileSizeKb());
                 document.setContentType(documentDTO.getContentType());
                 savedCharge.getDocuments().add(document);
@@ -687,9 +687,7 @@ public class SyndicServiceImpl implements SyndicService {
             : new ArrayList<>();
 
         List<String> photoUrls = request.getPhotoUrls() != null
-                ? request.getPhotoUrls().stream()
-                        .map(url -> minioService.getFileUrl(url))
-                        .collect(java.util.stream.Collectors.toList())
+                ? new ArrayList<>(request.getPhotoUrls())
                 : new ArrayList<>();
 
         return InterventionRequestDTO.builder()
@@ -829,7 +827,7 @@ public class SyndicServiceImpl implements SyndicService {
                 .id(document.getId())
                 .fileName(document.getFileName())
                 .originalFileName(document.getOriginalFileName())
-                .fileUrl(document.getFileUrl())
+                .fileUrl(document.getFileName())
                 .fileSizeKb(document.getFileSizeKb())
                 .contentType(document.getContentType())
                 .build())

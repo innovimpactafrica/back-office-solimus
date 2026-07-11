@@ -54,7 +54,7 @@ public class MinioServiceImpl implements MinioService {
                             .contentType(file.getContentType())
                             .build());
 
-            return getFileUrl(objectKey);
+            return objectKey;
         } catch (Exception e) {
             log.error("Error uploading file to Minio", e);
             throw new RuntimeException("Erreur lors de l'upload du fichier : " + e.getMessage());

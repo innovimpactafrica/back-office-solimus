@@ -355,7 +355,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                         .date(doc.getCreatedAt())
                         .fileSizeKb(doc.getFileSizeKb())
                         .fileType(doc.getFileType())
-                        .fileUrl(doc.getFileUrl())
+                        .fileUrl(doc.getFileName())
                         .build();
                 allDocuments.add(item);
             }
@@ -379,7 +379,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                                 .date(meetingDoc.getCreatedAt())
                                 .fileSizeKb(meetingDoc.getFileSizeKb())
                                 .fileType(meetingDoc.getDocumentType() != null ? meetingDoc.getDocumentType().name() : null)
-                                .fileUrl(meetingDoc.getFileUrl())
+                                .fileUrl(meetingDoc.getFileName())
                                 .build();
                         allDocuments.add(item);
                     }

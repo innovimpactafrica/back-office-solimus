@@ -76,9 +76,7 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
 
             // Convertir les chemins photos en URLs publiques directes
             List<String> photoUrls = request.getPhotoUrls() != null
-                    ? request.getPhotoUrls().stream()
-                            .map(url -> minioService.getFileUrl(url))
-                            .collect(java.util.stream.Collectors.toList())
+                    ? new ArrayList<>(request.getPhotoUrls())
                     : new ArrayList<>();
 
             return ProviderRequestSummaryDTO.builder()
@@ -125,9 +123,7 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
 
         // 5. Convertir les chemins photos en URLs publiques directes
         List<String> photoUrls = request.getPhotoUrls() != null
-                ? request.getPhotoUrls().stream()
-                        .map(url -> minioService.getFileUrl(url))
-                        .collect(java.util.stream.Collectors.toList())
+                ? new ArrayList<>(request.getPhotoUrls())
                 : new ArrayList<>();
 
         // 6. Calculer le statut affiché pour CE prestataire précis / Déjà en listant, on liste que les demandes où il n'a pas été choisi,

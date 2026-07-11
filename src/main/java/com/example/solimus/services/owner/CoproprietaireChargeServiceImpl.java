@@ -135,7 +135,7 @@ public class CoproprietaireChargeServiceImpl implements CoproprietaireChargeServ
                     .id(document.getId())
                     .fileName(document.getFileName())
                     .originalFileName(document.getOriginalFileName())
-                    .fileUrl(document.getFileUrl())
+                    .fileUrl(document.getFileName())
                     .fileSizeKb(document.getFileSizeKb())
                     .contentType(document.getContentType())
                     .build())

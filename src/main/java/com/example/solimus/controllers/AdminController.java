@@ -38,7 +38,7 @@ public class AdminController {
     //  GESTION DES RETRAITS WALLET
     // ============================================================================
 
-    @Operation(summary = "Valider une demande de retrait wallet", tags = {"Administration - Retraits Wallet"})
+    @Operation(summary = "Valider une demande de retrait wallet", tags = {"Administration"})
     @PostMapping(value = "/wallet-withdrawals/{withdrawalId}/approve", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<WithdrawalRequestDTO> approveWalletWithdrawal(
             @PathVariable Long withdrawalId,
@@ -47,7 +47,7 @@ public class AdminController {
         return ResponseEntity.ok(adminService.approveWalletWithdrawal(withdrawalId, receipt, comment));
     }
 
-    @Operation(summary = "Refuser une demande de retrait wallet", tags = {"Administration - Retraits Wallet"})
+    @Operation(summary = "Refuser une demande de retrait wallet", tags = {"Administration"})
     @PostMapping("/wallet-withdrawals/{withdrawalId}/reject")
     public ResponseEntity<WithdrawalRequestDTO> rejectWalletWithdrawal(
             @PathVariable Long withdrawalId,
@@ -59,7 +59,7 @@ public class AdminController {
     //  GESTION DES Abonnements
     // ============================================================================
 
-    @Operation(summary = "Enregistrer le plan d'abonnement de prestataire", tags = {"Administration - Abonnements"})
+    @Operation(summary = "Enregistrer le plan d'abonnement de prestataire", tags = {"Administration"})
     @PostMapping("/provider-plan")
     public ResponseEntity<ProviderPlanDTO> saveProviderPlan(
             @RequestBody @Valid ProviderPlanRequestDTO dto) {
@@ -70,13 +70,13 @@ public class AdminController {
     // ⏳ GESTION DES DÉLAIS
     // ============================================================================
 
-    @Operation(summary = "Liste de tous les délais estimés", tags = {"Administration - Délais"})
+    @Operation(summary = "Liste de tous les délais estimés", tags = {"Administration"})
     @GetMapping("/delays")
     public ResponseEntity<List<EstimatedDelayDTO>> getAllEstimatedDelays() {
         return ResponseEntity.ok(adminService.getAllEstimatedDelays());
     }
 
-    @Operation(summary = "Ajouter un nouveau délai estimé", tags = {"Administration - Délais"})
+    @Operation(summary = "Ajouter un nouveau délai estimé", tags = {"Administration"})
     @PostMapping("/delays")
     public ResponseEntity<EstimatedDelayDTO> addEstimatedDelay(
             @RequestParam String label,
@@ -84,7 +84,7 @@ public class AdminController {
         return ResponseEntity.status(HttpStatus.CREATED).body(adminService.addEstimatedDelay(label, days));
     }
 
-    @Operation(summary = "Supprimer un délai estimé", tags = {"Administration - Délais"})
+    @Operation(summary = "Supprimer un délai estimé", tags = {"Administration"})
     @DeleteMapping("/delays/{id}")
     public ResponseEntity<Void> deleteEstimatedDelay(@PathVariable Long id) {
         adminService.deleteEstimatedDelay(id);
@@ -98,7 +98,7 @@ public class AdminController {
     @Operation(
             summary = "Créer un compte utilisateur",
             description = "L'admin saisit les informations de l'utilisateur. Un email d'activation est envoyé automatiquement.",
-            tags = {"Administration - Utilisateurs"}
+            tags = {"Administration"}
     )
     @PostMapping("/users")
     public ResponseEntity<CreateUserResponseDTO> createUser(
@@ -107,7 +107,7 @@ public class AdminController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @Operation(summary = "Liste paginée des utilisateurs internes avec filtres (recherche, rôle, statut). Exclut les prestataires et copropriétaires.", tags = {"Administration - Utilisateurs"})
+    @Operation(summary = "Liste paginée des utilisateurs internes avec filtres (recherche, rôle, statut). Exclut les prestataires et copropriétaires.", tags = {"Administration"})
     @GetMapping("/users")
     public ResponseEntity<UserListResponseDTO> getUsers(
             @RequestParam(defaultValue = "0") int page,
@@ -118,7 +118,7 @@ public class AdminController {
         return ResponseEntity.ok(adminService.getUsers(page, size, search, role, status));
     }
 
-    @Operation(summary = "Modifier le statut d'un utilisateur (Activer/Désactiver)", tags = {"Administration - Utilisateurs"})
+    @Operation(summary = "Modifier le statut d'un utilisateur (Activer/Désactiver)", tags = {"Administration"})
     @PatchMapping("/users/{id}/status")
     public ResponseEntity<Void> updateUserStatus(
             @PathVariable Long id,

@@ -91,10 +91,7 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
                 .orElseThrow(() -> new ResourceNotFoundException("Profil prestataire introuvable"));
 
         // 3. Générer une presigned URL pour la photo de profil si elle existe
-        String profilePhotoUrl = null;
-        if (currentProvider.getProfilePhotoUrl() != null && !currentProvider.getProfilePhotoUrl().isBlank()) {
-            profilePhotoUrl = minioService.getFileUrl(currentProvider.getProfilePhotoUrl());
-        }
+        String profilePhotoUrl = currentProvider.getProfilePhotoUrl();
 
         // 4. Construire et retourner le DTO avec les informations du profil
         return ProviderProfileDTO.builder()

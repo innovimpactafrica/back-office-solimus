@@ -634,7 +634,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
         return ResidenceHeaderStatsDTO.builder()
                 .name(residence.getName())
-                .photoUrl(residence.getPhotoUrl() != null ? minioService.getFileUrl(residence.getPhotoUrl()) : null)
+                .photoUrl(residence.getPhotoUrl())
                 .fullAddress(residence.getFullAddress())
                 .city(residence.getCity())
                 .healthStatus(healthStatus)
@@ -829,10 +829,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                     long openInterventions = interventionRequestRepository.countOpenByResidenceId(residence.getId());
 
                     // Convertir l'URL de la photo en URL signée temporaire (7 jours)
-                    String photoUrl = null;
-                    if (residence.getPhotoUrl() != null) {
-                        photoUrl = minioService.getFileUrl(residence.getPhotoUrl());
-                    }
+                    String photoUrl = residence.getPhotoUrl();
 
                     return ResidenceCardDTO.builder()
                             .id(residence.getId())
@@ -1807,10 +1804,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
     // DTO simple — pour la liste
     private ResidenceDTO mapToResidenceDTO(Residence res) {
-        String presignedPhotoUrl = null;
-        if (res.getPhotoUrl() != null) {
-            presignedPhotoUrl = minioService.getFileUrl(res.getPhotoUrl());
-        }
+        String presignedPhotoUrl = res.getPhotoUrl();
 
         return ResidenceDTO.builder()
             .id(res.getId())

@@ -205,9 +205,7 @@ public class ProviderTravauxServiceImpl implements ProviderTravauxService {
 
         // Convertir les chemins photos en URLs publiques directes
         List<String> photoUrls = request.getPhotoUrls() != null
-                ? request.getPhotoUrls().stream()
-                        .map(url -> minioService.getFileUrl(url))
-                        .collect(java.util.stream.Collectors.toList())
+                ? new ArrayList<>(request.getPhotoUrls())
                 : new ArrayList<>();
 
         return ProviderTravauxDetailDTO.builder()

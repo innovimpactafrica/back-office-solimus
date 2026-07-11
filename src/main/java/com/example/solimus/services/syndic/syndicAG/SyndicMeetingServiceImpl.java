@@ -1035,7 +1035,7 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         return MeetingDocumentDTO.builder()
     /**            .id(doc.getId())
                 .fileName(doc.getFileName())
-                .fileUrl(doc.getFileUrl())
+                .fileUrl(doc.getFileName())
                 .fileSizeKb(doc.getFileSizeKb())
                 .documentType(doc.getDocumentType())
                 .createdAt(doc.getCreatedAt())
