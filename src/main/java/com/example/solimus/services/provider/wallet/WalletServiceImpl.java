@@ -6,7 +6,7 @@ import com.example.solimus.dtos.provider.wallet.WalletDTO;
 import com.example.solimus.dtos.provider.wallet.WalletTransactionDTO;
 import com.example.solimus.entities.PaymentProvider;
 import com.example.solimus.entities.User;
-import com.example.solimus.entities.Wallet;
+import com.example.solimus.entities.ProviderWallet;
 import com.example.solimus.entities.WithdrawalRequest;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.TransactionType;
@@ -56,9 +56,9 @@ public class WalletServiceImpl implements WalletService {
         User currentProvider = getCurrentUser();
 
         // 2. Récupérer le wallet ou en créer un si inexistant
-        Wallet wallet = walletRepository.findByProviderId(currentProvider.getId())
+        ProviderWallet wallet = walletRepository.findByProviderId(currentProvider.getId())
                 .orElseGet(() -> {
-                    Wallet newWallet = Wallet.builder()
+                    ProviderWallet newWallet = ProviderWallet.builder()
                             .provider(currentProvider) // Prestataire propriétaire du wallet
                             .availableBalance(BigDecimal.ZERO) // Solde disponible initialisé à 0
                             .pendingBalance(BigDecimal.ZERO) // Solde en attente initialisé à 0
@@ -88,7 +88,7 @@ public class WalletServiceImpl implements WalletService {
     public void creditWallet(Long providerId, BigDecimal amount) {
 
         // Recherche du wallet du prestataire ou création automatique s'il n'existe pas
-        Wallet wallet = walletRepository.findByProviderId(providerId)
+        ProviderWallet wallet = walletRepository.findByProviderId(providerId)
                 .orElseGet(() -> walletRepository.save(createWallet(providerId)));
 
         // Créditer le solde disponible
@@ -124,7 +124,7 @@ public class WalletServiceImpl implements WalletService {
         User currentProvider = getCurrentUser();
 
         // Récupérer le wallet du prestataire
-        Wallet wallet = walletRepository.findByProviderId(currentProvider.getId())
+        ProviderWallet wallet = walletRepository.findByProviderId(currentProvider.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet introuvable"));
 
         // 1. Vérifier que le solde est suffisant
@@ -182,11 +182,11 @@ public class WalletServiceImpl implements WalletService {
     /**
      * Crée un nouveau portefeuille pour un prestataire donné (sécurité).
      */
-    private Wallet createWallet(Long providerId) {
+    private ProviderWallet createWallet(Long providerId) {
 
         User provider = userRepository.findById(providerId)
                 .orElseThrow(() -> new RuntimeException("Prestataire introuvable"));
-        return Wallet.builder()
+        return ProviderWallet.builder()
                 .provider(provider)
                 .availableBalance(BigDecimal.ZERO)
                 .pendingBalance(BigDecimal.ZERO)

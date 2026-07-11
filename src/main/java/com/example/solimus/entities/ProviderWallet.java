@@ -13,12 +13,12 @@ import java.time.LocalDateTime;
 //Entité réprésentant le portefeuille (wallet) d'un prestataire
 //Gère les soldes disponibles, en attente de validation, et le total reçu mensuel
 @Entity
-@Table(name = "wallets")
+@Table(name = "provider_wallets")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Wallet {
+public class ProviderWallet {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

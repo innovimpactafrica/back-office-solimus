@@ -14,12 +14,12 @@ import java.time.LocalDateTime;
 
 // WithdrawalRequest.java — Demande de versement
 @Entity
-@Table(name = "withdrawal_requests")
+@Table(name = "provider_withdrawal_requests")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class WithdrawalRequest {
+public class ProviderWithdrawalRequest {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

@@ -20,7 +20,7 @@ import com.example.solimus.entities.Property;
 import com.example.solimus.entities.Quote;
 import com.example.solimus.entities.Residence;
 import com.example.solimus.entities.User;
-import com.example.solimus.entities.Wallet;
+import com.example.solimus.entities.ProviderWallet;
 import com.example.solimus.entities.WithdrawalRequest;
 import com.example.solimus.enums.ChargeStatus;
 import com.example.solimus.enums.InterventionStatus;
@@ -885,7 +885,7 @@ public class SyndicServiceImpl implements SyndicService {
         return retrait;
     }
 
-    private Wallet getWithdrawalWallet(WithdrawalRequest retrait) {
+    private ProviderWallet getWithdrawalWallet(WithdrawalRequest retrait) {
         return walletRepository.findByProviderId(retrait.getProvider().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet prestataire introuvable"));
     }

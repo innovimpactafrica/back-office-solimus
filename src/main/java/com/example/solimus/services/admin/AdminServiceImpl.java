@@ -4,7 +4,7 @@ import com.example.solimus.dtos.admin.*;
 import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanDTO;
 import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanRequestDTO;
 import com.example.solimus.dtos.provider.wallet.WithdrawalRequestDTO;
-import com.example.solimus.entities.*;
+import com.example.solimus.entities.ProviderWallet;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.UserStatus;
 import com.example.solimus.enums.WithdrawalStatus;
@@ -77,7 +77,7 @@ public class AdminServiceImpl implements AdminService {
         }
 
         // 4. Récupérer le wallet du prestataire concerné par la demande
-        Wallet wallet = walletRepository.findByProviderId(withdrawal.getProvider().getId())
+        ProviderWallet wallet = walletRepository.findByProviderId(withdrawal.getProvider().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet prestataire introuvable"));
 
         // 5. Vérifier que le montant demandé est bien disponible dans le solde en attente
@@ -141,7 +141,7 @@ public class AdminServiceImpl implements AdminService {
         }
 
         // 4. Récupérer le wallet du prestataire concerné par la demande
-        Wallet wallet = walletRepository.findByProviderId(withdrawal.getProvider().getId())
+        ProviderWallet wallet = walletRepository.findByProviderId(withdrawal.getProvider().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet prestataire introuvable"));
 
         // 5. Vérifier que le montant demandé est bien disponible dans le solde en attente (avant de remettre dans le solde disponible )
