@@ -203,8 +203,12 @@ public class ProviderTravauxServiceImpl implements ProviderTravauxService {
             residentEmail = contact.getEmail();
         }
 
-        // Convertir les chemins photos en URLs signées MinIO (7 jours)
-        List<String> photoUrls = toPresignedUrls(request.getPhotoUrls());
+        // Convertir les chemins photos en URLs publiques directes
+        List<String> photoUrls = request.getPhotoUrls() != null
+                ? request.getPhotoUrls().stream()
+                        .map(url -> minioService.getFileUrl(url))
+                        .collect(java.util.stream.Collectors.toList())
+                : new ArrayList<>();
 
         return ProviderTravauxDetailDTO.builder()
                 .id(request.getId())
@@ -271,11 +275,5 @@ public class ProviderTravauxServiceImpl implements ProviderTravauxService {
         return steps;
     }
 
-    private List<String> toPresignedUrls(List<String> paths) {
-        if (paths == null || paths.isEmpty()) {
-            return List.of();
-        }
-        return minioService.toPresignedUrls(paths);
-    }
 
 }

@@ -46,6 +46,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/admin/specialties", "/api/admin/intervention-zones").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/coowner/residences").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/coowner/residences/*/properties").permitAll()
+                        .requestMatchers("/api/files/**", "/uploads/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN")

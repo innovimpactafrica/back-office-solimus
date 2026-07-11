@@ -634,7 +634,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
         return ResidenceHeaderStatsDTO.builder()
                 .name(residence.getName())
-                .photoUrl(residence.getPhotoUrl() != null ? minioService.getPresignedDownloadUrl(residence.getPhotoUrl(), 604800) : null)
+                .photoUrl(residence.getPhotoUrl() != null ? minioService.getFileUrl(residence.getPhotoUrl()) : null)
                 .fullAddress(residence.getFullAddress())
                 .city(residence.getCity())
                 .healthStatus(healthStatus)
@@ -831,12 +831,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                     // Convertir l'URL de la photo en URL signée temporaire (7 jours)
                     String photoUrl = null;
                     if (residence.getPhotoUrl() != null) {
-                        try {
-                            photoUrl = minioService.getPresignedDownloadUrl(residence.getPhotoUrl(), 604800);
-                        } catch (Exception e) {
-                            log.error("Erreur lors de la génération de l'URL signée pour la résidence {}: {}", residence.getId(), e.getMessage());
-                            photoUrl = minioService.getPresignedDownloadUrl(residence.getPhotoUrl(), 604800);
-                        }
+                        photoUrl = minioService.getFileUrl(residence.getPhotoUrl());
                     }
 
                     return ResidenceCardDTO.builder()
@@ -1814,7 +1809,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     private ResidenceDTO mapToResidenceDTO(Residence res) {
         String presignedPhotoUrl = null;
         if (res.getPhotoUrl() != null) {
-            presignedPhotoUrl = minioService.getPresignedDownloadUrl(res.getPhotoUrl(), 3600);
+            presignedPhotoUrl = minioService.getFileUrl(res.getPhotoUrl());
         }
 
         return ResidenceDTO.builder()
@@ -1880,11 +1875,6 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             .profilePhotoUrl(user.getProfilePhotoUrl())
             .ownedPropertiesCount(propertyRepository.countByOwnerId(user.getId()))
             .build();
-    }
-    //Signature Miniio pour retourner les images des résidences
-    private String toPresignedUrl(String url) {
-        if (url == null || url.isEmpty()) return null;
-        return minioService.getPresignedDownloadUrl(url, 3600);
     }
 
 

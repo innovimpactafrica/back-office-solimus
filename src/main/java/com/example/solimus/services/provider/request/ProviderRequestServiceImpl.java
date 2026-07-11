@@ -74,8 +74,12 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
                     ? knownStatus
                     : calculateDisplayStatus(request, currentProvider);
 
-            // Convertir les chemins photos en URLs signées MinIO (7 jours)
-            List<String> photoUrls = minioService.toPresignedUrls(request.getPhotoUrls());
+            // Convertir les chemins photos en URLs publiques directes
+            List<String> photoUrls = request.getPhotoUrls() != null
+                    ? request.getPhotoUrls().stream()
+                            .map(url -> minioService.getFileUrl(url))
+                            .collect(java.util.stream.Collectors.toList())
+                    : new ArrayList<>();
 
             return ProviderRequestSummaryDTO.builder()
                     .id(request.getId())
@@ -119,8 +123,12 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
                 ? request.getSyndic()
                 : request.getOwner();
 
-        // 5. Convertir les chemins photos en URLs signées MinIO affichables par le front (7 jours)
-        List<String> photoUrls = minioService.toPresignedUrls(request.getPhotoUrls());
+        // 5. Convertir les chemins photos en URLs publiques directes
+        List<String> photoUrls = request.getPhotoUrls() != null
+                ? request.getPhotoUrls().stream()
+                        .map(url -> minioService.getFileUrl(url))
+                        .collect(java.util.stream.Collectors.toList())
+                : new ArrayList<>();
 
         // 6. Calculer le statut affiché pour CE prestataire précis / Déjà en listant, on liste que les demandes où il n'a pas été choisi,
         // donc on sait déjà qu'il n'est pas choisi (même en détail, puisqu'on vient de la liste)

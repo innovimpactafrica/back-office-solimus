@@ -940,7 +940,7 @@ public class ChargeServiceImpl implements ChargeService {
         exceptionalCall.setCategory(dto.getCategory());
         exceptionalCall.setTitle(dto.getTitle());
         exceptionalCall.setDescription(dto.getDescription());
-        exceptionalCall.setStatus(ExceptionalCallStatus.BROUILLON);
+        exceptionalCall.setStatus(ExceptionalCallStatus.DRAFT);
 
         ExceptionalCall saved = exceptionalCallRepository.save(exceptionalCall);
 
@@ -1089,7 +1089,7 @@ public class ChargeServiceImpl implements ChargeService {
         // si une validation est requise ou non — le rattachement à une résolution
         // se fera plus tard, depuis le côté Resolution (chantier séparé).
         if (requiresAgValidation) {
-            exceptionalCall.setStatus(ExceptionalCallStatus.EN_ATTENTE_VOTE);
+            exceptionalCall.setStatus(ExceptionalCallStatus.DRAFT);
         } else {
             exceptionalCall.setStatus(ExceptionalCallStatus.ACTIVE);
             // IMPORTANT — pas de génération de ChargeCall ici pour l'instant (décision volontaire,

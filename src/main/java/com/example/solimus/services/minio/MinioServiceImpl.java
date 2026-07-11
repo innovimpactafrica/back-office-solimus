@@ -1,7 +1,6 @@
 package com.example.solimus.services.minio;
 
 import io.minio.*;
-import io.minio.http.Method;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,8 +12,6 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -93,49 +90,6 @@ public class MinioServiceImpl implements MinioService {
     public String getFileUrl(String fileName) {
         if (fileName == null || fileName.isEmpty()) return null;
         return minioUrl + "/" + bucket + "/" + toObjectKey(fileName);
-    }
-
-    // Transforme les chemins de fichiers MinIO stockés en base de données en URLs temporaires signées
-    // Ces URLs permettent au front d'afficher les images sans accès direct à MinIO
-    public List<String> toPresignedUrls(List<String> urls) {
-        if (urls == null || urls.isEmpty()) {
-            return new ArrayList<>();
-        }
-
-        return urls.stream()
-                .map(url -> getPresignedDownloadUrl(url, 604800)) // 7 jours
-                .collect(Collectors.toList());
-    }
-
-    // Transforme les chemins de fichiers MinIO en URLs publiques directes
-    // Utilisez cette méthode si le bucket est configuré en lecture publique
-    public List<String> toPublicUrls(List<String> urls) {
-        if (urls == null || urls.isEmpty()) {
-            return new ArrayList<>();
-        }
-
-        return urls.stream()
-                .map(this::getFileUrl)
-                .collect(Collectors.toList());
-    }
-    @Override
-    public String getPresignedDownloadUrl(String fileName, int expirySeconds) {
-        if (fileName == null || fileName.isBlank()) {
-            throw new RuntimeException("Chemin fichier vide");
-        }
-        String objectKey = toObjectKey(fileName);
-        try {
-            return minioClient.getPresignedObjectUrl(
-                    GetPresignedObjectUrlArgs.builder()
-                            .method(Method.GET)
-                            .bucket(bucket)
-                            .object(objectKey)
-                            .expiry(expirySeconds, TimeUnit.SECONDS)
-                            .build());
-        } catch (Exception e) {
-            log.error("Error generating presigned download URL from Minio (objectKey={})", objectKey, e);
-            throw new RuntimeException("Erreur lors de la génération du lien de téléchargement : " + e.getMessage());
-        }
     }
 
     // Télécharge le fichier depuis MinIO et retourne son InputStream.

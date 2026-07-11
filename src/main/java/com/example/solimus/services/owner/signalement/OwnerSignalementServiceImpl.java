@@ -189,8 +189,12 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
                         .build())
                 .toList();
 
-        // Convertir les photos en URLs presignées (7 jours)
-        List<String> photoUrls = minioService.toPresignedUrls(signalement.getPhotoUrls());
+        // Convertir les photos en URLs publiques directes
+        List<String> photoUrls = signalement.getPhotoUrls() != null
+                ? signalement.getPhotoUrls().stream()
+                        .map(url -> minioService.getFileUrl(url))
+                        .collect(java.util.stream.Collectors.toList())
+                : new ArrayList<>();
 
         // Construit le DTO de détail complet
         return SignalementDetailDTO.builder()

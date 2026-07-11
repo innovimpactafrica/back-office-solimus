@@ -135,7 +135,7 @@ public class SyndicTravauxController {
             dto.setSpecialtyId(specialtyId);
             dto.setLocationType(locationType);
             dto.setUrgencyLevel(urgencyLevel);
-            dto.setPhotoUrls(photoUrls); // Ajout des noms des photos uploadées
+            dto.setPhotoUrls(photoUrls); // Stockage des URLs internes
 
             // Appel du service pour créer la demande de travaux
             syndicTravauxService.createInterventionRequest(dto);

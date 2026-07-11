@@ -85,13 +85,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                 .map(r -> {
                     String photoUrl = null;
                     if (r.getPhotoUrl() != null) {
-                        try {
-                            photoUrl = minioService.getPresignedDownloadUrl(r.getPhotoUrl(), 604800); // 7 jours
-                        } catch (Exception e) {
-                            log.error("Erreur lors de la génération de l'URL signée pour la résidence {}: {}", r.getId(), e.getMessage());
-                            // En cas d'erreur, réessayer avec une nouvelle tentative
-                            photoUrl = minioService.getPresignedDownloadUrl(r.getPhotoUrl(), 604800);
-                        }
+                        photoUrl = minioService.getFileUrl(r.getPhotoUrl());
                     }
                     return SyndicResidenceDTO.builder()
                             .id(r.getId())

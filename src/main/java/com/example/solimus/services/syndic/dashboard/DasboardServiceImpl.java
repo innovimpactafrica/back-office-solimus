@@ -477,21 +477,21 @@ public class DasboardServiceImpl implements DashboardService {
         // Selon le type d'entité liée, va chercher le vrai statut à la bonne source
         switch (log.getRelatedEntityType()) {
             case "CHARGE_CALL":
-                // Récupère l'appel de charges concerné, calcule son statut, le traduit en libellé
+                // Récupère l'appel de charges concerné, calcule son statut, retourne son label
                 return chargeCallRepository.findById(log.getRelatedEntityId())
-                        .map(cc -> mapChargeCallStatusToLabel(calculateChargeCallStatus(cc)))
+                        .map(cc -> calculateChargeCallStatus(cc).getLabel())
                         .orElse(null);
 
             case "EXCEPTIONAL_CALL":
-                // Récupère l'appel exceptionnel concerné, traduit son statut en libellé
+                // Récupère l'appel exceptionnel concerné, retourne son statut brut sans transformation
                 return exceptionalCallRepository.findById(log.getRelatedEntityId())
-                        .map(ec -> mapExceptionalStatusToLabel(ec.getStatus()))
+                        .map(ec -> ec.getStatus().getLabel())
                         .orElse(null);
 
             case "INTERVENTION":
-                // Récupère l'intervention concernée, traduit son statut en libellé
+                // Récupère l'intervention concernée, retourne son statut brut sans transformation
                 return interventionRequestRepository.findById(log.getRelatedEntityId())
-                        .map(i -> mapInterventionStatusToLabel(i.getStatus()))
+                        .map(i -> i.getStatus().getLabel())
                         .orElse(null);
 
             default:
@@ -523,33 +523,6 @@ public class DasboardServiceImpl implements DashboardService {
         return ChargeCallStatus.SENT;
     }
 
-    // Traduit un ChargeCallStatus en libellé d'affichage pour la colonne Statut
-    private String mapChargeCallStatusToLabel(ChargeCallStatus status) {
-        return switch (status) {
-            case SETTLED -> "Terminé";
-            case PARTIAL -> "Attention";
-            case SENT -> "En cours";
-        };
-    }
-
-    // Traduit un ExceptionalCallStatus en libellé d'affichage pour la colonne Statut
-    private String mapExceptionalStatusToLabel(ExceptionalCallStatus status) {
-        return switch (status) {
-            case ACTIVE -> "En cours";
-            case CLOTURE -> "Terminé";
-            case BROUILLON, EN_ATTENTE_VOTE -> "Attention";
-        };
-    }
-
-    // Traduit un InterventionStatus en libellé d'affichage pour la colonne Statut
-    private String mapInterventionStatusToLabel(InterventionStatus status) {
-        return switch (status) {
-            case PENDING, SYNDIC_ASSIGNED -> "Attention";
-            case QUOTE_VALIDATED, STARTED -> "En cours";
-            case FINISHED, FINAL_VALIDATION -> "Terminé";
-            case CANCELLED -> "Annulé";
-        };
-    }
 
     // Construit une ligne du tableau "Incidents Récents"
     private RecentIncidentDTO buildRecentIncidentDto(InterventionRequest intervention) {
@@ -558,8 +531,8 @@ public class DasboardServiceImpl implements DashboardService {
         dto.setId(intervention.getId());
         dto.setTitle(intervention.getTitle());
         dto.setResidenceName(intervention.getResidence().getName());
-        // Traduit le statut technique en libellé affiché
-        dto.setStatus(mapInterventionStatusToLabel(intervention.getStatus()));
+        // Statut brut de l'intervention, tel qu'il est stocké — aucune déduction ni regroupement
+        dto.setStatus(intervention.getStatus().getLabel());
         dto.setUrgencyLevel(intervention.getUrgencyLevel() != null ? intervention.getUrgencyLevel().name() : null);
         dto.setCreatedAt(intervention.getCreatedAt());
 

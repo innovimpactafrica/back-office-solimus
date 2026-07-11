@@ -686,7 +686,11 @@ public class SyndicServiceImpl implements SyndicService {
                 .build()).collect(Collectors.toList())
             : new ArrayList<>();
 
-        List<String> photoUrls = toPresignedUrls(request.getPhotoUrls());
+        List<String> photoUrls = request.getPhotoUrls() != null
+                ? request.getPhotoUrls().stream()
+                        .map(url -> minioService.getFileUrl(url))
+                        .collect(java.util.stream.Collectors.toList())
+                : new ArrayList<>();
 
         return InterventionRequestDTO.builder()
                 .id(request.getId())
@@ -893,17 +897,6 @@ public class SyndicServiceImpl implements SyndicService {
         return result.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : result;
     }
 
-    private List<String> toPresignedUrls(List<String> urls) {
-        if (urls == null || urls.isEmpty()) return new ArrayList<>();
-        return urls.stream()
-                .map(url -> minioService.getPresignedDownloadUrl(url, 604800))
-                .collect(Collectors.toList());
-    }
-
-    private String toPresignedUrl(String url) {
-        if (url == null || url.isEmpty()) return null;
-        return minioService.getPresignedDownloadUrl(url, 3600);
-    }
 
 
 }

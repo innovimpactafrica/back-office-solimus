@@ -969,7 +969,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 .email(coOwner.getEmail())
                 .address(address)
                 .acquisitionDate(acquisitionDate)
-                .lotsCount((int) apartmentsCount)
                 .annualCharges(annualCharges)
                 .currentBalance(currentBalance)
                 .paymentsMade(paymentsMade)

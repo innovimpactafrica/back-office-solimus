@@ -53,9 +53,6 @@ public class CoOwnerDetailDTO {
     // 5 CARDS KPI
     // -------------------------------------------------------------------------
 
-    // Nombre de lots (identique à apartmentsCount)
-    private int lotsCount;
-
     // Charges annuelles estimées (basées sur le budget annuel et tantièmes)
     private BigDecimal annualCharges;
 

@@ -1,9 +1,17 @@
 package com.example.solimus.enums;
 
 public enum ExceptionalCallStatus {
-    BROUILLON,
-    EN_ATTENTE_VOTE,
-    ACTIVE,
-    CLOTURE
+    DRAFT("Brouillon"),
+    ACTIVE("En cours"),
+    CLOSED("Clôturé");
 
+    private final String label;
+
+    ExceptionalCallStatus(String label) {
+        this.label = label;
+    }
+
+    public String getLabel() {
+        return label;
+    }
 }

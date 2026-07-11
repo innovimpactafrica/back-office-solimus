@@ -195,7 +195,7 @@ public class CoOwnerDocumentServiceImpl implements CoOwnerDocumentService {
         }
 
         return DocumentDownloadUrlDTO.builder()
-                .downloadUrl(minioService.getPresignedDownloadUrl(fileName, expiresInSeconds))
+                .downloadUrl(minioService.getFileUrl(fileName))
                 .expiresInSeconds((long) expiresInSeconds)
                 .build();
     }
