@@ -48,11 +48,11 @@ public class Charge {
     private LocalDate dueDate;
 
     // Relations
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "residence_id", nullable = false)
     private Residence residence;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "syndic_id", nullable = false)
     private User syndic;
 

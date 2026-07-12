@@ -27,7 +27,7 @@ public class ExceptionalCallDocument {
 
     private Long fileSizeKb;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "exceptional_call_id", nullable = false)
     private ExceptionalCall exceptionalCall;
 

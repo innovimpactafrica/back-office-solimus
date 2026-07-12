@@ -35,7 +35,7 @@ public class ChargeCallItem {
     /**
      * L'appel de charges parent.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "charge_call_id", nullable = false)
     private ChargeCall chargeCall;
 
@@ -52,7 +52,7 @@ public class ChargeCallItem {
     /**
      * Le copropriétaire concerné par cette ligne.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "coowner_id", nullable = false)
     private User coOwner;
 

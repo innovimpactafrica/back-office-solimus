@@ -29,7 +29,7 @@ public class ProviderProfile {
     /**
      * Lien vers l'utilisateur.
      */
-    @OneToOne(fetch = FetchType.LAZY)
+    @OneToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private User user; // Utilisateur associé (relation 1-1)
 

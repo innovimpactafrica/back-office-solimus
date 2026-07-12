@@ -30,7 +30,7 @@ public class ResidenceContact {
     private String phone;
 
     // Résidence à laquelle ce contact est rattaché
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "residence_id", nullable = false)
     private Residence residence;
 

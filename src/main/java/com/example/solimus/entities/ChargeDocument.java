@@ -31,7 +31,7 @@ public class ChargeDocument {
 
     private String contentType;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "charge_id", nullable = false)
     private Charge charge;
 

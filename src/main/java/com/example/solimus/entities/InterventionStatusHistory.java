@@ -25,7 +25,7 @@ public class InterventionStatusHistory {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "intervention_id", nullable = false)
     private InterventionRequest interventionRequest; // L'intervention concernée
 
@@ -33,7 +33,7 @@ public class InterventionStatusHistory {
     @Column(nullable = false)
     private InterventionStatus status; // Nouveau statut
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "changed_by_id", nullable = false)
     private User changedBy; // Utilisateur qui a effectué le changement
 

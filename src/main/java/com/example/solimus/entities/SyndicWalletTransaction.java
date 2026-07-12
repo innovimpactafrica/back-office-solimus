@@ -31,17 +31,17 @@ public class SyndicWalletTransaction {
     private Long id;
 
     // Le portefeuille concerné
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "wallet_id", nullable = false)
     private SyndicWallet wallet;
 
     // La résidence concernée (nullable selon le type de transaction)
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "residence_id")
     private Residence residence;
 
     // Le copropriétaire concerné (rempli uniquement pour CHARGES)
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "co_owner_id")
     private User coOwner;
 
@@ -72,7 +72,7 @@ public class SyndicWalletTransaction {
     private String reference;
 
     // Lien vers l'intervention à l'origine de cette transaction (nullable — uniquement pour les paiements de travaux)
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "intervention_request_id")
     private InterventionRequest interventionRequest;
 

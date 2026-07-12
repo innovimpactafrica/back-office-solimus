@@ -63,13 +63,13 @@ public class ChargeAllocation {
      * Relation ManyToOne : une allocation appartient à une seule charge,
      * mais une charge peut avoir plusieurs allocations (une par bien).
      * 
-     * FetchType.LAZY : on charge la charge uniquement quand nécessaire
+     * FetchType.EAGER : on charge la charge uniquement quand nécessaire
      * pour optimiser les performances.
      * 
      * Cette relation permet de regrouper les allocations sous une charge
      * et de garantir l'intégrité référentielle (suppression en cascade).
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "charge_id", nullable = false)
     private Charge charge;
 
@@ -79,12 +79,12 @@ public class ChargeAllocation {
      * Relation ManyToOne : une allocation est liée à un seul bien,
      * mais un bien peut avoir plusieurs allocations (une par charge).
      * 
-     * FetchType.LAZY : on charge le bien uniquement quand nécessaire.
+     * FetchType.EAGER : on charge le bien uniquement quand nécessaire.
      * 
      * Cette relation permet de savoir quel bien est concerné par cette part
      * et de calculer la répartition selon la surface ou les quotes-parts.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "property_id", nullable = false)
     private Property property;
 
@@ -94,12 +94,12 @@ public class ChargeAllocation {
      * Relation ManyToOne : une allocation est liée à un seul copropriétaire,
      * mais un copropriétaire peut avoir plusieurs allocations (une par charge).
      * 
-     * FetchType.LAZY : on charge le copropriétaire uniquement quand nécessaire.
+     * FetchType.EAGER : on charge le copropriétaire uniquement quand nécessaire.
      * 
      * Cette relation permet d'identifier le responsable du paiement
      * et d'envoyer les notifications appropriées.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner;
 

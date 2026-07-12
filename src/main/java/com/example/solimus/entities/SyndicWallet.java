@@ -30,7 +30,7 @@ public class SyndicWallet {
     private Long id;
 
     // Le syndic propriétaire de ce wallet (un seul wallet par syndic)
-    @OneToOne(fetch = FetchType.LAZY)
+    @OneToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "syndic_id", nullable = false, unique = true)
     private User syndic;
 

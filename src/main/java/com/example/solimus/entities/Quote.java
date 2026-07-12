@@ -45,7 +45,7 @@ public class Quote {
 
     // --- Détails ---
     
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "estimated_delay_id", nullable = false)
     private EstimatedDelay estimatedDelay; //Durée d'estimation des travaux
 
@@ -56,11 +56,11 @@ public class Quote {
     @Column(nullable = false)
     private QuoteStatus status;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "intervention_request_id", nullable = false)
     private InterventionRequest interventionRequest;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "provider_id", nullable = false)
     private User provider;
 

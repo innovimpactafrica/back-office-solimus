@@ -24,12 +24,12 @@ public class SyndicOwnerRelation {
     private Long id;
 
     // Le syndic qui ajoute le copropriétaire à sa liste
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "syndic_id", nullable = false)
     private User syndic;
 
     // Le copropriétaire ajouté par le syndic
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "coowner_id", nullable = false)
     private User coOwner;
 

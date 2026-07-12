@@ -58,7 +58,7 @@ public class CommonFacility {
      * Plusieurs équipements peuvent avoir le même type
      *
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "facility_type_id", nullable = false)
     private FacilityType facilityType;
 
@@ -71,7 +71,7 @@ public class CommonFacility {
      * La résidence à laquelle appartient cet équipement.
      * plusieurs équipements peuvent être dans une résidence et avoir le même type
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "residence_id", nullable = false)
     private Residence residence;
 

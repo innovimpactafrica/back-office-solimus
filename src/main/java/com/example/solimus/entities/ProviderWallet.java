@@ -25,7 +25,7 @@ public class ProviderWallet {
     private Long id;
 
     // Un prestataire a un seul wallet
-    @OneToOne(fetch = FetchType.LAZY)
+    @OneToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "provider_id", nullable = false, unique = true)
     private User provider;
 

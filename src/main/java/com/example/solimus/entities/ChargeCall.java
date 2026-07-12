@@ -51,7 +51,7 @@ public class ChargeCall {
      * Le budget source dont est issu cet appel de charges.
      * Un budget peut avoir plusieurs ChargeCall (un par période).
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "budget_id", nullable = false)
     private Budget budget;
 

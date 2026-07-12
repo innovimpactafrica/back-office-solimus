@@ -29,7 +29,7 @@ public class ActivityLog {
     /**
      * La résidence concernée par cet événement.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "residence_id", nullable = false)
     private Residence residence;
 
@@ -56,7 +56,7 @@ public class ActivityLog {
     /**
      * Qui a déclenché l'événement.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "actor_id")
     private User actor;
 

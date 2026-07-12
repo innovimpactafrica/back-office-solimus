@@ -25,11 +25,11 @@ public class InterventionComment {
     @Column(columnDefinition = "TEXT", nullable = false)
     private String content; // Contenu du commentaire
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "author_id", nullable = false)
     private User author; // Utilisateur qui a écrit le commentaire
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "intervention_id", nullable = false)
     private InterventionRequest interventionRequest; // Intervention concernée
 

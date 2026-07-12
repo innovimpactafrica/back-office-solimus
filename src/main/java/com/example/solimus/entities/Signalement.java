@@ -50,19 +50,19 @@ public class Signalement {
     @Column(name = "location_type", nullable = false)
     private IncidentLocationType locationType; // Réutilisé depuis le module Travaux
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "property_id")
     private Property property; // Rempli si APPARTEMENT
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "common_facility_id")
     private CommonFacility commonFacility; // Rempli si PARTIE_COMMUNE
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "residence_id", nullable = false)
     private Residence residence;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner; // Copropriétaire qui a créé le signalement
 
@@ -76,7 +76,7 @@ public class Signalement {
     private String closingNote;
 
     // Lien vers l'intervention créée si le signalement a été transformé en travaux
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "linked_intervention_id")
     private InterventionRequest linkedIntervention;
 

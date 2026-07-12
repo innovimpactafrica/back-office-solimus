@@ -28,7 +28,7 @@ public class CoOwnerDocument {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "co_owner_id", nullable = false)
     private User coOwner;
 

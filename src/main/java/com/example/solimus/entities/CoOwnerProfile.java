@@ -27,7 +27,7 @@ public class CoOwnerProfile {
     private Long id;
 
     /** Utilisateur associé (copropriétaire) */
-    @OneToOne(fetch = FetchType.LAZY)
+    @OneToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private User user;
 

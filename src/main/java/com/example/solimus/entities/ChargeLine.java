@@ -25,7 +25,7 @@ public class ChargeLine {
     @Column(nullable = false)
     private BigDecimal amount;  // 85 000 FCFA
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "charge_id", nullable = false)
     private Charge charge;
 }

@@ -37,7 +37,7 @@ public class SyndicFinancialSettings {
     // RELATION AVEC LE SYNDIC
     // =========================================================================
 
-    @OneToOne(fetch = FetchType.LAZY)
+    @OneToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "syndic_id", nullable = false, unique = true)
     private User syndic;
 

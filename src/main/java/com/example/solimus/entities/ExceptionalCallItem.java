@@ -18,14 +18,14 @@ public class ExceptionalCallItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "exceptional_call_id", nullable = false)
     private ExceptionalCall exceptionalCall;
 
     @Column(unique = true)
     private String reference; // Référence de l'appel de charges 
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "co_owner_id", nullable = false)
     private User coOwner;
 

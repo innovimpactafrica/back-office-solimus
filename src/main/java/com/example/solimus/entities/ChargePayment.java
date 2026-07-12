@@ -27,12 +27,12 @@ public class ChargePayment {
     private String reference;
 
     // L'allocation concernée (part du copropriétaire)
-    @OneToOne(fetch = FetchType.LAZY)
+    @OneToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "allocation_id", nullable = false, unique = true)
     private ChargeAllocation allocation;
 
     // Le copropriétaire qui paie
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner;
 

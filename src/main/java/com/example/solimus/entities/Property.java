@@ -74,7 +74,7 @@ public class Property {
      * Type de bien.
      * Référence vers l'entité PropertyType gérée par le syndic.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "property_type_id", nullable = false)
     private PropertyType typeBien;
 
@@ -129,7 +129,7 @@ public class Property {
      *
      * Affiché dans la colonne "PROPRIÉTAIRE" du tableau Appartements.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "owner_id", nullable = true)
     private User owner;
 
@@ -150,7 +150,7 @@ public class Property {
      * La résidence à laquelle appartient ce lot.
      * Relation obligatoire — un lot appartient toujours à une résidence.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "residence_id", nullable = false)
     private Residence residence;
 

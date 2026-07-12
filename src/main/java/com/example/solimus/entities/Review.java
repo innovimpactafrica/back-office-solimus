@@ -31,21 +31,21 @@ public class Review {
      * L'intervention concernée.
      * OneToOne car il ne peut y avoir qu'un seul avis par intervention.
      */
-    @OneToOne(fetch = FetchType.LAZY)
+    @OneToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "intervention_request_id", nullable = false, unique = true)
     private InterventionRequest interventionRequest;
 
     /**
      * Celui qui laisse l'avis : syndic ou copropriétaire.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "reviewer_id", nullable = false)
     private User reviewer;
 
     /**
      * Le prestataire noté.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "provider_id", nullable = false)
     private User provider;
 

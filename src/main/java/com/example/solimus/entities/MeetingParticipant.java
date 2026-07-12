@@ -20,7 +20,7 @@ public class MeetingParticipant {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "meeting_id", nullable = false)
     private Meeting meeting;
 
@@ -29,7 +29,7 @@ public class MeetingParticipant {
      * Toujours renseigné — décision V1 : pas de participants externes,
      * uniquement les copropriétaires de la résidence.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 

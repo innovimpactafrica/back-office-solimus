@@ -30,17 +30,17 @@ public class PaymentProvider {
     private String reference;
 
     // La demande d'intervention concernée
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "intervention_request_id", nullable = false)
     private InterventionRequest interventionRequest;
 
     // Le prestataire qui reçoit le paiement
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "provider_id", nullable = false)
     private User provider;
 
     // Celui qui effectue le paiement (syndic OU copropriétaire)
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "payment_initiator_id", nullable = false)
     private User paymentInitiator;
 

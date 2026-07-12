@@ -32,7 +32,7 @@ public class QuoteItem {
     @Column(nullable = false)
     private QuoteItemType type;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "quote_id", nullable = false)
     private Quote quote;
 

@@ -30,7 +30,7 @@ public class ProviderWithdrawalRequest {
     private String reference; // "WIT-2026-001"
 
     // Le prestataire qui demande le versement
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "provider_id", nullable = false)
     private User provider;
 
@@ -63,7 +63,7 @@ public class ProviderWithdrawalRequest {
     @Column(name = "admin_comment")
     private String adminComment; // Commentaire ajouté par l'admin lors de la validation
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "processed_by_id")
     private User processedBy; // Admin qui a traité la demande
 

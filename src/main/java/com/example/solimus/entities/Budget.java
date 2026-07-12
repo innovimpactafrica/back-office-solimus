@@ -39,7 +39,7 @@ public class Budget {
     @Column(nullable = false, unique = true)
     private String reference; // Référence unique du budget (ex: BUD-2026-123456)
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "residence_id", nullable = false)
     private Residence residence;
 
@@ -68,7 +68,7 @@ public class Budget {
     @Column(name = "budget_total", nullable = false)
     private BigDecimal budgetTotal = BigDecimal.ZERO;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "syndic_id", nullable = false)
     private User syndic;
 

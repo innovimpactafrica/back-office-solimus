@@ -23,7 +23,7 @@ public class MeetingAgendaItem {
     @Column(nullable = false)
     private String title;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "meeting_id", nullable = false)
     private Meeting meeting;
 }

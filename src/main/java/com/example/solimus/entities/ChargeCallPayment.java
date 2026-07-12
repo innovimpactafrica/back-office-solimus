@@ -33,12 +33,12 @@ public class ChargeCallPayment {
     private String reference;
 
     // La ligne d'appel de charges concernée
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "charge_call_item_id", nullable = false)
     private ChargeCallItem chargeCallItem;
 
     // Le copropriétaire qui paie
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner;
 

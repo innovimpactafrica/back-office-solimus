@@ -24,7 +24,7 @@ public class BudgetItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "budget_id", nullable = false)
     private Budget budget;
 
@@ -39,7 +39,7 @@ public class BudgetItem {
      * Nullable — rempli uniquement si le syndic a sélectionné une suggestion d'autocomplétion.
      * Si null, le poste reste un texte libre (libelle), sans lien avec un équipement précis.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "common_facility_id")
     private CommonFacility commonFacility;
 }

@@ -25,7 +25,7 @@ public class MeetingPresence {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "meeting_participant_id", nullable = false)
     private MeetingParticipant meetingParticipant;
 
@@ -48,7 +48,7 @@ public class MeetingPresence {
      * Si attendanceStatus == REPRESENTE : qui représente ce copropriétaire (procuration).
      * Toujours un autre copropriétaire du système en V1 (pas d'externe).
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "represented_by_user_id")
     private User representedByUser;
 

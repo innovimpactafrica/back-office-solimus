@@ -20,7 +20,7 @@ public class SignalementStatusHistory {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "signalement_id", nullable = false)
     private Signalement signalement;
 
@@ -28,7 +28,7 @@ public class SignalementStatusHistory {
     @Column(nullable = false)
     private SignalementStatus status;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "changed_by_id")
     private User changedBy;
 
