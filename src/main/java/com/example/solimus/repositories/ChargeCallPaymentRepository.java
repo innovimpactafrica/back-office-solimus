@@ -21,6 +21,8 @@ public interface ChargeCallPaymentRepository extends JpaRepository<ChargeCallPay
 
     Optional<ChargeCallPayment> findByChargeCallItemId(Long chargeCallItemId);
 
+    Optional<ChargeCallPayment> findFirstByChargeCallItemIdOrderByPaidAtDesc(Long chargeCallItemId);
+
     /**
      * Trouve le dernier paiement COMPLETED pour un ChargeCallItem
      * Trié par date de paiement décroissante

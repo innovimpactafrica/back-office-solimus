@@ -46,6 +46,17 @@ public class SyndicWithdrawalRequest {
     @Column(nullable = false)
     private WithdrawalMode mode;
 
+    // La résidence concernée par ce retrait (utile même sans poste budgétaire précis,
+    // car un syndic gère souvent plusieurs résidences)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "residence_id")
+    private Residence residence;
+
+    // Le poste budgétaire concerné par ce retrait (Uniquement pour les retraits liés à un poste sans bien commun)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "budget_item_id")
+    private BudgetItem budgetItem;
+
     // Statut de la demande
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

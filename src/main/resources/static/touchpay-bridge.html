@@ -97,6 +97,7 @@
         // SUB- → abonnement
         // WIT- → retrait wallet
         // CPY- → paiement charge
+        // ECP- -> paiement charge exceptionnelle
         function getApiUrl(ref, apiBaseUrl) {
             if (ref.startsWith('PAY-') || ref.startsWith('SOL-')) {
                 return `${apiBaseUrl}/api/payments/bridge/payment/${ref}`;
@@ -106,7 +107,9 @@
                 return `${apiBaseUrl}/api/payments/bridge/withdrawal/${ref}`;
             } else if (ref.startsWith('CPY-')) {
                 return `${apiBaseUrl}/api/payments/bridge/charge/${ref}`;
-            }
+            }else if (ref.startsWith('ECP-')) {
+            return `${apiBaseUrl}/api/payments/bridge/exceptional-charge/${ref}`;
+        }
 
             // si format inconnu
             return null;

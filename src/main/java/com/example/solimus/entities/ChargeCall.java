@@ -37,6 +37,12 @@ public class ChargeCall {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * Référence unique de l'appel de charges (ex: CC-2026-T1-B12)
+     */
+    @Column(name = "reference", unique = true, nullable = false)
+    private String reference;
+
     // =========================================================================
     // SOURCE
     // =========================================================================

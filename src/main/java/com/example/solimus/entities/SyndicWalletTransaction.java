@@ -71,6 +71,11 @@ public class SyndicWalletTransaction {
     @Column(length = 255)
     private String reference;
 
+    // Lien vers l'intervention à l'origine de cette transaction (nullable — uniquement pour les paiements de travaux)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "intervention_request_id")
+    private InterventionRequest interventionRequest;
+
     // Date de création de l'enregistrement
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

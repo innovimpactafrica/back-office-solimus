@@ -70,38 +70,39 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
     //-----------------------------------------------------------------------
     @Override
     @Transactional(readOnly = true)
-    public List<CoOwnerSearchResultDTO> searchCoOwners(String q) {
+    public Page<CoOwnerSearchResultDTO> searchCoOwners(String q, Integer page, Integer size) {
 
-        // on limite à 5 résultats — suffisant pour un autocomplete
-        Pageable limit = PageRequest.of(0,5);
+        Pageable pageable = PageRequest.of(page, size);
 
         // on lance la recherche en base sur prénom, nom, email et téléphone
-        return userRepository.searchCoOwners(q, limit)
-                .stream()
-                .map (user -> {
+        Page<User> userPage = userRepository.searchCoOwners(q, pageable);
 
-                    //on récupère le profil complémentaire du copropriétaire
-                    CoOwnerProfile profile = coOwnerProfileRepository
-                            .findByUserId(user.getId())
-                            .orElse(null); // null si le profil n'existe pas encore — cas défensif
+        List<CoOwnerSearchResultDTO> dtos = userPage.getContent().stream().map(user -> {
 
-                    return CoOwnerSearchResultDTO.builder()
-                            .id(user.getId())
-                            .fullName(user.getFirstName() + " " + user.getLastName())
-                            .firstName(user.getFirstName())
-                            .lastName(user.getLastName())
-                            .email(user.getEmail())
-                            .phone(user.getPhone())
-                            .photoUrl(user.getProfilePhotoUrl())
-                            // si le profil existe on prend ses données, sinon null
-                            .title(profile != null ? profile.getTitle() : null)
-                            .birthDate(profile != null ? profile.getBirthDate() : null)
-                            .nationality(profile != null ? profile.getNationality() : null)
-                            .secondaryPhone(profile != null ? profile.getSecondaryPhone() : null)
-                            .address(profile != null ? profile.getAddress() : null)
-                            .build();
+            //on récupère le profil complémentaire du copropriétaire
+            CoOwnerProfile profile = coOwnerProfileRepository
+                    .findByUserId(user.getId())
+                    .orElse(null); // null si le profil n'existe pas encore — cas défensif
 
-                }).toList();
+            return CoOwnerSearchResultDTO.builder()
+                    .id(user.getId())
+                    .fullName(user.getFirstName() + " " + user.getLastName())
+                    .firstName(user.getFirstName())
+                    .lastName(user.getLastName())
+                    .email(user.getEmail())
+                    .phone(user.getPhone())
+                    .photoUrl(user.getProfilePhotoUrl())
+                    // si le profil existe on prend ses données, sinon null
+                    .title(profile != null ? profile.getTitle() : null)
+                    .birthDate(profile != null ? profile.getBirthDate() : null)
+                    .nationality(profile != null ? profile.getNationality() : null)
+                    .secondaryPhone(profile != null ? profile.getSecondaryPhone() : null)
+                    .address(profile != null ? profile.getAddress() : null)
+                    .build();
+
+        }).toList();
+
+        return new PageImpl<>(dtos, pageable, userPage.getTotalElements());
     }
 
     /**
@@ -318,7 +319,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
      */
     @Override
     @Transactional(readOnly = true)
-    public List<CoOwnerDocumentItemDTO> getCoOwnerDocuments(Long coOwnerId, String category) {
+    public Page<CoOwnerDocumentItemDTO> getCoOwnerDocuments(Long coOwnerId, String category, Integer page, Integer size) {
         // Récupérer le syndic connecté
         User currentSyndic = getCurrentUser();
 
@@ -401,7 +402,13 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             }
         }
 
-        return allDocuments;
+        // Pagination manuelle
+        int totalElements = allDocuments.size();
+        int fromIndex = Math.min(page * size, totalElements);
+        int toIndex = Math.min(fromIndex + size, totalElements);
+        List<CoOwnerDocumentItemDTO> pageContent = allDocuments.subList(fromIndex, toIndex);
+
+        return new PageImpl<>(pageContent, PageRequest.of(page, size), totalElements);
     }
 
     /**
@@ -781,7 +788,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
     //--------------------------------------------------------------------
     @Override
     @Transactional(readOnly = true)
-    public List<PropertySummaryDTO> getAvailableProperties(Long residenceId) {
+    public Page<PropertySummaryDTO> getAvailableProperties(Long residenceId, Integer page, Integer size) {
         // Récupérer le syndic connecté
         User currentSyndic = getCurrentUser();
 
@@ -793,12 +800,16 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             throw new ForbiddenException("Cette résidence ne vous appartient pas");
         }
 
-        // Retourne uniquement les biens VACANT de cette résidence
-        return propertyRepository
-                .findByResidenceIdAndStatus(residenceId, PropertyStatus.VACANT)
-                .stream()
+        // Retourne uniquement les biens VACANT de cette résidence avec pagination
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Property> propertyPage = propertyRepository
+                .findByResidenceIdAndStatus(residenceId, PropertyStatus.VACANT, pageable);
+
+        List<PropertySummaryDTO> dtos = propertyPage.getContent().stream()
                 .map(this::mapToPropertySummaryDTO)
                 .collect(Collectors.toList());
+
+        return new PageImpl<>(dtos, pageable, propertyPage.getTotalElements());
     }
 
     //-------------------------------------------------------
@@ -806,18 +817,29 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
     //-------------------------------------------------------
     @Override
     @Transactional(readOnly = true)
-    public List<ResidenceSummaryDTO> getResidencesWithVacantProperties() {
+    public Page<ResidenceSummaryDTO> getResidencesWithVacantProperties(Integer page, Integer size) {
         // Récupérer le syndic connecté
         User currentSyndic = getCurrentUser();
 
         // Récupérer toutes les résidences qui ont des biens vacants géré par le syndic connecté
-        return residenceRepository
+        List<Residence> allResidences = residenceRepository
                 .findResidencesWithVacantProperties()
                 .stream()
                 // Filtrer pour ne garder que les résidences du syndic connecté
                 .filter(r -> r.getSyndic() != null && r.getSyndic().getId().equals(currentSyndic.getId()))
+                .toList();
+
+        // Pagination manuelle
+        int totalElements = allResidences.size();
+        int fromIndex = Math.min(page * size, totalElements);
+        int toIndex = Math.min(fromIndex + size, totalElements);
+        List<Residence> pageContent = allResidences.subList(fromIndex, toIndex);
+
+        List<ResidenceSummaryDTO> dtos = pageContent.stream()
                 .map(this::mapToResidenceSummaryDTO)
                 .collect(Collectors.toList());
+
+        return new PageImpl<>(dtos, PageRequest.of(page, size), totalElements);
     }
 
     //-------------------------------------------------------
@@ -1037,7 +1059,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
     }
     @Override
     @Transactional(readOnly = true)
-    public List<CoOwnerPropertyItemDTO> getCoOwnerProperties(Long coOwnerId) {
+    public Page<CoOwnerPropertyItemDTO> getCoOwnerProperties(Long coOwnerId, Integer page, Integer size) {
 
         // Récupérer le syndic connecté
         User currentSyndic = getCurrentUser();
@@ -1075,7 +1097,13 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             }
         }
 
-        return result;
+        // Pagination manuelle
+        int totalElements = result.size();
+        int fromIndex = Math.min(page * size, totalElements);
+        int toIndex = Math.min(fromIndex + size, totalElements);
+        List<CoOwnerPropertyItemDTO> pageContent = result.subList(fromIndex, toIndex);
+
+        return new PageImpl<>(pageContent, PageRequest.of(page, size), totalElements);
     }
 
     @Override

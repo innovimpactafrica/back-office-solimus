@@ -1,11 +1,6 @@
 package com.example.solimus.controllers;
 
-import com.example.solimus.entities.ChargeAllocation;
-import com.example.solimus.entities.InterventionRequest;
-import com.example.solimus.entities.InTouchCallbackRequest;
-import com.example.solimus.enums.SubscriptionStatus;
-import com.example.solimus.repositories.SubscriptionRepository;
-
+import com.example.solimus.entities.*;
 import com.example.solimus.enums.*;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.auth.EmailService;
@@ -18,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
-
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
@@ -36,11 +30,23 @@ public class SolimusCallbackController {
     // Repository de la demande d'intervention liée au paiement
     private final InterventionRequestRepository interventionRepository;
 
-    // Repository des paiements de charges : CPY-*
-    private final ChargePaymentRepository chargePaymentRepository;
+    // Repository des paiements de charges courantes : CPY-*
+    private final ChargeCallPaymentRepository chargeCallPaymentRepository;
 
-    // Repository des allocations de charges
-    private final ChargeAllocationRepository chargeAllocationRepository;
+    // Repository des lignes d'appels de charges courantes
+    private final ChargeCallItemRepository chargeCallItemRepository;
+
+    // Repository des paiements de charges exceptionnelles : ECP-*
+    private final ExceptionalCallPaymentRepository exceptionalCallPaymentRepository;
+
+    // Repository des lignes d'appels exceptionnels
+    private final ExceptionalCallItemRepository exceptionalCallItemRepository;
+
+    // Repository du wallet syndic, pour créditer les charges payées
+    private final SyndicWalletRepository syndicWalletRepository;
+
+    // Repository des transactions du wallet syndic
+    private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
 
     // Service utilisé pour créditer le wallet du prestataire après confirmation InTouch
     private final ProviderService providerService;
@@ -53,6 +59,9 @@ public class SolimusCallbackController {
 
     // Service email pour notifier le prestataire après activation Premium
     private final EmailService emailService;
+
+    // Repository des logs d'activité pour tracer les paiements
+    private final ActivityLogRepository activityLogRepository;
 
     // Formateur de date pour l'email de confirmation Premium (ex: "01 Janvier 2026")
     private static final DateTimeFormatter DATE_FORMATTER =
@@ -97,8 +106,13 @@ public class SolimusCallbackController {
         }
 
         if (ref.startsWith("CPY-")) {
-            // Paiement charge copropriétaire
+            // Paiement charge courante copropriétaire
             return handleChargePaymentCallback(ref, succes);
+        }
+
+        if (ref.startsWith("ECP-")) {
+            // Paiement charge exceptionnelle copropriétaire
+            return handleExceptionalChargePaymentCallback(ref, succes);
         }
 
         // Référence non reconnue
@@ -145,12 +159,12 @@ public class SolimusCallbackController {
                     payment.setPaidAt(LocalDateTime.now());
                     paymentRepository.save(payment);
 
-                    // Le prestataire reçoit l'argent sur son wallet uniquement après confirmation réelle (pour tout type de paiement)
+                    // Le paiement provient du Mobile Money (argent externe) → on ne touche pas au wallet syndic.
+                    // Le prestataire reçoit l'argent sur son wallet uniquement après confirmation réelle.
                     walletService.creditWallet(payment.getProvider().getId(), payment.getAmount());
 
                     // Synchronisation financière de la demande d'intervention
                     InterventionRequest req = payment.getInterventionRequest();
-
                     if (payment.getType() == PaymentType.ACOMPTE) {
                         // Après acompte : depositAmount = montant acompte versé
                         // remainingAmount = totalAmount - acompte
@@ -180,6 +194,18 @@ public class SolimusCallbackController {
 
                     // Sauvegarde finale — déclenche aussi @PreUpdate dans InterventionRequest
                     interventionRepository.save(req);
+
+                    // Tracer l'activité de paiement
+                    ActivityLog activityLog = new ActivityLog();
+                    activityLog.setResidence(req.getResidence());
+                    activityLog.setType(ActivityType.PAYMENT_RECEIVED);
+                    activityLog.setRelatedEntityType("INTERVENTION_PAYMENT");
+                    activityLog.setRelatedEntityId(payment.getId());
+                    activityLog.setActor(payment.getPaymentInitiator());
+                    String paymentTypeLabel = payment.getType() == PaymentType.ACOMPTE ? "Acompte" : "Solde";
+                    activityLog.setMessage("Paiement intervention reçu");
+                    activityLog.setDetail(paymentTypeLabel + " — " + req.getTitle() + " — " + payment.getAmount() + " FCFA");
+                    activityLogRepository.save(activityLog);
 
                     return ResponseEntity.ok(Map.<String, Object>of(
                             "success", true,
@@ -251,12 +277,12 @@ public class SolimusCallbackController {
 
 
     // =========================================================================
-    // CAS 3 — Paiement charge copropriétaire (CPY-)
+    // CAS 3 — Paiement charge courante copropriétaire (CPY-)
     // =========================================================================
     private ResponseEntity<Map<String, Object>> handleChargePaymentCallback(
             String ref, boolean succes) {
 
-        return chargePaymentRepository.findByReference(ref)
+        return chargeCallPaymentRepository.findByReference(ref)
                 .map(paiement -> {
 
                     // Anti-double callback
@@ -269,24 +295,54 @@ public class SolimusCallbackController {
 
                     if (!succes) {
                         paiement.setStatus(PaymentStatus.FAILED);
-                        chargePaymentRepository.save(paiement);
+                        chargeCallPaymentRepository.save(paiement);
                         return ResponseEntity.ok(Map.<String, Object>of(
                                 "success", true,
                                 "message", "Paiement marqué comme échoué"
                         ));
                     }
 
+                    //sinon
                     // Confirmer le paiement
                     paiement.setStatus(PaymentStatus.COMPLETED);
                     paiement.setPaidAt(LocalDateTime.now());
-                    chargePaymentRepository.save(paiement);
+                    chargeCallPaymentRepository.save(paiement);
 
-                    // Marquer l'allocation comme PAYEE
-                    ChargeAllocation allocation = paiement.getAllocation();
-                    allocation.setStatus(ChargeStatus.PAYEE);
-                    chargeAllocationRepository.save(allocation);
+                    // Met à jour la ligne de charge : ajoute ce paiement au montant déjà payé
+                    ChargeCallItem item = paiement.getChargeCallItem();
+                    item.setPaidAmount(item.getPaidAmount().add(paiement.getAmount()));
+                    chargeCallItemRepository.save(item);
 
-                    log.info("Charge {} payée avec succès", ref);
+                    // Crédite le wallet du syndic (catégorie CHARGES)
+                    Residence residence = item.getChargeCall().getBudget().getResidence();
+                    SyndicWallet syndicWallet = syndicWalletRepository
+                            .findBySyndicId(residence.getSyndic().getId())
+                            .orElseThrow(() -> new RuntimeException("Wallet syndic introuvable"));
+
+                    SyndicWalletTransaction transaction = new SyndicWalletTransaction();
+                    transaction.setWallet(syndicWallet);
+                    transaction.setResidence(residence);
+                    transaction.setCoOwner(paiement.getOwner());
+                    transaction.setCategory(WalletTransactionCategory.CHARGES);
+                    transaction.setAmount(paiement.getAmount());
+                    transaction.setLabel("Paiement charges — " + item.getReference());
+                    transaction.setMode(paiement.getMethod() != null ? paiement.getMethod().name() : null);
+                    transaction.setTransactionDate(LocalDateTime.now());
+                    transaction.setReference(paiement.getReference());
+                    syndicWalletTransactionRepository.save(transaction);
+
+                    // Tracer l'activité de paiement
+                    ActivityLog activityLog = new ActivityLog();
+                    activityLog.setResidence(residence);
+                    activityLog.setType(ActivityType.PAYMENT_RECEIVED);
+                    activityLog.setRelatedEntityType("CHARGE_CALL_PAYMENT");
+                    activityLog.setRelatedEntityId(paiement.getId());
+                    activityLog.setActor(paiement.getOwner());
+                    activityLog.setMessage("Paiement charges reçu");
+                    activityLog.setDetail(item.getReference() + " — " + paiement.getAmount() + " FCFA");
+                    activityLogRepository.save(activityLog);
+
+                    log.info("Charge {} payée avec succès — item {}", ref, item.getId());
 
                     return ResponseEntity.ok(Map.<String, Object>of(
                             "success", true,
@@ -297,6 +353,86 @@ public class SolimusCallbackController {
                         Map.<String, Object>of(
                                 "success", false,
                                 "message", "Paiement charge introuvable : " + ref
+                        )
+                ));
+    }
+
+    // =========================================================================
+    // CAS 4 — Paiement charge exceptionnelle copropriétaire (ECP-)
+    // =========================================================================
+    private ResponseEntity<Map<String, Object>> handleExceptionalChargePaymentCallback(
+            String ref, boolean succes) {
+
+        return exceptionalCallPaymentRepository.findByReference(ref)
+                .map(paiement -> {
+
+                    // Anti-double callback
+                    if (paiement.getStatus() == PaymentStatus.COMPLETED) {
+                        return ResponseEntity.ok(Map.<String, Object>of(
+                                "success", true,
+                                "message", "Paiement déjà confirmé"
+                        ));
+                    }
+
+                    if (!succes) {
+                        paiement.setStatus(PaymentStatus.FAILED);
+                        exceptionalCallPaymentRepository.save(paiement);
+                        return ResponseEntity.ok(Map.<String, Object>of(
+                                "success", true,
+                                "message", "Paiement marqué comme échoué"
+                        ));
+                    }
+
+                    //sinon, Confirmer le paiement
+                    paiement.setStatus(PaymentStatus.COMPLETED);
+                    paiement.setPaidAt(LocalDateTime.now());
+                    exceptionalCallPaymentRepository.save(paiement);
+
+                    // Met à jour la ligne d'appel exceptionnel
+                    ExceptionalCallItem item = paiement.getExceptionalCallItem();
+                    item.setPaidAmount(item.getPaidAmount().add(paiement.getAmount()));
+                    exceptionalCallItemRepository.save(item);
+
+                    // Crédite le wallet du syndic (catégorie CHARGES)
+                    Residence residence = item.getExceptionalCall().getResidence();
+                    SyndicWallet syndicWallet = syndicWalletRepository
+                            .findBySyndicId(residence.getSyndic().getId())
+                            .orElseThrow(() -> new RuntimeException("Wallet syndic introuvable"));
+
+                    SyndicWalletTransaction transaction = new SyndicWalletTransaction();
+                    transaction.setWallet(syndicWallet);
+                    transaction.setResidence(residence);
+                    transaction.setCoOwner(paiement.getOwner());
+                    transaction.setCategory(WalletTransactionCategory.CHARGES);
+                    transaction.setAmount(paiement.getAmount());
+                    transaction.setLabel("Paiement charge exceptionnelle — " + item.getExceptionalCall().getTitle());
+                    transaction.setMode(paiement.getMethod() != null ? paiement.getMethod().name() : null);
+                    transaction.setTransactionDate(LocalDateTime.now());
+                    transaction.setReference(paiement.getReference());
+                    syndicWalletTransactionRepository.save(transaction);
+
+                    // Tracer l'activité de paiement
+                    ActivityLog activityLog = new ActivityLog();
+                    activityLog.setResidence(residence);
+                    activityLog.setType(ActivityType.PAYMENT_RECEIVED);
+                    activityLog.setRelatedEntityType("EXCEPTIONAL_CALL_PAYMENT");
+                    activityLog.setRelatedEntityId(paiement.getId());
+                    activityLog.setActor(paiement.getOwner());
+                    activityLog.setMessage("Paiement charge exceptionnelle reçu");
+                    activityLog.setDetail(item.getExceptionalCall().getTitle() + " — " + paiement.getAmount() + " FCFA");
+                    activityLogRepository.save(activityLog);
+
+                    log.info("Charge exceptionnelle {} payée avec succès — item {}", ref, item.getId());
+
+                    return ResponseEntity.ok(Map.<String, Object>of(
+                            "success", true,
+                            "message", "Paiement charge exceptionnelle confirmé"
+                    ));
+                })
+                .orElseGet(() -> ResponseEntity.badRequest().body(
+                        Map.<String, Object>of(
+                                "success", false,
+                                "message", "Paiement charge exceptionnelle introuvable : " + ref
                         )
                 ));
     }

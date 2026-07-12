@@ -20,6 +20,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -45,8 +46,10 @@ public class SyndicTravauxController {
     @Operation(summary = "Lister mes résidences")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences")
-    public ResponseEntity<List<SyndicResidenceDTO>> getMesResidences() {
-        return ResponseEntity.ok(syndicTravauxService.getMesResidences());
+    public ResponseEntity<Page<SyndicResidenceDTO>> getMesResidences(
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        return ResponseEntity.ok(syndicTravauxService.getMesResidences(page, size));
     }
 
     // =========================================================================
@@ -55,8 +58,11 @@ public class SyndicTravauxController {
     @Operation(summary = "Lister les lots d'une résidence")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/properties")
-    public ResponseEntity<List<PropertyDTO>> getPropertiesByResidence(@PathVariable Long residenceId) {
-        return ResponseEntity.ok(syndicTravauxService.getPropertiesByResidence(residenceId));
+    public ResponseEntity<Page<PropertyDTO>> getPropertiesByResidence(
+            @PathVariable Long residenceId,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        return ResponseEntity.ok(syndicTravauxService.getPropertiesByResidence(residenceId, page, size));
     }
 
     // =========================================================================
@@ -65,8 +71,11 @@ public class SyndicTravauxController {
     @Operation(summary = "Lister les biens communs d'une résidence")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/common-facilities")
-    public ResponseEntity<List<CommonFacilityDTO>> getCommonFacilitiesByResidence(@PathVariable Long residenceId) {
-        return ResponseEntity.ok(syndicTravauxService.getCommonFacilitiesByResidence(residenceId));
+    public ResponseEntity<Page<CommonFacilityDTO>> getCommonFacilitiesByResidence(
+            @PathVariable Long residenceId,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        return ResponseEntity.ok(syndicTravauxService.getCommonFacilitiesByResidence(residenceId, page, size));
     }
 
     // =========================================================================
@@ -75,8 +84,10 @@ public class SyndicTravauxController {
     @Operation(summary = "Lister toutes les spécialités")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/specialties")
-    public ResponseEntity<List<SpecialtyDTO>> getAllSpecialties() {
-        return ResponseEntity.ok(syndicTravauxService.getAllSpecialties());
+    public ResponseEntity<Page<SpecialtyDTO>> getAllSpecialties(
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        return ResponseEntity.ok(syndicTravauxService.getAllSpecialties(page, size));
     }
 
     // =========================================================================
@@ -213,8 +224,9 @@ public class SyndicTravauxController {
     @Operation(summary = "Payer le solde final et clôturer")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/interventions/{id}/pay-balance")
-    public ResponseEntity<SyndicPaymentResultDTO> payBalanceAndClose(@PathVariable Long id) {
-        return ResponseEntity.ok(syndicTravauxService.payBalanceAndClose(id));
+    public ResponseEntity<SyndicPaymentResultDTO> payBalanceAndClose(
+            @PathVariable Long id, @Valid @RequestBody SyndicPayDepositDTO dto) {
+        return ResponseEntity.ok(syndicTravauxService.payBalanceAndClose(id, dto));
     }
 
     // =========================================================================

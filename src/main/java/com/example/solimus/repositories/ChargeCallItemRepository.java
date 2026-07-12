@@ -17,6 +17,10 @@ import java.util.List;
 @Repository
 public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, Long> {
 
+    /**
+     * Récupère les charges courantes d'un copropriétaire
+     */
+    List<ChargeCallItem> findByCoOwnerId(Long coOwnerId);
 
     /**
      * Lister toutes les lignes d'appel de charges pour une résidence
@@ -211,4 +215,24 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
             "AND i.paidAmount < i.quotePart " +
             "AND i.chargeCall.dueDate < CURRENT_DATE")
     Integer findMaxDaysLateByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
+
+    // ===== PAIEMENTS / IMPAYÉS (GLOBAL SYNDIC) =====
+
+    // Tous les items d'un syndic, paginés (pour l'onglet Paiements)
+    Page<ChargeCallItem> findByChargeCallBudgetSyndicId(Long syndicId, Pageable pageable);
+
+    // Items filtrés par nom de copropriétaire, paginés
+    @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId " +
+           "AND (LOWER(i.coOwner.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR LOWER(i.coOwner.lastName) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<ChargeCallItem> findByChargeCallBudgetSyndicIdAndCoOwnerNameContaining(
+            @Param("syndicId") Long syndicId, @Param("search") String search, Pageable pageable);
+
+    // Items non soldés d'un syndic, paginés (pour l'onglet Impayés)
+    @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId AND i.paidAmount < i.quotePart")
+    Page<ChargeCallItem> findUnpaidByBudgetSyndicId(@Param("syndicId") Long syndicId, Pageable pageable);
+
+    // Tous les items non soldés, sans pagination (pour calculer les KPI globaux : total, count)
+    @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId AND i.paidAmount < i.quotePart")
+    List<ChargeCallItem> findAllUnpaidByBudgetSyndicId(@Param("syndicId") Long syndicId);
 }

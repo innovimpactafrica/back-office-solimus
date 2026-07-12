@@ -4,15 +4,14 @@ import com.example.solimus.dtos.provider.request.WorkflowStepDTO;
 import com.example.solimus.dtos.provider.travaux.ProviderTravauxDTO;
 import com.example.solimus.dtos.provider.travaux.ProviderTravauxDetailDTO;
 import com.example.solimus.dtos.provider.travaux.ProviderTravauxPageDTO;
-import com.example.solimus.entities.InterventionComment;
-import com.example.solimus.entities.InterventionRequest;
-import com.example.solimus.entities.Quote;
-import com.example.solimus.entities.User;
+import com.example.solimus.entities.*;
+import com.example.solimus.enums.ActivityType;
 import com.example.solimus.enums.InterventionManagementMode;
 import com.example.solimus.enums.InterventionStatus;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
+import com.example.solimus.repositories.ActivityLogRepository;
 import com.example.solimus.repositories.InterventionRequestRepository;
 import com.example.solimus.repositories.QuoteRepository;
 import com.example.solimus.repositories.UserRepository;
@@ -41,6 +40,7 @@ public class ProviderTravauxServiceImpl implements ProviderTravauxService {
     private final InterventionRequestRepository interventionRequestRepository;
     private final QuoteRepository quoteRepository;
     private final MinioService minioService;
+    private final ActivityLogRepository activityLogRepository;
 
     // =========================================================================
     // LISTER MES TRAVAUX (devis accepté → travaux)
@@ -163,6 +163,16 @@ public class ProviderTravauxServiceImpl implements ProviderTravauxService {
         request.addStatusHistory(InterventionStatus.FINISHED, currentProvider);
         request.setFinishedAt(LocalDateTime.now());
         interventionRequestRepository.save(request);
+
+        // ⬇️ AJOUT — Trace la résolution dans le journal d'activité
+        ActivityLog log = new ActivityLog();
+        log.setResidence(request.getResidence());
+        log.setType(ActivityType.INTERVENTION_RESOLVED);
+        log.setRelatedEntityType("INTERVENTION");
+        log.setRelatedEntityId(request.getId());
+        log.setActor(currentProvider);
+        log.setMessage("Travaux terminés — " + request.getTitle());
+        activityLogRepository.save(log);
     }
 
 

@@ -1,6 +1,8 @@
 package com.example.solimus.repositories;
 
 import com.example.solimus.entities.ChargeCall;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -16,6 +18,11 @@ public interface ChargeCallRepository extends JpaRepository<ChargeCall, Long> {
      * Trouver un appel de charges par budget, année et numéro de période.
      */
     Optional<ChargeCall> findByBudgetIdAndYearAndPeriodNumber(Long budgetId, Integer year, Integer periodNumber);
+
+
+
+    /** Récupère les ChargeCall dont le budget appartient au syndic connecté*/
+    Page<ChargeCall> findByBudgetSyndicId(Long syndicId, Pageable pageable);
 
     /**
      * Lister tous les appels de charges d'un budget.

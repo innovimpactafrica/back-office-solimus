@@ -38,7 +38,7 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
     List<Property> findByResidenceIdAndOwnerIsNotNull(Long residenceId);
 
     // Lister les biens d'une résidence par statut
-    List<Property> findByResidenceIdAndStatus(Long residenceId, PropertyStatus status);
+    Page<Property> findByResidenceIdAndStatus(Long residenceId, PropertyStatus status, Pageable pageable);
 
     // Lister tous les biens d'un propriétaire donné
     List<Property> findAllByOwnerId(Long ownerId);

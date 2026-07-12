@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 //Entité réprésentant le portefeuille (wallet) d'un prestataire
 //Gère les soldes disponibles, en attente de validation, et le total reçu mensuel
 @Entity
-@Table(name = "provider_wallets")
+@Table(name = "wallets")
 @Data
 @Builder
 @NoArgsConstructor

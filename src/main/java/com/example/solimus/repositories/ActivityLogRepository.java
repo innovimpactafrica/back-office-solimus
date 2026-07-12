@@ -30,6 +30,12 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> 
             String relatedEntityType,
             Long relatedEntityId);
 
+    // Version paginée
+    Page<ActivityLog> findByRelatedEntityTypeAndRelatedEntityIdOrderByCreatedAtDesc(
+            String relatedEntityType,
+            Long relatedEntityId,
+            Pageable pageable);
+
     // =========================================================================
     // ACTIVITÉ RÉCENTE COPROPRIÉTAIRE — RÈGLE HYBRIDE
     // =========================================================================

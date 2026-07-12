@@ -99,12 +99,12 @@ public class InterventionRequest {
     )
     private List<User> notifiedProviders = new ArrayList<>();
 
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "intervention_photos", joinColumns = @JoinColumn(name = "intervention_id"))
     @Column(name = "photo_url")
     private List<String> photoUrls = new ArrayList<>(); // Photos du problème initial
 
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "intervention_work_photos", joinColumns = @JoinColumn(name = "intervention_id"))
     @Column(name = "work_photo_url")
     private List<String> workPhotoUrls = new ArrayList<>(); // Photos des travaux en cours/terminés

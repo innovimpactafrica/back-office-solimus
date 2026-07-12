@@ -17,6 +17,8 @@ import com.example.solimus.enums.IncidentLocationType;
 import com.example.solimus.enums.InitiatedBy;
 import com.example.solimus.enums.InterventionManagementMode;
 import com.example.solimus.enums.InterventionStatus;
+import com.example.solimus.enums.PaymentStatus;
+import com.example.solimus.enums.PaymentType;
 import com.example.solimus.enums.QuoteStatus;
 import com.example.solimus.enums.WalletTransactionCategory;
 import com.example.solimus.exceptions.BadRequestException;
@@ -25,11 +27,14 @@ import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.geolocation.GeolocationService;
-import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,8 +43,9 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 import java.util.Optional;
+import java.util.stream.Collectors;
+
 
 @Service
 @RequiredArgsConstructor
@@ -62,12 +68,15 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     private final QuoteRepository quoteRepository;
     private final SyndicWalletRepository syndicWalletRepository;
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
-    private final MinioService minioService;
+    private final ProviderWalletRepository providerWalletRepository;
+    private final PaymentRepository paymentRepository;
 
     @Value("${solimus.geolocation.search-radius-km:30.0}")
     private double searchRadiusKm;//Rayon de recherche des prestataires
     @Value("${provider.gps.freshness-minutes:60}")
     private int gpsFreshnessMinutes;// Durée de validité d'une localisation
+    @Value("${app.touchpay.bridge-url}")
+    private String touchPayBridgeUrlTemplate;// Template d'URL du bridge TouchPay (paiement Mobile Money)
 
     // =========================================================================
     // LISTER LES RÉSIDENCES DU SYNDIC
@@ -75,13 +84,16 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<SyndicResidenceDTO> getMesResidences() {
+    public Page<SyndicResidenceDTO> getMesResidences(Integer page, Integer size) {
         // Récupérer le syndic actuellement connecté
         User currentSyndic = getCurrentUser();
 
-        // Récupérer toutes les résidences qui appartiennent à ce syndic
-        return residenceRepository.findAllBySyndicId(currentSyndic.getId()).stream()
-                // Pour chaque résidence, on retourne l'id, le nom et la photo (convertie en URL signée)
+        // Récupérer toutes les résidences qui appartiennent à ce syndic avec pagination
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Residence> residencePage = residenceRepository.findAllBySyndicId(currentSyndic.getId(), pageable);
+
+        List<SyndicResidenceDTO> dtos = residencePage.getContent().stream()
+                // Pour chaque résidence, on retourne l'id, le nom et la photo
                 .map(r -> {
                     String photoUrl = r.getPhotoUrl();
                     return SyndicResidenceDTO.builder()
@@ -91,6 +103,8 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                             .build();
                 })
                 .toList();
+
+        return new PageImpl<>(dtos, pageable, residencePage.getTotalElements());
     }
 
     // =========================================================================
@@ -99,7 +113,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<PropertyDTO> getPropertiesByResidence(Long residenceId) {
+    public Page<PropertyDTO> getPropertiesByResidence(Long residenceId, Integer page, Integer size) {
         // Récupérer le syndic actuellement connecté
         User currentSyndic = getCurrentUser();
 
@@ -112,10 +126,15 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
         }
 
-        // Récupérer tous les lots de cette résidence
-        return propertyRepository.findByResidenceId(residenceId).stream()
+        // Récupérer tous les lots de cette résidence avec pagination
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Property> propertyPage = propertyRepository.findByResidenceId(residenceId, pageable);
+
+        List<PropertyDTO> dtos = propertyPage.getContent().stream()
                 .map(this::mapToPropertyDTO)
                 .collect(Collectors.toList());
+
+        return new PageImpl<>(dtos, pageable, propertyPage.getTotalElements());
     }
 
     // =========================================================================
@@ -124,7 +143,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CommonFacilityDTO> getCommonFacilitiesByResidence(Long residenceId) {
+    public Page<CommonFacilityDTO> getCommonFacilitiesByResidence(Long residenceId, Integer page, Integer size) {
         // Récupérer le syndic actuellement connecté
         User currentSyndic = getCurrentUser();
 
@@ -137,13 +156,18 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
         }
 
-        // Récupérer tous les biens communs de cette résidence
-        return commonFacilityRepository.findByResidenceId(residenceId).stream()
+        // Récupérer tous les biens communs de cette résidence avec pagination
+        Pageable pageable = PageRequest.of(page, size);
+        Page<CommonFacility> facilityPage = commonFacilityRepository.findByResidenceId(residenceId, pageable);
+
+        List<CommonFacilityDTO> dtos = facilityPage.getContent().stream()
                 .map(cf -> CommonFacilityDTO.builder()
                         .id(cf.getId())
                         .label(cf.getFacilityType().getName())
                         .build())
                 .toList();
+
+        return new PageImpl<>(dtos, pageable, facilityPage.getTotalElements());
     }
 
     // =========================================================================
@@ -152,8 +176,11 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<SpecialtyDTO> getAllSpecialties() {
-        return specialtyRepository.findAll().stream()
+    public Page<SpecialtyDTO> getAllSpecialties(Integer page, Integer size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Specialty> specialtyPage = specialtyRepository.findAll(pageable);
+
+        List<SpecialtyDTO> dtos = specialtyPage.getContent().stream()
                 .map(specialty -> SpecialtyDTO.builder()
                         .id(specialty.getId())
                         .name(specialty.getName())
@@ -161,6 +188,8 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                         .icon(specialty.getIcon())
                         .build())
                 .collect(Collectors.toList());
+
+        return new PageImpl<>(dtos, pageable, specialtyPage.getTotalElements());
     }
 
     // =========================================================================
@@ -296,86 +325,6 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         notifyNearbyProviders(request, request.getResidence(), request.getSpecialty());
     }
 
-    /**
-     * Diffuse une demande d'intervention aux prestataires proches.
-     * Réutilisé pour les demandes créées par le syndic et celles créées par le owner.
-     */
-    private void notifyNearbyProviders(InterventionRequest request, Residence residence, Specialty specialty) {
-        // Vérifier que la résidence a des coordonnées GPS
-        if (residence.getLatitude() == null || residence.getLongitude() == null) {
-            throw new BadRequestException("La résidence n'a pas de coordonnées GPS, impossible de trouver des prestataires proches");
-        }
-
-        // Récupérer les prestataires proches
-        List<ProviderProfile> candidates = providerProfileRepository
-                .findActiveProvidersBySpecialty(specialty.getId());
-
-        // Filtrer les prestataires avec abonnement actif
-        List<ProviderProfile> abonnesActifs = candidates.stream()
-                .filter(profile -> subscriptionRepository
-                        .findFirstByProviderIdOrderByEndDateDesc(profile.getUser().getId())
-                        .map(Subscription::isCurrentlyActive)
-                        .orElse(false))
-                .toList();
-
-        // Calculer la distance et garder ceux dans le rayon autorisé
-        List<ProviderProfile> candidatsProches = new ArrayList<>();
-        // Calculer le seuil de fraîcheur GPS : position valide si mise à jour il y a moins de X minutes
-        LocalDateTime seuilFraicheur = LocalDateTime.now().minusMinutes(gpsFreshnessMinutes);
-
-        for (ProviderProfile profile : abonnesActifs) {
-            // Vérifier si le prestataire a une position GPS récente et valide
-            boolean gpsValide = profile.getGpsLatitude() != null
-                    && profile.getGpsLongitude() != null
-                    && profile.getGpsUpdatedAt() != null
-                    && profile.getGpsUpdatedAt().isAfter(seuilFraicheur);
-
-            // Utiliser la position GPS récente si valide, sinon la position de référence saisie à l'inscription
-            double providerLat = gpsValide
-                    ? profile.getGpsLatitude().doubleValue()
-                    : profile.getLatitude().doubleValue();
-
-            double providerLon = gpsValide
-                    ? profile.getGpsLongitude().doubleValue()
-                    : profile.getLongitude().doubleValue();
-
-            // Calculer la distance entre la résidence et le prestataire
-            double distance = geolocationService.calculateDistance(
-                    residence.getLatitude().doubleValue(),
-                    residence.getLongitude().doubleValue(),
-                    providerLat,
-                    providerLon
-            );
-
-            // Garder uniquement les prestataires dans le rayon autorisé (30km par défaut)
-            if (distance <= searchRadiusKm) {
-                candidatsProches.add(profile);
-            }
-        }
-
-        // Notifier chaque prestataire trouvé
-        for (ProviderProfile profil : candidatsProches) {
-            User user = profil.getUser();
-
-            if (user.isNotificationsEnabled()) {
-                notificationService.sendPush(
-                        user.getId(),
-                        "Nouvelle demande de travaux",
-                        "Une nouvelle demande correspond à votre spécialité : " + request.getTitle()
-                );
-
-                emailService.sendInterventionNotification(
-                        user.getEmail(),
-                        user.getFirstName(),
-                        request.getTitle(),
-                        residence.getName()
-                );
-            }
-
-            request.getNotifiedProviders().add(user);
-        }
-    }
-
     // =========================================================================
     // CRÉATION D'AVIS
     // =========================================================================
@@ -421,68 +370,6 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
         // 7. Mettre à jour le rating et reviewCount du prestataire
         updateProviderRating(request.getSelectedProvider());
-    }
-
-    // =========================================================================
-    // UTILITAIRES ET MAPPERS
-    // =========================================================================
-
-    /**
-     * Met à jour le rating et le reviewCount du prestataire après création d'un avis.
-     */
-    private void updateProviderRating(User provider) {
-        ProviderProfile profile = providerProfileRepository.findByUser(provider)
-                .orElseThrow(() -> new ResourceNotFoundException("Profil prestataire introuvable"));
-
-        // Calculer la nouvelle moyenne
-        Double averageRating = reviewRepository.calculateAverageRating(provider.getId());
-        double newRating = averageRating != null ? averageRating : 0.0;
-
-        // Compter le nombre d'avis
-        long count = reviewRepository.countByProviderId(provider.getId());
-
-        // Mettre à jour le profil
-        profile.setRating(newRating);
-        profile.setReviewCount(count);
-
-        providerProfileRepository.save(profile);
-    }
-
-    /**
-     * Génère une référence unique de type TRV-001 etc
-     * On compte le nombre total de demandes en base, on ajoute 1, puis on formate.
-     */
-    private String genererReference() {
-        // On compte le nombre total de demandes déjà existantes en base
-        long totalExistant = interventionRepository.count();
-        // On ajoute 1 pour obtenir le numéro de la prochaine demande
-        long prochainNumero = totalExistant + 1;
-        // On formate en "TRV-" suivi d'au minimum 3 chiffres (ex: TRV-001, TRV-010, TRV-1000)
-        return String.format("TRV-%03d", prochainNumero);
-    }
-
-    /**
-     * Récupère l'utilisateur actuellement authentifié via le SecurityContext.
-     */
-    private User getCurrentUser() {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        return userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
-    }
-
-    /**
-     * Mappe une entité Property vers un PropertyDTO.
-     */
-    private PropertyDTO mapToPropertyDTO(Property property) {
-        return PropertyDTO.builder()
-                .id(property.getId())
-                .reference(property.getReference())
-                .superficie(property.getSuperficie())
-                .typeName(property.getTypeBien() != null ? property.getTypeBien().getName() : null)
-                .residenceId(property.getResidence().getId())
-                .residenceName(property.getResidence().getName())
-                .ownerId(property.getOwner() != null ? property.getOwner().getId() : null)
-                .ownerName(property.getOwner() != null ? property.getOwner().getFirstName() + " " + property.getOwner().getLastName() : null)
-                .build();
     }
 
     // =========================================================================
@@ -613,7 +500,13 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             throw new BadRequestException("Un acompte a déjà été versé pour cette intervention");
         }
 
-        // Récupère le wallet syndic
+        // Mobile Money → paiement externe TouchPay, on ne touche pas au wallet syndic.
+        // Le crédit prestataire et la mise à jour de l'acompte se font au callback (PAY-).
+        if (!Boolean.TRUE.equals(dto.getPayerDepuisWallet())) {
+            return initierPaiementMobileMoney(request, currentSyndic, dto.getMontant(), PaymentType.ACOMPTE);
+        }
+
+        // Wallet SOLIMUS → débit interne synchrone + crédit direct du wallet prestataire
         SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId())
                 .orElseThrow(() -> new BadRequestException("Aucun wallet trouvé pour ce syndic"));
 
@@ -623,7 +516,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             throw new BadRequestException("Solde du wallet insuffisant pour verser cet acompte");
         }
 
-        // Débite le wallet (transaction négative, catégorie TRAVAUX)
+        // Débite le wallet syndic (transaction négative, catégorie TRAVAUX)
         SyndicWalletTransaction transaction = new SyndicWalletTransaction();
         transaction.setWallet(wallet);
         transaction.setResidence(request.getResidence());
@@ -633,9 +526,28 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         transaction.setTransactionDate(LocalDateTime.now());
         syndicWalletTransactionRepository.save(transaction);
 
+        // Crédite le wallet du prestataire avec ce même montant
+        ProviderWallet providerWallet = providerWalletRepository.findByProviderId(request.getSelectedProvider().getId())
+                .orElseThrow(() -> new BadRequestException("Le prestataire n'a pas de wallet"));
+
+        providerWallet.setAvailableBalance(providerWallet.getAvailableBalance().add(dto.getMontant()));
+        providerWallet.setTotalThisMonth(providerWallet.getTotalThisMonth().add(dto.getMontant()));
+        providerWalletRepository.save(providerWallet);
+
         // Met à jour l'intervention (depositAmount, remainingAmount recalculé automatiquement via @PrePersist/@PreUpdate)
         request.setDepositAmount(dto.getMontant());
         interventionRepository.save(request);
+
+        // Tracer l'activité de paiement wallet
+        ActivityLog activityLog = new ActivityLog();
+        activityLog.setResidence(request.getResidence());
+        activityLog.setType(ActivityType.PAYMENT_RECEIVED);
+        activityLog.setRelatedEntityType("INTERVENTION_PAYMENT");
+        activityLog.setRelatedEntityId(request.getId());
+        activityLog.setActor(currentSyndic);
+        activityLog.setMessage("Paiement intervention wallet");
+        activityLog.setDetail("Acompte — " + request.getTitle() + " — " + dto.getMontant() + " FCFA");
+        activityLogRepository.save(activityLog);
 
         BigDecimal nouveauSolde = soldeDisponible.subtract(dto.getMontant());
 
@@ -646,7 +558,6 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                 .nouveauSoldeWallet(nouveauSolde)
                 .build();
     }
-
     // =========================================================================
     // RÉSUMÉ POUR LE MODAL PAIEMENT FINAL
     // =========================================================================
@@ -687,7 +598,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
     @Override
     @Transactional
-    public SyndicPaymentResultDTO payBalanceAndClose(Long interventionId) {
+    public SyndicPaymentResultDTO payBalanceAndClose(Long interventionId, SyndicPayDepositDTO dto) {
 
         User currentSyndic = getCurrentUser();
 
@@ -708,7 +619,13 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             throw new BadRequestException("Aucun solde restant à payer pour cette intervention");
         }
 
-        // Récupère le wallet syndic
+        // Mobile Money → paiement externe TouchPay, on ne touche pas au wallet syndic.
+        // Le crédit prestataire et la clôture (FINAL_VALIDATION) se font au callback (SOL-).
+        if (!Boolean.TRUE.equals(dto.getPayerDepuisWallet())) {
+            return initierPaiementMobileMoney(request, currentSyndic, solde, PaymentType.SOLDE);
+        }
+
+        // Sinon, Récupère le wallet syndic
         SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId())
                 .orElseThrow(() -> new BadRequestException("Aucun wallet trouvé pour ce syndic"));
 
@@ -718,7 +635,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             throw new BadRequestException("Solde du wallet insuffisant pour payer le solde restant");
         }
 
-        // Débite le wallet
+        // Débite le wallet syndic
         SyndicWalletTransaction transaction = new SyndicWalletTransaction();
         transaction.setWallet(wallet);
         transaction.setResidence(request.getResidence());
@@ -728,13 +645,43 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         transaction.setTransactionDate(LocalDateTime.now());
         syndicWalletTransactionRepository.save(transaction);
 
+        // ⬇️ AJOUT — Crédite le wallet du prestataire avec le solde final
+        ProviderWallet providerWallet = providerWalletRepository.findByProviderId(request.getSelectedProvider().getId())
+                .orElseThrow(() -> new BadRequestException("Le prestataire n'a pas de wallet"));
+
+        providerWallet.setAvailableBalance(providerWallet.getAvailableBalance().add(solde));
+        providerWallet.setTotalThisMonth(providerWallet.getTotalThisMonth().add(solde));
+        providerWalletRepository.save(providerWallet);
+        // ⬆️ FIN DE L'AJOUT
+
         // Met à jour le montant payé et clôture l'intervention
         request.setDepositAmount(request.getTotalAmount()); // tout est désormais payé
         request.addStatusHistory(InterventionStatus.FINAL_VALIDATION, currentSyndic);
         request.setValidatedAt(LocalDateTime.now());
         interventionRepository.save(request);
 
+        // Tracer l'activité de paiement wallet
+        ActivityLog activityLog = new ActivityLog();
+        activityLog.setResidence(request.getResidence());
+        activityLog.setType(ActivityType.PAYMENT_RECEIVED);
+        activityLog.setRelatedEntityType("INTERVENTION_PAYMENT");
+        activityLog.setRelatedEntityId(request.getId());
+        activityLog.setActor(currentSyndic);
+        activityLog.setMessage("Paiement intervention wallet");
+        activityLog.setDetail("Solde — " + request.getTitle() + " — " + solde + " FCFA");
+        activityLogRepository.save(activityLog);
+
         BigDecimal nouveauSolde = soldeDisponible.subtract(solde);
+
+        // ⬇️ AJOUT — Trace la clôture dans le journal d'activité
+        ActivityLog log = new ActivityLog();
+        log.setResidence(request.getResidence());
+        log.setType(ActivityType.INTERVENTION_RESOLVED);
+        log.setRelatedEntityType("INTERVENTION");
+        log.setRelatedEntityId(request.getId());
+        log.setActor(currentSyndic);
+        log.setMessage("Intervention clôturée après paiement — " + request.getTitle());
+        activityLogRepository.save(log);
 
         return SyndicPaymentResultDTO.builder()
                 .success(true)
@@ -743,7 +690,6 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                 .nouveauSoldeWallet(nouveauSolde)
                 .build();
     }
-
     // =========================================================================
     // MISE À JOUR ET SUPPRESSION D'INTERVENTION
     // =========================================================================
@@ -829,6 +775,214 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
         interventionRepository.delete(request);
     }
+
+    /**
+     * Diffuse une demande d'intervention aux prestataires proches.
+     * Réutilisé pour les demandes créées par le syndic et celles créées par le owner.
+     */
+    private void notifyNearbyProviders(InterventionRequest request, Residence residence, Specialty specialty) {
+        // Vérifier que la résidence a des coordonnées GPS
+        if (residence.getLatitude() == null || residence.getLongitude() == null) {
+            throw new BadRequestException("La résidence n'a pas de coordonnées GPS, impossible de trouver des prestataires proches");
+        }
+
+        // Récupérer les prestataires proches
+        List<ProviderProfile> candidates = providerProfileRepository
+                .findActiveProvidersBySpecialty(specialty.getId());
+
+        // Filtrer les prestataires avec abonnement actif
+        List<ProviderProfile> abonnesActifs = candidates.stream()
+                .filter(profile -> subscriptionRepository
+                        .findFirstByProviderIdOrderByEndDateDesc(profile.getUser().getId())
+                        .map(Subscription::isCurrentlyActive)
+                        .orElse(false))
+                .toList();
+
+        // Calculer la distance et garder ceux dans le rayon autorisé
+        List<ProviderProfile> candidatsProches = new ArrayList<>();
+        // Calculer le seuil de fraîcheur GPS : position valide si mise à jour il y a moins de X minutes
+        LocalDateTime seuilFraicheur = LocalDateTime.now().minusMinutes(gpsFreshnessMinutes);
+
+        for (ProviderProfile profile : abonnesActifs) {
+            // Vérifier si le prestataire a une position GPS récente et valide
+            boolean gpsValide = profile.getGpsLatitude() != null
+                    && profile.getGpsLongitude() != null
+                    && profile.getGpsUpdatedAt() != null
+                    && profile.getGpsUpdatedAt().isAfter(seuilFraicheur);
+
+            // Utiliser la position GPS récente si valide, sinon la position de référence saisie à l'inscription
+            double providerLat = gpsValide
+                    ? profile.getGpsLatitude().doubleValue()
+                    : profile.getLatitude().doubleValue();
+
+            double providerLon = gpsValide
+                    ? profile.getGpsLongitude().doubleValue()
+                    : profile.getLongitude().doubleValue();
+
+            // Calculer la distance entre la résidence et le prestataire
+            double distance = geolocationService.calculateDistance(
+                    residence.getLatitude().doubleValue(),
+                    residence.getLongitude().doubleValue(),
+                    providerLat,
+                    providerLon
+            );
+
+            // Garder uniquement les prestataires dans le rayon autorisé (30km par défaut)
+            if (distance <= searchRadiusKm) {
+                candidatsProches.add(profile);
+            }
+        }
+
+        // Notifier chaque prestataire trouvé
+        for (ProviderProfile profil : candidatsProches) {
+            User user = profil.getUser();
+
+            if (user.isNotificationsEnabled()) {
+                notificationService.sendPush(
+                        user.getId(),
+                        "Nouvelle demande de travaux",
+                        "Une nouvelle demande correspond à votre spécialité : " + request.getTitle()
+                );
+
+                emailService.sendInterventionNotification(
+                        user.getEmail(),
+                        user.getFirstName(),
+                        request.getTitle(),
+                        residence.getName()
+                );
+            }
+
+            request.getNotifiedProviders().add(user);
+        }
+    }
+    // =========================================================================
+    // UTILITAIRES ET MAPPERS
+    // =========================================================================
+
+    /**
+     * Met à jour le rating et le reviewCount du prestataire après création d'un avis.
+     */
+    private void updateProviderRating(User provider) {
+        ProviderProfile profile = providerProfileRepository.findByUser(provider)
+                .orElseThrow(() -> new ResourceNotFoundException("Profil prestataire introuvable"));
+
+        // Calculer la nouvelle moyenne
+        Double averageRating = reviewRepository.calculateAverageRating(provider.getId());
+        double newRating = averageRating != null ? averageRating : 0.0;
+
+        // Compter le nombre d'avis
+        long count = reviewRepository.countByProviderId(provider.getId());
+
+        // Mettre à jour le profil
+        profile.setRating(newRating);
+        profile.setReviewCount(count);
+
+        providerProfileRepository.save(profile);
+    }
+
+    /**
+     * Initie un paiement Mobile Money (TouchPay) pour un acompte (PAY-) ou un solde (SOL-).
+     * Ne touche pas au wallet syndic : l'argent provient d'une source externe (Mobile Money).
+     * Le crédit du prestataire et la mise à jour de l'intervention se font au callback InTouch.
+     */
+    private SyndicPaymentResultDTO initierPaiementMobileMoney(InterventionRequest request, User currentSyndic,
+                                                              BigDecimal montant, PaymentType type) {
+
+        // Anti-doublon : un paiement du même type ne doit pas déjà être confirmé ou en cours
+        Optional<PaymentProvider> existant = paymentRepository
+                .findByInterventionRequestIdAndType(request.getId(), type);
+
+        if (existant.isPresent()) {
+            PaymentProvider p = existant.get();
+            if (p.getStatus() == PaymentStatus.COMPLETED) {
+                throw new BadRequestException("Ce paiement a déjà été effectué pour cette intervention");
+            }
+            if (p.getStatus() == PaymentStatus.PENDING) {
+                throw new BadRequestException("Un paiement est déjà en cours pour cette intervention");
+            }
+        }
+
+        String prefix = (type == PaymentType.ACOMPTE) ? "PAY" : "SOL";
+        String transactionRef = genererPaymentReference(prefix);
+
+        PaymentProvider payment;
+        if (existant.isPresent() && existant.get().getStatus() == PaymentStatus.FAILED) {
+            // Paiement précédent échoué → on réinitialise pour une nouvelle tentative
+            payment = existant.get();
+            payment.setReference(transactionRef);
+            payment.setAmount(montant);
+            payment.setStatus(PaymentStatus.PENDING);
+            payment.setPaidAt(null);
+        } else {
+            payment = PaymentProvider.builder()
+                    .reference(transactionRef)
+                    .interventionRequest(request)
+                    .provider(request.getSelectedProvider())
+                    .paymentInitiator(currentSyndic)
+                    .amount(montant)
+                    .type(type)
+                    .status(PaymentStatus.PENDING)
+                    .build();
+        }
+
+        paymentRepository.save(payment);
+
+        // Construit l'URL du bridge TouchPay à charger côté client
+        String bridgeUrl = String.format(touchPayBridgeUrlTemplate, transactionRef);
+
+        return SyndicPaymentResultDTO.builder()
+                .success(true)
+                .message("Paiement initié. Veuillez compléter via TouchPay.")
+                .montantPaye(montant)
+                .transactionReference(transactionRef)
+                .paymentUrl(bridgeUrl)
+                .build();
+    }
+
+    /**
+     * Génère une référence de paiement unique (ex: PAY-123456, SOL-654321).
+     */
+    private String genererPaymentReference(String prefix) {
+        return prefix + "-" + (int) (Math.random() * 900000 + 100000);
+    }
+
+    /**
+     * Génère une référence unique de type TRV-001 etc
+     * On compte le nombre total de demandes en base, on ajoute 1, puis on formate.
+     */
+    private String genererReference() {
+        // On compte le nombre total de demandes déjà existantes en base
+        long totalExistant = interventionRepository.count();
+        // On ajoute 1 pour obtenir le numéro de la prochaine demande
+        long prochainNumero = totalExistant + 1;
+        // On formate en "TRV-" suivi d'au minimum 3 chiffres (ex: TRV-001, TRV-010, TRV-1000)
+        return String.format("TRV-%03d", prochainNumero);
+    }
+
+    /**
+     * Récupère l'utilisateur actuellement authentifié via le SecurityContext.
+     */
+    private User getCurrentUser() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
+    }
+
+    /**
+     * Mappe une entité Property vers un PropertyDTO.
+     */
+    private PropertyDTO mapToPropertyDTO(Property property) {
+        return PropertyDTO.builder()
+                .id(property.getId())
+                .reference(property.getReference())
+                .superficie(property.getSuperficie())
+                .typeName(property.getTypeBien() != null ? property.getTypeBien().getName() : null)
+                .residenceId(property.getResidence().getId())
+                .residenceName(property.getResidence().getName())
+                .ownerId(property.getOwner() != null ? property.getOwner().getId() : null)
+                .ownerName(property.getOwner() != null ? property.getOwner().getFirstName() + " " + property.getOwner().getLastName() : null)
+                .build();
+    }
+
 }
 
 

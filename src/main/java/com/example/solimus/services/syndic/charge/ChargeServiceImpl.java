@@ -1,13 +1,9 @@
 package com.example.solimus.services.syndic.charge;
 
-import com.example.solimus.dtos.charge.*;
+
 import com.example.solimus.dtos.syndic.charge.*;
 import com.example.solimus.entities.*;
-import com.example.solimus.enums.BudgetStatus;
-import com.example.solimus.enums.ChargeFrequency;
-import com.example.solimus.enums.ExceptionalCallCategory;
-import com.example.solimus.enums.ExceptionalCallStatus;
-import com.example.solimus.enums.RepartitionMode;
+import com.example.solimus.enums.*;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.repositories.*;
@@ -15,18 +11,18 @@ import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -49,6 +45,12 @@ public class ChargeServiceImpl implements ChargeService {
     private final CommonFacilityRepository commonFacilityRepository;
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
     private final BudgetItemRepository budgetItemRepository;
+    private final SyndicWithdrawalRequestRepository syndicWithdrawalRequestRepository;
+    private final ActivityLogRepository activityLogRepository;
+    private final ExceptionalCallItemRepository exceptionalCallItemRepository;
+    private final ExceptionalCallPaymentRepository exceptionalCallPaymentRepository;
+    private final ExceptionalCallDocumentRepository exceptionalCallDocumentRepository;
+    private final ChargeCallPaymentRepository chargeCallPaymentRepository;
 
     // ============================================================
     // 1. ÉTAPE 1  — APERÇU RÉSIDENCE
@@ -198,6 +200,17 @@ public class ChargeServiceImpl implements ChargeService {
         // ÉTAPE 2.6 — Sauvegarder le budget
         // ------------------------------------------------------------
         Budget savedBudget = budgetRepository.save(budget);
+
+
+        // ⬇️ AJOUT — Trace la création dans le journal d'activité
+        ActivityLog log = new ActivityLog();
+        log.setResidence(residence);
+        log.setType(ActivityType.BUDGET_CREATED);
+        log.setRelatedEntityType("BUDGET");
+        log.setRelatedEntityId(savedBudget.getId());
+        log.setActor(currentSyndic);
+        log.setMessage("Budget créé — " + savedBudget.getReference());
+        activityLogRepository.save(log);
 
         // ------------------------------------------------------------
         // ÉTAPE 2.7 — Retourner le détail complet
@@ -375,7 +388,7 @@ public class ChargeServiceImpl implements ChargeService {
                 .map(SyndicWalletTransaction::getAmount) // récupère le montant de chaque transaction
                 .reduce(BigDecimal.ZERO, BigDecimal::add); // additionne tous les montants, en partant de 0
 
-        // On repasse en valeur positive pour l'affichage — c'est la seule donnée "réelle" calculée de la page
+        // On repasse en valeur positive pour l'affichage
         BigDecimal depensesReellesGlobal = depensesBrutes.abs();
 
         // --- Construction du DTO principal (les 4 KPI) ---
@@ -397,8 +410,11 @@ public class ChargeServiceImpl implements ChargeService {
 
         // --- Construction du tableau des postes ---
         // Transforme chaque BudgetItem en BudgetItemOverviewDTO
-        List<BudgetItemOverviewDTO> itemDtos = budget.getItems().stream() // ouvre un flux sur la liste des postes
-                .map(item -> buildItemOverview(item, budget.getBudgetTotal())) // transforme chaque poste en DTO
+        // budgetTotal → sert au calcul du percentage
+        // annee → sert au calcul du montantReel (dépenses réelles de l'année pour cet équipement)
+        // item → contient déjà son propre montant, pour calculer l'écart
+        List<BudgetItemOverviewDTO> itemDtos = budget.getItems().stream()
+                .map(item -> buildItemOverview(item, budget.getBudgetTotal(), budget.getAnnee())) // transforme chaque poste en DTO
                 .toList(); // rassemble les résultats dans une nouvelle liste
 
         dto.setItems(itemDtos);
@@ -428,9 +444,1634 @@ public class ChargeServiceImpl implements ChargeService {
         return buildBudgetDetailDTO(budget);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Page<BudgetRepartitionItemDTO> getBudgetRepartition(Long budgetId, Integer page, Integer size) {
+
+        // Récupère le budget, erreur si introuvable
+        Budget budget = budgetRepository.findById(budgetId)
+                .orElseThrow(() -> new RuntimeException("Budget non trouvé"));
+
+        // Vérifie que ce budget appartient bien au syndic connecté
+        User currentSyndic = getCurrentUser();
+        if (!budget.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à ce budget");
+        }
+
+        // Récupère tous les lots de la résidence, pour connaître les copropriétaires et leurs tantièmes
+        List<Property> properties = propertyRepository.findByResidenceId(budget.getResidence().getId());
+
+        // Regroupe les propriétés par copropriétaire (un copropriétaire peut avoir plusieurs lots)
+        Map<Long, List<Property>> propertiesByOwner = new HashMap<>();
+        for (Property property : properties) {
+            if (property.getOwner() == null) continue; // ignore les lots vacants
+
+            Long ownerId = property.getOwner().getId();
+            propertiesByOwner.computeIfAbsent(ownerId, k -> new ArrayList<>()).add(property);
+        }
+
+        // Construit une ligne de répartition par copropriétaire
+        List<BudgetRepartitionItemDTO> repartition = new ArrayList<>();
+
+        for (Map.Entry<Long, List<Property>> entry : propertiesByOwner.entrySet()) {
+            List<Property> ownerProperties = entry.getValue();
+            User owner = ownerProperties.get(0).getOwner();
+
+            // Additionne les tantièmes de tous ses lots dans cette résidence
+            BigDecimal totalTantieme = BigDecimal.ZERO;
+            for (Property p : ownerProperties) {
+                totalTantieme = totalTantieme.add(p.getTantieme());
+            }
+
+            // Construit la liste des appartements séparés par virgules
+            String propertiesLabel = ownerProperties.stream()
+                    .map(Property::getReference)
+                    .reduce((a, b) -> a + ", " + b)
+                    .orElse("");
+
+            // Calcule sa quote-part du budget total, proportionnelle à son tantième
+            BigDecimal quotePart = budget.getBudgetTotal()
+                    .multiply(totalTantieme)
+                    .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
+
+            BudgetRepartitionItemDTO dto = new BudgetRepartitionItemDTO();
+            dto.setCoOwnerName(owner.getFirstName() + " " + owner.getLastName());
+            dto.setProperties(propertiesLabel);
+            dto.setTantieme(totalTantieme);
+            dto.setQuotePart(quotePart);
+
+            repartition.add(dto);
+        }
+
+        // Pagination manuelle
+        int totalElements = repartition.size();
+        int fromIndex = Math.min(page * size, totalElements);
+        int toIndex = Math.min(fromIndex + size, totalElements);
+        List<BudgetRepartitionItemDTO> pageContent = repartition.subList(fromIndex, toIndex);
+
+        return new PageImpl<>(pageContent, PageRequest.of(page, size), totalElements);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<BudgetLinkedChargeCallDTO> getBudgetLinkedChargeCalls(Long budgetId, Integer page, Integer size) {
+
+        // Récupère le budget, erreur si introuvable
+        Budget budget = budgetRepository.findById(budgetId)
+                .orElseThrow(() -> new RuntimeException("Budget non trouvé"));
+
+        // Vérifie que ce budget appartient bien au syndic connecté
+        User currentSyndic = getCurrentUser();
+        if (!budget.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à ce budget");
+        }
+
+        // Récupère directement les ChargeCall liés (relation déjà présente sur Budget)
+        List<ChargeCall> chargeCalls = budget.getChargeCalls();
+
+        // Transforme chaque ChargeCall en DTO, avec son statut recalculé à la volée
+        List<BudgetLinkedChargeCallDTO> dtos = chargeCalls.stream()
+                .map(this::buildBudgetLinkedChargeCallDto)
+                .toList();
+
+        // Pagination manuelle
+        int totalElements = dtos.size();
+        int fromIndex = Math.min(page * size, totalElements);
+        int toIndex = Math.min(fromIndex + size, totalElements);
+        List<BudgetLinkedChargeCallDTO> pageContent = dtos.subList(fromIndex, toIndex);
+
+        return new PageImpl<>(pageContent, PageRequest.of(page, size), totalElements);
+    }
+
+    @Override
+    @Transactional
+    public void closeBudget(Long budgetId) {
+
+        Budget budget = budgetRepository.findById(budgetId)
+                .orElseThrow(() -> new RuntimeException("Budget non trouvé"));
+
+        User currentSyndic = getCurrentUser();
+        if (!budget.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à clôturer ce budget");
+        }
+
+        if (budget.getStatus() == BudgetStatus.CLOSED) {
+            throw new BadRequestException("Ce budget est déjà clôturé");
+        }
+
+        budget.setStatus(BudgetStatus.CLOSED);
+        budgetRepository.save(budget);
+
+        // ⬇️ AJOUT — Trace la clôture dans le journal d'activité
+        ActivityLog log = new ActivityLog();
+        log.setResidence(budget.getResidence());
+        log.setType(ActivityType.BUDGET_CLOSED);
+        log.setRelatedEntityType("BUDGET");
+        log.setRelatedEntityId(budget.getId());
+        log.setActor(currentSyndic);
+        log.setMessage("Budget clôturé — " + budget.getReference());
+        activityLogRepository.save(log);
+    }
 
     // ============================================================
-    // 5. MÉTHODE HELPER — RÉCUPÉRER L'UTILISATEUR CONNECTÉ
+    // HISTORIQUE D'UN BUDGET (onglet "Historique")
+    // ============================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<HistoryItemDTO> getBudgetHistory(Long budgetId, Integer page, Integer size) {
+
+        // Récupère le budget, erreur si introuvable
+        Budget budget = budgetRepository.findById(budgetId)
+                .orElseThrow(() -> new RuntimeException("Budget non trouvé"));
+
+        // Vérifie que ce budget appartient bien au syndic connecté
+        User currentSyndic = getCurrentUser();
+        if (!budget.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à ce budget");
+        }
+
+        // Récupère tous les événements liés à ce budget, du plus récent au plus ancien avec pagination
+        Pageable pageable = PageRequest.of(page, size);
+        Page<ActivityLog> logPage = activityLogRepository
+                .findByRelatedEntityTypeAndRelatedEntityIdOrderByCreatedAtDesc("BUDGET", budgetId, pageable);
+
+        // Transforme chaque log en ligne d'historique
+        List<HistoryItemDTO> dtos = logPage.getContent().stream()
+                .map(this::buildBudgetHistoryItem)
+                .toList();
+
+        return new PageImpl<>(dtos, pageable, logPage.getTotalElements());
+    }
+
+    // ============================================================
+    // APPEL DE CHARGES
+    // ============================================================
+
+    /**
+     * Aperçu avant génération d'un appel de charges.
+     * Retourne les données calculées sans rien créer en base.
+     */
+    @Override
+    public ChargeCallPreviewDTO previewChargeCall(Long budgetId, Integer periodNumber) {
+        // 1. Récupérer le budget et vérifier l'appartenance au syndic
+        Budget budget = budgetRepository.findById(budgetId)
+                .orElseThrow(() -> new RuntimeException("Budget non trouvé"));
+
+        User currentSyndic = getCurrentUser();
+        if (!budget.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Ce budget ne vous appartient pas");
+        }
+
+        // 2. Récupérer la fréquence depuis les paramètres du syndic
+        SyndicFinancialSettings settings = syndicFinancialSettingsRepository.findBySyndicId(currentSyndic.getId())
+                .orElseThrow(() -> new RuntimeException("Paramètres financiers non trouvés"));
+        ChargeFrequency frequency = settings.getChargeFrequency();
+
+        // 3. Déterminer le nombre de périodes (4 si trimestriel, 12 si mensuel)
+        int numberOfPeriods;
+        if (frequency == ChargeFrequency.TRIMESTRIEL) {
+            numberOfPeriods = 4;
+        } else {
+            numberOfPeriods = 12;
+        }
+
+        // 4. Vérifier qu'aucun ChargeCall n'existe déjà pour cette période
+        chargeCallRepository.findByBudgetIdAndYearAndPeriodNumber(budgetId, budget.getAnnee(), periodNumber)
+                .ifPresent(chargeCall -> {
+                    throw new RuntimeException("Un appel de charges existe déjà pour cette période");
+                });
+
+        // 5. Calculer le montant total de la période (budget / nombre de périodes)
+        BigDecimal totalAmount = budget.getBudgetTotal()
+                .divide(BigDecimal.valueOf(numberOfPeriods), 2, RoundingMode.HALF_UP);
+
+        // 6. Construire la répartition par copropriétaire (fusionné par owner)
+        List<Property> properties = propertyRepository.findByResidenceId(budget.getResidence().getId());
+        List<CoOwnerQuotePartPreviewDTO> repartition = new ArrayList<>();
+        BigDecimal totalTantieme = BigDecimal.ZERO;
+
+        for (Property property : properties) {
+            if (property.getOwner() != null) {
+                // Vérifier si le copropriétaire est déjà dans la liste
+                boolean alreadyAdded = false;
+                for (CoOwnerQuotePartPreviewDTO item : repartition) {
+                    if (item.getCoOwnerId().equals(property.getOwner().getId())) {
+                        alreadyAdded = true;
+                        break;
+                    }
+                }
+
+                if (!alreadyAdded) {
+                    // Calculer le tantième total de ce copropriétaire (somme de ses lots)
+                    BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
+                    for (Property p : properties) {
+                        if (p.getOwner() != null && p.getOwner().getId().equals(property.getOwner().getId())) {
+                            tantiemeCoOwner = tantiemeCoOwner.add(
+                                    p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO
+                            );
+                        }
+                    }
+
+                    // Calculer la quote-part (totalAmount * tantieme / 100)
+                    BigDecimal quotePart = totalAmount.multiply(tantiemeCoOwner)
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+                    CoOwnerQuotePartPreviewDTO item = CoOwnerQuotePartPreviewDTO.builder()
+                            .coOwnerId(property.getOwner().getId())
+                            .coOwnerName(property.getOwner().getFirstName() + " " + property.getOwner().getLastName())
+                            .tantieme(tantiemeCoOwner)
+                            .quotePart(quotePart)
+                            .build();
+
+                    repartition.add(item);
+                    totalTantieme = totalTantieme.add(tantiemeCoOwner);
+                }
+            }
+        }
+
+        // 7. Construire et retourner l'aperçu
+        return ChargeCallPreviewDTO.builder()
+                .budgetReference("BUD-" + budget.getAnnee())
+                .residenceName(budget.getResidence().getName())
+                .year(budget.getAnnee())
+                .periodNumber(periodNumber)
+                .totalAmount(totalAmount)
+                .repartition(repartition)
+                .totalTantieme(totalTantieme)
+                .coOwnersCount(repartition.size())
+                .build();
+    }
+
+    /**
+     * Génère un appel de charges et envoie les emails aux copropriétaires.
+     */
+    @Override
+    @Transactional
+    public void generateChargeCall(Long budgetId, GenerateChargeCallDTO dto) {
+        // 1. Récupérer le budget et vérifier l'appartenance au syndic
+        Budget budget = budgetRepository.findById(budgetId)
+                .orElseThrow(() -> new RuntimeException("Budget non trouvé"));
+
+        User currentSyndic = getCurrentUser();
+        if (!budget.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Ce budget ne vous appartient pas");
+        }
+
+        // 2. Vérifier qu'aucun ChargeCall n'existe déjà pour cette période
+        chargeCallRepository.findByBudgetIdAndYearAndPeriodNumber(budgetId, budget.getAnnee(), dto.getPeriodNumber())
+                .ifPresent(chargeCall -> {
+                    throw new RuntimeException("Un appel de charges existe déjà pour cette période");
+                });
+
+        // 3. Récupérer la fréquence et recalculer le montant total (jamais faire confiance au front)
+        SyndicFinancialSettings settings = syndicFinancialSettingsRepository.findBySyndicId(currentSyndic.getId())
+                .orElseThrow(() -> new RuntimeException("Paramètres financiers non trouvés"));
+        ChargeFrequency frequency = settings.getChargeFrequency();
+
+        int numberOfPeriods;
+        if (frequency == ChargeFrequency.TRIMESTRIEL) {
+            numberOfPeriods = 4;
+        } else {
+            numberOfPeriods = 12;
+        }
+
+        BigDecimal totalAmount = budget.getBudgetTotal()
+                .divide(BigDecimal.valueOf(numberOfPeriods), 2, RoundingMode.HALF_UP);
+
+        // 4. Créer le ChargeCall avec les paramètres
+        ChargeCall chargeCall = new ChargeCall();
+        chargeCall.setBudget(budget);
+        chargeCall.setFrequency(frequency);
+        chargeCall.setYear(budget.getAnnee());
+        chargeCall.setPeriodNumber(dto.getPeriodNumber());
+        chargeCall.setRepartitionMode(budget.getRepartitionMode());
+        chargeCall.setTotalAmount(totalAmount);
+        chargeCall.setSentDate(dto.getSentDate());
+        chargeCall.setDueDate(dto.getDueDate());
+
+        String reference = "APP-" + "-T" + dto.getPeriodNumber() + budget.getAnnee()  + "-B" + budget.getId();
+        chargeCall.setReference(reference);
+
+        // 5. Créer les ChargeCallItem pour chaque copropriétaire (fusionné par owner)
+        List<Property> properties = propertyRepository.findByResidenceId(budget.getResidence().getId());
+        List<ChargeCallItem> items = new ArrayList<>();
+
+        for (Property property : properties) {
+            if (property.getOwner() != null) {
+                // Vérifier si le copropriétaire a déjà un item
+                boolean alreadyAdded = false;
+                for (ChargeCallItem item : items) {
+                    if (item.getCoOwner().getId().equals(property.getOwner().getId())) {
+                        alreadyAdded = true;
+                        break;
+                    }
+                }
+
+                if (!alreadyAdded) {
+                    // Calculer le tantième total de ce copropriétaire (somme de ses lots)
+                    BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
+                    for (Property p : properties) {
+                        if (p.getOwner() != null && p.getOwner().getId().equals(property.getOwner().getId())) {
+                            tantiemeCoOwner = tantiemeCoOwner.add(
+                                    p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO
+                            );
+                        }
+                    }
+
+                    // Calculer la quote-part (totalAmount * tantieme / 100)
+                    BigDecimal quotePart = totalAmount.multiply(tantiemeCoOwner)
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+                    // Générer la référence
+                    String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-"  + "-" + property.getOwner().getId();
+
+                    ChargeCallItem item = new ChargeCallItem();
+                    item.setChargeCall(chargeCall);
+                    item.setReference(referenceCCI);
+                    item.setCoOwner(property.getOwner());
+                    item.setTantieme(tantiemeCoOwner);
+                    item.setQuotePart(quotePart);
+                    item.setPaidAmount(BigDecimal.ZERO);
+                    item.setRemainingAmount(quotePart);
+
+                    items.add(item);
+                }
+            }
+        }
+
+        chargeCall.setItems(items);
+        ChargeCall savedChargeCall = chargeCallRepository.save(chargeCall);
+
+        // Trace la génération de cet appel de charges dans le journal d'activité de la résidence
+        ActivityLog log = new ActivityLog();
+        log.setResidence(budget.getResidence());
+        log.setType(ActivityType.CHARGE_CALL_GENERATED);
+        log.setRelatedEntityType("CHARGE_CALL");
+        log.setRelatedEntityId(savedChargeCall.getId());
+        log.setActor(currentSyndic);
+        log.setMessage("Appel de charges généré — " + savedChargeCall.getReference());
+        activityLogRepository.save(log);
+
+        // 6. Envoi des emails et notifications push aux copropriétaires (non-bloquant)
+        for (ChargeCallItem item : items) {
+            try {
+                // Email
+                String subject = "Appel de charges — " + budget.getResidence().getName();
+                String body = buildChargeCallEmailBody(savedChargeCall, item);
+                emailService.sendEmail(item.getCoOwner().getEmail(), subject, body);
+            } catch (Exception e) {
+                // Log l'erreur mais ne pas bloquer la génération
+                System.err.println("Erreur envoi email à " + item.getCoOwner().getEmail() + ": " + e.getMessage());
+            }
+
+            try {
+                // Notification push si activée
+                if (item.getCoOwner().isNotificationsEnabled()) {
+                    String title = "Appel de charges";
+                    String body = savedChargeCall.getBudget().getResidence().getName() + " — " + savedChargeCall.getPeriodNumber() + "/" + savedChargeCall.getYear();
+                    notificationService.sendPush(item.getCoOwner().getId(), title, body);
+                }
+            } catch (Exception e) {
+                // Log l'erreur mais ne pas bloquer la génération
+                System.err.println("Erreur envoi notification à " + item.getCoOwner().getId() + ": " + e.getMessage());
+            }
+        }
+    }
+
+    // ============================================================
+  // LISTE DES APPELS DE CHARGES DU SYNDIC (toutes résidences)
+  // ============================================================
+
+    @Override
+    public ChargeCallListResponse getChargeCallsForSyndic(int page, int size) {
+
+        // Récupère le syndic actuellement connecté
+        User currentSyndic = getCurrentUser();
+
+        // Construit la pagination, triée du plus récent au plus ancien
+        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+
+        // Récupère les ChargeCall dont le budget appartient au syndic connecté
+        Page<ChargeCall> chargeCallPage = chargeCallRepository.findByBudgetSyndicId(currentSyndic.getId(), pageable);
+
+        // Transforme chaque ChargeCall en carte
+        List<ChargeCallCardDTO> cardDtos = chargeCallPage.getContent().stream()
+                .map(this::buildChargeCallCard)
+                .toList();
+
+        // Assemble la réponse finale
+        ChargeCallListResponse response = new ChargeCallListResponse();
+        response.setTotalChargeCalls((int) chargeCallPage.getTotalElements());
+        response.setChargeCalls(cardDtos);
+        response.setCurrentPage(page);
+        response.setTotalPages(chargeCallPage.getTotalPages());
+
+        return response;
+    }
+
+    // ============================================================
+    // DÉTAIL D'UN APPEL DE CHARGES (KPIs + suivi par copropriétaire)
+    // ============================================================
+
+    @Override
+    public ChargeCallDetailDTO getChargeCallDetail(Long chargeCallId) {
+
+        // Récupère l'appel de charges, erreur si introuvable
+        ChargeCall chargeCall = chargeCallRepository.findById(chargeCallId)
+                .orElseThrow(() -> new RuntimeException("Appel de charges non trouvé"));
+
+        // Vérifie que cet appel appartient bien au syndic connecté
+        User currentSyndic = getCurrentUser();
+        if (!chargeCall.getBudget().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cet appel de charges");
+        }
+
+        // Récupère toutes les propriétés de la résidence, pour associer les appartements à chaque copropriétaire
+        List<Property> properties = propertyRepository.findByResidenceId(chargeCall.getBudget().getResidence().getId());
+
+        // Calcule le total encaissé (somme des montants payés par tous les copropriétaires)
+        BigDecimal totalCollected = chargeCall.getItems().stream()
+                .map(ChargeCallItem::getPaidAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Calcule le solde restant
+        BigDecimal remainingBalance = chargeCall.getTotalAmount().subtract(totalCollected);
+
+        // Construction du DTO principal
+        ChargeCallDetailDTO dto = new ChargeCallDetailDTO();
+        dto.setId(chargeCall.getId());
+        dto.setReference(chargeCall.getReference());
+        dto.setResidenceName(chargeCall.getBudget().getResidence().getName());
+        dto.setPeriodLabel(buildPeriodLabel(chargeCall));
+        dto.setTotalAmount(chargeCall.getTotalAmount());
+        dto.setTotalCollected(totalCollected);
+        dto.setRemainingBalance(remainingBalance);
+        dto.setStatus(calculateChargeCallStatus(chargeCall).name());
+        dto.setBudgetReference(chargeCall.getBudget().getReference());
+        dto.setCollectedPercentage(calculatePercentage(totalCollected, chargeCall.getTotalAmount()));
+        dto.setSentDate(chargeCall.getSentDate());
+        dto.setDueDate(chargeCall.getDueDate());
+
+        // Construction du tableau "Suivi par copropriétaire"
+        List<ChargeCallItemDetailDTO> itemDtos = chargeCall.getItems().stream()
+                .map(item -> buildChargeCallItemDetail(item, properties))
+                .toList();
+        dto.setItems(itemDtos);
+
+        return dto;
+    }
+
+     // ============================================================
+     // RELANCER UN APPEL DE CHARGES
+    // ============================================================
+
+    @Override
+    @Transactional
+    public int remindChargeCall(Long chargeCallId) {
+
+        // Récupérer l'appel de charges, erreur si introuvable
+        ChargeCall chargeCall = chargeCallRepository.findById(chargeCallId)
+                .orElseThrow(() -> new RuntimeException("Appel de charges non trouvé"));
+
+        // Vérifier que cet appel appartient bien au syndic connecté
+        User currentSyndic = getCurrentUser();
+        if (!chargeCall.getBudget().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à relancer cet appel de charges");
+        }
+
+        // Lecture directe du statut calculé à la volée
+        ChargeCallStatus status = calculateChargeCallStatus(chargeCall);
+        if (status == ChargeCallStatus.SETTLED) {
+            throw new BadRequestException("Impossible de relancer : cet appel de charges est déjà soldé");
+        }
+
+        // Filtre les copropriétaires qui doivent encore de l'argent
+        List<ChargeCallItem> unpaidItems = chargeCall.getItems().stream()
+                .filter(item -> item.getRemainingAmount().compareTo(BigDecimal.ZERO) > 0)
+                .toList();
+
+        // Envoie email + notification push à chacun (non-bloquant)
+        for (ChargeCallItem item : unpaidItems) {
+            try {
+                String subject = "Rappel — Appel de charges " + buildPeriodLabel(chargeCall);
+                String body = buildReminderEmailBody(chargeCall, item);
+                emailService.sendEmail(item.getCoOwner().getEmail(), subject, body);
+            } catch (Exception e) {
+                System.err.println("Erreur envoi email de relance à " + item.getCoOwner().getEmail() + ": " + e.getMessage());
+            }
+
+            try {
+                if (item.getCoOwner().isNotificationsEnabled()) {
+                    String title = "Rappel de paiement";
+                    String body = buildPeriodLabel(chargeCall) + " — solde restant: " + item.getRemainingAmount() + " FCFA";
+                    notificationService.sendPush(item.getCoOwner().getId(), title, body);
+                }
+            } catch (Exception e) {
+                System.err.println("Erreur envoi notification de relance à " + item.getCoOwner().getId() + ": " + e.getMessage());
+            }
+        }
+
+        return unpaidItems.size();
+    }
+
+
+    // ============================================================
+    // APPEL DE CHARGES EXCEPTIONNEL
+    // ============================================================
+
+    /**
+     * Créer un Appel Exceptionnel — Section 1 (Informations générales)
+     * Crée l'entité en statut BROUILLON, complétée par les sections suivantes
+     */
+    @Transactional
+    public ExceptionalCallDetailDTO createExceptionalCall(CreateExceptionalCallDTO dto) {
+
+        // Récupérer le syndic connecté — méthode déjà existante dans ChargeServiceImpl
+        User currentSyndic = getCurrentUser();
+
+        // Vérifier que la résidence appartient bien à ce syndic
+        Residence residence = residenceRepository.findById(dto.getResidenceId())
+                .orElseThrow(() -> new RuntimeException("Résidence introuvable"));
+
+        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Cette résidence ne vous appartient pas");
+        }
+
+        // Créer l'Appel Exceptionnel en BROUILLON — complété par les sections suivantes
+        ExceptionalCall exceptionalCall = new ExceptionalCall();
+        exceptionalCall.setResidence(residence);
+        exceptionalCall.setSyndic(currentSyndic);
+        exceptionalCall.setCategory(dto.getCategory());
+        exceptionalCall.setTitle(dto.getTitle());
+        exceptionalCall.setDescription(dto.getDescription());
+        exceptionalCall.setStatus(ExceptionalCallStatus.DRAFT);
+
+        // Étape 1 — Sauvegarder une première fois SANS référence, pour obtenir un ID unique
+        // généré par la base de données (auto-increment, garanti sans collision)
+        ExceptionalCall saved = exceptionalCallRepository.save(exceptionalCall);
+
+        // Étape 2 — Construire la référence à partir de cet ID unique, puis sauvegarder à nouveau
+        String reference = String.format("EXC-%d-%03d", LocalDate.now().getYear(), saved.getId());
+        saved.setReference(reference);
+        saved = exceptionalCallRepository.save(saved);
+
+        // Trace la création dans le journal d'activité
+        ActivityLog log = new ActivityLog();
+        log.setResidence(residence);
+        log.setType(ActivityType.EXCEPTIONAL_CALL_CREATED);
+        log.setRelatedEntityType("EXCEPTIONAL_CALL");
+        log.setRelatedEntityId(saved.getId());
+        log.setActor(currentSyndic);
+        log.setMessage("Appel exceptionnel créé — " + saved.getTitle());
+        activityLogRepository.save(log);
+
+
+        return toExceptionalCallDetailDTO(saved);
+    }
+
+    /**
+     * Compléter un Appel Exceptionnel — Section 2 (Informations financières)
+     * Définit le montant total et la répartition (tantièmes ou personnalisée)
+     */
+    @Transactional
+    public ExceptionalCallDetailDTO updateExceptionalCallFinancialInfo(Long exceptionalCallId, UpdateExceptionalCallFinancialDTO dto) {
+
+        User currentSyndic = getCurrentUser();
+
+        ExceptionalCall exceptionalCall = exceptionalCallRepository.findById(exceptionalCallId)
+                .orElseThrow(() -> new RuntimeException("Appel exceptionnel introuvable"));
+
+        if (!exceptionalCall.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Cet appel exceptionnel ne vous appartient pas");
+        }
+
+        exceptionalCall.setTotalAmount(dto.getTotalAmount());
+        exceptionalCall.setRepartitionMode(dto.getRepartitionMode());
+
+        // Si cette section est modifiée après un premier passage, on repart de zéro sur les items
+        exceptionalCall.getItems().clear();
+
+        List<Property> properties = propertyRepository.findByResidenceId(exceptionalCall.getResidence().getId());
+
+        if (dto.getRepartitionMode() == RepartitionMode.OWNERSHIP_SHARES) {
+
+            // Calcul automatique par tantième — même logique de fusion par copropriétaire
+            // déjà utilisée dans previewChargeCall/generateChargeCall (un copropriétaire
+            // avec plusieurs lots dans la résidence = une seule ligne, tantièmes additionnés)
+            List<Long> alreadyAddedOwnerIds = new ArrayList<>();
+
+            for (Property property : properties) {
+                if (property.getOwner() == null) continue;
+
+                Long ownerId = property.getOwner().getId();
+                boolean alreadyAdded = false;
+                for (Long addedId : alreadyAddedOwnerIds) {
+                    if (addedId.equals(ownerId)) {
+                        alreadyAdded = true;
+                        break;
+                    }
+                }
+                if (alreadyAdded) continue;
+
+                // Additionner les tantièmes de tous les lots de ce copropriétaire
+                BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
+                for (Property p : properties) {
+                    if (p.getOwner() != null && p.getOwner().getId().equals(ownerId)) {
+                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO);
+                    }
+                }
+
+                // Quote-part = montant total × (tantième du copropriétaire / 100)
+                BigDecimal quotePart = dto.getTotalAmount()
+                        .multiply(tantiemeCoOwner)
+                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+                ExceptionalCallItem item = new ExceptionalCallItem();
+                item.setExceptionalCall(exceptionalCall);
+                item.setCoOwner(property.getOwner());
+                item.setTantieme(tantiemeCoOwner);
+                item.setQuotePart(quotePart);
+                exceptionalCall.getItems().add(item);
+
+                alreadyAddedOwnerIds.add(ownerId);
+            }
+
+        } else {
+            // Mode CUSTOM — le syndic a saisi manuellement chaque montant, pas de calcul
+            if (dto.getCustomAmounts() == null || dto.getCustomAmounts().isEmpty()) {
+                throw new BadRequestException("Saisissez un montant pour chaque copropriétaire en mode Personnalisée");
+            }
+
+            for (CustomCoOwnerAmountDTO customAmount : dto.getCustomAmounts()) {
+                User coOwner = userRepository.findById(customAmount.getCoOwnerId())
+                        .orElseThrow(() -> new RuntimeException("Copropriétaire introuvable"));
+
+                // Snapshotter le tantième même en mode personnalisé, pour affichage/référence uniquement
+                BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
+                for (Property p : properties) {
+                    if (p.getOwner() != null && p.getOwner().getId().equals(customAmount.getCoOwnerId())) {
+                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO);
+                    }
+                }
+
+                ExceptionalCallItem item = new ExceptionalCallItem();
+                item.setExceptionalCall(exceptionalCall);
+                item.setCoOwner(coOwner);
+                item.setTantieme(tantiemeCoOwner);
+                item.setQuotePart(customAmount.getAmount()); // montant saisi manuellement, pas calculé
+                exceptionalCall.getItems().add(item);
+            }
+        }
+
+        ExceptionalCall saved = exceptionalCallRepository.save(exceptionalCall);
+
+        return toExceptionalCallDetailDTO(saved);
+    }
+
+    /**
+     * Activer un Appel Exceptionnel — Section 3 (Validation & Documents)
+     * Combine l'upload des documents et le changement de statut dans la même transaction
+     */
+    @Transactional
+    public ExceptionalCallDetailDTO activateExceptionalCall(Long exceptionalCallId, Boolean requiresAgValidation, List<MultipartFile> files) {
+
+        User currentSyndic = getCurrentUser();
+
+        ExceptionalCall exceptionalCall = exceptionalCallRepository.findById(exceptionalCallId)
+                .orElseThrow(() -> new RuntimeException("Appel exceptionnel introuvable"));
+
+        if (!exceptionalCall.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Cet appel exceptionnel ne vous appartient pas");
+        }
+
+        // Vérifications avant activation — le montant et la répartition doivent déjà être renseignés
+        if (exceptionalCall.getTotalAmount() == null || exceptionalCall.getItems().isEmpty()) {
+            throw new BadRequestException("Complétez les informations financières avant d'activer");
+        }
+
+        // Uploader chaque document déposé, s'il y en a — dans la même transaction que l'activation
+        // (si un upload échoue, tout est annulé, y compris le changement de statut — cohérent avec
+        // le fait que documents et activation sont maintenant une seule action indivisible)
+        if (files != null) {
+            for (MultipartFile file : files) {
+                String fileUrl = minioService.uploadFile(file, "exceptional-calls");
+
+                ExceptionalCallDocument document = new ExceptionalCallDocument();
+                document.setExceptionalCall(exceptionalCall);
+                document.setFileName(file.getOriginalFilename());
+                document.setFileUrl(fileUrl);
+                document.setFileSizeKb(file.getSize() / 1024);
+
+                exceptionalCall.getDocuments().add(document);
+            }
+        }
+
+        // requiresAgValidation est PUREMENT INFORMATIF (juste un badge affiché à l'écran) — il ne
+        // bloque jamais le statut. Peu importe sa valeur.
+        exceptionalCall.setRequiresAgValidation(requiresAgValidation);
+        exceptionalCall.setStatus(ExceptionalCallStatus.ACTIVE);
+        exceptionalCall.setActivatedAt(LocalDateTime.now());
+
+        ExceptionalCall saved = exceptionalCallRepository.save(exceptionalCall);
+
+        // Trace l'activation dans le journal d'activité
+        ActivityLog log = new ActivityLog();
+        log.setResidence(saved.getResidence());
+        log.setType(ActivityType.EXCEPTIONAL_CALL_ACTIVATED);
+        log.setRelatedEntityType("EXCEPTIONAL_CALL");
+        log.setRelatedEntityId(saved.getId());
+        log.setActor(currentSyndic);
+        log.setMessage("Appel exceptionnel activé — " + saved.getReference());
+        activityLogRepository.save(log);
+
+        // Envoi des emails et notifications push aux copropriétaires concernés (non-bloquant)
+        for (ExceptionalCallItem item : saved.getItems()) {
+            try {
+                // Email
+                String subject = "Appel exceptionnel — " + saved.getResidence().getName();
+                String body = buildExceptionalCallEmailBody(saved, item);
+                emailService.sendEmail(item.getCoOwner().getEmail(), subject, body);
+            } catch (Exception e) {
+                // Log l'erreur mais ne pas bloquer l'activation
+                System.err.println("Erreur envoi email à " + item.getCoOwner().getEmail() + ": " + e.getMessage());
+            }
+
+            try {
+                // Notification push si activée
+                if (item.getCoOwner().isNotificationsEnabled()) {
+                    String title = "Appel exceptionnel";
+                    String body = saved.getTitle() + " — " + saved.getResidence().getName();
+                    notificationService.sendPush(item.getCoOwner().getId(), title, body);
+                }
+            } catch (Exception e) {
+                // Log l'erreur mais ne pas bloquer l'activation
+                System.err.println("Erreur envoi notification à " + item.getCoOwner().getId() + ": " + e.getMessage());
+            }
+        }
+
+        return toExceptionalCallDetailDTO(saved);
+    }
+    // Construit le corps de l'email envoyé à un copropriétaire lors de l'activation d'un appel exceptionnel
+    private String buildExceptionalCallEmailBody(ExceptionalCall exceptionalCall, ExceptionalCallItem item) {
+        StringBuilder body = new StringBuilder();
+        body.append("Appel exceptionnel : ").append(exceptionalCall.getTitle()).append("\n\n");
+        body.append("Résidence : ").append(exceptionalCall.getResidence().getName()).append("\n");
+        body.append("Description : ").append(exceptionalCall.getDescription()).append("\n");
+        body.append("Montant à votre charge : ").append(item.getQuotePart()).append(" FCFA\n");
+        return body.toString();
+    }
+    // ============================================================
+    // LISTE DES APPELS EXCEPTIONNELS DU SYNDIC
+    // ============================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public ExceptionalCallListResponse getExceptionalCallsForSyndic(int page, int size) {
+
+        // Récupère le syndic actuellement connecté
+        User currentSyndic = getCurrentUser();
+
+        // Construit la pagination, triée du plus récent au plus ancien
+        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+
+        // Récupère les appels exceptionnels dont le syndic est celui connecté
+        Page<ExceptionalCall> exceptionalCallPage = exceptionalCallRepository.findBySyndicId(currentSyndic.getId(), pageable);
+
+        // Transforme chaque appel exceptionnel en carte
+        List<ExceptionalCallCardDTO> cardDtos = exceptionalCallPage.getContent().stream()
+                .map(this::buildExceptionalCallCard)
+                .toList();
+
+        // Assemble la réponse finale avec les infos de pagination
+        ExceptionalCallListResponse response = new ExceptionalCallListResponse();
+        response.setTotalExceptionalCalls((int) exceptionalCallPage.getTotalElements());
+        response.setExceptionalCalls(cardDtos);
+        response.setCurrentPage(page);
+        response.setTotalPages(exceptionalCallPage.getTotalPages());
+
+        return response;
+    }
+
+    // Construit la carte d'un appel exceptionnel (montant, collecté, restant, pourcentage)
+    private ExceptionalCallCardDTO buildExceptionalCallCard(ExceptionalCall exceptionalCall) {
+
+        // Calcule le montant déjà collecté et le solde restant
+        BigDecimal collectedAmount = calculateCollectedAmount(exceptionalCall);
+        BigDecimal remainingAmount = exceptionalCall.getTotalAmount() != null
+                ? exceptionalCall.getTotalAmount().subtract(collectedAmount)
+                : BigDecimal.ZERO;
+
+        ExceptionalCallCardDTO dto = new ExceptionalCallCardDTO();
+        dto.setId(exceptionalCall.getId());
+        dto.setReference(exceptionalCall.getReference());
+        dto.setTitle(exceptionalCall.getTitle());
+        dto.setStatus(exceptionalCall.getStatus().name());
+        dto.setResidenceName(exceptionalCall.getResidence().getName());
+        dto.setTotalAmount(exceptionalCall.getTotalAmount());
+        dto.setCollectedAmount(collectedAmount);
+        dto.setRemainingAmount(remainingAmount);
+        dto.setCollectedPercentage(calculatePercentage(collectedAmount, exceptionalCall.getTotalAmount()));
+        dto.setCoOwnersCount(exceptionalCall.getItems().size());
+        dto.setActivatedAt(exceptionalCall.getActivatedAt());
+
+        return dto;
+    }
+
+    // Calcule le montant total déjà collecté sur un appel exceptionnel (somme des paiements de tous les items)
+    private BigDecimal calculateCollectedAmount(ExceptionalCall exceptionalCall) {
+        return exceptionalCall.getItems().stream()
+                .map(ExceptionalCallItem::getPaidAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    // ============================================================
+    // VUE D'ENSEMBLE D'UN APPEL EXCEPTIONNEL (onglet 1 — pas de pagination, un seul objet)
+    // ============================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public ExceptionalCallOverviewDTO getExceptionalCallOverview(Long exceptionalCallId) {
+
+        // Récupère l'appel exceptionnel et vérifie qu'il appartient bien au syndic connecté
+        ExceptionalCall exceptionalCall = getExceptionalCallForSyndic(exceptionalCallId);
+
+        BigDecimal collectedAmount = calculateCollectedAmount(exceptionalCall);
+        BigDecimal remainingAmount = exceptionalCall.getTotalAmount() != null
+                ? exceptionalCall.getTotalAmount().subtract(collectedAmount)
+                : BigDecimal.ZERO;
+
+        ExceptionalCallOverviewDTO dto = new ExceptionalCallOverviewDTO();
+        dto.setId(exceptionalCall.getId());
+        dto.setReference(exceptionalCall.getReference());
+        dto.setStatus(exceptionalCall.getStatus().name());
+        dto.setResidenceName(exceptionalCall.getResidence().getName());
+        dto.setTitle(exceptionalCall.getTitle());
+        dto.setCategory(exceptionalCall.getCategory().name());
+        dto.setDescription(exceptionalCall.getDescription());
+        dto.setRepartitionModeLabel(exceptionalCall.getRepartitionMode() != null
+                ? exceptionalCall.getRepartitionMode().name() : null);
+        dto.setTotalAmount(exceptionalCall.getTotalAmount());
+        dto.setCollectedAmount(collectedAmount);
+        dto.setRemainingAmount(remainingAmount);
+        dto.setCollectedPercentage(calculatePercentage(collectedAmount, exceptionalCall.getTotalAmount()));
+        dto.setCoOwnersCount(exceptionalCall.getItems().size());
+        dto.setCreatedAt(exceptionalCall.getCreatedAt());
+
+        return dto;
+    }
+
+    // ============================================================
+    // RÉPARTITION D'UN APPEL EXCEPTIONNEL (onglet 2, paginée directement en base)
+    // ============================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ExceptionalCallItemDetailDTO> getExceptionalCallRepartition(Long exceptionalCallId, int page, int size) {
+
+        // Vérifie que l'appel appartient bien au syndic connecté
+        ExceptionalCall exceptionalCall = getExceptionalCallForSyndic(exceptionalCallId);
+
+        Pageable pageable = PageRequest.of(page, size);
+
+        // Requête paginée directement en base : ne charge que les lignes de la page demandée
+        Page<ExceptionalCallItem> itemsPage = exceptionalCallItemRepository
+                .findByExceptionalCallId(exceptionalCallId, pageable);
+
+        // Récupère les propriétés de la résidence, pour construire les libellés d'appartements
+        List<Property> properties = propertyRepository.findByResidenceId(exceptionalCall.getResidence().getId());
+
+        // Transforme chaque item de la page en DTO
+        return itemsPage.map(item -> buildExceptionalCallItemDetail(item, properties));
+    }
+
+    // Construit une ligne du tableau "Répartition par copropriétaire"
+    private ExceptionalCallItemDetailDTO buildExceptionalCallItemDetail(ExceptionalCallItem item, List<Property> properties) {
+
+        ExceptionalCallItemDetailDTO dto = new ExceptionalCallItemDetailDTO();
+        dto.setCoOwnerName(item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName());
+
+        // Récupère tous les appartements de ce copropriétaire dans la résidence, séparés par virgules
+        String propertiesLabel = properties.stream()
+                .filter(p -> p.getOwner() != null && p.getOwner().getId().equals(item.getCoOwner().getId()))
+                .map(Property::getReference)
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("");
+        dto.setProperties(propertiesLabel);
+
+        dto.setTantieme(item.getTantieme());
+        dto.setQuotePart(item.getQuotePart());
+        dto.setPaidAmount(item.getPaidAmount());
+
+        // Calcule le solde restant à payer
+        BigDecimal remainingAmount = item.getQuotePart().subtract(item.getPaidAmount());
+        dto.setRemainingAmount(remainingAmount);
+
+        // Détermine le statut individuel de ce copropriétaire
+        if (item.getPaidAmount().compareTo(item.getQuotePart()) >= 0) {
+            dto.setStatus("PAYE");
+        } else if (item.getPaidAmount().compareTo(BigDecimal.ZERO) > 0) {
+            dto.setStatus("PARTIEL");
+        } else {
+            dto.setStatus("IMPAYE");
+        }
+
+        return dto;
+    }
+
+    // ============================================================
+    // PAIEMENTS D'UN APPEL EXCEPTIONNEL (onglet 3, paginée directement en base)
+    // ============================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ExceptionalCallPaymentDTO> getExceptionalCallPayments(Long exceptionalCallId, int page, int size) {
+
+        // Vérifie que l'appel appartient bien au syndic connecté
+        getExceptionalCallForSyndic(exceptionalCallId);
+
+        Pageable pageable = PageRequest.of(page, size);
+
+        // Requête paginée directement en base, filtrée sur les paiements COMPLETED uniquement
+        Page<ExceptionalCallPayment> paymentsPage = exceptionalCallPaymentRepository
+                .findByExceptionalCallItemExceptionalCallIdAndStatus(exceptionalCallId, PaymentStatus.COMPLETED, pageable);
+
+        return paymentsPage.map(this::buildExceptionalCallPaymentDto);
+    }
+
+    // Construit une ligne du tableau "Paiements reçus"
+    private ExceptionalCallPaymentDTO buildExceptionalCallPaymentDto(ExceptionalCallPayment payment) {
+
+        ExceptionalCallPaymentDTO dto = new ExceptionalCallPaymentDTO();
+        dto.setCoOwnerName(payment.getOwner().getFirstName() + " " + payment.getOwner().getLastName());
+        dto.setPaidAt(payment.getPaidAt());
+        dto.setAmount(payment.getAmount());
+        dto.setMethod(payment.getMethod() != null ? payment.getMethod().name() : null);
+        dto.setReference(payment.getReference());
+
+        return dto;
+    }
+
+    // ============================================================
+    // DOCUMENTS D'UN APPEL EXCEPTIONNEL (onglet 4, paginée directement en base)
+    // ============================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ExceptionalCallDocumentDTO> getExceptionalCallDocuments(Long exceptionalCallId, int page, int size) {
+
+        // Vérifie que l'appel appartient bien au syndic connecté
+        getExceptionalCallForSyndic(exceptionalCallId);
+
+        Pageable pageable = PageRequest.of(page, size);
+
+        // Requête paginée directement en base
+        Page<ExceptionalCallDocument> documentsPage = exceptionalCallDocumentRepository
+                .findByExceptionalCallId(exceptionalCallId, pageable);
+
+        return documentsPage.map(this::buildExceptionalCallDocumentDto);
+    }
+
+    // Construit un DTO document, avec extension et taille calculées à partir du nom de fichier
+    private ExceptionalCallDocumentDTO buildExceptionalCallDocumentDto(ExceptionalCallDocument document) {
+
+        String fileName = document.getFileName();
+
+        // Extrait l'extension du fichier à partir de son nom (ex: "facture.pdf" → "pdf")
+        String extension = fileName != null && fileName.contains(".")
+                ? fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase()
+                : "";
+
+        // Convertit la taille stockée en Ko vers Mo pour l'affichage
+        Double fileSizeMb = document.getFileSizeKb() != null
+                ? document.getFileSizeKb() / 1024.0
+                : 0.0;
+
+        ExceptionalCallDocumentDTO dto = ExceptionalCallDocumentDTO.builder()
+                .id(document.getId())
+                .fileName(fileName)
+                .fileUrl(document.getFileUrl())
+                .fileSizeMb(fileSizeMb)
+                .fileExtension(extension)
+                .createdAt(document.getCreatedAt())
+                .build();
+        return dto;
+    }
+
+    // ============================================================
+    // HISTORIQUE D'UN APPEL EXCEPTIONNEL (onglet 5, paginée directement en base)
+    // ============================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ExceptionalCallHistoryDTO> getExceptionalCallHistory(Long exceptionalCallId, int page, int size) {
+
+        // Vérifie que l'appel appartient bien au syndic connecté
+        ExceptionalCall exceptionalCall = getExceptionalCallForSyndic(exceptionalCallId);
+
+        Pageable pageable = PageRequest.of(page, size);
+
+        // Requête paginée directement en base, triée du plus récent au plus ancien
+        Page<ActivityLog> logsPage = activityLogRepository
+                .findByRelatedEntityTypeAndRelatedEntityIdOrderByCreatedAtDesc("EXCEPTIONAL_CALL", exceptionalCallId, pageable);
+
+        // Transforme chaque log en ligne d'historique
+        return logsPage.map(log -> {
+            ExceptionalCallHistoryDTO dto = new ExceptionalCallHistoryDTO();
+            dto.setActorName(log.getActor() != null
+                    ? log.getActor().getFirstName() + " " + log.getActor().getLastName() : "Système");
+            dto.setStatusBadge(exceptionalCall.getStatus().name());
+            dto.setMessage(log.getMessage());
+            dto.setCreatedAt(log.getCreatedAt());
+            return dto;
+        });
+    }
+
+    // ============================================================
+    // CLÔTURER UN APPEL EXCEPTIONNEL
+    // ============================================================
+
+    @Override
+    @Transactional
+    public void closeExceptionalCall(Long exceptionalCallId) {
+
+        // Récupère l'appel exceptionnel et vérifie qu'il appartient bien au syndic connecté
+        ExceptionalCall exceptionalCall = getExceptionalCallForSyndic(exceptionalCallId);
+        User currentSyndic = getCurrentUser();
+
+        // Empêche de clôturer un appel déjà clôturé
+        if (exceptionalCall.getStatus() == ExceptionalCallStatus.CLOSED) {
+            throw new BadRequestException("Cet appel exceptionnel est déjà clôturé");
+        }
+
+        exceptionalCall.setStatus(ExceptionalCallStatus.CLOSED);
+        exceptionalCallRepository.save(exceptionalCall);
+
+        // Trace la clôture dans le journal d'activité de la résidence
+        ActivityLog log = new ActivityLog();
+        log.setResidence(exceptionalCall.getResidence());
+        log.setType(ActivityType.EXCEPTIONAL_CALL_CLOSED);
+        log.setRelatedEntityType("EXCEPTIONAL_CALL");
+        log.setRelatedEntityId(exceptionalCall.getId());
+        log.setActor(currentSyndic);
+        log.setMessage("Appel exceptionnel clôturé — " + exceptionalCall.getReference());
+        activityLogRepository.save(log);
+    }
+
+    // ============================================================
+    // LISTE DES PAIEMENTS (global syndic, toutes résidences confondues)
+    // ============================================================
+
+    @Override
+    public PaymentListResponse getPaymentsForSyndic(int page, int size, String search) {
+
+        // Récupère le syndic actuellement connecté
+        User currentSyndic = getCurrentUser();
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by("chargeCall.createdAt").descending());
+
+        // Récupère les items, filtrés par recherche si fournie
+        Page<ChargeCallItem> itemsPage = (search != null && !search.isBlank())
+                ? chargeCallItemRepository.findByChargeCallBudgetSyndicIdAndCoOwnerNameContaining(currentSyndic.getId(), search, pageable)
+                : chargeCallItemRepository.findByChargeCallBudgetSyndicId(currentSyndic.getId(), pageable);
+
+        List<PaymentRowDTO> rowDtos = itemsPage.getContent().stream()
+                .map(this::buildPaymentRow)
+                .toList();
+
+        PaymentListResponse response = new PaymentListResponse();
+        response.setTotalPayments((int) itemsPage.getTotalElements());
+        response.setPayments(rowDtos);
+        response.setCurrentPage(page);
+        response.setTotalPages(itemsPage.getTotalPages());
+
+        return response;
+    }
+
+    // Construit une ligne du tableau "Paiements"
+    private PaymentRowDTO buildPaymentRow(ChargeCallItem item) {
+
+        PaymentRowDTO dto = new PaymentRowDTO();
+        dto.setCoOwnerName(item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName());
+        dto.setPropertyLabel(buildPropertyLabel(item));
+        dto.setAmountDue(item.getQuotePart());
+        dto.setAmountPaid(item.getPaidAmount());
+        dto.setBalance(item.getRemainingAmount());
+        dto.setStatus(calculateItemStatus(item));
+
+        // Récupère la date du dernier paiement effectué sur cet item, s'il existe
+        chargeCallPaymentRepository.findFirstByChargeCallItemIdOrderByPaidAtDesc(item.getId())
+                .ifPresent(p -> dto.setPaymentDate(p.getPaidAt() != null ? p.getPaidAt().toLocalDate() : null));
+
+        return dto;
+    }
+
+    // ============================================================
+    // LISTE DES IMPAYÉS (global syndic)
+    // ============================================================
+
+    @Override
+    public UnpaidListResponse getUnpaidForSyndic(int page, int size) {
+
+        User currentSyndic = getCurrentUser();
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by("chargeCall.dueDate").ascending());
+
+        // Récupère la page demandée, directement filtrée en base sur les items non soldés
+        Page<ChargeCallItem> unpaidPage = chargeCallItemRepository.findUnpaidByBudgetSyndicId(currentSyndic.getId(), pageable);
+
+        // Récupère TOUS les items non soldés (sans pagination), pour calculer les KPI globaux
+        List<ChargeCallItem> allUnpaidItems = chargeCallItemRepository.findAllUnpaidByBudgetSyndicId(currentSyndic.getId());
+
+        BigDecimal totalUnpaidAmount = allUnpaidItems.stream()
+                .map(ChargeCallItem::getRemainingAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        List<UnpaidRowDTO> rowDtos = unpaidPage.getContent().stream()
+                .map(this::buildUnpaidRow)
+                .toList();
+
+        UnpaidListResponse response = new UnpaidListResponse();
+        response.setUnpaidCoOwnersCount(allUnpaidItems.size());
+        response.setTotalUnpaidAmount(totalUnpaidAmount);
+        response.setUnpaidItems(rowDtos);
+        response.setCurrentPage(page);
+        response.setTotalPages(unpaidPage.getTotalPages());
+
+        return response;
+    }
+
+    // Construit une ligne du tableau "Impayés"
+    private UnpaidRowDTO buildUnpaidRow(ChargeCallItem item) {
+
+        LocalDate dueDate = item.getChargeCall().getDueDate();
+        long daysLate = ChronoUnit.DAYS.between(dueDate, LocalDate.now());
+
+        UnpaidRowDTO dto = new UnpaidRowDTO();
+        dto.setChargeCallItemId(item.getId());
+        dto.setCoOwnerName(item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName());
+        dto.setPropertyLabel(buildPropertyLabel(item));
+        dto.setStatus(calculateItemStatus(item));
+        dto.setAmountDue(item.getQuotePart());
+        dto.setUnpaidBalance(item.getRemainingAmount());
+        dto.setDaysLate((int) Math.max(daysLate, 0));
+
+        return dto;
+    }
+
+    // ============================================================
+    // RELANCER UN COPROPRIÉTAIRE (impayé précis)
+    // ============================================================
+
+    @Override
+    @Transactional
+    public void remindUnpaidItem(Long chargeCallItemId) {
+
+        ChargeCallItem item = chargeCallItemRepository.findById(chargeCallItemId)
+                .orElseThrow(() -> new RuntimeException("Ligne de charge introuvable"));
+
+        User currentSyndic = getCurrentUser();
+        if (!item.getChargeCall().getBudget().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à relancer ce copropriétaire");
+        }
+
+        if (item.getRemainingAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Cette charge est déjà soldée");
+        }
+
+        sendReminderForItem(item);
+    }
+
+    // ============================================================
+    // RELANCER TOUS LES IMPAYÉS
+    // ============================================================
+
+    @Override
+    @Transactional
+    public int remindAllUnpaid() {
+
+        User currentSyndic = getCurrentUser();
+
+        List<ChargeCallItem> allUnpaidItems = chargeCallItemRepository.findAllUnpaidByBudgetSyndicId(currentSyndic.getId());
+
+        for (ChargeCallItem item : allUnpaidItems) {
+            sendReminderForItem(item);
+        }
+
+        return allUnpaidItems.size();
+    }
+
+    // ============================================================
+    // UTILITAIRES PARTAGÉS
+    // ============================================================
+
+    // Calcule le statut d'une ligne de charge selon le nombre de jours de retard
+    // (RETARD 1-30j, CRITIQUE 31j+, PARTIEL si paiement partiel dans les délais, PAYE si soldée)
+    private String calculateItemStatus(ChargeCallItem item) {
+
+        boolean isFullyPaid = item.getPaidAmount().compareTo(item.getQuotePart()) >= 0;
+        if (isFullyPaid) return "PAYE";
+
+        LocalDate dueDate = item.getChargeCall().getDueDate();
+        long daysLate = ChronoUnit.DAYS.between(dueDate, LocalDate.now());
+
+        if (daysLate > 30) return "CRITIQUE";
+        if (daysLate > 0) return "RETARD";
+
+        boolean hasPartialPayment = item.getPaidAmount().compareTo(BigDecimal.ZERO) > 0;
+        if (hasPartialPayment) return "PARTIEL";
+        return "A_JOUR";
+    }
+
+    // Construit le libellé des biens du copropriétaire pour cette résidence
+    private String buildPropertyLabel(ChargeCallItem item) {
+        List<Property> properties = propertyRepository.findByOwnerIdAndResidenceId(
+                item.getCoOwner().getId(), item.getChargeCall().getBudget().getResidence().getId());
+
+        String propertiesStr = properties.stream()
+                .map(Property::getReference)
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("");
+
+        return propertiesStr + " – " + item.getChargeCall().getBudget().getResidence().getName();
+    }
+
+    // Envoie une relance (email + push) pour une ligne de charge précise, non-bloquant
+    private void sendReminderForItem(ChargeCallItem item) {
+
+        try {
+            String subject = "Relance — Appel de charges " + buildPeriodLabel(item.getChargeCall());
+            String body = buildReminderEmailBody(item.getChargeCall(), item);
+            emailService.sendEmail(item.getCoOwner().getEmail(), subject, body);
+        } catch (Exception e) {
+            System.err.println("Erreur envoi email de relance à " + item.getCoOwner().getEmail() + ": " + e.getMessage());
+        }
+
+        try {
+            if (item.getCoOwner().isNotificationsEnabled()) {
+                String title = "Rappel de paiement";
+                String body = "Solde restant: " + item.getRemainingAmount() + " FCFA";
+                notificationService.sendPush(item.getCoOwner().getId(), title, body);
+            }
+        } catch (Exception e) {
+            System.err.println("Erreur envoi notification de relance à " + item.getCoOwner().getId() + ": " + e.getMessage());
+        }
+    }
+
+    // ============================================================
+    // UTILITAIRE PARTAGÉ — récupère un appel exceptionnel et vérifie son appartenance au syndic
+    // ============================================================
+
+    private ExceptionalCall getExceptionalCallForSyndic(Long exceptionalCallId) {
+
+        // Récupère l'appel exceptionnel, erreur si introuvable
+        ExceptionalCall exceptionalCall = exceptionalCallRepository.findById(exceptionalCallId)
+                .orElseThrow(() -> new RuntimeException("Appel exceptionnel introuvable"));
+
+        // Vérifie que cet appel appartient bien au syndic connecté
+        User currentSyndic = getCurrentUser();
+        if (!exceptionalCall.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Cet appel exceptionnel ne vous appartient pas");
+        }
+
+        return exceptionalCall;
+    }
+
+
+    // ============================================================
+    // Biens Communs
+    // ============================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<CommonFacilitySuggestionDTO> searchCommonFacilities(Long residenceId, String q, Integer page, Integer size) {
+        // Récupérer la résidence
+        Residence residence = residenceRepository.findById(residenceId)
+                .orElseThrow(() -> new RuntimeException("Résidence introuvable"));
+
+        // Vérifier que le syndic est bien le propriétaire de la résidence
+        User currentSyndic = getCurrentUser();
+        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
+        }
+
+        // Récupérer les équipements communs avec pagination
+        Pageable pageable = PageRequest.of(page, size);
+        Page<CommonFacility> facilityPage;
+        if (q == null || q.trim().isEmpty()) {
+            facilityPage = commonFacilityRepository.findByResidenceId(residenceId, pageable);
+        } else {
+            // Pour la recherche, on utilise pagination manuelle car la méthode de recherche n'est pas paginée
+            List<CommonFacility> facilities = commonFacilityRepository.findByResidenceIdAndFacilityTypeNameContainingIgnoreCase(residenceId, q.trim());
+            int totalElements = facilities.size();
+            int fromIndex = Math.min(page * size, totalElements);
+            int toIndex = Math.min(fromIndex + size, totalElements);
+            List<CommonFacility> pageContent = facilities.subList(fromIndex, toIndex);
+            facilityPage = new PageImpl<>(pageContent, pageable, totalElements);
+        }
+
+        // Mapper vers DTO
+        List<CommonFacilitySuggestionDTO> dtos = facilityPage.getContent().stream()
+                .map(facility -> CommonFacilitySuggestionDTO.builder()
+                        .id(facility.getId())
+                        .name(facility.getFacilityType().getName())
+                        .icon(facility.getFacilityType().getIcon())
+                        .build())
+                .toList();
+
+        return new PageImpl<>(dtos, pageable, facilityPage.getTotalElements());
+    }
+
+    // ============================================================
+    // Méthodes Utilitaires
+    // ============================================================
+
+    // Construit la carte d'un seul appel de charges
+    private ChargeCallCardDTO buildChargeCallCard(ChargeCall chargeCall) {
+
+        ChargeCallCardDTO dto = new ChargeCallCardDTO();
+        dto.setId(chargeCall.getId());
+        dto.setReference(chargeCall.getReference());
+        dto.setYear(chargeCall.getYear());
+        dto.setPeriodNumber(chargeCall.getPeriodNumber());
+        dto.setPeriodLabel(buildPeriodLabel(chargeCall));
+        dto.setResidenceName(chargeCall.getBudget().getResidence().getName());
+        dto.setTotalAmount(chargeCall.getTotalAmount());
+        dto.setCoOwnersCount(chargeCall.getItems().size());
+        dto.setSentDate(chargeCall.getSentDate());
+        dto.setDueDate(chargeCall.getDueDate());
+
+        // Calcule le statut à la volée (jamais stocké en base)
+        dto.setStatus(calculateChargeCallStatus(chargeCall).name());
+
+        return dto;
+    }
+
+    // Construit une ligne du tableau "Suivi par copropriétaire"
+    private ChargeCallItemDetailDTO buildChargeCallItemDetail(ChargeCallItem item, List<Property> properties) {
+
+        ChargeCallItemDetailDTO dto = new ChargeCallItemDetailDTO();
+        dto.setCoOwnerName(item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName());
+
+        // Récupère tous les appartements de ce copropriétaire dans la résidence, joints par virgules
+        String propertiesLabel = properties.stream()
+                .filter(p -> p.getOwner() != null && p.getOwner().getId().equals(item.getCoOwner().getId()))
+                .map(Property::getReference)
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("");
+        dto.setProperties(propertiesLabel);
+
+        dto.setTantieme(item.getTantieme());
+        dto.setQuotePart(item.getQuotePart());
+        dto.setPaidAmount(item.getPaidAmount());
+        dto.setRemainingAmount(item.getRemainingAmount());
+
+        // Calcule le statut individuel de ce copropriétaire
+        if (item.getPaidAmount().compareTo(item.getQuotePart()) >= 0) {
+            dto.setStatus("PAYE");
+        } else if (item.getPaidAmount().compareTo(BigDecimal.ZERO) > 0) {
+            dto.setStatus("PARTIEL");
+        } else {
+            dto.setStatus("IMPAYE");
+        }
+
+        return dto;
+    }
+    // Construit le corps de l'email de relance
+    private String buildReminderEmailBody(ChargeCall chargeCall, ChargeCallItem item) {
+        StringBuilder body = new StringBuilder();
+        body.append("Rappel de paiement\n\n");
+        body.append("Résidence : ").append(chargeCall.getBudget().getResidence().getName()).append("\n");
+        body.append("Période : ").append(buildPeriodLabel(chargeCall)).append("\n");
+        body.append("Date d'échéance : ").append(chargeCall.getDueDate()).append("\n");
+        body.append("Montant restant à payer : ").append(item.getRemainingAmount()).append(" FCFA\n");
+        return body.toString();
+    }
+
+
+    // Calcule le statut de l'appel à la volée : SETTLED, PARTIAL ou SENT (jamais stocké en base)
+    private ChargeCallStatus calculateChargeCallStatus(ChargeCall chargeCall) {
+
+        boolean allSettled = chargeCall.getItems().stream()
+                .allMatch(item -> item.getPaidAmount().compareTo(item.getQuotePart()) >= 0);
+
+        if (allSettled) {
+            return ChargeCallStatus.SETTLED;
+        }
+
+        boolean hasAtLeastOnePayment = chargeCall.getItems().stream()
+                .anyMatch(item -> item.getPaidAmount().compareTo(BigDecimal.ZERO) > 0);
+
+        if (hasAtLeastOnePayment) {
+            return ChargeCallStatus.PARTIAL;
+        }
+
+        return ChargeCallStatus.SENT;
+    }
+
+    // Construit une ligne d'historique à partir d'un ActivityLog
+    private HistoryItemDTO buildBudgetHistoryItem(ActivityLog log) {
+
+        return HistoryItemDTO.builder()
+                .actorName(log.getActor() != null
+                        ? log.getActor().getFirstName() + " " + log.getActor().getLastName() : "Système")
+                .message(log.getMessage())
+                .date(log.getCreatedAt())
+                .build();
+    }
+    private String buildChargeCallEmailBody(ChargeCall chargeCall, ChargeCallItem item) {
+        StringBuilder body = new StringBuilder();
+        body.append("Appel de charges\n\n");
+        body.append("Résidence : ").append(chargeCall.getBudget().getResidence().getName()).append("\n");
+        body.append("Période : ").append(chargeCall.getPeriodNumber()).append("/").append(chargeCall.getYear()).append("\n");
+        body.append("Date d'échéance : ").append(chargeCall.getDueDate()).append("\n");
+        body.append("Votre quote-part : ").append(item.getQuotePart()).append("\n");
+        body.append("Montant restant à payer : ").append(item.getRemainingAmount()).append("\n");
+        return body.toString();
+    }
+
+
+    // Construit une ligne du tableau des postes : montant réel calculé via les interventions
+    // si le poste est lié à un bien commun, sinon via les demandes de retrait validées liées au poste
+    private BudgetItemOverviewDTO buildItemOverview(BudgetItem item, BigDecimal budgetTotal, Integer annee) {
+        BudgetItemOverviewDTO itemDto = new BudgetItemOverviewDTO();
+        itemDto.setLibelle(item.getLibelle());
+        itemDto.setMontantPrevu(item.getMontant());
+
+        BigDecimal montantReel;
+
+        if (item.getCommonFacility() != null) {
+            // Poste lié à un bien commun : dépense réelle calculée via les interventions de cet équipement
+            montantReel = calculerDepensesReellesParEquipement(item.getCommonFacility(), annee);
+        } else {
+            // Poste sans bien commun : dépense réelle calculée via les demandes de retrait validées liées à ce poste
+            montantReel = syndicWithdrawalRequestRepository.sumCompletedByBudgetItem(item.getId());
+        }
+
+        itemDto.setMontantReel(montantReel);
+        itemDto.setEcart(item.getMontant().subtract(montantReel));
+
+        // Pourcentage du poste par rapport au budget total
+        itemDto.setPercentage(calculatePercentage(item.getMontant(), budgetTotal));
+
+        return itemDto;
+    }
+
+    // Calcule les dépenses réelles d'un équipement commun, pour une année donnée
+    private BigDecimal calculerDepensesReellesParEquipement(CommonFacility facility, Integer annee) {
+
+        LocalDateTime debutAnnee = LocalDateTime.of(annee, 1, 1, 0, 0);
+        LocalDateTime finAnnee = LocalDateTime.of(annee + 1, 1, 1, 0, 0);
+
+        return syndicWalletTransactionRepository
+                .sumByCommonFacilityAndPeriod(facility.getId(), debutAnnee, finAnnee);
+    }
+
+
+    // Construit la carte d'un seul budget — extrait dans sa propre méthode pour rester lisible
+    private BudgetCardDTO buildBudgetCard(Budget budget) {
+
+        // Crée le DTO de carte vide
+        BudgetCardDTO dto = new BudgetCardDTO();
+        // Renseigne l'identifiant du budget
+        dto.setId(budget.getId());
+        // Renseigne la référence (ex: BUD-2026-001)
+        dto.setReference(budget.getReference());
+        // Renseigne le statut sous forme de texte (DRAFT, ACTIVE, CLOSED)
+        dto.setStatus(budget.getStatus().name());
+        // Renseigne l'année du budget
+        dto.setAnnee(budget.getAnnee());
+        // Renseigne le nom de la résidence liée au budget
+        dto.setResidenceName(budget.getResidence().getName());
+        // Renseigne le libellé du mode de répartition (fixe en V1, un seul mode actif)
+        dto.setRepartitionModeLabel("Tantièmes");
+
+        // Récupère la liste des postes budgétaires du budget
+        List<BudgetItem> items = budget.getItems();
+        // Renseigne le nombre total de postes
+        dto.setTotalPostes(items.size());
+        // Renseigne le montant total du budget
+        dto.setBudgetTotal(budget.getBudgetTotal());
+
+        // Prend les 4 premiers postes et les transforme en aperçus
+        List<BudgetItemPreviewDTO> topItems = items.stream() // ouvre un flux sur la liste des postes
+                .limit(4) // garde uniquement les 4 premiers éléments du flux
+                .map(item -> buildItemPreview(item, budget.getBudgetTotal())) // transforme chaque poste en DTO d'aperçu
+                .toList(); // rassemble les résultats dans une nouvelle liste
+
+        // Renseigne les 4 postes affichés sur la carte
+        dto.setTopItems(topItems);
+        // Calcule combien de postes restent au-delà des 4 déjà affichés (jamais négatif)
+        dto.setAutresPostesCount(Math.max(0, items.size() - 4));
+
+        // Récupère toutes les transactions TRAVAUX de cette résidence pour l'année du budget (on cherche les dépenses réelles)
+        List<SyndicWalletTransaction> transactionsTravaux = syndicWalletTransactionRepository
+                .findTravauxByResidenceAndYear(budget.getResidence().getId(), budget.getAnnee());
+
+        // Additionne tous les montants de la liste (chaque montant est négatif en base, sortie d'argent)
+        BigDecimal depensesBrutes = transactionsTravaux.stream()
+                .map(SyndicWalletTransaction::getAmount) // récupère le montant de chaque transaction
+                .reduce(BigDecimal.ZERO, BigDecimal::add); // additionne tous les montants, en partant de 0
+
+        // Convertit la somme en valeur positive pour l'affichage
+        BigDecimal depensesReelles = depensesBrutes.abs();
+        // Renseigne les dépenses réelles globales du budget
+        dto.setDepensesReelles(depensesReelles);
+
+        // Calcule le pourcentage de consommation du budget (dépenses réelles / budget total) * 100
+        int consommationPercentage = calculatePercentage(depensesReelles, budget.getBudgetTotal());
+        // Renseigne ce pourcentage dans le DTO
+        dto.setDepensesReellesPercentage(consommationPercentage);
+
+        // Retourne la carte complète
+        return dto;
+    }
+
+    // Construit un poste d'aperçu (libellé, montant, pourcentage) pour une ligne de la carte
+    private BudgetItemPreviewDTO buildItemPreview(BudgetItem item, BigDecimal budgetTotal) {
+        // Crée le DTO de poste vide
+        BudgetItemPreviewDTO itemDto = new BudgetItemPreviewDTO();
+        // Renseigne le libellé du poste
+        itemDto.setLibelle(item.getLibelle());
+        // Renseigne le montant du poste
+        itemDto.setMontant(item.getMontant());
+        // Renseigne le pourcentage du poste par rapport au budget total (sert à dessiner la barre)
+        itemDto.setPercentage(calculatePercentage(item.getMontant(), budgetTotal));
+        // Retourne le poste construit
+        return itemDto;
+    }
+
+    // Calcule un pourcentage (montant / total * 100), protégé contre la division par zéro
+    private int calculatePercentage(BigDecimal montant, BigDecimal total) {
+        // Si le total est nul ou négatif, on retourne 0 pour éviter une division par zéro
+        if (total.compareTo(BigDecimal.ZERO) <= 0) {
+            return 0;
+        }
+        // Multiplie le montant par 100, divise par le total, arrondit à l'entier le plus proche
+        return montant.multiply(BigDecimal.valueOf(100))
+                .divide(total, 0, RoundingMode.HALF_UP)
+                .intValue();
+    }
+
+    /**
+     * Helper method — convertit ExceptionalCall entity en ExceptionalCallDetailDTO
+     * Réutilisé par createExceptionalCall, updateExceptionalCallFinancialInfo et activateExceptionalCall
+     */
+    private ExceptionalCallDetailDTO toExceptionalCallDetailDTO(ExceptionalCall exceptionalCall) {
+        // Construire la liste des items (quote-parts par copropriétaire)
+        List<ExceptionalCallItemDTO> itemDTOs = new ArrayList<>();
+        for (ExceptionalCallItem item : exceptionalCall.getItems()) {
+            String coOwnerName = item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName();
+            ExceptionalCallItemDTO itemDTO = ExceptionalCallItemDTO.builder()
+                    .id(item.getId())
+                    .coOwnerId(item.getCoOwner().getId())
+                    .coOwnerName(coOwnerName)
+                    .tantieme(item.getTantieme())
+                    .quotePart(item.getQuotePart())
+                    .paidAmount(item.getPaidAmount())
+                    .build();
+            itemDTOs.add(itemDTO);
+        }
+
+        // Construire la liste des documents
+        List<ExceptionalCallDocumentDTO> documentDTOs = new ArrayList<>();
+        for (ExceptionalCallDocument doc : exceptionalCall.getDocuments()) {
+            Double fileSizeMb = doc.getFileSizeKb() != null
+                    ? doc.getFileSizeKb() / 1024.0
+                    : 0.0;
+            ExceptionalCallDocumentDTO docDTO = ExceptionalCallDocumentDTO.builder()
+                    .id(doc.getId())
+                    .fileName(doc.getFileName())
+                    .fileUrl(doc.getFileName())
+                    .fileSizeMb(fileSizeMb)
+                    .createdAt(doc.getCreatedAt())
+                    .build();
+            documentDTOs.add(docDTO);
+        }
+
+        // Construire le DTO principal
+        String syndicName = exceptionalCall.getSyndic().getFirstName() + " " + exceptionalCall.getSyndic().getLastName();
+
+        return ExceptionalCallDetailDTO.builder()
+                .id(exceptionalCall.getId())
+                .residenceId(exceptionalCall.getResidence().getId())
+                .residenceName(exceptionalCall.getResidence().getName())
+                .syndicId(exceptionalCall.getSyndic().getId())
+                .syndicName(syndicName)
+                .category(exceptionalCall.getCategory())
+                .title(exceptionalCall.getTitle())
+                .description(exceptionalCall.getDescription())
+                .totalAmount(exceptionalCall.getTotalAmount())
+                .repartitionMode(exceptionalCall.getRepartitionMode())
+                .items(itemDTOs)
+                .requiresAgValidation(exceptionalCall.getRequiresAgValidation())
+                .status(exceptionalCall.getStatus())
+                .documents(documentDTOs)
+                .createdAt(exceptionalCall.getCreatedAt())
+                .build();
+    }
+    // ============================================================
+    // MÉTHODE HELPER — RÉCUPÉRER L'UTILISATEUR CONNECTÉ
     // ============================================================
 
     private User getCurrentUser() {
@@ -442,8 +2083,8 @@ public class ChargeServiceImpl implements ChargeService {
     }
 
     // ============================================================
-    // 4. HELPER — Construction du détail complet du budget
-   // ============================================================
+    //  HELPER — Construction du détail complet du budget
+    // ============================================================
 
     private BudgetDetailDTO buildBudgetDetailDTO(Budget budget) {
 
@@ -649,8 +2290,8 @@ public class ChargeServiceImpl implements ChargeService {
 
                 .toList();
 
-         // ------------------------------------------------------------
-         // ÉTAPE 4.7 — Construire le DTO final
+        // ------------------------------------------------------------
+        // ÉTAPE 4.7 — Construire le DTO final
         // ------------------------------------------------------------
         return BudgetDetailDTO.builder()
 
@@ -677,629 +2318,36 @@ public class ChargeServiceImpl implements ChargeService {
 
 
     }
+    // Construit un DTO d'appel de charges lié à un budget
+    private BudgetLinkedChargeCallDTO buildBudgetLinkedChargeCallDto(ChargeCall chargeCall) {
+
+        BudgetLinkedChargeCallDTO dto = new BudgetLinkedChargeCallDTO();
+        dto.setId(chargeCall.getId());
+        dto.setPeriodLabel(buildPeriodLabel(chargeCall));
+        dto.setTotalAmount(chargeCall.getTotalAmount());
+        dto.setStatus(chargeCall.getStatus().name());
+        dto.setSentDate(chargeCall.getSentDate());
+        dto.setDueDate(chargeCall.getDueDate());
 
-    // ============================================================
-    // APPEL DE CHARGES
-    // ============================================================
-
-    /**
-     * Aperçu avant génération d'un appel de charges.
-     * Retourne les données calculées sans rien créer en base.
-     */
-    @Override
-    public ChargeCallPreviewDTO previewChargeCall(Long budgetId, Integer periodNumber) {
-        // 1. Récupérer le budget et vérifier l'appartenance au syndic
-        Budget budget = budgetRepository.findById(budgetId)
-                .orElseThrow(() -> new RuntimeException("Budget non trouvé"));
-
-        User currentSyndic = getCurrentUser();
-        if (!budget.getSyndic().getId().equals(currentSyndic.getId())) {
-            throw new ForbiddenException("Ce budget ne vous appartient pas");
-        }
-
-        // 2. Récupérer la fréquence depuis les paramètres du syndic
-        SyndicFinancialSettings settings = syndicFinancialSettingsRepository.findBySyndicId(currentSyndic.getId())
-                .orElseThrow(() -> new RuntimeException("Paramètres financiers non trouvés"));
-        ChargeFrequency frequency = settings.getChargeFrequency();
-
-        // 3. Déterminer le nombre de périodes (4 si trimestriel, 12 si mensuel)
-        int numberOfPeriods;
-        if (frequency == ChargeFrequency.TRIMESTRIEL) {
-            numberOfPeriods = 4;
-        } else {
-            numberOfPeriods = 12;
-        }
-
-        // 4. Vérifier qu'aucun ChargeCall n'existe déjà pour cette période
-        chargeCallRepository.findByBudgetIdAndYearAndPeriodNumber(budgetId, budget.getAnnee(), periodNumber)
-                .ifPresent(chargeCall -> {
-                    throw new RuntimeException("Un appel de charges existe déjà pour cette période");
-                });
-
-        // 5. Calculer le montant total de la période (budget / nombre de périodes)
-        BigDecimal totalAmount = budget.getBudgetTotal()
-                .divide(BigDecimal.valueOf(numberOfPeriods), 2, RoundingMode.HALF_UP);
-
-        // 6. Construire la répartition par copropriétaire (fusionné par owner)
-        List<Property> properties = propertyRepository.findByResidenceId(budget.getResidence().getId());
-        List<CoOwnerQuotePartPreviewDTO> repartition = new ArrayList<>();
-        BigDecimal totalTantieme = BigDecimal.ZERO;
-
-        for (Property property : properties) {
-            if (property.getOwner() != null) {
-                // Vérifier si le copropriétaire est déjà dans la liste
-                boolean alreadyAdded = false;
-                for (CoOwnerQuotePartPreviewDTO item : repartition) {
-                    if (item.getCoOwnerId().equals(property.getOwner().getId())) {
-                        alreadyAdded = true;
-                        break;
-                    }
-                }
-
-                if (!alreadyAdded) {
-                    // Calculer le tantième total de ce copropriétaire (somme de ses lots)
-                    BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-                    for (Property p : properties) {
-                        if (p.getOwner() != null && p.getOwner().getId().equals(property.getOwner().getId())) {
-                            tantiemeCoOwner = tantiemeCoOwner.add(
-                                    p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO
-                            );
-                        }
-                    }
-
-                    // Calculer la quote-part (totalAmount * tantieme / 100)
-                    BigDecimal quotePart = totalAmount.multiply(tantiemeCoOwner)
-                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-
-                    CoOwnerQuotePartPreviewDTO item = CoOwnerQuotePartPreviewDTO.builder()
-                            .coOwnerId(property.getOwner().getId())
-                            .coOwnerName(property.getOwner().getFirstName() + " " + property.getOwner().getLastName())
-                            .tantieme(tantiemeCoOwner)
-                            .quotePart(quotePart)
-                            .build();
-
-                    repartition.add(item);
-                    totalTantieme = totalTantieme.add(tantiemeCoOwner);
-                }
-            }
-        }
-
-        // 7. Construire et retourner l'aperçu
-        return ChargeCallPreviewDTO.builder()
-                .budgetReference("BUD-" + budget.getAnnee())
-                .residenceName(budget.getResidence().getName())
-                .year(budget.getAnnee())
-                .periodNumber(periodNumber)
-                .totalAmount(totalAmount)
-                .repartition(repartition)
-                .totalTantieme(totalTantieme)
-                .coOwnersCount(repartition.size())
-                .build();
-    }
-
-    /**
-     * Génère un appel de charges et envoie les emails aux copropriétaires.
-     */
-    @Override
-    @Transactional
-    public void generateChargeCall(Long budgetId, GenerateChargeCallDTO dto) {
-        // 1. Récupérer le budget et vérifier l'appartenance au syndic
-        Budget budget = budgetRepository.findById(budgetId)
-                .orElseThrow(() -> new RuntimeException("Budget non trouvé"));
-
-        User currentSyndic = getCurrentUser();
-        if (!budget.getSyndic().getId().equals(currentSyndic.getId())) {
-            throw new ForbiddenException("Ce budget ne vous appartient pas");
-        }
-
-        // 2. Vérifier qu'aucun ChargeCall n'existe déjà pour cette période
-        chargeCallRepository.findByBudgetIdAndYearAndPeriodNumber(budgetId, budget.getAnnee(), dto.getPeriodNumber())
-                .ifPresent(chargeCall -> {
-                    throw new RuntimeException("Un appel de charges existe déjà pour cette période");
-                });
-
-        // 3. Récupérer la fréquence et recalculer le montant total (jamais faire confiance au front)
-        SyndicFinancialSettings settings = syndicFinancialSettingsRepository.findBySyndicId(currentSyndic.getId())
-                .orElseThrow(() -> new RuntimeException("Paramètres financiers non trouvés"));
-        ChargeFrequency frequency = settings.getChargeFrequency();
-
-        int numberOfPeriods;
-        if (frequency == ChargeFrequency.TRIMESTRIEL) {
-            numberOfPeriods = 4;
-        } else {
-            numberOfPeriods = 12;
-        }
-
-        BigDecimal totalAmount = budget.getBudgetTotal()
-                .divide(BigDecimal.valueOf(numberOfPeriods), 2, RoundingMode.HALF_UP);
-
-        // 4. Créer le ChargeCall avec les paramètres
-        ChargeCall chargeCall = new ChargeCall();
-        chargeCall.setBudget(budget);
-        chargeCall.setFrequency(frequency);
-        chargeCall.setYear(budget.getAnnee());
-        chargeCall.setPeriodNumber(dto.getPeriodNumber());
-        chargeCall.setRepartitionMode(budget.getRepartitionMode());
-        chargeCall.setTotalAmount(totalAmount);
-        chargeCall.setSentDate(dto.getSentDate());
-        chargeCall.setDueDate(dto.getDueDate());
-
-        // 5. Créer les ChargeCallItem pour chaque copropriétaire (fusionné par owner)
-        List<Property> properties = propertyRepository.findByResidenceId(budget.getResidence().getId());
-        List<ChargeCallItem> items = new ArrayList<>();
-
-        for (Property property : properties) {
-            if (property.getOwner() != null) {
-                // Vérifier si le copropriétaire a déjà un item
-                boolean alreadyAdded = false;
-                for (ChargeCallItem item : items) {
-                    if (item.getCoOwner().getId().equals(property.getOwner().getId())) {
-                        alreadyAdded = true;
-                        break;
-                    }
-                }
-
-                if (!alreadyAdded) {
-                    // Calculer le tantième total de ce copropriétaire (somme de ses lots)
-                    BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-                    for (Property p : properties) {
-                        if (p.getOwner() != null && p.getOwner().getId().equals(property.getOwner().getId())) {
-                            tantiemeCoOwner = tantiemeCoOwner.add(
-                                    p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO
-                            );
-                        }
-                    }
-
-                    // Calculer la quote-part (totalAmount * tantieme / 100)
-                    BigDecimal quotePart = totalAmount.multiply(tantiemeCoOwner)
-                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-
-                    // Générer la référence
-                    String reference = "ACI-" + budget.getAnnee() + "-" + dto.getPeriodNumber() + "-" + property.getOwner().getId();
-
-                    ChargeCallItem item = new ChargeCallItem();
-                    item.setChargeCall(chargeCall);
-                    item.setReference(reference);
-                    item.setCoOwner(property.getOwner());
-                    item.setTantieme(tantiemeCoOwner);
-                    item.setQuotePart(quotePart);
-                    item.setPaidAmount(BigDecimal.ZERO);
-                    item.setRemainingAmount(quotePart);
-
-                    items.add(item);
-                }
-            }
-        }
-
-        chargeCall.setItems(items);
-        ChargeCall savedChargeCall = chargeCallRepository.save(chargeCall);
-
-        // 6. Envoi des emails et notifications push aux copropriétaires (non-bloquant)
-        for (ChargeCallItem item : items) {
-            try {
-                // Email
-                String subject = "Appel de charges — " + budget.getResidence().getName();
-                String body = buildChargeCallEmailBody(savedChargeCall, item);
-                emailService.sendEmail(item.getCoOwner().getEmail(), subject, body);
-            } catch (Exception e) {
-                // Log l'erreur mais ne pas bloquer la génération
-                System.err.println("Erreur envoi email à " + item.getCoOwner().getEmail() + ": " + e.getMessage());
-            }
-
-            try {
-                // Notification push si activée
-                if (item.getCoOwner().isNotificationsEnabled()) {
-                    String title = "Appel de charges";
-                    String body = savedChargeCall.getBudget().getResidence().getName() + " — " + savedChargeCall.getPeriodNumber() + "/" + savedChargeCall.getYear();
-                    notificationService.sendPush(item.getCoOwner().getId(), title, body);
-                }
-            } catch (Exception e) {
-                // Log l'erreur mais ne pas bloquer la génération
-                System.err.println("Erreur envoi notification à " + item.getCoOwner().getId() + ": " + e.getMessage());
-            }
-        }
-    }
-
-    private String buildChargeCallEmailBody(ChargeCall chargeCall, ChargeCallItem item) {
-        StringBuilder body = new StringBuilder();
-        body.append("Appel de charges\n\n");
-        body.append("Résidence : ").append(chargeCall.getBudget().getResidence().getName()).append("\n");
-        body.append("Période : ").append(chargeCall.getPeriodNumber()).append("/").append(chargeCall.getYear()).append("\n");
-        body.append("Date d'échéance : ").append(chargeCall.getDueDate()).append("\n");
-        body.append("Votre quote-part : ").append(item.getQuotePart()).append("\n");
-        body.append("Montant restant à payer : ").append(item.getRemainingAmount()).append("\n");
-        return body.toString();
-    }
-
-    // ============================================================
-    // APPEL DE CHARGES EXCEPTIONNEL
-    // ============================================================
-
-    /**
-     * Créer un Appel Exceptionnel — Section 1 (Informations générales)
-     * Crée l'entité en statut BROUILLON, complétée par les sections suivantes
-     */
-    @Transactional
-    public ExceptionalCallDetailDTO createExceptionalCall(CreateExceptionalCallDTO dto) {
-
-        // Récupérer le syndic connecté — méthode déjà existante dans ChargeServiceImpl
-        User currentSyndic = getCurrentUser();
-
-        // Vérifier que la résidence appartient bien à ce syndic
-        Residence residence = residenceRepository.findById(dto.getResidenceId())
-                .orElseThrow(() -> new RuntimeException("Résidence introuvable"));
-
-        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
-            throw new ForbiddenException("Cette résidence ne vous appartient pas");
-        }
-
-        // Créer l'Appel Exceptionnel en BROUILLON — complété par les sections suivantes
-        ExceptionalCall exceptionalCall = new ExceptionalCall();
-        exceptionalCall.setResidence(residence);
-        exceptionalCall.setSyndic(currentSyndic);
-        exceptionalCall.setCategory(dto.getCategory());
-        exceptionalCall.setTitle(dto.getTitle());
-        exceptionalCall.setDescription(dto.getDescription());
-        exceptionalCall.setStatus(ExceptionalCallStatus.DRAFT);
-
-        ExceptionalCall saved = exceptionalCallRepository.save(exceptionalCall);
-
-        return toExceptionalCallDetailDTO(saved);
-    }
-
-    /**
-     * Compléter un Appel Exceptionnel — Section 2 (Informations financières)
-     * Définit le montant total et la répartition (tantièmes ou personnalisée)
-     */
-    @Transactional
-    public ExceptionalCallDetailDTO updateExceptionalCallFinancialInfo(Long exceptionalCallId, UpdateExceptionalCallFinancialDTO dto) {
-
-        User currentSyndic = getCurrentUser();
-
-        ExceptionalCall exceptionalCall = exceptionalCallRepository.findById(exceptionalCallId)
-                .orElseThrow(() -> new RuntimeException("Appel exceptionnel introuvable"));
-
-        if (!exceptionalCall.getSyndic().getId().equals(currentSyndic.getId())) {
-            throw new ForbiddenException("Cet appel exceptionnel ne vous appartient pas");
-        }
-
-        exceptionalCall.setTotalAmount(dto.getTotalAmount());
-        exceptionalCall.setRepartitionMode(dto.getRepartitionMode());
-
-        // Si cette section est modifiée après un premier passage, on repart de zéro sur les items
-        exceptionalCall.getItems().clear();
-
-        List<Property> properties = propertyRepository.findByResidenceId(exceptionalCall.getResidence().getId());
-
-        if (dto.getRepartitionMode() == RepartitionMode.OWNERSHIP_SHARES) {
-            // Calcul automatique par tantième — même logique de fusion par copropriétaire
-            // déjà utilisée dans previewChargeCall/generateChargeCall (un copropriétaire
-            // avec plusieurs lots dans la résidence = une seule ligne, tantièmes additionnés)
-            List<Long> alreadyAddedOwnerIds = new ArrayList<>();
-
-            for (Property property : properties) {
-                if (property.getOwner() == null) continue;
-
-                Long ownerId = property.getOwner().getId();
-                boolean alreadyAdded = false;
-                for (Long addedId : alreadyAddedOwnerIds) {
-                    if (addedId.equals(ownerId)) {
-                        alreadyAdded = true;
-                        break;
-                    }
-                }
-                if (alreadyAdded) continue;
-
-                // Additionner les tantièmes de tous les lots de ce copropriétaire
-                BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-                for (Property p : properties) {
-                    if (p.getOwner() != null && p.getOwner().getId().equals(ownerId)) {
-                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO);
-                    }
-                }
-
-                // Quote-part = montant total × (tantième du copropriétaire / 100)
-                BigDecimal quotePart = dto.getTotalAmount()
-                        .multiply(tantiemeCoOwner)
-                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-
-                ExceptionalCallItem item = new ExceptionalCallItem();
-                item.setExceptionalCall(exceptionalCall);
-                item.setCoOwner(property.getOwner());
-                item.setTantieme(tantiemeCoOwner);
-                item.setQuotePart(quotePart);
-                exceptionalCall.getItems().add(item);
-
-                alreadyAddedOwnerIds.add(ownerId);
-            }
-
-        } else {
-            // Mode CUSTOM — le syndic a saisi manuellement chaque montant, pas de calcul
-            if (dto.getCustomAmounts() == null || dto.getCustomAmounts().isEmpty()) {
-                throw new BadRequestException("Saisissez un montant pour chaque copropriétaire en mode Personnalisée");
-            }
-
-            for (CustomCoOwnerAmountDTO customAmount : dto.getCustomAmounts()) {
-                User coOwner = userRepository.findById(customAmount.getCoOwnerId())
-                        .orElseThrow(() -> new RuntimeException("Copropriétaire introuvable"));
-
-                // Snapshotter le tantième même en mode personnalisé, pour affichage/référence uniquement
-                BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-                for (Property p : properties) {
-                    if (p.getOwner() != null && p.getOwner().getId().equals(customAmount.getCoOwnerId())) {
-                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO);
-                    }
-                }
-
-                ExceptionalCallItem item = new ExceptionalCallItem();
-                item.setExceptionalCall(exceptionalCall);
-                item.setCoOwner(coOwner);
-                item.setTantieme(tantiemeCoOwner);
-                item.setQuotePart(customAmount.getAmount()); // montant saisi manuellement, pas calculé
-                exceptionalCall.getItems().add(item);
-            }
-        }
-
-        ExceptionalCall saved = exceptionalCallRepository.save(exceptionalCall);
-
-        return toExceptionalCallDetailDTO(saved);
-    }
-
-    /**
-     * Activer un Appel Exceptionnel — Section 3 (Validation & Documents)
-     * Combine l'upload des documents et le changement de statut dans la même transaction
-     */
-    @Transactional
-    public ExceptionalCallDetailDTO activateExceptionalCall(Long exceptionalCallId, Boolean requiresAgValidation, List<MultipartFile> files) {
-
-        User currentSyndic = getCurrentUser();
-
-        ExceptionalCall exceptionalCall = exceptionalCallRepository.findById(exceptionalCallId)
-                .orElseThrow(() -> new RuntimeException("Appel exceptionnel introuvable"));
-
-        if (!exceptionalCall.getSyndic().getId().equals(currentSyndic.getId())) {
-            throw new ForbiddenException("Cet appel exceptionnel ne vous appartient pas");
-        }
-
-        // Vérifications avant activation — le montant et la répartition doivent déjà être renseignés
-        if (exceptionalCall.getTotalAmount() == null || exceptionalCall.getItems().isEmpty()) {
-            throw new BadRequestException("Complétez les informations financières avant d'activer");
-        }
-
-        // Uploader chaque document déposé, s'il y en a — dans la même transaction que l'activation
-        // (si un upload échoue, tout est annulé, y compris le changement de statut — cohérent avec
-        // le fait que documents et activation sont maintenant une seule action indivisible)
-        if (files != null) {
-            for (MultipartFile file : files) {
-                String fileUrl = minioService.uploadFile(file, "exceptional-calls");
-
-                ExceptionalCallDocument document = new ExceptionalCallDocument();
-                document.setExceptionalCall(exceptionalCall);
-                document.setFileName(file.getOriginalFilename());
-                document.setFileUrl(fileUrl);
-                document.setFileSizeKb(file.getSize() / 1024);
-
-                exceptionalCall.getDocuments().add(document);
-            }
-        }
-
-        exceptionalCall.setRequiresAgValidation(requiresAgValidation);
-
-        // Décision Option A : pas de lien vers une AG ici, juste le statut qui reflète
-        // si une validation est requise ou non — le rattachement à une résolution
-        // se fera plus tard, depuis le côté Resolution (chantier séparé).
-        if (requiresAgValidation) {
-            exceptionalCall.setStatus(ExceptionalCallStatus.DRAFT);
-        } else {
-            exceptionalCall.setStatus(ExceptionalCallStatus.ACTIVE);
-            // IMPORTANT — pas de génération de ChargeCall ici pour l'instant (décision volontaire,
-            // en attente de confirmation sur ce comportement). L'Appel Exceptionnel reste autonome,
-            // suivi uniquement via ses propres ExceptionalCallItem — il n'apparaît PAS encore dans
-            // les écrans Finances/Paiements déjà construits pour les charges normales. Si ce lien
-            // est confirmé nécessaire plus tard, ce sera un chantier séparé et explicite, pas ajouté
-            // implicitement ici.
-        }
-
-        ExceptionalCall saved = exceptionalCallRepository.save(exceptionalCall);
-
-        return toExceptionalCallDetailDTO(saved);
-    }
-
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<CommonFacilitySuggestionDTO> searchCommonFacilities(Long residenceId, String q) {
-        // Récupérer la résidence
-        Residence residence = residenceRepository.findById(residenceId)
-                .orElseThrow(() -> new RuntimeException("Résidence introuvable"));
-
-        // Vérifier que le syndic est bien le propriétaire de la résidence
-        User currentSyndic = getCurrentUser();
-        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
-            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
-        }
-
-        // Récupérer les équipements communs
-        List<CommonFacility> facilities;
-        if (q == null || q.trim().isEmpty()) {
-            facilities = commonFacilityRepository.findByResidenceId(residenceId);
-        } else {
-            facilities = commonFacilityRepository.findByResidenceIdAndFacilityTypeNameContainingIgnoreCase(residenceId, q.trim());
-        }
-
-        // Mapper vers DTO
-        List<CommonFacilitySuggestionDTO> result = new ArrayList<>();
-        for (CommonFacility facility : facilities) {
-            CommonFacilitySuggestionDTO dto = CommonFacilitySuggestionDTO.builder()
-                    .id(facility.getId())
-                    .name(facility.getFacilityType().getName())
-                    .icon(facility.getFacilityType().getIcon())
-                    .build();
-            result.add(dto);
-        }
-
-        return result;
-    }
-
-    // ============================================================
-    // Méthodes Utilitaires
-    // ============================================================
-
-    // Construit une ligne du tableau des postes (montantReel = montantPrevu en V1)
-    private BudgetItemOverviewDTO buildItemOverview(BudgetItem item, BigDecimal budgetTotal) {
-        BudgetItemOverviewDTO itemDto = new BudgetItemOverviewDTO();
-        itemDto.setLibelle(item.getLibelle());
-        itemDto.setMontantPrevu(item.getMontant());
-
-        // V1 : montant réel = montant prévu (voir commentaire de justification dans le DTO)
-        itemDto.setMontantReel(item.getMontant());
-        itemDto.setEcart(BigDecimal.ZERO);
-
-        // Pourcentage du poste par rapport au budget total
-        itemDto.setPercentage(calculatePercentage(item.getMontant(), budgetTotal));
-
-        return itemDto;
-    }
-
-    // Construit la carte d'un seul budget — extrait dans sa propre méthode pour rester lisible
-    private BudgetCardDTO buildBudgetCard(Budget budget) {
-
-        // Crée le DTO de carte vide
-        BudgetCardDTO dto = new BudgetCardDTO();
-        // Renseigne l'identifiant du budget
-        dto.setId(budget.getId());
-        // Renseigne la référence (ex: BUD-2026-001)
-        dto.setReference(budget.getReference());
-        // Renseigne le statut sous forme de texte (DRAFT, ACTIVE, CLOSED)
-        dto.setStatus(budget.getStatus().name());
-        // Renseigne l'année du budget
-        dto.setAnnee(budget.getAnnee());
-        // Renseigne le nom de la résidence liée au budget
-        dto.setResidenceName(budget.getResidence().getName());
-        // Renseigne le libellé du mode de répartition (fixe en V1, un seul mode actif)
-        dto.setRepartitionModeLabel("Tantièmes");
-
-        // Récupère la liste des postes budgétaires du budget
-        List<BudgetItem> items = budget.getItems();
-        // Renseigne le nombre total de postes
-        dto.setTotalPostes(items.size());
-        // Renseigne le montant total du budget
-        dto.setBudgetTotal(budget.getBudgetTotal());
-
-        // Prend les 4 premiers postes et les transforme en aperçus
-        List<BudgetItemPreviewDTO> topItems = items.stream() // ouvre un flux sur la liste des postes
-                .limit(4) // garde uniquement les 4 premiers éléments du flux
-                .map(item -> buildItemPreview(item, budget.getBudgetTotal())) // transforme chaque poste en DTO d'aperçu
-                .toList(); // rassemble les résultats dans une nouvelle liste
-
-        // Renseigne les 4 postes affichés sur la carte
-        dto.setTopItems(topItems);
-        // Calcule combien de postes restent au-delà des 4 déjà affichés (jamais négatif)
-        dto.setAutresPostesCount(Math.max(0, items.size() - 4));
-
-        // Récupère toutes les transactions TRAVAUX de cette résidence pour l'année du budget
-        List<SyndicWalletTransaction> transactionsTravaux = syndicWalletTransactionRepository
-                .findTravauxByResidenceAndYear(budget.getResidence().getId(), budget.getAnnee());
-
-        // Additionne tous les montants de la liste (chaque montant est négatif en base, sortie d'argent)
-        BigDecimal depensesBrutes = transactionsTravaux.stream()
-                .map(SyndicWalletTransaction::getAmount) // récupère le montant de chaque transaction
-                .reduce(BigDecimal.ZERO, BigDecimal::add); // additionne tous les montants, en partant de 0
-
-        // Convertit la somme en valeur positive pour l'affichage
-        BigDecimal depensesReelles = depensesBrutes.abs();
-        // Renseigne les dépenses réelles globales du budget
-        dto.setDepensesReelles(depensesReelles);
-
-        // Calcule le pourcentage de consommation du budget (dépenses réelles / budget total)
-        int consommationPercentage = calculatePercentage(depensesReelles, budget.getBudgetTotal());
-        // Renseigne ce pourcentage dans le DTO
-        dto.setDepensesReellesPercentage(consommationPercentage);
-
-        // Retourne la carte complète
         return dto;
     }
 
-    // Construit un poste d'aperçu (libellé, montant, pourcentage) pour une ligne de la carte
-    private BudgetItemPreviewDTO buildItemPreview(BudgetItem item, BigDecimal budgetTotal) {
-        // Crée le DTO de poste vide
-        BudgetItemPreviewDTO itemDto = new BudgetItemPreviewDTO();
-        // Renseigne le libellé du poste
-        itemDto.setLibelle(item.getLibelle());
-        // Renseigne le montant du poste
-        itemDto.setMontant(item.getMontant());
-        // Renseigne le pourcentage du poste par rapport au budget total (sert à dessiner la barre)
-        itemDto.setPercentage(calculatePercentage(item.getMontant(), budgetTotal));
-        // Retourne le poste construit
-        return itemDto;
+    // Construit le libellé de période (ex: "T1 2026 (Jan-Mar)")
+    private String buildPeriodLabel(ChargeCall chargeCall) {
+        String periodLabel;
+        if (chargeCall.getFrequency() == ChargeFrequency.TRIMESTRIEL) {
+            String[] trimestres = {"T1 (Jan-Mar)", "T2 (Avr-Jui)", "T3 (Juil-Sep)", "T4 (Oct-Déc)"};
+            periodLabel = trimestres[chargeCall.getPeriodNumber() - 1] + " " + chargeCall.getYear();
+        } else {
+            // Mensuel
+            String[] mois = {"Jan", "Fév", "Mar", "Avr", "Mai", "Jui", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"};
+            periodLabel = mois[chargeCall.getPeriodNumber() - 1] + " " + chargeCall.getYear();
+        }
+        return periodLabel;
     }
 
-    // Calcule un pourcentage (montant / total * 100), protégé contre la division par zéro
-    private int calculatePercentage(BigDecimal montant, BigDecimal total) {
-        // Si le total est nul ou négatif, on retourne 0 pour éviter une division par zéro
-        if (total.compareTo(BigDecimal.ZERO) <= 0) {
-            return 0;
-        }
-        // Multiplie le montant par 100, divise par le total, arrondit à l'entier le plus proche
-        return montant.multiply(BigDecimal.valueOf(100))
-                .divide(total, 0, RoundingMode.HALF_UP)
-                .intValue();
-    }
 
-    /**
-     * Helper method — convertit ExceptionalCall entity en ExceptionalCallDetailDTO
-     * Réutilisé par createExceptionalCall, updateExceptionalCallFinancialInfo et activateExceptionalCall
-     */
-    private ExceptionalCallDetailDTO toExceptionalCallDetailDTO(ExceptionalCall exceptionalCall) {
-        // Construire la liste des items (quote-parts par copropriétaire)
-        List<ExceptionalCallItemDTO> itemDTOs = new ArrayList<>();
-        for (ExceptionalCallItem item : exceptionalCall.getItems()) {
-            String coOwnerName = item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName();
-            ExceptionalCallItemDTO itemDTO = ExceptionalCallItemDTO.builder()
-                    .id(item.getId())
-                    .coOwnerId(item.getCoOwner().getId())
-                    .coOwnerName(coOwnerName)
-                    .tantieme(item.getTantieme())
-                    .quotePart(item.getQuotePart())
-                    .paidAmount(item.getPaidAmount())
-                    .build();
-            itemDTOs.add(itemDTO);
-        }
 
-        // Construire la liste des documents
-        List<ExceptionalCallDocumentDTO> documentDTOs = new ArrayList<>();
-        for (ExceptionalCallDocument doc : exceptionalCall.getDocuments()) {
-            ExceptionalCallDocumentDTO docDTO = ExceptionalCallDocumentDTO.builder()
-                    .id(doc.getId())
-                    .fileName(doc.getFileName())
-                    .fileUrl(doc.getFileName())
-                    .fileSizeKb(doc.getFileSizeKb())
-                    .createdAt(doc.getCreatedAt())
-                    .build();
-            documentDTOs.add(docDTO);
-        }
-
-        // Construire le DTO principal
-        String syndicName = exceptionalCall.getSyndic().getFirstName() + " " + exceptionalCall.getSyndic().getLastName();
-
-        return ExceptionalCallDetailDTO.builder()
-                .id(exceptionalCall.getId())
-                .residenceId(exceptionalCall.getResidence().getId())
-                .residenceName(exceptionalCall.getResidence().getName())
-                .syndicId(exceptionalCall.getSyndic().getId())
-                .syndicName(syndicName)
-                .category(exceptionalCall.getCategory())
-                .title(exceptionalCall.getTitle())
-                .description(exceptionalCall.getDescription())
-                .totalAmount(exceptionalCall.getTotalAmount())
-                .repartitionMode(exceptionalCall.getRepartitionMode())
-                .items(itemDTOs)
-                .requiresAgValidation(exceptionalCall.getRequiresAgValidation())
-                .status(exceptionalCall.getStatus())
-                .documents(documentDTOs)
-                .createdAt(exceptionalCall.getCreatedAt())
-                .build();
-    }
 
 
 }

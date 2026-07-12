@@ -21,10 +21,10 @@ public interface SyndicOwnerService {
     void addCoOwner(CreateCoOwnerDTO dto, MultipartFile photo);
 
     /** Lister les biens disponibles (VACANT) d'une résidence */
-    List<PropertySummaryDTO> getAvailableProperties(Long residenceId);
+    Page<PropertySummaryDTO> getAvailableProperties(Long residenceId, Integer page, Integer size);
 
     /** Lister les résidences qui ont au moins un bien vacant */
-    List<ResidenceSummaryDTO> getResidencesWithVacantProperties();
+    Page<ResidenceSummaryDTO> getResidencesWithVacantProperties(Integer page, Integer size);
 
     /** Lister les copropriétaires des résidences du syndic connecté, avec recherche, filtre résidence et statut */
     Page<CoOwnerListDTO> getCoOwners(String search, Long residenceId, String status, Integer page, Integer size);
@@ -33,7 +33,7 @@ public interface SyndicOwnerService {
     CoOwnerDetailDTO getCoOwnerDetail(Long coOwnerId);
 
     /** Lister les lots d'un copropriétaire (onglet Appartements du détail) */
-    List<CoOwnerPropertyItemDTO> getCoOwnerProperties(Long coOwnerId);
+    Page<CoOwnerPropertyItemDTO> getCoOwnerProperties(Long coOwnerId, Integer page, Integer size);
 
     /** Finances d'un copropriétaire pour une résidence (onglet Finances du détail) */
     CoOwnerFinancesDTO getCoOwnerFinances(Long coOwnerId, Long residenceId);
@@ -48,7 +48,7 @@ public interface SyndicOwnerService {
     CoOwnerInterventionsResponseDTO getCoOwnerInterventions(Long coOwnerId);
 
     /** Documents d'un copropriétaire (onglet Documents du détail) */
-    List<CoOwnerDocumentItemDTO> getCoOwnerDocuments(Long coOwnerId, String category);
+    Page<CoOwnerDocumentItemDTO> getCoOwnerDocuments(Long coOwnerId, String category, Integer page, Integer size);
 
     /** Ajouter un document à un copropriétaire */
     CoOwnerDocumentItemDTO addDocument(Long coOwnerId, CoOwnerDocumentCategory category, String title, MultipartFile file);
@@ -57,7 +57,7 @@ public interface SyndicOwnerService {
     Page<ActivityLogItemDTO> getCoOwnerActivityLog(Long coOwnerId, Integer page, Integer size);
 
     /** Recherche un copropriétaire par nom complet, email ou téléphone — pour l'autocomplete */
-    List<CoOwnerSearchResultDTO> searchCoOwners(String q);
+    Page<CoOwnerSearchResultDTO> searchCoOwners(String q, Integer page, Integer size);
 
     /** Lier un copropriétaire existant au syndic connecté via la relation */
      void linkCoOwner(Long coOwnerId);

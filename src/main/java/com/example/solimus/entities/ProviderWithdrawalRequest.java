@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 
 // WithdrawalRequest.java — Demande de versement
 @Entity
-@Table(name = "provider_withdrawal_requests")
+@Table(name = "withdrawal_requests")
 @Data
 @Builder
 @NoArgsConstructor

@@ -11,10 +11,11 @@ public class BudgetItemOverviewDTO {
 
     private BigDecimal montantPrevu; // Montant prévu pour ce poste (BudgetItem.montant)
 
-    // VALEUR PROVISOIRE V1 : montantReel = montantPrevu (pas de vrai calcul par poste).
+    // Montant réellement dépensé : calculé via les interventions si poste lié à un bien commun,
+    // sinon via les demandes de retrait validées liées à ce poste
     private BigDecimal montantReel;
 
-    // VALEUR PROVISOIRE V1 : toujours 0 tant que montantReel = montantPrevu.
+    // Écart = montantPrevu - montantReel
     private BigDecimal ecart;
 
     // Pourcentage du poste par rapport au budget total = montantPrevu / budgetTotal * 100

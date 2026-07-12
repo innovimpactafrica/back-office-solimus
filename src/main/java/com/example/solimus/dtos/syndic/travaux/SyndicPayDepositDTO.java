@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 
-//DTO d'entrée pour payer un acompte depuis le wallet syndic
+//DTO d'entrée pour payer un acompte (ou un solde) d'une intervention
 @Data
 @Builder
 @NoArgsConstructor
@@ -19,4 +19,9 @@ public class SyndicPayDepositDTO {
     @NotNull(message = "Le montant est obligatoire")
     @Positive(message = "Le montant doit être positif")
     private BigDecimal montant;
+
+    // true  = payer depuis le Wallet SOLIMUS (débit interne synchrone du wallet syndic)
+    // false = payer via Mobile Money (paiement externe TouchPay, on ne touche pas au wallet syndic)
+    @NotNull(message = "Le moyen de paiement est obligatoire")
+    private Boolean payerDepuisWallet;
 }

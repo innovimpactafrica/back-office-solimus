@@ -6,7 +6,6 @@ import com.example.solimus.dtos.meeting.CreateMeetingDTO;
 import com.example.solimus.dtos.meeting.InviteParticipantsDTO;
 import com.example.solimus.dtos.meeting.MeetingAgendaItemDTO;
 import com.example.solimus.dtos.meeting.MeetingCalendarDayDTO;
-import com.example.solimus.dtos.meeting.MeetingCardDTO;
 import com.example.solimus.dtos.meeting.MeetingDashboardResponseDTO;
 import com.example.solimus.dtos.meeting.MeetingDetailDTO;
 import com.example.solimus.dtos.meeting.MeetingDetailSyndicDTO;

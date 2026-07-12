@@ -1,17 +1,10 @@
 package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.syndic.PaymentBridgeDTO;
-import com.example.solimus.entities.ChargePayment;
-import com.example.solimus.entities.PaymentProvider;
-
-import com.example.solimus.entities.User;
+import com.example.solimus.entities.*;
 
 import com.example.solimus.exceptions.ResourceNotFoundException;
-import com.example.solimus.entities.Subscription;
-import com.example.solimus.repositories.ChargePaymentRepository;
-import com.example.solimus.repositories.PaymentRepository;
-import com.example.solimus.repositories.SubscriptionRepository;
-import com.example.solimus.repositories.WithdrawalRequestRepository;
+import com.example.solimus.repositories.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,7 +25,9 @@ public class SolimusPaymentBridgeController {
     // Référentiel des paiements (syndic -> prestataire)
     private final PaymentRepository paymentRepository;
     private final WithdrawalRequestRepository withdrawalRequestRepository;
-    private final ChargePaymentRepository chargePaymentRepository;
+    private final ChargeCallPaymentRepository chargeCallPaymentRepository;
+    private final ExceptionalCallPaymentRepository exceptionalCallPaymentRepository;
+
 
     // Référentiel des abonnements prestataires : SUB-*
     private final SubscriptionRepository subscriptionRepository;
@@ -167,12 +162,12 @@ public class SolimusPaymentBridgeController {
                 .build();
     }
     // ================================================
-    // BRIDGE — Paiement charge copropriétaire
+    // BRIDGE — Paiement charge courante copropriétaire (CPY-)
     // ================================================
     @GetMapping("/charge/{transactionRef}")
     @Transactional(readOnly = true)
     public PaymentBridgeDTO getBridgeCharge(@PathVariable String transactionRef) {
-        ChargePayment paiement = chargePaymentRepository
+        ChargeCallPayment paiement = chargeCallPaymentRepository
                 .findByReference(transactionRef)
                 .orElseThrow(() -> new ResourceNotFoundException("Paiement charge introuvable"));
 
@@ -194,5 +189,35 @@ public class SolimusPaymentBridgeController {
                 .customerPhone(owner.getPhone())
                 .build();
     }
+
+    // ================================================
+    // BRIDGE — Paiement charge exceptionnelle copropriétaire (ECP-)
+   // ================================================
+    @GetMapping("/exceptional-charge/{transactionRef}")
+    @Transactional(readOnly = true)
+    public PaymentBridgeDTO getBridgeExceptionalCharge(@PathVariable String transactionRef) {
+        ExceptionalCallPayment paiement = exceptionalCallPaymentRepository
+                .findByReference(transactionRef)
+                .orElseThrow(() -> new ResourceNotFoundException("Paiement charge exceptionnelle introuvable"));
+
+        User owner = paiement.getOwner();
+
+        return PaymentBridgeDTO.builder()
+                .merchantToken(touchPaySecureCode)
+                .transactionReference(transactionRef)
+                .agencyCode(touchPayAgencyCode)
+                .serviceId(touchPayDomainName)
+                .hostedScriptUrl(touchPayHostedScriptUrl)
+                .amount(paiement.getAmount())
+                .city(touchPayDefaultCity)
+                .successRedirectUrl(touchPaySuccessRedirectUrl)
+                .failedRedirectUrl(touchPayFailedRedirectUrl)
+                .customerEmail(owner.getEmail())
+                .customerFirstName(owner.getFirstName())
+                .customerLastName(owner.getLastName())
+                .customerPhone(owner.getPhone())
+                .build();
+    }
+
 
 }

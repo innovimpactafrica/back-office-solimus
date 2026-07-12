@@ -4,7 +4,7 @@ import com.example.solimus.dtos.admin.*;
 import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanDTO;
 import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanRequestDTO;
 import com.example.solimus.dtos.provider.wallet.WithdrawalRequestDTO;
-import com.example.solimus.entities.ProviderWallet;
+import com.example.solimus.entities.*;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.UserStatus;
 import com.example.solimus.enums.WithdrawalStatus;
@@ -49,7 +49,7 @@ public class AdminServiceImpl implements AdminService {
     private final SecurityFeatureRepository securityFeatureRepository;
     private final ProviderPlanRepository providerPlanRepository;
     private final WithdrawalRequestRepository withdrawalRequestRepository;
-    private final WalletRepository walletRepository;
+    private final ProviderWalletRepository providerWalletRepository;
     private final MinioService minioService;
     private final NotificationService notificationService;
 
@@ -68,7 +68,7 @@ public class AdminServiceImpl implements AdminService {
         User currentAdmin = getCurrentAdmin();
 
         // 2. Récupérer la demande de retrait par son id
-        WithdrawalRequest withdrawal = withdrawalRequestRepository.findById(withdrawalId)
+        ProviderWithdrawalRequest withdrawal = withdrawalRequestRepository.findById(withdrawalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Demande de retrait introuvable"));
 
         // 3. Vérifier que la demande est encore en attente
@@ -77,7 +77,7 @@ public class AdminServiceImpl implements AdminService {
         }
 
         // 4. Récupérer le wallet du prestataire concerné par la demande
-        ProviderWallet wallet = walletRepository.findByProviderId(withdrawal.getProvider().getId())
+        ProviderWallet wallet = providerWalletRepository.findByProviderId(withdrawal.getProvider().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet prestataire introuvable"));
 
         // 5. Vérifier que le montant demandé est bien disponible dans le solde en attente
@@ -97,7 +97,7 @@ public class AdminServiceImpl implements AdminService {
         wallet.setPendingBalance(wallet.getPendingBalance().subtract(withdrawal.getAmount()));
 
         // 9. Ne pas toucher au solde disponible car il a déjà été diminué lors de la demande
-        walletRepository.save(wallet);
+        providerWalletRepository.save(wallet);
 
         // 10. Marquer la demande comme payée/validée
         withdrawal.setStatus(WithdrawalStatus.COMPLETED);
@@ -115,7 +115,7 @@ public class AdminServiceImpl implements AdminService {
         withdrawal.setProcessedBy(currentAdmin);
 
         // 15. Sauvegarder la demande validée
-        WithdrawalRequest savedWithdrawal = withdrawalRequestRepository.save(withdrawal);
+        ProviderWithdrawalRequest savedWithdrawal = withdrawalRequestRepository.save(withdrawal);
 
         // 16. Notifier le prestataire par push et email si les notifications sont activées
         notifyWithdrawalApproved(savedWithdrawal);
@@ -132,7 +132,7 @@ public class AdminServiceImpl implements AdminService {
         User currentAdmin = getCurrentAdmin();
 
         // 2. Récupérer la demande de retrait par son id
-        WithdrawalRequest withdrawal = withdrawalRequestRepository.findById(withdrawalId)
+        ProviderWithdrawalRequest withdrawal = withdrawalRequestRepository.findById(withdrawalId)
                 .orElseThrow(() -> new ResourceNotFoundException("Demande de retrait introuvable"));
 
         // 3. Vérifier que la demande est encore en attente
@@ -141,7 +141,7 @@ public class AdminServiceImpl implements AdminService {
         }
 
         // 4. Récupérer le wallet du prestataire concerné par la demande
-        ProviderWallet wallet = walletRepository.findByProviderId(withdrawal.getProvider().getId())
+        ProviderWallet wallet = providerWalletRepository.findByProviderId(withdrawal.getProvider().getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet prestataire introuvable"));
 
         // 5. Vérifier que le montant demandé est bien disponible dans le solde en attente (avant de remettre dans le solde disponible )
@@ -156,7 +156,7 @@ public class AdminServiceImpl implements AdminService {
         wallet.setAvailableBalance(wallet.getAvailableBalance().add(withdrawal.getAmount()));
 
         // 8. Sauvegarder le wallet mis à jour
-        walletRepository.save(wallet);
+        providerWalletRepository.save(wallet);
 
         // 9. Marquer la demande comme refusée
         withdrawal.setStatus(WithdrawalStatus.REJECTED);
@@ -171,7 +171,7 @@ public class AdminServiceImpl implements AdminService {
         withdrawal.setProcessedBy(currentAdmin);
 
         // 13. Sauvegarder la demande refusée
-        WithdrawalRequest savedWithdrawal = withdrawalRequestRepository.save(withdrawal);
+        ProviderWithdrawalRequest savedWithdrawal = withdrawalRequestRepository.save(withdrawal);
 
         // 14. Notifier le prestataire par push et email si les notifications sont activées
         notifyWithdrawalRejected(savedWithdrawal, rejectionReason);
@@ -385,7 +385,7 @@ public class AdminServiceImpl implements AdminService {
     /**
      * Notifie le prestataire après validation de son retrait.
      */
-    private void notifyWithdrawalApproved(WithdrawalRequest withdrawal) {
+    private void notifyWithdrawalApproved(ProviderWithdrawalRequest withdrawal) {
         User provider = withdrawal.getProvider();
 
         if (provider.isNotificationsEnabled()) {
@@ -408,7 +408,7 @@ public class AdminServiceImpl implements AdminService {
     /**
      * Notifie le prestataire après refus de son retrait.
      */
-    private void notifyWithdrawalRejected(WithdrawalRequest withdrawal, String rejectionReason) {
+    private void notifyWithdrawalRejected(ProviderWithdrawalRequest withdrawal, String rejectionReason) {
         User provider = withdrawal.getProvider();
 
         if (provider.isNotificationsEnabled()) {
@@ -433,7 +433,7 @@ public class AdminServiceImpl implements AdminService {
     /**
      * Mappe une demande de retrait vers le DTO retourné au front.
      */
-    private WithdrawalRequestDTO mapToWithdrawalDTO(WithdrawalRequest withdrawal) {
+    private WithdrawalRequestDTO mapToWithdrawalDTO(ProviderWithdrawalRequest withdrawal) {
         return WithdrawalRequestDTO.builder()
                 .id(withdrawal.getId())
                 .reference(withdrawal.getReference())

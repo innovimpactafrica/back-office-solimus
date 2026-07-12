@@ -14,7 +14,7 @@ import com.example.solimus.repositories.InterventionCommentRepository;
 import com.example.solimus.repositories.InterventionRequestRepository;
 import com.example.solimus.repositories.QuoteRepository;
 import com.example.solimus.repositories.UserRepository;
-import com.example.solimus.repositories.WalletRepository;
+import com.example.solimus.repositories.ProviderWalletRepository;
 import com.example.solimus.repositories.WithdrawalRequestRepository;
 import com.example.solimus.repositories.PaymentRepository;
 import com.example.solimus.enums.TransactionType;
@@ -53,7 +53,7 @@ public class ProviderServiceImpl implements ProviderService {
     private final EstimatedDelayRepository estimatedDelayRepository;
     private final InterventionCommentRepository commentRepository;
     private final MinioService minioService;
-    private final WalletRepository walletRepository;
+    private final ProviderWalletRepository walletRepository;
     private final WithdrawalRequestRepository withdrawalRequestRepository;
     private final PaymentRepository paymentRepository;
     private final PasswordEncoder passwordEncoder;
@@ -133,7 +133,7 @@ public class ProviderServiceImpl implements ProviderService {
         List<DailyRevenueDTO> performanceHebdo = buildPerformanceHebdo(providerId);
 
         // Étape 7 : Calculer les statistiques globales du portefeuille (Wallet)
-        Wallet wallet = walletRepository.findByProviderId(providerId)
+        ProviderWallet wallet = walletRepository.findByProviderId(providerId)
                 .orElse(null);
 
         // Solde disponible actuel du prestataire

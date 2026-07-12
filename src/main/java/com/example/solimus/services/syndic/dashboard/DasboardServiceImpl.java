@@ -463,6 +463,8 @@ public class DasboardServiceImpl implements DashboardService {
             case MEETING_CREATED, MEETING_PUBLISHED -> "Réunion";
             case MEETING_DOCUMENT_ADDED -> "Document";
             case COMMENT_ADDED -> "Commentaire";
+            case BUDGET_CREATED, BUDGET_CLOSED -> "Budget";
+            case EXCEPTIONAL_CALL_CREATED, EXCEPTIONAL_CALL_ACTIVATED, EXCEPTIONAL_CALL_CLOSED -> "Appel exceptionnel";
         };
     }
 

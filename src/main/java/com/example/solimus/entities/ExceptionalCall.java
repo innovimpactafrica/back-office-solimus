@@ -49,6 +49,9 @@ public class ExceptionalCall {
     @Column(nullable = false)
     private String title; // "Objet des travaux"
 
+    @Column(unique = true)
+    private String reference; // Référence unique de l'appel (ex: CHG-2026-06-A12)
+
     @Column(columnDefinition = "TEXT")
     private String description;
 
@@ -61,13 +64,6 @@ public class ExceptionalCall {
     // ---- Section 3 : Validation & Documents ----
     private Boolean requiresAgValidation;
 
-    // Lien vers une résolution d'AG — reste NULL dans ce module (Option A).
-    // Sera rempli plus tard, depuis le côté Resolution (chantier séparé, futur),
-    // au moment où le syndic créera la résolution correspondante dans une AG.
-    // Commenté pour l'instant car l'entité Resolution n'existe pas encore.
-    // @ManyToOne(fetch = FetchType.LAZY)
-    // @JoinColumn(name = "resolution_id")
-    // private Resolution resolution;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -82,4 +78,7 @@ public class ExceptionalCall {
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "activated_at")
+    private LocalDateTime activatedAt;
 }

@@ -95,7 +95,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
            "OR LOWER(u.lastName) LIKE LOWER(CONCAT('%', :q, '%')) " +
            "OR LOWER(u.email) LIKE LOWER(CONCAT('%', :q, '%')) " +
            "OR u.phone LIKE CONCAT('%', :q, '%'))")
-    List<User> searchCoOwners(@Param("q") String q, Pageable pageable);
+    Page<User> searchCoOwners(@Param("q") String q, Pageable pageable);
 
 
 }

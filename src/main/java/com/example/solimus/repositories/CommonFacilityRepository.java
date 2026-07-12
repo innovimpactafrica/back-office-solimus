@@ -1,6 +1,8 @@
 package com.example.solimus.repositories;
 
 import com.example.solimus.entities.CommonFacility;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -20,6 +22,8 @@ public interface CommonFacilityRepository extends JpaRepository<CommonFacility, 
      * @return liste des équipements de la résidence
      */
     List<CommonFacility> findByResidenceId(Long residenceId);
+
+    Page<CommonFacility> findByResidenceId(Long residenceId, Pageable pageable);
 
     /**
      * Trouver un équipement par résidence et type (pour create-or-update).

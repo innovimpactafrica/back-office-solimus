@@ -7,7 +7,7 @@ import com.example.solimus.dtos.provider.wallet.WalletTransactionDTO;
 import com.example.solimus.entities.PaymentProvider;
 import com.example.solimus.entities.User;
 import com.example.solimus.entities.ProviderWallet;
-import com.example.solimus.entities.WithdrawalRequest;
+import com.example.solimus.entities.ProviderWithdrawalRequest;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.TransactionType;
 import com.example.solimus.enums.WithdrawalStatus;
@@ -15,7 +15,7 @@ import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.PaymentRepository;
 import com.example.solimus.repositories.UserRepository;
-import com.example.solimus.repositories.WalletRepository;
+import com.example.solimus.repositories.ProviderWalletRepository;
 import com.example.solimus.repositories.WithdrawalRequestRepository;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.notification.NotificationService;
@@ -38,7 +38,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class WalletServiceImpl implements WalletService {
 
-    private final WalletRepository walletRepository;
+    private final ProviderWalletRepository walletRepository;
     private final UserRepository userRepository;
     private final PaymentRepository paymentRepository;
     private final WithdrawalRequestRepository withdrawalRequestRepository;
@@ -134,7 +134,7 @@ public class WalletServiceImpl implements WalletService {
         }
 
         // 2. Créer la demande de versement (retrait)
-        WithdrawalRequest retrait = WithdrawalRequest.builder()
+        ProviderWithdrawalRequest retrait = ProviderWithdrawalRequest.builder()
                 .reference(generateReference("WIT"))                     // Référence unique (ex: WIT-987654)
                 .provider(currentProvider)                              // Prestataire effectuant la demande
                 .amount(dto.getAmount())                                // Montant du retrait
@@ -204,7 +204,7 @@ public class WalletServiceImpl implements WalletService {
     /**
      * Mappe une WithdrawalRequest vers son DTO pour la réponse.
      */
-    private WithdrawalRequestDTO mapToWithdrawalDTO(WithdrawalRequest retrait) {
+    private WithdrawalRequestDTO mapToWithdrawalDTO(ProviderWithdrawalRequest retrait) {
         return WithdrawalRequestDTO.builder()
             .id(retrait.getId())
             .reference(retrait.getReference())
@@ -225,7 +225,7 @@ public class WalletServiceImpl implements WalletService {
         List<PaymentProvider> paiements = paymentRepository.findAllByProviderIdOrderByCreatedAtDesc(providerId);
 
         // 2. Récupérer tous les retraits
-        List<WithdrawalRequest> retraits = withdrawalRequestRepository.findAllByProviderIdOrderByCreatedAtDesc(providerId);
+        List<ProviderWithdrawalRequest> retraits = withdrawalRequestRepository.findAllByProviderIdOrderByCreatedAtDesc(providerId);
 
         // Liste fusionnée contenant paiements et retraits
         List<WalletTransactionDTO> transactions = new ArrayList<>();

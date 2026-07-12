@@ -12,6 +12,9 @@ import com.example.solimus.dtos.syndic.travaux.SyndicBalancePaymentSummaryDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicPaymentResultDTO;
 import com.example.solimus.dtos.syndic.travaux.UpdateInterventionRequestDTO;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
 import java.util.List;
 
 public interface SyndicTravauxService {
@@ -36,7 +39,7 @@ public interface SyndicTravauxService {
     /**
      * Lister toutes les résidences créées par le syndic connecté.
      */
-    List<SyndicResidenceDTO> getMesResidences();
+    Page<SyndicResidenceDTO> getMesResidences(Integer page, Integer size);
 
     // =========================================================================
     // LISTER LES LOTS D'UNE RÉSIDENCE
@@ -45,7 +48,7 @@ public interface SyndicTravauxService {
      * Lister tous les lots d'une résidence spécifique.
      * Vérifie que la résidence appartient au syndic connecté.
      */
-    List<PropertyDTO> getPropertiesByResidence(Long residenceId);
+    Page<PropertyDTO> getPropertiesByResidence(Long residenceId, Integer page, Integer size);
 
     // =========================================================================
     // LISTER LES BIENS COMMUNS D'UNE RÉSIDENCE
@@ -54,7 +57,7 @@ public interface SyndicTravauxService {
      * Lister les biens communs d'une résidence.
      * Vérifie que la résidence appartient au syndic connecté.
      */
-    List<CommonFacilityDTO> getCommonFacilitiesByResidence(Long residenceId);
+    Page<CommonFacilityDTO> getCommonFacilitiesByResidence(Long residenceId, Integer page, Integer size);
 
     // =========================================================================
     // LISTER LES SPÉCIALITÉS
@@ -62,7 +65,7 @@ public interface SyndicTravauxService {
     /**
      * Lister toutes les spécialités disponibles pour la création d'intervention.
      */
-    List<SpecialtyDTO> getAllSpecialties();
+    Page<SpecialtyDTO> getAllSpecialties(Integer page, Integer size);
 
     // =========================================================================
     // CRÉATION D'AVIS
@@ -98,9 +101,10 @@ public interface SyndicTravauxService {
     SyndicBalancePaymentSummaryDTO getBalanceSummary(Long interventionId);
 
     /**
-     * Paie le solde restant depuis le wallet du syndic et clôture l'intervention (FINAL_VALIDATION).
+     * Paie le solde restant (via Wallet SOLIMUS ou Mobile Money selon le DTO) et clôture l'intervention.
+     * Wallet : débit synchrone + clôture immédiate. Mobile Money : initie TouchPay, clôture au callback.
      */
-    SyndicPaymentResultDTO payBalanceAndClose(Long interventionId);
+    SyndicPaymentResultDTO payBalanceAndClose(Long interventionId, SyndicPayDepositDTO dto);
 
     // =========================================================================
     // MISE À JOUR ET SUPPRESSION D'INTERVENTION

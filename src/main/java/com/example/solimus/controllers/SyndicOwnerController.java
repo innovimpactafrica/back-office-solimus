@@ -104,16 +104,20 @@ public class SyndicOwnerController {
     @Operation(summary = "Lister les biens disponibles (VACANT) d'une résidence", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/properties/available")
-    public ResponseEntity<List<PropertySummaryDTO>> getAvailableProperties(
-            @PathVariable Long residenceId) {
-        return ResponseEntity.ok(syndicOwnerService.getAvailableProperties(residenceId));
+    public ResponseEntity<Page<PropertySummaryDTO>> getAvailableProperties(
+            @PathVariable Long residenceId,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        return ResponseEntity.ok(syndicOwnerService.getAvailableProperties(residenceId, page, size));
     }
 
     @Operation(summary = "Lister les résidences qui ont au moins un bien vacant", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/with-vacant-properties")
-    public ResponseEntity<List<ResidenceSummaryDTO>> getResidencesWithVacantProperties() {
-        return ResponseEntity.ok(syndicOwnerService.getResidencesWithVacantProperties());
+    public ResponseEntity<Page<ResidenceSummaryDTO>> getResidencesWithVacantProperties(
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        return ResponseEntity.ok(syndicOwnerService.getResidencesWithVacantProperties(page, size));
     }
 
     @Operation(summary = "Lister les copropriétaires (recherche + filtre résidence + statut + pagination)", tags = {"Syndic - Copropriétaires"})
@@ -138,8 +142,11 @@ public class SyndicOwnerController {
     @Operation(summary = "Lister les lots d'un copropriétaire (onglet Appartements du détail)", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/{coOwnerId}/properties")
-    public ResponseEntity<List<CoOwnerPropertyItemDTO>> getCoOwnerProperties(@PathVariable Long coOwnerId) {
-        return ResponseEntity.ok(syndicOwnerService.getCoOwnerProperties(coOwnerId));
+    public ResponseEntity<Page<CoOwnerPropertyItemDTO>> getCoOwnerProperties(
+            @PathVariable Long coOwnerId,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerProperties(coOwnerId, page, size));
     }
 
     @Operation(summary = "Finances d'un copropriétaire pour une résidence (onglet Finances du détail)", tags = {"Syndic - Copropriétaires"})
@@ -179,10 +186,12 @@ public class SyndicOwnerController {
     @Operation(summary = "Documents d'un copropriétaire (onglet Documents du détail)", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/{coOwnerId}/documents")
-    public ResponseEntity<List<CoOwnerDocumentItemDTO>> getCoOwnerDocuments(
+    public ResponseEntity<Page<CoOwnerDocumentItemDTO>> getCoOwnerDocuments(
             @PathVariable Long coOwnerId,
-            @RequestParam(required = false) String category) {
-        return ResponseEntity.ok(syndicOwnerService.getCoOwnerDocuments(coOwnerId, category));
+            @RequestParam(required = false) String category,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerDocuments(coOwnerId, category, page, size));
     }
 
     @Operation(summary = "Ajouter un document à un copropriétaire", tags = {"Syndic - Copropriétaires"})
@@ -210,9 +219,11 @@ public class SyndicOwnerController {
     @Operation(summary = "Autocomplete — rechercher un copropriétaire par nom, email ou téléphone", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/search")
-    public ResponseEntity<List<CoOwnerSearchResultDTO>> searchCoOwners(
-            @RequestParam String q) {
-        return ResponseEntity.ok(syndicOwnerService.searchCoOwners(q));
+    public ResponseEntity<Page<CoOwnerSearchResultDTO>> searchCoOwners(
+            @RequestParam String q,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "5") Integer size) {
+        return ResponseEntity.ok(syndicOwnerService.searchCoOwners(q, page, size));
     }
 
     @Operation(summary = "Lier un copropriétaire existant au syndic connecté", tags = {"Syndic - Copropriétaires"})

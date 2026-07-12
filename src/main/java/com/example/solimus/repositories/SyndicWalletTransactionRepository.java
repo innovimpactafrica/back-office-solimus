@@ -53,5 +53,21 @@ public interface SyndicWalletTransactionRepository extends JpaRepository<SyndicW
             @Param("residenceId") Long residenceId,
             @Param("year") int year);
 
+    /**
+     *  Somme des transactions TRAVAUX d'un équipement commun précis, sur une période donnée.
+     *  Chaque CommonFacility appartient à une seule résidence (jamais partagé entre résidences,
+     *  même si son type comme "Ascenseur" est générique). Mais un même équipement reste identique
+     *  d'une année à l'autre, donc le filtre sur start/end (année du budget) reste indispensable.
+     *
+      */
+    @Query("SELECT COALESCE(SUM(ABS(t.amount)), 0) FROM SyndicWalletTransaction t " +
+            "WHERE t.interventionRequest.commonFacility.id = :facilityId " +
+            "AND t.category = 'TRAVAUX' " +
+            "AND t.transactionDate >= :start AND t.transactionDate < :end")
+    BigDecimal sumByCommonFacilityAndPeriod(
+            @Param("facilityId") Long facilityId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
 
 }
