@@ -60,33 +60,33 @@ public class InterventionRequest {
     @Column(name = "urgency_level")
     private UrgencyLevel urgencyLevel; // Niveau d'urgence (LOW, MEDIUM, HIGH)
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "syndic_id", nullable = true)
     private User syndic; // Syndic qui a créé la demande (si initiatedBy = SYNDIC)
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "owner_id")
     private User owner; // Copropriétaire qui a créé la demande (si initiatedBy = OWNER)
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "residence_id", nullable = false)
     private Residence residence; // Résidence concernée par l'intervention
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "property_id")
     private Property property; // Bien/appartement concerné (si locationType = APPARTEMENT)
 
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "common_facility_id")
     private CommonFacility commonFacility; // Équipement commun concerné (ex: Piscine, Ascenseur)
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "specialty_id")
     private Specialty specialty; // Spécialité requise (ex: Plomberie, Électricité)
 
     // Le prestataire finalement sélectionné (celui qui fera le travail)
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "selected_provider_id")
     private User selectedProvider; // Prestataire sélectionné pour exécuter les travaux
 

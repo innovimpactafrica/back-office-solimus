@@ -307,4 +307,16 @@ public class SyndicBudgetController {
     public ResponseEntity<Integer> remindAllUnpaid() {
         return ResponseEntity.ok(chargeService.remindAllUnpaid());
     }
+
+    //=========================================================================
+    // DASHBOARD "GESTION DES CHARGES"
+    // =========================================================================
+
+    @Operation(summary = "Dashboard 'Gestion des charges'", description = "KPIs globaux + graphiques (encaissement mensuel, répartition des postes)", tags = {"Syndic - Charges"})
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/dashboard")
+    public ResponseEntity<ChargeDashboardDTO> getChargeDashboard(
+            @RequestParam(required = false) Long residenceId) {
+        return ResponseEntity.ok(chargeService.getChargeDashboard(residenceId));
+    }
 }

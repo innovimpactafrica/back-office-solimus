@@ -38,7 +38,7 @@ public class Subscription {
     /**
      * Le prestataire titulaire de cet abonnement.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "provider_id", nullable = false)
     private User provider;
 
