@@ -16,7 +16,8 @@ import java.util.Optional;
  * Repository pour l'entité Budget.
  */
 @Repository
-public interface BudgetRepository extends JpaRepository<Budget, Long> {
+public interface
+BudgetRepository extends JpaRepository<Budget, Long> {
 
     /**
      * Trouver un budget par résidence et année.
@@ -28,6 +29,8 @@ public interface BudgetRepository extends JpaRepository<Budget, Long> {
      * Trouver un budget actif par résidence et année.
      */
     Optional<Budget> findByResidenceIdAndAnneeAndStatus(Long residenceId, Integer annee, BudgetStatus status);
+
+    List<Budget> findBySyndicIdAndStatus(Long syndicId, BudgetStatus status);
 
     /**
      * Lister tous les budgets d'une résidence.

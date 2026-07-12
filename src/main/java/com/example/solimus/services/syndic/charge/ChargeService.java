@@ -197,6 +197,12 @@ public interface ChargeService {
      * Retourne le nombre de relances envoyées
      */
     int remindAllUnpaid();
+    /**
+     * Dashboard "Gestion des charges" — KPIs globaux + graphiques
+     * residenceId optionnel : sert uniquement pour le camembert (répartition par poste),
+     * défaut sur la première résidence active du syndic si non fourni
+     */
+    ChargeDashboardDTO getChargeDashboard(Long residenceId);
 
 
 

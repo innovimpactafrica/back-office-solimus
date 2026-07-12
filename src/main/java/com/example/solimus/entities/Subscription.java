@@ -46,7 +46,7 @@ public class Subscription {
      * La formule au moment de la souscription (pour garder la trace
      * du nom/description affichés à ce moment-là, même si modifiés depuis).
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "provider_plan_id", nullable = false)
     private ProviderPlan providerPlan;
 

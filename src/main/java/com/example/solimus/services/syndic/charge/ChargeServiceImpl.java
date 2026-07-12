@@ -1662,6 +1662,225 @@ public class ChargeServiceImpl implements ChargeService {
     }
 
     // ============================================================
+    // DASHBOARD "GESTION DES CHARGES"
+    // ============================================================
+
+    @Override
+    public ChargeDashboardDTO getChargeDashboard(Long residenceId) {
+
+        // Récupère le syndic actuellement connecté
+        User currentSyndic = getCurrentUser();
+
+        ChargeDashboardDTO dto = new ChargeDashboardDTO();
+
+        // --- Budget Annuel + Résidences Actives ---
+
+        // Récupère tous les budgets ACTIVE du syndic, toutes résidences confondues
+        List<Budget> activeBudgets = budgetRepository.findBySyndicIdAndStatus(currentSyndic.getId(), BudgetStatus.ACTIVE);
+
+        BigDecimal annualBudget = activeBudgets.stream()
+                .map(Budget::getBudgetTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        dto.setAnnualBudget(annualBudget);
+        dto.setActiveResidencesCount(activeBudgets.size());
+
+        // --- Total Appelé ---
+
+        List<ChargeCall> allChargeCalls = chargeCallRepository.findByBudgetSyndicId(currentSyndic.getId());
+
+        BigDecimal totalCalled = allChargeCalls.stream()
+                .map(ChargeCall::getTotalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        dto.setTotalCalled(totalCalled);
+        dto.setChargeCallsCount(allChargeCalls.size());
+        dto.setTotalCalledEvolutionPercent(calculateChargeCallsEvolution(currentSyndic.getId()));
+
+        // --- Total Encaissé ---
+
+        LocalDateTime finMoisCourant = LocalDate.now().plusDays(1).atStartOfDay();
+        LocalDateTime debutAnnee = LocalDate.now().withDayOfYear(1).atStartOfDay();
+
+        BigDecimal totalCollected = chargeCallPaymentRepository
+                .sumByBudgetSyndicIdAndPaidAtBetween(currentSyndic.getId(), debutAnnee, finMoisCourant);
+        dto.setTotalCollected(totalCollected);
+        dto.setTotalCollectedEvolutionPercent(calculateCollectedEvolution(currentSyndic.getId()));
+
+        // --- Impayés ---
+
+        List<ChargeCallItem> allUnpaidItems = chargeCallItemRepository.findAllUnpaidByBudgetSyndicId(currentSyndic.getId());
+
+        BigDecimal unpaidAmount = allUnpaidItems.stream()
+                .map(ChargeCallItem::getRemainingAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        dto.setUnpaidAmount(unpaidAmount);
+
+        // Compte les copropriétaires distincts ayant au moins un impayé
+        long unpaidCoOwnersCount = allUnpaidItems.stream()
+                .map(item -> item.getCoOwner().getId())
+                .distinct()
+                .count();
+        dto.setUnpaidCoOwnersCount((int) unpaidCoOwnersCount);
+        dto.setUnpaidEvolutionPercent(calculateUnpaidEvolutionGlobal(currentSyndic.getId()));
+
+
+        // --- Graphique Encaissement Mensuel (12 mois, Prévu vs Encaissé) ---
+        dto.setMonthlyCollection(buildMonthlyCollection(currentSyndic.getId()));
+
+        // --- Camembert Répartition des Postes ---
+        Long resolvedResidenceId = residenceId != null ? residenceId : resolveDefaultResidenceForDashboard(currentSyndic.getId());
+        dto.setPostesRepartition(buildPostesRepartition(resolvedResidenceId));
+
+        return dto;
+    }
+
+    // Calcule l'évolution du total appelé entre le mois dernier et le mois d'avant
+    private Double calculateChargeCallsEvolution(Long syndicId) {
+
+        LocalDate now = LocalDate.now();
+        LocalDate startLastMonth = now.withDayOfMonth(1).minusMonths(1);
+        LocalDate endLastMonth = now.withDayOfMonth(1);
+        LocalDate startMonthBefore = startLastMonth.minusMonths(1);
+
+        List<ChargeCall> lastMonthCalls = chargeCallRepository
+                .findByBudgetSyndicIdAndCreatedAtBetween(syndicId, startLastMonth.atStartOfDay(), endLastMonth.atStartOfDay());
+        List<ChargeCall> monthBeforeCalls = chargeCallRepository
+                .findByBudgetSyndicIdAndCreatedAtBetween(syndicId, startMonthBefore.atStartOfDay(), startLastMonth.atStartOfDay());
+
+        BigDecimal lastMonthTotal = lastMonthCalls.stream().map(ChargeCall::getTotalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal monthBeforeTotal = monthBeforeCalls.stream().map(ChargeCall::getTotalAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return calculerVariation(lastMonthTotal, monthBeforeTotal).doubleValue();
+    }
+
+    // Calcule l'évolution du total encaissé entre le mois dernier et le mois d'avant
+    private Double calculateCollectedEvolution(Long syndicId) {
+
+        LocalDate now = LocalDate.now();
+        LocalDate startLastMonth = now.withDayOfMonth(1).minusMonths(1);
+        LocalDate endLastMonth = now.withDayOfMonth(1);
+        LocalDate startMonthBefore = startLastMonth.minusMonths(1);
+
+        BigDecimal lastMonthCollected = chargeCallPaymentRepository
+                .sumByBudgetSyndicIdAndPaidAtBetween(syndicId, startLastMonth.atStartOfDay(), endLastMonth.atStartOfDay());
+        BigDecimal monthBeforeCollected = chargeCallPaymentRepository
+                .sumByBudgetSyndicIdAndPaidAtBetween(syndicId, startMonthBefore.atStartOfDay(), startLastMonth.atStartOfDay());
+
+        return calculerVariation(lastMonthCollected, monthBeforeCollected).doubleValue();
+    }
+
+    private BigDecimal calculerVariation(BigDecimal actuel, BigDecimal precedent) {
+        if (precedent.compareTo(BigDecimal.ZERO) == 0) {
+            return BigDecimal.ZERO;
+        }
+        return actuel.subtract(precedent)
+                .divide(precedent, 4, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100))
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    // Calcule l'évolution globale des impayés entre le mois dernier et le mois d'avant
+    private Double calculateUnpaidEvolutionGlobal(Long syndicId) {
+
+        LocalDate now = LocalDate.now();
+        LocalDate startLastMonth = now.withDayOfMonth(1).minusMonths(1);
+        LocalDate endLastMonth = now.withDayOfMonth(1);
+        LocalDate startMonthBefore = startLastMonth.minusMonths(1);
+
+        BigDecimal lastMonthUnpaid = getUnpaidTotalForPeriodGlobal(syndicId, startLastMonth, endLastMonth);
+        BigDecimal monthBeforeUnpaid = getUnpaidTotalForPeriodGlobal(syndicId, startMonthBefore, startLastMonth);
+
+        return calculerVariation(lastMonthUnpaid, monthBeforeUnpaid).doubleValue();
+    }
+
+    // Calcule le montant impayé total sur une période donnée, toutes résidences du syndic
+    private BigDecimal getUnpaidTotalForPeriodGlobal(Long syndicId, LocalDate start, LocalDate end) {
+        List<ChargeCall> calls = chargeCallRepository
+                .findByBudgetSyndicIdAndCreatedAtBetween(syndicId, start.atStartOfDay(), end.atStartOfDay());
+
+        return calls.stream()
+                .flatMap(cc -> cc.getItems().stream())
+                .map(ChargeCallItem::getRemainingAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    // Construit les 12 points du graphique "Encaissement mensuel" pour l'année en cours
+    private List<MonthlyCollectionDTO> buildMonthlyCollection(Long syndicId) {
+
+        String[] monthLabels = {"Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"};
+        List<MonthlyCollectionDTO> result = new ArrayList<>();
+
+        int currentYear = LocalDate.now().getYear();
+
+        for (int month = 1; month <= 12; month++) {
+
+            LocalDate debutMois = LocalDate.of(currentYear, month, 1);
+            LocalDate finMois = debutMois.plusMonths(1);
+
+            // Montant prévu : somme des ChargeCall générés ce mois-là
+            List<ChargeCall> chargeCallsMois = chargeCallRepository
+                    .findByBudgetSyndicIdAndCreatedAtBetween(syndicId, debutMois.atStartOfDay(), finMois.atStartOfDay());
+            BigDecimal expected = chargeCallsMois.stream()
+                    .map(ChargeCall::getTotalAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            // Montant encaissé : somme des paiements reçus ce mois-là
+            BigDecimal collected = chargeCallPaymentRepository
+                    .sumByBudgetSyndicIdAndPaidAtBetween(syndicId, debutMois.atStartOfDay(), finMois.atStartOfDay());
+
+            MonthlyCollectionDTO point = new MonthlyCollectionDTO();
+            point.setMonthLabel(monthLabels[month - 1]);
+            point.setExpected(expected);
+            point.setCollected(collected);
+
+            result.add(point);
+        }
+
+        return result;
+    }
+
+    // Construit le camembert "Répartition des postes" pour une résidence et l'année en cours
+    private BudgetPostesRepartitionDTO buildPostesRepartition(Long residenceId) {
+
+        BudgetPostesRepartitionDTO dto = new BudgetPostesRepartitionDTO();
+
+        if (residenceId == null) {
+            dto.setPostes(List.of());
+            return dto;
+        }
+
+        int currentYear = LocalDate.now().getYear();
+
+        Budget budget = budgetRepository.findByResidenceIdAndAnnee(residenceId, currentYear).orElse(null);
+
+        if (budget == null) {
+            dto.setPostes(List.of());
+            return dto;
+        }
+
+        dto.setResidenceName(budget.getResidence().getName());
+        dto.setYear(currentYear);
+
+        List<PosteDTO> postes = budget.getItems().stream()
+                .map(item -> {
+                    PosteDTO posteDto = new PosteDTO();
+                    posteDto.setLibelle(item.getLibelle());
+                    posteDto.setMontant(item.getMontant());
+                    return posteDto;
+                })
+                .toList();
+        dto.setPostes(postes);
+
+        return dto;
+    }
+
+    // Résout la résidence par défaut à utiliser pour le camembert, si aucune n'est précisée
+    // (prend la première résidence active du syndic)
+    private Long resolveDefaultResidenceForDashboard(Long syndicId) {
+        List<Budget> activeBudgets = budgetRepository.findBySyndicIdAndStatus(syndicId, BudgetStatus.ACTIVE);
+        return activeBudgets.isEmpty() ? null : activeBudgets.get(0).getResidence().getId();
+    }
+
+    // ============================================================
     // UTILITAIRES PARTAGÉS
     // ============================================================
 

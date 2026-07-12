@@ -84,4 +84,14 @@ public interface ChargeCallPaymentRepository extends JpaRepository<ChargeCallPay
             @Param("syndicId") Long syndicId,
             @Param("status") String status,
             Pageable pageable);
+
+    // Somme des paiements de charges d'un syndic, reçus dans une période donnée
+    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM ChargeCallPayment p " +
+            "WHERE p.chargeCallItem.chargeCall.budget.syndic.id = :syndicId " +
+            "AND p.status = 'COMPLETED' " +
+            "AND p.paidAt >= :start AND p.paidAt < :end")
+    BigDecimal sumByBudgetSyndicIdAndPaidAtBetween(
+            @Param("syndicId") Long syndicId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
 }

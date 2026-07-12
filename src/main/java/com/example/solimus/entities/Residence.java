@@ -162,7 +162,7 @@ public class Residence {
      * Syndic responsable de la gestion de cette résidence.
      * Un syndic peut gérer plusieurs résidences.
      */
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "syndic_id", nullable = false)
     private User syndic;
 

@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -51,4 +52,7 @@ public interface ChargeCallRepository extends JpaRepository<ChargeCall, Long> {
            "AND cc.year = :year " +
            "ORDER BY cc.periodNumber ASC")
     List<ChargeCall> findByResidenceIdAndYear(@Param("residenceId") Long residenceId, @Param("year") Integer year);
+
+    List<ChargeCall> findByBudgetSyndicId(Long syndicId);
+    List<ChargeCall> findByBudgetSyndicIdAndCreatedAtBetween(Long syndicId, LocalDateTime start, LocalDateTime end);
 }
