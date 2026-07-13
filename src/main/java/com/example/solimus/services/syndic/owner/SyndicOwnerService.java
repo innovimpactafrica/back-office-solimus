@@ -3,6 +3,7 @@ package com.example.solimus.services.syndic.owner;
 import com.example.solimus.dtos.owner.CoOwnerDocumentItemDTO;
 import com.example.solimus.dtos.owner.CoOwnerInterventionsResponseDTO;
 import com.example.solimus.dtos.owner.CoOwnerMeetingsDTO;
+import com.example.solimus.dtos.owner.CoOwnerResidenceDTO;
 import com.example.solimus.dtos.syndic.owner.*;
 import com.example.solimus.dtos.syndic.residence.ActivityLogItemDTO;
 import com.example.solimus.enums.CoOwnerDocumentCategory;
@@ -26,6 +27,9 @@ public interface SyndicOwnerService {
     /** Lister les résidences qui ont au moins un bien vacant */
     Page<ResidenceSummaryDTO> getResidencesWithVacantProperties(Integer page, Integer size);
 
+    /** Lister les résidences d'un copropriétaire (pour le filtre finances) */
+    List<CoOwnerResidenceDTO> getCoOwnerResidences(Long coOwnerId);
+
     /** Lister les copropriétaires des résidences du syndic connecté, avec recherche, filtre résidence et statut */
     Page<CoOwnerListDTO> getCoOwners(String search, Long residenceId, String status, Integer page, Integer size);
 
@@ -42,7 +46,7 @@ public interface SyndicOwnerService {
     Page<CoOwnerPaymentItemDTO> getCoOwnerPayments(Long coOwnerId, String status, Integer page, Integer size);
 
     /** Assemblées Générales d'un copropriétaire (onglet AG du détail) */
-    CoOwnerMeetingsDTO getCoOwnerMeetings(Long coOwnerId);
+    CoOwnerMeetingsDTO getCoOwnerMeetings(Long coOwnerId, Long residenceId, String type, Integer year, Integer page, Integer size);
 
     /** Travaux d'un copropriétaire (onglet Travaux du détail) */
     CoOwnerInterventionsResponseDTO getCoOwnerInterventions(Long coOwnerId);

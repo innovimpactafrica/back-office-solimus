@@ -1,19 +1,14 @@
 package com.example.solimus.controllers;
 
-import com.example.solimus.dtos.syndic.travaux.CreateReviewDTO;
+import com.example.solimus.dtos.syndic.travaux.*;
 import com.example.solimus.dtos.syndic.residence.CommonFacilityDTO;
 import com.example.solimus.dtos.syndic.residence.PropertyDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
-import com.example.solimus.dtos.syndic.travaux.CreateInterventionRequestDTO;
-import com.example.solimus.dtos.syndic.travaux.SyndicResidenceDTO;
-import com.example.solimus.dtos.syndic.travaux.SyndicDepositSummaryDTO;
-import com.example.solimus.dtos.syndic.travaux.SyndicPayDepositDTO;
-import com.example.solimus.dtos.syndic.travaux.SyndicBalancePaymentSummaryDTO;
-import com.example.solimus.dtos.syndic.travaux.SyndicPaymentResultDTO;
-import com.example.solimus.dtos.syndic.travaux.UpdateInterventionRequestDTO;
 import com.example.solimus.enums.IncidentLocationType;
+import com.example.solimus.enums.InterventionStatus;
 import com.example.solimus.enums.UrgencyLevel;
 import com.example.solimus.services.minio.MinioService;
+import com.example.solimus.services.syndic.travaux.SyndicTravauxDashboardService;
 import com.example.solimus.services.syndic.travaux.SyndicTravauxService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -39,6 +34,8 @@ public class SyndicTravauxController {
 
     private final SyndicTravauxService syndicTravauxService;
     private final MinioService minioService;
+    private final SyndicTravauxDashboardService syndicTravauxDashboardService;
+
 
     // =========================================================================
     // LISTER LES RÉSIDENCES DU SYNDIC
@@ -250,4 +247,84 @@ public class SyndicTravauxController {
         syndicTravauxService.deleteIntervention(id);
         return ResponseEntity.noContent().build();
     }
+
+    // =========================================================================
+    // DASHBOARD (6 KPIs)
+    // =========================================================================
+
+    @Operation(summary = "Dashboard des travaux", description = "Retourne les 6 KPIs (ouverts, urgents, en attente devis, en cours, résolus, clôturés)")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/dashboard")
+    public ResponseEntity<TravauxDashboardDTO> getDashboard() {
+        return ResponseEntity.ok(syndicTravauxDashboardService.getDashboard());
+    }
+
+    // =========================================================================
+    // LISTER LES INCIDENTS (paginé, avec recherche et filtres)
+    // =========================================================================
+
+    @Operation(summary = "Lister les incidents travaux", description = "Liste paginée avec recherche, filtre par statut et résidence")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/incidents")
+    public ResponseEntity<SyndicTravauxListResponse> getIncidents(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) InterventionStatus status,
+            @RequestParam(required = false) Long residenceId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(syndicTravauxDashboardService.getIncidents(search, status, residenceId, page, size));
+    }
+
+    // =========================================================================
+    // ONGLET 1 — VUE GÉNÉRALE
+    // =========================================================================
+
+    @Operation(summary = "Vue générale d'un incident (onglet 1)")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/incidents/{id}")
+    public ResponseEntity<SyndicTravauxDetailDTO> getVueGenerale(@PathVariable Long id) {
+        return ResponseEntity.ok(syndicTravauxDashboardService.getVueGenerale(id));
+    }
+
+    // =========================================================================
+    // ONGLET 2 — DEVIS
+    // =========================================================================
+
+    @Operation(summary = "Liste des devis reçus pour un incident (onglet 2)")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/incidents/{id}/quotes")
+    public ResponseEntity<List<SyndicQuoteCardDTO>> getQuotes(@PathVariable Long id) {
+        return ResponseEntity.ok(syndicTravauxDashboardService.getQuotes(id));
+    }
+
+    @Operation(summary = "Détail d'un devis précis (onglet 2 → clic)")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/incidents/{id}/quotes/{quoteId}")
+    public ResponseEntity<SyndicQuoteDetailDTO> getQuoteDetail(
+            @PathVariable Long id, @PathVariable Long quoteId) {
+        return ResponseEntity.ok(syndicTravauxDashboardService.getQuoteDetail(id, quoteId));
+    }
+
+    // =========================================================================
+    // ONGLET 3 — INTERVENTION
+    // =========================================================================
+
+    @Operation(summary = "Données de l'onglet Intervention (onglet 3)")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/incidents/{id}/intervention")
+    public ResponseEntity<SyndicInterventionTabDTO> getInterventionTab(@PathVariable Long id) {
+        return ResponseEntity.ok(syndicTravauxDashboardService.getInterventionTab(id));
+    }
+
+    // =========================================================================
+    // ONGLET 4 — HISTORIQUE
+    // =========================================================================
+
+    @Operation(summary = "Historique complet d'un incident (onglet 4)")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/incidents/{id}/history")
+    public ResponseEntity<List<SyndicHistoryItemDTO>> getHistory(@PathVariable Long id) {
+        return ResponseEntity.ok(syndicTravauxDashboardService.getHistory(id));
+    }
 }
+

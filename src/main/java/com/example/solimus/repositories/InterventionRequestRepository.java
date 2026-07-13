@@ -396,4 +396,25 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
             @Param("syndicId") Long syndicId,
             @Param("managementMode") InterventionManagementMode managementMode,
             Pageable pageable);
+
+    // Compte les interventions d'un syndic ayant un statut parmi une liste donnée
+    long countByResidenceSyndicIdAndStatusIn(Long syndicId, List<InterventionStatus> statuses);
+
+    // Compte les interventions d'un syndic ayant un statut parmi une liste ET un niveau d'urgence précis
+    long countByResidenceSyndicIdAndStatusInAndUrgencyLevel(Long syndicId, List<InterventionStatus> statuses, UrgencyLevel urgencyLevel);
+
+    // Compte les interventions d'un syndic ayant un statut précis
+    long countByResidenceSyndicIdAndStatus(Long syndicId, InterventionStatus status);
+
+    // Recherche paginée des interventions d'un syndic, avec filtres optionnels (recherche titre, statut, résidence)
+    @Query("SELECT i FROM InterventionRequest i WHERE i.residence.syndic.id = :syndicId " +
+            "AND (:search IS NULL OR LOWER(i.title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+            "AND (:status IS NULL OR i.status = :status) " +
+            "AND (:residenceId IS NULL OR i.residence.id = :residenceId)")
+    Page<InterventionRequest> searchForSyndicTravaux(
+            @Param("syndicId") Long syndicId,
+            @Param("search") String search,
+            @Param("status") InterventionStatus status,
+            @Param("residenceId") Long residenceId,
+            Pageable pageable);
 }

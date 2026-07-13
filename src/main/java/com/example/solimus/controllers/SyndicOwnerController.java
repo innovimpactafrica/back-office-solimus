@@ -3,6 +3,7 @@ package com.example.solimus.controllers;
 import com.example.solimus.dtos.owner.CoOwnerDocumentItemDTO;
 import com.example.solimus.dtos.owner.CoOwnerInterventionsResponseDTO;
 import com.example.solimus.dtos.owner.CoOwnerMeetingsDTO;
+import com.example.solimus.dtos.owner.CoOwnerResidenceDTO;
 import com.example.solimus.dtos.syndic.owner.CreateCoOwnerDTO;
 import com.example.solimus.dtos.syndic.residence.ActivityLogItemDTO;
 import com.example.solimus.enums.CoOwnerDocumentCategory;
@@ -139,6 +140,13 @@ public class SyndicOwnerController {
         return ResponseEntity.ok(syndicOwnerService.getCoOwnerDetail(coOwnerId));
     }
 
+    @Operation(summary = "Lister les résidences d'un copropriétaire (pour le filtre finances)", tags = {"Syndic - Copropriétaires"})
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/co-owners/{coOwnerId}/residences")
+    public ResponseEntity<List<CoOwnerResidenceDTO>> getCoOwnerResidences(@PathVariable Long coOwnerId) {
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerResidences(coOwnerId));
+    }
+
     @Operation(summary = "Lister les lots d'un copropriétaire (onglet Appartements du détail)", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/{coOwnerId}/properties")
@@ -172,8 +180,14 @@ public class SyndicOwnerController {
     @Operation(summary = "Assemblées Générales d'un copropriétaire (onglet AG du détail)", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/{coOwnerId}/meetings")
-    public ResponseEntity<CoOwnerMeetingsDTO> getCoOwnerMeetings(@PathVariable Long coOwnerId) {
-        return ResponseEntity.ok(syndicOwnerService.getCoOwnerMeetings(coOwnerId));
+    public ResponseEntity<CoOwnerMeetingsDTO> getCoOwnerMeetings(
+            @PathVariable Long coOwnerId,
+            @RequestParam(required = false) Long residenceId,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) Integer year,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerMeetings(coOwnerId, residenceId, type, year, page, size));
     }
 
     @Operation(summary = "Travaux d'un copropriétaire (onglet Travaux du détail)", tags = {"Syndic - Copropriétaires"})

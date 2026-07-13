@@ -10,9 +10,7 @@ import java.math.BigDecimal;
 
 /**
  * PRÉSENCE À UNE AG
- * Une ligne par copropriétaire par AG. Distincte du vote (qui se décide par
- * résolution, potentiellement plusieurs fois par AG) — la présence, elle,
- * ne se décide qu'une seule fois pour toute l'assemblée.
+ * Une ligne par copropriétaire par AG. Pas de notion de vote ni de représentation en V1.
  */
 @Entity
 @Table(name = "meeting_presences")
@@ -29,6 +27,10 @@ public class MeetingPresence {
     @JoinColumn(name = "meeting_participant_id", nullable = false)
     private MeetingParticipant meetingParticipant;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "meeting_id", nullable = false)
+    private Meeting meeting;
+
     /**
      * Statut de présence de ce copropriétaire le jour de l'AG.
      */
@@ -43,14 +45,6 @@ public class MeetingPresence {
      */
     @Column(name = "tantieme_snapshot")
     private BigDecimal tantiemeSnapshot;
-
-    /**
-     * Si attendanceStatus == REPRESENTE : qui représente ce copropriétaire (procuration).
-     * Toujours un autre copropriétaire du système en V1 (pas d'externe).
-     */
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "represented_by_user_id")
-    private User representedByUser;
 
     /**
      * Signature électronique de présence.

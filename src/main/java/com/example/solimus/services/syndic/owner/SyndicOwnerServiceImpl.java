@@ -5,6 +5,7 @@ import com.example.solimus.dtos.owner.CoOwnerInterventionRowDTO;
 import com.example.solimus.dtos.owner.CoOwnerInterventionsResponseDTO;
 import com.example.solimus.dtos.owner.CoOwnerMeetingsDTO;
 import com.example.solimus.dtos.owner.CoOwnerMeetingHistoryItemDTO;
+import com.example.solimus.dtos.owner.CoOwnerResidenceDTO;
 import com.example.solimus.dtos.syndic.owner.*;
 import com.example.solimus.dtos.syndic.residence.ActivityLogItemDTO;
 import com.example.solimus.entities.*;
@@ -32,6 +33,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Year;
@@ -110,7 +112,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
      */
     @Override
     @Transactional(readOnly = true)
-    public CoOwnerMeetingsDTO getCoOwnerMeetings(Long coOwnerId) {
+    public CoOwnerMeetingsDTO getCoOwnerMeetings(Long coOwnerId, Long residenceId, String type, Integer year, Integer page, Integer size) {
         // Récupérer le syndic connecté
         User currentSyndic = getCurrentUser();
 
@@ -129,7 +131,17 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         List<MeetingParticipant> syndicParticipants = new ArrayList<>();
         for (MeetingParticipant participant : participants) {
             if (participant.getMeeting().getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
-                syndicParticipants.add(participant);
+                // Filtre par résidence si fourni
+                if (residenceId == null || participant.getMeeting().getResidence().getId().equals(residenceId)) {
+                    // Filtre par type si fourni
+                    if (type == null || type.isBlank() || participant.getMeeting().getType().name().equals(type)) {
+                        // Filtre par année si fourni
+                        if (year == null || participant.getMeeting().getMeetingDate() != null 
+                                && participant.getMeeting().getMeetingDate().getYear() == year) {
+                            syndicParticipants.add(participant);
+                        }
+                    }
+                }
             }
         }
 
@@ -235,6 +247,16 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             }
         }
 
+        // Pagination manuelle sur la liste triée
+        int startIndex = page * size;
+        int endIndex = Math.min(startIndex + size, history.size());
+        List<CoOwnerMeetingHistoryItemDTO> paginatedHistory = new ArrayList<>();
+        if (startIndex < history.size()) {
+            for (int i = startIndex; i < endIndex; i++) {
+                paginatedHistory.add(history.get(i));
+            }
+        }
+
         // Construire et retourner la réponse
         return CoOwnerMeetingsDTO.builder()
                 .participationRate(participationRate)
@@ -242,7 +264,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 .totalMeetingsCount(totalMeetings)
                 .lastMeetingTitle(lastMeetingTitle)
                 .lastMeetingVote(null) // null pour l'instant, dépend de Vote
-                .meetingHistory(history)
+                .meetingHistory(paginatedHistory)
                 .build();
     }
 
@@ -337,8 +359,8 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         List<CoOwnerDocumentItemDTO> allDocuments = new ArrayList<>();
 
         // 1. Documents uploadés manuellement (CoOwnerDocument)
-        if (category == null || category.equals("TITRE_PROPRIETE") 
-            || category.equals("CONTRAT") || category.equals("PIECE_IDENTITE")) {
+        if (category == null || category.equals("PROPERTY_TITLE")
+            || category.equals("CONTRACT") || category.equals("IDENTITY_DOCUMENT")) {
             
             List<CoOwnerDocument> coOwnerDocs;
             if (category == null) {
@@ -471,16 +493,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
      * Convertir l'enum en label affichable
      */
     private String getCategoryLabel(CoOwnerDocumentCategory category) {
-        switch (category) {
-            case TITRE_PROPRIETE:
-                return "Titre de propriété";
-            case CONTRAT:
-                return "Contrats";
-            case PIECE_IDENTITE:
-                return "Pièces d'identité";
-            default:
-                return category.name();
-        }
+        return category.getDescription();
     }
 
     /**
@@ -842,6 +855,32 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         return new PageImpl<>(dtos, PageRequest.of(page, size), totalElements);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<CoOwnerResidenceDTO> getCoOwnerResidences(Long coOwnerId) {
+        // Récupérer le syndic connecté
+        User currentSyndic = getCurrentUser();
+
+        // Récupérer le copropriétaire
+        User coOwner = userRepository.findById(coOwnerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
+
+        // Récupérer tous les biens du copropriétaire pour les résidences du syndic
+        List<Property> properties = propertyRepository.findByOwnerIdAndResidenceSyndicId(coOwnerId, currentSyndic.getId());
+
+        // Extraire les résidences uniques
+        List<CoOwnerResidenceDTO> residences = properties.stream()
+                .map(Property::getResidence)
+                .distinct()
+                .map(residence -> CoOwnerResidenceDTO.builder()
+                        .id(residence.getId())
+                        .name(residence.getName())
+                        .build())
+                .collect(Collectors.toList());
+
+        return residences;
+    }
+
     //-------------------------------------------------------
     //Lister les copropriétaires du syndic connecté (ayant au moins un bien)
     // Avec filtres search, residenceId, status et pagination manuelle
@@ -1149,11 +1188,11 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             }
             annualCharges = budget.getBudgetTotal()
                     .multiply(tantiemeCoOwner)
-                    .divide(BigDecimal.valueOf(100));
+                    .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
         }
 
         // 2. Calculer monthlyCharges
-        BigDecimal monthlyCharges = annualCharges.divide(BigDecimal.valueOf(12));
+        BigDecimal monthlyCharges = annualCharges.divide(BigDecimal.valueOf(12), 4, RoundingMode.HALF_UP);
 
         // 3. Calculer currentBalance
         BigDecimal currentBalance = chargeCallItemRepository
@@ -1166,6 +1205,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         if (annualCharges.compareTo(BigDecimal.ZERO) > 0) {
             paymentsPercentage = paymentsMade.divide(annualCharges, 4, java.math.RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100))
+                    .setScale(2, java.math.RoundingMode.HALF_UP)
                     .doubleValue();
         }
 
@@ -1186,6 +1226,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 if (budget.getBudgetTotal().compareTo(BigDecimal.ZERO) > 0) {
                     percentage = item.getMontant().divide(budget.getBudgetTotal(), 4, java.math.RoundingMode.HALF_UP)
                             .multiply(BigDecimal.valueOf(100))
+                            .setScale(2, java.math.RoundingMode.HALF_UP)
                             .doubleValue();
                 }
                 ChargeBreakdownItemDTO dto = ChargeBreakdownItemDTO.builder()

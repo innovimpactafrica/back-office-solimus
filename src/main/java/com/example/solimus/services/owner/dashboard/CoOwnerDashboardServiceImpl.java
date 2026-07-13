@@ -134,7 +134,7 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
                 .meetingStartTime(meeting.getStartTime() != null ? meeting.getStartTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) : null)
                 .meetingEndTime(meeting.getEndTime() != null ? meeting.getEndTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")) : null)
                 .location(meeting.getLocation())
-                .participantCount(meeting.getParticipants() != null ? meeting.getParticipants().size() : 0)
+
                 .documentCount(meeting.getDocuments() != null ? meeting.getDocuments().size() : 0)
                 .residenceId(meeting.getResidence() != null ? meeting.getResidence().getId() : null)
                 .build();

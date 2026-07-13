@@ -65,8 +65,8 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
     // floor : exact match
     @Query("SELECT p FROM Property p WHERE p.residence.id = :residenceId " +
            "AND (:search IS NULL OR LOWER(p.reference) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(p.owner.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(p.owner.lastName) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "OR (p.owner IS NOT NULL AND LOWER(p.owner.firstName) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "OR (p.owner IS NOT NULL AND LOWER(p.owner.lastName) LIKE LOWER(CONCAT('%', :search, '%')))) " +
            "AND (:floor IS NULL OR p.floor = :floor) " +
            "ORDER BY p.reference ASC")
     Page<Property> findByResidenceIdWithFilters(
