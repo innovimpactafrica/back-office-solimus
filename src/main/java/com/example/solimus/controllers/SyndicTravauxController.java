@@ -301,6 +301,26 @@ public class SyndicTravauxController {
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(summary = "Ajouter des photos à une intervention existante (avec upload MinIO)")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PostMapping(value = "/interventions/{id}/photos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<List<String>> addPhotosToIntervention(
+            @PathVariable Long id,
+            @Parameter(description = "Photos à ajouter")
+            @RequestPart("photos") List<MultipartFile> photos) {
+
+        List<String> photoUrls = new ArrayList<>();
+        if (photos != null) {
+            for (MultipartFile photo : photos) {
+                String objectKey = minioService.uploadFile(photo, "interventions");
+                photoUrls.add(objectKey);
+            }
+        }
+
+        syndicTravauxService.addPhotosToIntervention(id, photoUrls);
+        return ResponseEntity.ok(photoUrls);
+    }
+
     // =========================================================================
     // DASHBOARD (6 KPIs)
     // =========================================================================

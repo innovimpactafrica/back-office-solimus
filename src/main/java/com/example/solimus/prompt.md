@@ -1,17 +1,34 @@
-# % année budget global
-# Date de construction jour/mois/année
-# Contact clé : fullName /Téléphone , mettre à jour la table à la base 
+# Paramètre syndic: Pagination de tous les endpoints retournant une liste 
+# Résidence : une seule création
+# A relire : Il y a un FileController dans coopachat qui sert de proxy :
 
-#  Le principe
-Quand une SyndicWalletTransaction est créée, toi (ou ton service) décides du signe selon le type d'événement :
+Fonctionnement coopachat :
 
-Un copropriétaire paie ses charges → l'argent rentre dans le portefeuille du syndic → tu enregistres amount = +1 500 000 (positif)
-Le syndic paie un prestataire pour des travaux → l'argent sort du portefeuille → tu enregistres amount = -800 000 (négatif, avec le signe moins directement dans la valeur stockée)
+Backend stocke dans MinIO → retourne objectKey (uuid.jpg)
+Frontend demande : https://api.coopachat.innovimpactdev.cloud/api/files/uuid.jpg
+FileController intercepte /api/files/{path} et stream le fichier depuis MinIO
+Pourquoi cette architecture ?
 
+MinIO n'est pas exposé publiquement
+Le backend sert de proxy sécurisé
+Les images passent par le backend (endpoint public permitAll)
+Je dois vérifier si solimus a aussi un FileController :
 
-# Au moment de la création d'une SyndicWithdrawalRequest, il doit y avoir une validation du type :
-javaBigDecimal soldeDisponible = calculerSolde(wallet.getId(), LocalDateTime.now());
+SearchedFileController|/files|/uploads in c:/PROJECT/projet-innov/back-office-solimus
+Thought for 1s
+Read
+FileController.java
+Thought for 5s
+Parfait ! Solimus a déjà un FileController identique à coopachat. L'architecture est déjà en place :
 
-if (montantDemande.compareTo(soldeDisponible) > 0) {
-throw new InsufficientFundsException("Solde insuffisant pour ce retrait");
-}
+Architecture solimus (identique à coopachat) :
+
+Images stockées dans MinIO
+Backend retourne objectKey (uuid.jpg)
+Frontend construit : https://api.solimus.innovimpactdev.cloud/api/files/uuid.jpg
+FileController (/api/files/{path}) stream le fichier depuis MinIO
+Rien à modifier côté backend solimus - tout est déjà configuré comme coopachat. Le frontend solimus doit simplement :
+
+Avoir imageServerUrl dans environment.ts
+Construire les URLs comme coopachat : ${imageServerUrl}/files/${objectKey}
+L'architecture est cohérente entre les deux projets.

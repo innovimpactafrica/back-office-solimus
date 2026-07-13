@@ -776,6 +776,29 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         interventionRepository.delete(request);
     }
 
+    @Override
+    @Transactional
+    public void addPhotosToIntervention(Long interventionId, List<String> photoUrls) {
+        User currentSyndic = getCurrentUser();
+
+        InterventionRequest request = interventionRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        // Vérifier que l'intervention appartient au syndic via la résidence
+        if (!request.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à modifier cette intervention");
+        }
+
+        // Ajouter les nouvelles photos aux existantes
+        if (photoUrls != null && !photoUrls.isEmpty()) {
+            if (request.getPhotoUrls() == null) {
+                request.setPhotoUrls(new ArrayList<>());
+            }
+            request.getPhotoUrls().addAll(photoUrls);
+            interventionRepository.save(request);
+        }
+    }
+
     /**
      * Diffuse une demande d'intervention aux prestataires proches.
      * Réutilisé pour les demandes créées par le syndic et celles créées par le owner.

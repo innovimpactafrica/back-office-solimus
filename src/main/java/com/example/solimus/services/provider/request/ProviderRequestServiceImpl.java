@@ -245,7 +245,11 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
             quote.setStatus(dto.getIsDraft() ? QuoteStatus.DRAFT : QuoteStatus.SENT);
         }
         if (dto.getItems() != null) {
-            // Supprimer les anciens items
+            // Supprimer les anciens items via le repository pour respecter cascade all-delete-orphan
+            List<QuoteItem> oldItems = new ArrayList<>(quote.getItems());
+            for (QuoteItem oldItem : oldItems) {
+                oldItem.setQuote(null);
+            }
             quote.getItems().clear();
             // Ajouter les nouveaux items
             List<QuoteItem> items = dto.getItems().stream().map(itemDto -> {

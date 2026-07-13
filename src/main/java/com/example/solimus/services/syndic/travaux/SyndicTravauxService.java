@@ -122,4 +122,9 @@ public interface SyndicTravauxService {
      */
     void deleteIntervention(Long interventionId);
 
+    /**
+     * Ajoute des photos à une intervention existante.
+     */
+    void addPhotosToIntervention(Long interventionId, List<String> photoUrls);
+
 }
