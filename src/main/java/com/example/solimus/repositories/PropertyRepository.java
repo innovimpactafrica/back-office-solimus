@@ -103,4 +103,16 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
 
     // Lister les biens d'un propriétaire dans les résidences d'un syndic
     List<Property> findByOwnerIdAndResidenceSyndicId(Long ownerId, Long syndicId);
+
+    // Récupérer les résidences distinctes d'un copropriétaire pour un syndic donné (paginé)
+    // Cette requête utilise DISTINCT pour éviter les doublons quand un copropriétaire a plusieurs lots dans la même résidence
+    // La pagination est gérée directement par la base de données pour de meilleures performances
+    @Query("SELECT DISTINCT p.residence FROM Property p " +
+           "WHERE p.owner.id = :coOwnerId " +
+           "AND p.residence.syndic.id = :syndicId " +
+           "ORDER BY p.residence.name ASC")
+    Page<com.example.solimus.entities.Residence> findDistinctResidencesByCoOwnerAndSyndic(
+            @Param("coOwnerId") Long coOwnerId,
+            @Param("syndicId") Long syndicId,
+            Pageable pageable);
 }

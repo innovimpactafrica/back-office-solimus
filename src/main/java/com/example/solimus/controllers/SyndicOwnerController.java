@@ -68,21 +68,18 @@ public class SyndicOwnerController {
             @RequestParam(required = false) String secondaryPhone,
             @RequestParam(required = false) String address,
             @Parameter(
-                description = "Liste des affectations de lots au format JSON (optionnel) — groupée par résidence",
+                description = "Liste des affectations de lots au format JSON (obligatoire) — groupée par résidence",
                 schema = @Schema(
                     type = "string",
                     example = "[{\"residenceId\":1,\"propertyIds\":[3,7]},{\"residenceId\":2,\"propertyIds\":[12]}]"
                 )
             )
-            @RequestPart(value = "propertiesJson", required = false) String propertiesJson,
+            @RequestPart(value = "propertiesJson", required = true) String propertiesJson,
             @RequestPart(value = "photo", required = false) MultipartFile photo) throws JsonProcessingException {
 
-        // Parser les affectations de lots si fournies, sinon liste vide
-        List<CoOwnerPropertyAssignmentDTO> properties = new ArrayList<>();
-        if (propertiesJson != null && !propertiesJson.trim().isEmpty()) {
-            properties = objectMapper.readValue(propertiesJson,
-                    objectMapper.getTypeFactory().constructCollectionType(List.class, CoOwnerPropertyAssignmentDTO.class));
-        }
+        // Parser les affectations de lots (obligatoire)
+        List<CoOwnerPropertyAssignmentDTO> properties = objectMapper.readValue(propertiesJson,
+                objectMapper.getTypeFactory().constructCollectionType(List.class, CoOwnerPropertyAssignmentDTO.class));
 
         // Construire le DTO à partir des RequestParam + la liste parsée
         CreateCoOwnerDTO dto = CreateCoOwnerDTO.builder()
@@ -143,8 +140,11 @@ public class SyndicOwnerController {
     @Operation(summary = "Lister les résidences d'un copropriétaire (pour le filtre finances)", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/{coOwnerId}/residences")
-    public ResponseEntity<List<CoOwnerResidenceDTO>> getCoOwnerResidences(@PathVariable Long coOwnerId) {
-        return ResponseEntity.ok(syndicOwnerService.getCoOwnerResidences(coOwnerId));
+    public ResponseEntity<Page<CoOwnerResidenceDTO>> getCoOwnerResidences(
+            @PathVariable Long coOwnerId,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerResidences(coOwnerId, page, size));
     }
 
     @Operation(summary = "Lister les lots d'un copropriétaire (onglet Appartements du détail)", tags = {"Syndic - Copropriétaires"})

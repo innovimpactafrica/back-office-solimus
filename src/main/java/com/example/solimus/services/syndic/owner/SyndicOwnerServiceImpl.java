@@ -677,6 +677,11 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
     @Transactional
     public void addCoOwner(CreateCoOwnerDTO dto, MultipartFile photo) {
 
+        // Vérifier qu'au moins un bien est fourni
+        if (dto.getProperties() == null || dto.getProperties().isEmpty()) {
+            throw new BadRequestException("Au moins un bien doit être assigné au copropriétaire");
+        }
+
         // Vérifications préliminaires
         // on vérifie si l'email existe déjà — si oui on retourne l'ID du copropriétaire existant
         userRepository.findByEmail(dto.getEmail()).ifPresent(existing -> {
@@ -857,7 +862,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CoOwnerResidenceDTO> getCoOwnerResidences(Long coOwnerId) {
+    public Page<CoOwnerResidenceDTO> getCoOwnerResidences(Long coOwnerId, Integer page, Integer size) {
         // Récupérer le syndic connecté
         User currentSyndic = getCurrentUser();
 
@@ -865,20 +870,25 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         User coOwner = userRepository.findById(coOwnerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
 
-        // Récupérer tous les biens du copropriétaire pour les résidences du syndic
-        List<Property> properties = propertyRepository.findByOwnerIdAndResidenceSyndicId(coOwnerId, currentSyndic.getId());
+        // Pagination au niveau de la base de données
+        // La requête utilise DISTINCT pour éviter les doublons quand un copropriétaire a plusieurs lots dans la même résidence
+        // La pagination est gérée directement par MySQL pour de meilleures performances
+        Page<Residence> residencesPage = propertyRepository.findDistinctResidencesByCoOwnerAndSyndic(
+                coOwnerId,
+                currentSyndic.getId(),
+                PageRequest.of(page, size)
+        );
 
-        // Extraire les résidences uniques
-        List<CoOwnerResidenceDTO> residences = properties.stream()
-                .map(Property::getResidence)
-                .distinct()
+        // Convertir les entités Residence en DTOs
+        List<CoOwnerResidenceDTO> dtos = residencesPage.getContent().stream()
                 .map(residence -> CoOwnerResidenceDTO.builder()
                         .id(residence.getId())
                         .name(residence.getName())
                         .build())
                 .collect(Collectors.toList());
 
-        return residences;
+        // Retourner la page avec les métadonnées de pagination (total, nombre de pages, etc.)
+        return new PageImpl<>(dtos, residencesPage.getPageable(), residencesPage.getTotalElements());
     }
 
     //-------------------------------------------------------

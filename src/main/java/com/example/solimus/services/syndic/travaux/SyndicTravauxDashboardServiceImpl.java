@@ -114,7 +114,6 @@ public class SyndicTravauxDashboardServiceImpl implements SyndicTravauxDashboard
                         ? request.getSelectedProvider().getFirstName() + " " + request.getSelectedProvider().getLastName() : null)
                 .coutEstime(request.getTotalAmount())
                 // Résumé financier
-                .devisInitial(request.getTotalAmount())
                 .avanceVersee(request.getDepositAmount())
                 .totalEngage(request.getTotalAmount())
                 .totalPaye(calculateTotalPaye(request))

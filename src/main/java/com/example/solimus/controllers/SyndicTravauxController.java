@@ -5,6 +5,7 @@ import com.example.solimus.dtos.syndic.residence.CommonFacilityDTO;
 import com.example.solimus.dtos.syndic.residence.PropertyDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.enums.IncidentLocationType;
+import com.example.solimus.enums.InterventionManagementMode;
 import com.example.solimus.enums.InterventionStatus;
 import com.example.solimus.enums.UrgencyLevel;
 import com.example.solimus.services.minio.MinioService;
@@ -230,12 +231,64 @@ public class SyndicTravauxController {
     // MISE À JOUR ET SUPPRESSION D'INTERVENTION
     // =========================================================================
 
-    @Operation(summary = "Mettre à jour partiellement une demande d'intervention (uniquement si en attente de devis)")
+    @Operation(summary = "Mettre à jour partiellement une demande d'intervention avec upload MinIO (uniquement si en attente de devis)")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
-    @PatchMapping("/interventions/{id}")
+    @PatchMapping(value = "/interventions/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Void> updateIntervention(
             @PathVariable Long id,
-            @RequestBody @Valid UpdateInterventionRequestDTO dto) {
+
+            @Parameter(description = "Titre court de l'intervention")
+            @RequestParam(value = "title", required = false) String title,
+
+            @Parameter(description = "Description détaillée du problème")
+            @RequestParam(value = "description", required = false) String description,
+
+            @Parameter(description = "ID de la résidence concernée")
+            @RequestParam(value = "residenceId", required = false) Long residenceId,
+
+            @Parameter(description = "ID du bien concerné")
+            @RequestParam(value = "propertyId", required = false) Long propertyId,
+
+            @Parameter(description = "ID de la partie commune concernée")
+            @RequestParam(value = "commonFacilityId", required = false) Long commonFacilityId,
+
+            @Parameter(description = "ID de la spécialité requise")
+            @RequestParam(value = "specialtyId", required = false) Long specialtyId,
+
+            @Parameter(description = "Type de localisation (APPARTEMENT ou PARTIE_COMMUNE)")
+            @RequestParam(value = "locationType", required = false) IncidentLocationType locationType,
+
+            @Parameter(description = "Mode de gestion")
+            @RequestParam(value = "managementMode", required = false) InterventionManagementMode managementMode,
+
+            @Parameter(description = "Niveau d'urgence")
+            @RequestParam(value = "urgencyLevel", required = false) UrgencyLevel urgencyLevel,
+
+            @Parameter(description = "Photos du problème à remplacer")
+            @RequestPart(value = "photos", required = false) List<MultipartFile> photos) {
+
+        List<String> photoUrls = null;
+        if (photos != null) {
+            photoUrls = new ArrayList<>();
+            for (MultipartFile photo : photos) {
+                String url = minioService.uploadFile(photo, "interventions");
+                photoUrls.add(url);
+            }
+        }
+
+        UpdateInterventionRequestDTO dto = UpdateInterventionRequestDTO.builder()
+                .title(title)
+                .description(description)
+                .residenceId(residenceId)
+                .propertyId(propertyId)
+                .commonFacilityId(commonFacilityId)
+                .specialtyId(specialtyId)
+                .locationType(locationType)
+                .managementMode(managementMode)
+                .urgencyLevel(urgencyLevel)
+                .photoUrls(photoUrls)
+                .build();
+
         syndicTravauxService.updateIntervention(id, dto);
         return ResponseEntity.ok().build();
     }

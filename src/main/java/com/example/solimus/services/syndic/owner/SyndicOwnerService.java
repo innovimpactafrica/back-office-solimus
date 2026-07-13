@@ -28,7 +28,7 @@ public interface SyndicOwnerService {
     Page<ResidenceSummaryDTO> getResidencesWithVacantProperties(Integer page, Integer size);
 
     /** Lister les résidences d'un copropriétaire (pour le filtre finances) */
-    List<CoOwnerResidenceDTO> getCoOwnerResidences(Long coOwnerId);
+    Page<CoOwnerResidenceDTO> getCoOwnerResidences(Long coOwnerId, Integer page, Integer size);
 
     /** Lister les copropriétaires des résidences du syndic connecté, avec recherche, filtre résidence et statut */
     Page<CoOwnerListDTO> getCoOwners(String search, Long residenceId, String status, Integer page, Integer size);

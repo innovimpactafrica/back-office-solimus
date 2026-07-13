@@ -32,9 +32,8 @@ public class SyndicTravauxDetailDTO {
     private String dureeEstimee; // estimatedDelay du devis accepté, si présent
 
     // Résumé financier
-    private BigDecimal devisInitial; // totalAmount
     private BigDecimal avanceVersee; // depositAmount (acompte)
-    private BigDecimal totalEngage; // totalAmount (identique au devis initial)
+    private BigDecimal totalEngage; // totalAmount
     private BigDecimal totalPaye; // depositAmount, ou totalAmount si tout est payé
 
     // Participants (règle : SYNDIC seul si initiatedBy=SYNDIC sans owner,
