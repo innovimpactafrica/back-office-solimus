@@ -1,7 +1,9 @@
 package com.example.solimus.services.payment;
 
+import com.example.solimus.entities.ChargeCallPayment;
 import com.example.solimus.entities.PaymentProvider;
 import com.example.solimus.enums.PaymentStatus;
+import com.example.solimus.repositories.ChargeCallPaymentRepository;
 import com.example.solimus.repositories.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +20,7 @@ import java.util.List;
 public class PaymentSchedulerServiceImpl implements PaymentSchedulerService {
 
     private final PaymentRepository paymentRepository;
+    private final ChargeCallPaymentRepository chargeCallPaymentRepository;
 
     /**
      * Fait passer en FAILED les paiements PENDING créés depuis plus de 5 minutes
@@ -48,5 +51,31 @@ public class PaymentSchedulerServiceImpl implements PaymentSchedulerService {
         paymentRepository.saveAll(stalePayments);
 
         log.info("{} paiements PENDING expirés et passés en FAILED", stalePayments.size());
+    }
+
+    /**
+     * Fait passer en FAILED les paiements de charges PENDING créés depuis plus de 5 minutes
+     * sans avoir reçu de callback TouchPay. S'exécute toutes les minutes.
+     */
+    @Scheduled(cron = "0 * * * * *") // toutes les minutes
+    @Transactional
+    public void failStalePendingChargePayments() {
+
+        LocalDateTime timeoutThreshold = LocalDateTime.now().minusMinutes(5);
+
+        List<ChargeCallPayment> staleChargePayments = chargeCallPaymentRepository
+                .findByStatusAndCreatedAtBefore(PaymentStatus.PENDING, timeoutThreshold);
+
+        if (staleChargePayments.isEmpty()) {
+            return;
+        }
+
+        for (ChargeCallPayment payment : staleChargePayments) {
+            payment.setStatus(PaymentStatus.FAILED);
+        }
+
+        chargeCallPaymentRepository.saveAll(staleChargePayments);
+
+        log.info("{} paiements de charges PENDING expirés et passés en FAILED", staleChargePayments.size());
     }
 }

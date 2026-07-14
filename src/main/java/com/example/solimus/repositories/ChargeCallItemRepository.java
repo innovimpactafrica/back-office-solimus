@@ -235,4 +235,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     // Tous les items non soldés, sans pagination (pour calculer les KPI globaux : total, count)
     @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId AND i.paidAmount < i.quotePart")
     List<ChargeCallItem> findAllUnpaidByBudgetSyndicId(@Param("syndicId") Long syndicId);
+
+    // Supprimer tous les items d'un appel de charges
+    void deleteByChargeCallId(Long chargeCallId);
 }

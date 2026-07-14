@@ -114,6 +114,12 @@ public interface ChargeService {
      */
     int remindChargeCall(Long chargeCallId);
 
+    /**
+     * Supprimer un appel de charges
+     * Supprime l'appel de charges et tous ses items. Seul possible si aucun paiement n'a été effectué.
+     */
+    void deleteChargeCall(Long chargeCallId);
+
     //--------------------------------------------------
     // ===== APPEL DE CHARGES EXCEPTIONNEL =====
     //--------------------------------------------------

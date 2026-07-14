@@ -11,6 +11,7 @@ import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +30,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ChargeServiceImpl implements ChargeService {
 
     private final BudgetRepository budgetRepository;
@@ -976,6 +978,38 @@ public class ChargeServiceImpl implements ChargeService {
         }
 
         return unpaidItems.size();
+    }
+
+    @Override
+    @Transactional
+    public void deleteChargeCall(Long chargeCallId) {
+        // Récupérer l'appel de charges, erreur si introuvable
+        ChargeCall chargeCall = chargeCallRepository.findById(chargeCallId)
+                .orElseThrow(() -> new RuntimeException("Appel de charges non trouvé"));
+
+        // Vérifier que cet appel appartient bien au syndic connecté
+        User currentSyndic = getCurrentUser();
+        if (!chargeCall.getBudget().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à supprimer cet appel de charges");
+        }
+
+        // Vérifier qu'aucun paiement COMPLETED n'a été effectué
+        boolean hasCompletedPayments = chargeCall.getItems().stream()
+                .anyMatch(item -> item.getPaidAmount().compareTo(BigDecimal.ZERO) > 0);
+        if (hasCompletedPayments) {
+            throw new BadRequestException("Impossible de supprimer : des paiements ont déjà été effectués sur cet appel de charges");
+        }
+
+        // Supprimer les paiements d'abord (PENDING)
+        chargeCallPaymentRepository.deleteByChargeCallId(chargeCallId);
+
+        // Supprimer les items ensuite
+        chargeCallItemRepository.deleteByChargeCallId(chargeCallId);
+
+        // Supprimer l'appel de charges
+        chargeCallRepository.delete(chargeCall);
+
+        log.info("Appel de charges {} supprimé par le syndic {}", chargeCallId, currentSyndic.getId());
     }
 
 

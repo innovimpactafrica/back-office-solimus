@@ -166,6 +166,13 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.remindChargeCall(id));
     }
 
+    @DeleteMapping("/charge-calls/{id}")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    public ResponseEntity<Void> deleteChargeCall(@PathVariable Long id) {
+        chargeService.deleteChargeCall(id);
+        return ResponseEntity.noContent().build();
+    }
+
     // ============================================================
     // APPEL DE CHARGES EXCEPTIONNEL
     // ============================================================
