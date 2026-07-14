@@ -62,6 +62,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
     private final NotificationService notificationService;
     private final MinioService minioService;
     private final ReviewRepository reviewRepository;
+    private final SyndicCoOwnerRelationRepository coOwnerRelationRepository;
 
     @Value("${solimus.geolocation.search-radius-km:30.0}")
     private double searchRadiusKm; // Rayon de recherche des prestataires (30km par défaut)
@@ -349,13 +350,29 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
 
         User currentOwner = getCurrentUser();
-        if (!request.getOwner().getId().equals(currentOwner.getId())) {
-            throw new ForbiddenException("Accès non autorisé à cette intervention");
+        // Vérifier via owner direct, propriété, ou copropriétaire dans la résidence
+        boolean isOwner = false;
+        if (request.getOwner() != null && request.getOwner().getId().equals(currentOwner.getId())) {
+            isOwner = true;
+        } else if (request.getProperty() != null && request.getProperty().getOwner() != null
+                && request.getProperty().getOwner().getId().equals(currentOwner.getId())) {
+            isOwner = true;
+        } else if (request.getResidence() != null) {
+            // Vérifier si le copropriétaire a une propriété dans cette résidence
+            isOwner = coOwnerRelationRepository.existsByResidenceIdAndCoOwnerId(
+                    request.getResidence().getId(), currentOwner.getId());
         }
 
-        // 1. Bloquer si l'intervention est gérée par le syndic (partie commune)
+        // Si managementMode == SYNDIC, le syndic peut voir les devis via la résidence
         if (request.getManagementMode() == InterventionManagementMode.SYNDIC) {
-            throw new ForbiddenException("Les devis de cette intervention sont gérés par le syndic.");
+            if (request.getResidence() != null && request.getResidence().getSyndic() != null
+                    && request.getResidence().getSyndic().getId().equals(currentOwner.getId())) {
+                isOwner = true;
+            }
+        }
+
+        if (!isOwner) {
+            throw new ForbiddenException("Accès non autorisé à cette intervention");
         }
 
         // 2. Récupérer uniquement les devis envoyés (pas les brouillons)

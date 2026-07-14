@@ -18,6 +18,10 @@ public interface SyndicCoOwnerRelationRepository extends JpaRepository<SyndicOwn
     // Vérifier si une relation existe déjà entre un syndic et un copropriétaire
     Optional<SyndicOwnerRelation> findBySyndicIdAndCoOwnerId(Long syndicId, Long coOwnerId);
 
+    // Vérifier si un copropriétaire a une propriété dans une résidence donnée
+    @Query("SELECT CASE WHEN COUNT(p) > 0 THEN true ELSE false END FROM Property p WHERE p.residence.id = :residenceId AND p.owner.id = :coOwnerId")
+    boolean existsByResidenceIdAndCoOwnerId(@Param("residenceId") Long residenceId, @Param("coOwnerId") Long coOwnerId);
+
     // Récupérer toutes les relations d'un syndic (paginé)
     Page<SyndicOwnerRelation> findAllBySyndicId(Long syndicId, Pageable pageable);
 

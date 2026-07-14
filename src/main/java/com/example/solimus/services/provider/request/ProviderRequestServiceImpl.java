@@ -9,6 +9,7 @@ import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.EstimatedDelayRepository;
 import com.example.solimus.repositories.InterventionRequestRepository;
+import com.example.solimus.repositories.QuoteItemRepository;
 import com.example.solimus.repositories.QuoteRepository;
 import com.example.solimus.repositories.UserRepository;
 import com.example.solimus.services.minio.MinioService;
@@ -35,6 +36,7 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
     private final QuoteRepository quoteRepository;
     private final MinioService minioService;
     private final EstimatedDelayRepository estimatedDelayRepository;
+    private final QuoteItemRepository quoteItemRepository;
 
     //---------------------------------------------------
     // Demandes de Travaux non assignés
@@ -245,23 +247,20 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
             quote.setStatus(dto.getIsDraft() ? QuoteStatus.DRAFT : QuoteStatus.SENT);
         }
         if (dto.getItems() != null) {
-            // Supprimer les anciens items via le repository pour respecter cascade all-delete-orphan
-            List<QuoteItem> oldItems = new ArrayList<>(quote.getItems());
-            for (QuoteItem oldItem : oldItems) {
-                oldItem.setQuote(null);
-            }
-            quote.getItems().clear();
-            // Ajouter les nouveaux items
-            List<QuoteItem> items = dto.getItems().stream().map(itemDto -> {
+            // Supprimer les anciens items via le repository
+            quoteItemRepository.deleteByQuoteId(quoteId);
+            // Créer une nouvelle liste pour remplacer complètement l'ancienne
+            List<QuoteItem> newItems = new ArrayList<>();
+            for (QuoteItemDTO itemDto : dto.getItems()) {
                 QuoteItem item = new QuoteItem();
                 item.setDescription(itemDto.getDescription());
                 item.setQuantity(itemDto.getQuantity());
                 item.setUnitPrice(itemDto.getUnitPrice());
                 item.setType(itemDto.getType());
                 item.setQuote(quote);
-                return item;
-            }).collect(Collectors.toList());
-            quote.setItems(items);
+                newItems.add(item);
+            }
+            quote.setItems(newItems);
         }
 
         quoteRepository.save(quote);

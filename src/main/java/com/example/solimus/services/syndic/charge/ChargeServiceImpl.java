@@ -266,8 +266,7 @@ public class ChargeServiceImpl implements ChargeService {
         // ÉTAPE 4 — Mise à jour des postes budgétaires si fournis
         // ------------------------------------------------------------
         if (dto.getItems() != null && !dto.getItems().isEmpty()) {
-            // Supprimer les items existants
-            budgetItemRepository.deleteByBudgetId(budgetId);
+            // Vider la collection existante : orphanRemoval supprimera les anciens items
             budget.getItems().clear();
 
             // Créer les nouveaux items
@@ -304,7 +303,8 @@ public class ChargeServiceImpl implements ChargeService {
             }
 
             budget.setBudgetTotal(budgetTotal);
-            budget.setItems(budgetItems);
+            // Muter la collection existante (ne pas remplacer la référence à cause d'orphanRemoval)
+            budget.getItems().addAll(budgetItems);
         }
 
         // ------------------------------------------------------------
@@ -624,9 +624,11 @@ public class ChargeServiceImpl implements ChargeService {
         }
 
         // 2. Récupérer la fréquence depuis les paramètres du syndic
-        SyndicFinancialSettings settings = syndicFinancialSettingsRepository.findBySyndicId(currentSyndic.getId())
-                .orElseThrow(() -> new RuntimeException("Paramètres financiers non trouvés"));
-        ChargeFrequency frequency = settings.getChargeFrequency();
+        // Repli sur la fréquence par défaut (TRIMESTRIEL) si le syndic n'a jamais persisté ses paramètres,
+        // pour rester cohérent avec GET /settings/financial qui renvoie les valeurs par défaut.
+        ChargeFrequency frequency = syndicFinancialSettingsRepository.findBySyndicId(currentSyndic.getId())
+                .map(SyndicFinancialSettings::getChargeFrequency)
+                .orElse(ChargeFrequency.TRIMESTRIEL);
 
         // 3. Déterminer le nombre de périodes (4 si trimestriel, 12 si mensuel)
         int numberOfPeriods;
@@ -725,9 +727,10 @@ public class ChargeServiceImpl implements ChargeService {
                 });
 
         // 3. Récupérer la fréquence et recalculer le montant total (jamais faire confiance au front)
-        SyndicFinancialSettings settings = syndicFinancialSettingsRepository.findBySyndicId(currentSyndic.getId())
-                .orElseThrow(() -> new RuntimeException("Paramètres financiers non trouvés"));
-        ChargeFrequency frequency = settings.getChargeFrequency();
+        // Repli sur la fréquence par défaut (TRIMESTRIEL) si aucun paramètre n'est persisté.
+        ChargeFrequency frequency = syndicFinancialSettingsRepository.findBySyndicId(currentSyndic.getId())
+                .map(SyndicFinancialSettings::getChargeFrequency)
+                .orElse(ChargeFrequency.TRIMESTRIEL);
 
         int numberOfPeriods;
         if (frequency == ChargeFrequency.TRIMESTRIEL) {
