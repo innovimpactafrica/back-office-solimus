@@ -59,6 +59,7 @@ public class ChargeServiceImpl implements ChargeService {
     // ============================================================
 
     @Override
+    @Transactional(readOnly = true)
     public BudgetResidencePreviewDTO getResidencePreview(Long residenceId) {
         // 1.1 Récupérer la résidence
         Residence residence = residenceRepository.findById(residenceId)
@@ -369,6 +370,7 @@ public class ChargeServiceImpl implements ChargeService {
    // DÉTAIL D'UN BUDGET AVEC KPIs (carte "Budget 2026 — Résidence X")
    // ============================================================
     @Override
+    @Transactional(readOnly = true)
     public BudgetOverviewDTO getBudgetOverview(Long budgetId) {
 
         // Récupérer le budget, erreur si introuvable
@@ -425,6 +427,7 @@ public class ChargeServiceImpl implements ChargeService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public BudgetDetailDTO getBudgetDetail(Long budgetId) {
         // ------------------------------------------------------------
         // ÉTAPE 3.1 — Récupérer le budget
@@ -615,6 +618,100 @@ public class ChargeServiceImpl implements ChargeService {
      * Retourne les données calculées sans rien créer en base.
      */
     @Override
+    @Transactional(readOnly = true)
+    public CurrentBudgetDTO getCurrentBudget(Long residenceId) {
+        Residence residence = residenceRepository.findById(residenceId)
+                .orElseThrow(() -> new RuntimeException("Résidence non trouvée"));
+
+        User currentSyndic = getCurrentUser();
+        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
+        }
+
+        Budget budget = budgetRepository.findByResidenceIdAndStatus(residenceId, BudgetStatus.ACTIVE)
+                .orElseThrow(() -> new RuntimeException("Aucun budget actif pour cette résidence"));
+
+        return new CurrentBudgetDTO(budget.getId(), budget.getAnnee(), residence.getName());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ChargeCallPreviewDTO previewChargeCallByResidence(Long residenceId, Integer periodNumber) {
+        // 1. Récupérer le budget actif de la résidence
+        Budget budget = budgetRepository.findByResidenceIdAndStatus(residenceId, BudgetStatus.ACTIVE)
+                .orElseThrow(() -> new RuntimeException("Aucun budget actif pour cette résidence"));
+
+        // 2. Vérifier l'appartenance au syndic
+        User currentSyndic = getCurrentUser();
+        if (!budget.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Ce budget ne vous appartient pas");
+        }
+
+        // 3. Récupérer la fréquence depuis les paramètres du syndic
+        ChargeFrequency frequency = syndicFinancialSettingsRepository.findBySyndicId(currentSyndic.getId())
+                .map(SyndicFinancialSettings::getChargeFrequency)
+                .orElse(ChargeFrequency.TRIMESTRIEL);
+
+        // 4. Déterminer le nombre de périodes
+        int numberOfPeriods = (frequency == ChargeFrequency.TRIMESTRIEL) ? 4 : 12;
+
+        // 5. Vérifier qu'aucun ChargeCall n'existe déjà pour cette période
+        chargeCallRepository.findByBudgetIdAndYearAndPeriodNumber(budget.getId(), budget.getAnnee(), periodNumber)
+                .ifPresent(chargeCall -> {
+                    throw new RuntimeException("Un appel de charges existe déjà pour cette période");
+                });
+
+        // 6. Calculer le montant total de la période
+        BigDecimal totalAmount = budget.getBudgetTotal()
+                .divide(BigDecimal.valueOf(numberOfPeriods), 2, RoundingMode.HALF_UP);
+
+        // 7. Construire la répartition par copropriétaire
+        List<Property> properties = propertyRepository.findByResidenceId(residenceId);
+        List<CoOwnerQuotePartPreviewDTO> repartition = new ArrayList<>();
+        BigDecimal totalTantieme = BigDecimal.ZERO;
+
+        for (Property property : properties) {
+            if (property.getOwner() != null) {
+                boolean alreadyAdded = repartition.stream()
+                        .anyMatch(item -> item.getCoOwnerId().equals(property.getOwner().getId()));
+
+                if (!alreadyAdded) {
+                    BigDecimal tantiemeCoOwner = properties.stream()
+                            .filter(p -> p.getOwner() != null && p.getOwner().getId().equals(property.getOwner().getId()))
+                            .map(p -> p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                    BigDecimal quotePart = totalAmount.multiply(tantiemeCoOwner)
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+                    CoOwnerQuotePartPreviewDTO item = CoOwnerQuotePartPreviewDTO.builder()
+                            .coOwnerId(property.getOwner().getId())
+                            .coOwnerName(property.getOwner().getFirstName() + " " + property.getOwner().getLastName())
+                            .tantieme(tantiemeCoOwner)
+                            .quotePart(quotePart)
+                            .build();
+
+                    repartition.add(item);
+                    totalTantieme = totalTantieme.add(tantiemeCoOwner);
+                }
+            }
+        }
+
+        return ChargeCallPreviewDTO.builder()
+                .budgetId(budget.getId())
+                .budgetReference("BUD-" + budget.getAnnee())
+                .residenceName(budget.getResidence().getName())
+                .year(budget.getAnnee())
+                .periodNumber(periodNumber)
+                .totalAmount(totalAmount)
+                .repartition(repartition)
+                .totalTantieme(totalTantieme)
+                .coOwnersCount(repartition.size())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public ChargeCallPreviewDTO previewChargeCall(Long budgetId, Integer periodNumber) {
         // 1. Récupérer le budget et vérifier l'appartenance au syndic
         Budget budget = budgetRepository.findById(budgetId)
@@ -849,6 +946,7 @@ public class ChargeServiceImpl implements ChargeService {
   // ============================================================
 
     @Override
+    @Transactional(readOnly = true)
     public ChargeCallListResponse getChargeCallsForSyndic(int page, int size) {
 
         // Récupère le syndic actuellement connecté
@@ -880,6 +978,7 @@ public class ChargeServiceImpl implements ChargeService {
     // ============================================================
 
     @Override
+    @Transactional(readOnly = true)
     public ChargeCallDetailDTO getChargeCallDetail(Long chargeCallId) {
 
         // Récupère l'appel de charges, erreur si introuvable
@@ -1560,6 +1659,7 @@ public class ChargeServiceImpl implements ChargeService {
     // ============================================================
 
     @Override
+    @Transactional(readOnly = true)
     public PaymentListResponse getPaymentsForSyndic(int page, int size, String search) {
 
         // Récupère le syndic actuellement connecté
@@ -1608,6 +1708,7 @@ public class ChargeServiceImpl implements ChargeService {
     // ============================================================
 
     @Override
+    @Transactional(readOnly = true)
     public UnpaidListResponse getUnpaidForSyndic(int page, int size) {
 
         User currentSyndic = getCurrentUser();
@@ -1703,6 +1804,7 @@ public class ChargeServiceImpl implements ChargeService {
     // ============================================================
 
     @Override
+    @Transactional(readOnly = true)
     public ChargeDashboardDTO getChargeDashboard(Long residenceId) {
 
         // Récupère le syndic actuellement connecté

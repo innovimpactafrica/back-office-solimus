@@ -80,7 +80,7 @@ public class SolimusCallbackController {
                 request.getStatus());
 
         // partner_transaction_id = notre référence interne
-        // PAY-xxxxxx = acompte, SOL-xxxxxx = solde, SUB-xxxxxx = abonnement
+        // PAY-xxxxxx = acompte owner, SOL-xxxxxx = solde owner, SUB-xxxxxx = abonnement, CPY-xxxxxx = charge courante, ECP-xxxxxx = charge exceptionnelle
         String ref = request.getPartnerTransactionId();
         if (ref == null || ref.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -96,8 +96,8 @@ public class SolimusCallbackController {
 
         // Routing selon le préfixe de la référence
         if (ref.startsWith("PAY-") || ref.startsWith("SOL-")) {
-            // Paiement intervention : acompte ou solde
-            return handleInterventionPaymentCallback(ref, succes);
+            // Paiement intervention owner : acompte ou solde
+            return handleOwnerInterventionPaymentCallback(ref, succes);
         }
 
         if (ref.startsWith("SUB-")) {
@@ -123,16 +123,15 @@ public class SolimusCallbackController {
     }
 
     // =========================================================================
-    // CAS 1 — Paiement intervention (PAY- = acompte, SOL- = solde)
+    // CAS 1 — Paiement intervention owner (PAY- = acompte, SOL- = solde)
     // =========================================================================
-    private ResponseEntity<Map<String, Object>> handleInterventionPaymentCallback(
+    private ResponseEntity<Map<String, Object>> handleOwnerInterventionPaymentCallback(
             String ref, boolean succes) {
 
         return paymentRepository.findByReference(ref)
                 .map(payment -> {
 
                     // Sécurité anti-double callback
-                    // InTouch peut parfois rappeler plusieurs fois le même callback
                     if (payment.getStatus() == PaymentStatus.COMPLETED) {
                         return ResponseEntity.ok(Map.<String, Object>of(
                                 "success", true,
@@ -141,26 +140,24 @@ public class SolimusCallbackController {
                     }
 
                     // Paiement échoué → on ne crédite pas le wallet
-                    // Les montants de la demande restent inchangés
                     if (!succes) {
                         payment.setStatus(PaymentStatus.FAILED);
                         paymentRepository.save(payment);
 
-                        log.warn("Paiement intervention échoué pour ref : {}", ref);
+                        log.warn("Paiement intervention owner échoué pour ref : {}", ref);
 
                         return ResponseEntity.ok(Map.<String, Object>of(
                                 "success", true,
                                 "message", "Paiement marqué comme échoué"
                         ));
                     }
-                    //-> Paiement réussi
+
                     // Paiement confirmé par InTouch → on met à jour le statut
                     payment.setStatus(PaymentStatus.COMPLETED);
                     payment.setPaidAt(LocalDateTime.now());
                     paymentRepository.save(payment);
 
-                    // Le paiement provient du Mobile Money (argent externe) → on ne touche pas au wallet syndic.
-                    // Le prestataire reçoit l'argent sur son wallet uniquement après confirmation réelle.
+                    // Le paiement provient du Mobile Money (argent externe) → on crédite le wallet du prestataire
                     walletService.creditWallet(payment.getProvider().getId(), payment.getAmount());
 
                     // Synchronisation financière de la demande d'intervention
@@ -172,12 +169,11 @@ public class SolimusCallbackController {
                         req.setRemainingAmount(
                                 req.getTotalAmount().subtract(payment.getAmount()));
 
-                        log.info("Acompte {} confirmé — reste à payer : {} FCFA",
+                        log.info("Acompte owner {} confirmé — reste à payer : {} FCFA",
                                 ref, req.getRemainingAmount());
 
                     } else if (payment.getType() == PaymentType.SOLDE) {
                         // Après solde : tout est payé
-                        // depositAmount = totalAmount pour que remainingAmount = 0 après @PreUpdate
                         req.setDepositAmount(
                                 req.getTotalAmount() != null
                                         ? req.getTotalAmount()
@@ -188,11 +184,11 @@ public class SolimusCallbackController {
                         req.addStatusHistory(InterventionStatus.FINAL_VALIDATION, payment.getPaymentInitiator());
                         req.setValidatedAt(LocalDateTime.now());
 
-                        log.info("Solde {} confirmé — intervention {} clôturée",
+                        log.info("Solde owner {} confirmé — intervention {} clôturée",
                                 ref, req.getId());
                     }
 
-                    // Sauvegarde finale — déclenche aussi @PreUpdate dans InterventionRequest
+                    // Sauvegarde finale
                     interventionRepository.save(req);
 
                     // Tracer l'activité de paiement
@@ -203,7 +199,7 @@ public class SolimusCallbackController {
                     activityLog.setRelatedEntityId(payment.getId());
                     activityLog.setActor(payment.getPaymentInitiator());
                     String paymentTypeLabel = payment.getType() == PaymentType.ACOMPTE ? "Acompte" : "Solde";
-                    activityLog.setMessage("Paiement intervention reçu");
+                    activityLog.setMessage("Paiement intervention owner reçu");
                     activityLog.setDetail(paymentTypeLabel + " — " + req.getTitle() + " — " + payment.getAmount() + " FCFA");
                     activityLogRepository.save(activityLog);
 
@@ -219,6 +215,7 @@ public class SolimusCallbackController {
                         )
                 ));
     }
+
 
     // =========================================================================
     // CAS 2 — Paiement abonnement Premium (SUB-)

@@ -1,4 +1,4 @@
-package com.example.solimus.entities.meeting;
+package com.example.solimus.enums;
 
 // Statut de résolution : purement informatif, saisi manuellement par le syndic après la réunion
 // Aucun calcul automatique, aucune pondération par tantième

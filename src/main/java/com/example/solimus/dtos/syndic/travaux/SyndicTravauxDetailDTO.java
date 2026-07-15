@@ -31,6 +31,11 @@ public class SyndicTravauxDetailDTO {
     private BigDecimal coutEstime; // totalAmount de l'intervention
     private String dureeEstimee; // estimatedDelay du devis accepté, si présent
 
+    // Informations prestataire
+    private Double countStar; // nombre d'étoiles reçu par le prestataire
+    private String emailPrest; // email prestataire
+    private String phoneNumberPrest; // téléphone prestataire
+
     // Résumé financier
     private BigDecimal avanceVersee; // depositAmount (acompte)
     private BigDecimal totalEngage; // totalAmount

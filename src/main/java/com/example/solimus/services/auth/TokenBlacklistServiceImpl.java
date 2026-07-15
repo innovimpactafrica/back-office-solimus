@@ -1,6 +1,6 @@
 package com.example.solimus.services.auth;
 
-import com.example.solimus.entities.auth.TokenBlacklist;
+import com.example.solimus.entities.TokenBlacklist;
 import com.example.solimus.repositories.TokenBlacklistRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

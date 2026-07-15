@@ -52,6 +52,15 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.getResidencePreview(residenceId));
     }
 
+    @Operation(summary = "Aperçu appel de charges par résidence", description = "Retourne l'aperçu de l'appel de charges (budget id, année, résidence, répartition) en utilisant le budget actif de la résidence")
+    @GetMapping("/residence/{residenceId}/charge-call-preview")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    public ResponseEntity<ChargeCallPreviewDTO> previewChargeCallByResidence(
+            @PathVariable Long residenceId,
+            @RequestParam Integer periodNumber) {
+        return ResponseEntity.ok(chargeService.previewChargeCallByResidence(residenceId, periodNumber));
+    }
+
     @Operation(summary = "Créer un budget prévisionnel", description = "Crée un nouveau budget prévisionnel pour une résidence avec ses postes budgétaires")
     @PostMapping
     @PreAuthorize("hasRole('ROLE_SYNDIC')")

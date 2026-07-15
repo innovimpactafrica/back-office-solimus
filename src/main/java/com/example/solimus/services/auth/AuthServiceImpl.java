@@ -1,11 +1,10 @@
 package com.example.solimus.services.auth;
 
 import com.example.solimus.dtos.auth.*;
-import com.example.solimus.entities.Property;
 import com.example.solimus.entities.ProviderProfile;
 import com.example.solimus.entities.Role;
 import com.example.solimus.entities.User;
-import com.example.solimus.entities.auth.ActivationCode;
+import com.example.solimus.entities.ActivationCode;
 import com.example.solimus.enums.CodeType;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.UserStatus;

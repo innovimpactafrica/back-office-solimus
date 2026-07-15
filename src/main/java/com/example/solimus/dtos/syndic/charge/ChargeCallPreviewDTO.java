@@ -15,6 +15,7 @@ import java.util.List;
 @AllArgsConstructor
 public class ChargeCallPreviewDTO {
 
+    private Long budgetId;
     private String budgetReference;
     private String residenceName;
     private Integer year;

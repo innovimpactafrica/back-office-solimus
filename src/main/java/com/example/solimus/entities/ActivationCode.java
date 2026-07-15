@@ -1,6 +1,5 @@
-package com.example.solimus.entities.auth;
+package com.example.solimus.entities;
 
-import com.example.solimus.entities.User;
 import com.example.solimus.enums.CodeType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;

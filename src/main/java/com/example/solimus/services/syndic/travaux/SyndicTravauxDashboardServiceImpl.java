@@ -97,6 +97,28 @@ public class SyndicTravauxDashboardServiceImpl implements SyndicTravauxDashboard
         // Récupère l'intervention et vérifie qu'elle appartient bien au syndic connecté
         InterventionRequest request = getRequestForSyndic(id);
 
+        // Récupérer les informations du prestataire si sélectionné
+        Double countStar = null;
+        String emailPrest = null;
+        String phoneNumberPrest = null;
+        String dureeEstimee = null;
+
+        if (request.getSelectedProvider() != null) {
+            ProviderProfile profile = providerProfileRepository.findByUser(request.getSelectedProvider())
+                    .orElse(null);
+            if (profile != null) {
+                countStar = profile.getRating();
+            }
+            emailPrest = request.getSelectedProvider().getEmail();
+            phoneNumberPrest = request.getSelectedProvider().getPhone();
+
+            // Récupérer la durée estimée depuis le devis accepté
+            List<Quote> acceptedQuotes = quoteRepository.findByInterventionRequestAndStatus(request, QuoteStatus.ACCEPTED);
+            if (!acceptedQuotes.isEmpty() && acceptedQuotes.get(0).getEstimatedDelay() != null) {
+                dureeEstimee = acceptedQuotes.get(0).getEstimatedDelay().getLabel();
+            }
+        }
+
         return SyndicTravauxDetailDTO.builder()
                 .id(request.getId())
                 .reference(request.getReference())
@@ -113,6 +135,10 @@ public class SyndicTravauxDashboardServiceImpl implements SyndicTravauxDashboard
                 .prestataireName(request.getSelectedProvider() != null
                         ? request.getSelectedProvider().getFirstName() + " " + request.getSelectedProvider().getLastName() : null)
                 .coutEstime(request.getTotalAmount())
+                .dureeEstimee(dureeEstimee)
+                .countStar(countStar)
+                .emailPrest(emailPrest)
+                .phoneNumberPrest(phoneNumberPrest)
                 // Résumé financier
                 .avanceVersee(request.getDepositAmount())
                 .totalEngage(request.getTotalAmount())

@@ -1,7 +1,7 @@
 package com.example.solimus.services.auth;
 
 import com.example.solimus.entities.User;
-import com.example.solimus.entities.auth.ActivationCode;
+import com.example.solimus.entities.ActivationCode;
 import com.example.solimus.enums.CodeType;
 
 import java.util.Optional;

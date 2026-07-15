@@ -1,7 +1,7 @@
 package com.example.solimus.repositories;
 
 import com.example.solimus.entities.User;
-import com.example.solimus.entities.auth.ActivationCode;
+import com.example.solimus.entities.ActivationCode;
 import com.example.solimus.enums.CodeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;

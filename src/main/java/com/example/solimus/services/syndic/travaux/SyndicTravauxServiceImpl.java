@@ -18,7 +18,6 @@ import com.example.solimus.enums.InitiatedBy;
 import com.example.solimus.enums.InterventionManagementMode;
 import com.example.solimus.enums.InterventionStatus;
 import com.example.solimus.enums.PaymentStatus;
-import com.example.solimus.enums.PaymentType;
 import com.example.solimus.enums.QuoteStatus;
 import com.example.solimus.enums.WalletTransactionCategory;
 import com.example.solimus.exceptions.BadRequestException;
@@ -75,8 +74,6 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     private double searchRadiusKm;//Rayon de recherche des prestataires
     @Value("${provider.gps.freshness-minutes:60}")
     private int gpsFreshnessMinutes;// Durée de validité d'une localisation
-    @Value("${app.touchpay.bridge-url}")
-    private String touchPayBridgeUrlTemplate;// Template d'URL du bridge TouchPay (paiement Mobile Money)
 
     // =========================================================================
     // LISTER LES RÉSIDENCES DU SYNDIC
@@ -500,12 +497,6 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             throw new BadRequestException("Un acompte a déjà été versé pour cette intervention");
         }
 
-        // Mobile Money → paiement externe TouchPay, on ne touche pas au wallet syndic.
-        // Le crédit prestataire et la mise à jour de l'acompte se font au callback (PAY-).
-        if (!Boolean.TRUE.equals(dto.getPayerDepuisWallet())) {
-            return initierPaiementMobileMoney(request, currentSyndic, dto.getMontant(), PaymentType.ACOMPTE);
-        }
-
         // Wallet SOLIMUS → débit interne synchrone + crédit direct du wallet prestataire
         SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId())
                 .orElseThrow(() -> new BadRequestException("Aucun wallet trouvé pour ce syndic"));
@@ -619,13 +610,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             throw new BadRequestException("Aucun solde restant à payer pour cette intervention");
         }
 
-        // Mobile Money → paiement externe TouchPay, on ne touche pas au wallet syndic.
-        // Le crédit prestataire et la clôture (FINAL_VALIDATION) se font au callback (SOL-).
-        if (!Boolean.TRUE.equals(dto.getPayerDepuisWallet())) {
-            return initierPaiementMobileMoney(request, currentSyndic, solde, PaymentType.SOLDE);
-        }
-
-        // Sinon, Récupère le wallet syndic
+        // Récupère le wallet syndic
         SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId())
                 .orElseThrow(() -> new BadRequestException("Aucun wallet trouvé pour ce syndic"));
 
@@ -903,71 +888,6 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         providerProfileRepository.save(profile);
     }
 
-    /**
-     * Initie un paiement Mobile Money (TouchPay) pour un acompte (PAY-) ou un solde (SOL-).
-     * Ne touche pas au wallet syndic : l'argent provient d'une source externe (Mobile Money).
-     * Le crédit du prestataire et la mise à jour de l'intervention se font au callback InTouch.
-     */
-    private SyndicPaymentResultDTO initierPaiementMobileMoney(InterventionRequest request, User currentSyndic,
-                                                              BigDecimal montant, PaymentType type) {
-
-        // Anti-doublon : un paiement du même type ne doit pas déjà être confirmé ou en cours
-        Optional<PaymentProvider> existant = paymentRepository
-                .findByInterventionRequestIdAndType(request.getId(), type);
-
-        if (existant.isPresent()) {
-            PaymentProvider p = existant.get();
-            if (p.getStatus() == PaymentStatus.COMPLETED) {
-                throw new BadRequestException("Ce paiement a déjà été effectué pour cette intervention");
-            }
-            if (p.getStatus() == PaymentStatus.PENDING) {
-                throw new BadRequestException("Un paiement est déjà en cours pour cette intervention");
-            }
-        }
-
-        String prefix = (type == PaymentType.ACOMPTE) ? "PAY" : "SOL";
-        String transactionRef = genererPaymentReference(prefix);
-
-        PaymentProvider payment;
-        if (existant.isPresent() && existant.get().getStatus() == PaymentStatus.FAILED) {
-            // Paiement précédent échoué → on réinitialise pour une nouvelle tentative
-            payment = existant.get();
-            payment.setReference(transactionRef);
-            payment.setAmount(montant);
-            payment.setStatus(PaymentStatus.PENDING);
-            payment.setPaidAt(null);
-        } else {
-            payment = PaymentProvider.builder()
-                    .reference(transactionRef)
-                    .interventionRequest(request)
-                    .provider(request.getSelectedProvider())
-                    .paymentInitiator(currentSyndic)
-                    .amount(montant)
-                    .type(type)
-                    .status(PaymentStatus.PENDING)
-                    .build();
-        }
-
-        paymentRepository.save(payment);
-
-        // Construit l'URL du bridge TouchPay à charger côté client
-        String bridgeUrl = String.format(touchPayBridgeUrlTemplate, transactionRef);
-
-        return SyndicPaymentResultDTO.builder()
-                .success(true)
-                .message("Paiement initié. Veuillez compléter via TouchPay.")
-                .montantPaye(montant)
-                .transactionReference(transactionRef)
-                .paymentUrl(bridgeUrl)
-                .build();
-    }
-
-    /**
-     * Génère une référence de paiement unique (ex: PAY-123456, SOL-654321).
-     */
-    private String genererPaymentReference(String prefix) {
-        return prefix + "-" + (int) (Math.random() * 900000 + 100000);
-    }
 
     /**
      * Génère une référence unique de type TRV-001 etc

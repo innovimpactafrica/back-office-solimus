@@ -426,7 +426,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
         InterventionRequest request = interventionRequestRepository.findById(interventionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
 
-        if (!request.getOwner().getId().equals(currentOwner.getId())) {
+        if (request.getOwner() == null || !request.getOwner().getId().equals(currentOwner.getId())) {
             throw new ForbiddenException("Accès non autorisé à cette intervention");
         }
 
@@ -534,7 +534,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
 
         // 2. Vérifier que c'est le propriétaire qui a créé cette demande
         User currentOwner = getCurrentUser();
-        if (!request.getOwner().getId().equals(currentOwner.getId())) {
+        if (request.getOwner() == null || !request.getOwner().getId().equals(currentOwner.getId())) {
             throw new ForbiddenException("Vous n'êtes pas autorisé à accepter un devis sur cette demande");
         }
 
@@ -587,7 +587,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
         InterventionRequest request = interventionRequestRepository.findById(interventionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
 
-        if (!request.getOwner().getId().equals(currentOwner.getId())) {
+        if (request.getOwner() == null || !request.getOwner().getId().equals(currentOwner.getId())) {
             throw new ForbiddenException("Accès non autorisé à cette intervention");
         }
 
@@ -668,7 +668,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
         InterventionRequest request = interventionRequestRepository.findById(interventionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
 
-        if (!request.getOwner().getId().equals(currentOwner.getId())) {
+        if (request.getOwner() == null || !request.getOwner().getId().equals(currentOwner.getId())) {
             throw new ForbiddenException("Accès non autorisé à cette intervention");
         }
 
@@ -696,7 +696,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
         InterventionRequest request = interventionRequestRepository.findById(interventionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
 
-        if (!request.getOwner().getId().equals(currentOwner.getId())) {
+        if (request.getOwner() == null || !request.getOwner().getId().equals(currentOwner.getId())) {
             throw new ForbiddenException("Accès non autorisé à cette intervention");
         }
 

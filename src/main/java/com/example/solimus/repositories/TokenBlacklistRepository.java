@@ -1,6 +1,6 @@
 package com.example.solimus.repositories;
 
-import com.example.solimus.entities.auth.TokenBlacklist;
+import com.example.solimus.entities.TokenBlacklist;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

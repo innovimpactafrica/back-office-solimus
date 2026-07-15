@@ -1,4 +1,4 @@
-package com.example.solimus.entities.auth;
+package com.example.solimus.entities;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;

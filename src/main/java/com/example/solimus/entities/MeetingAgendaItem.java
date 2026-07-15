@@ -1,9 +1,8 @@
 package com.example.solimus.entities;
 
-import com.example.solimus.entities.meeting.ResolutionStatus;
+import com.example.solimus.enums.ResolutionStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 

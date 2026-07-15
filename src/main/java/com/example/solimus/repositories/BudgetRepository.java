@@ -30,6 +30,11 @@ BudgetRepository extends JpaRepository<Budget, Long> {
      */
     Optional<Budget> findByResidenceIdAndAnneeAndStatus(Long residenceId, Integer annee, BudgetStatus status);
 
+    /**
+     * Trouver le budget actif pour une résidence
+     */
+    Optional<Budget> findByResidenceIdAndStatus(Long residenceId, BudgetStatus status);
+
     List<Budget> findBySyndicIdAndStatus(Long syndicId, BudgetStatus status);
 
     /**

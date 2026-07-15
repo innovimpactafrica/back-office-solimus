@@ -34,6 +34,17 @@ public interface ChargeService {
     Page<CommonFacilitySuggestionDTO> searchCommonFacilities(Long residenceId, String q, Integer page, Integer size);
 
     /**
+     * Retourne le budget en cours (ACTIVE) pour une résidence
+     */
+    CurrentBudgetDTO getCurrentBudget(Long residenceId);
+
+    /**
+     * Aperçu avant génération d'un appel de charges pour une résidence
+     * Utilise le budget actif de la résidence
+     */
+    ChargeCallPreviewDTO previewChargeCallByResidence(Long residenceId, Integer periodNumber);
+
+    /**
      * Retourne la liste paginée des budgets du syndic + totaux globaux (nb budgets, nb actifs)
      */
     BudgetListResponse getBudgetsForSyndic(int page, int size);
