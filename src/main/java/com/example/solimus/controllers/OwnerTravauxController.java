@@ -3,7 +3,7 @@ package com.example.solimus.controllers;
 import com.example.solimus.dtos.intervention.CoOwnerQuoteCardDTO;
 import com.example.solimus.dtos.syndic.travaux.PayDepositDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
-import com.example.solimus.dtos.syndic.ValiderTravauxDTO;
+import com.example.solimus.dtos.owner.travaux.ValiderTravauxDTO;
 import com.example.solimus.dtos.syndic.travaux.CreateReviewDTO;
 import com.example.solimus.dtos.owner.travaux.BalanceSummaryDTO;
 import com.example.solimus.dtos.owner.travaux.CoOwnerQuoteDetailDTO;

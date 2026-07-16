@@ -15,8 +15,4 @@ public class SyndicPaymentResultDTO {
 
     // Renseigné uniquement pour un paiement Wallet (nouveau solde après débit)
     private BigDecimal nouveauSoldeWallet;
-
-    // Renseignés uniquement pour un paiement Mobile Money (TouchPay)
-    private String transactionReference;
-    private String paymentUrl;
 }

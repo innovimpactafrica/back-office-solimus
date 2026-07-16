@@ -1,6 +1,8 @@
 package com.example.solimus.services.syndic.charge;
 
 import com.example.solimus.dtos.syndic.charge.*;
+import com.example.solimus.dtos.syndic.finance.FinanceDashboardDTO;
+import com.example.solimus.dtos.syndic.finance.RecentPaymentDTO;
 import org.springframework.web.multipart.MultipartFile;
 
 import org.springframework.data.domain.Page;
@@ -43,6 +45,11 @@ public interface ChargeService {
      * Utilise le budget actif de la résidence
      */
     ChargeCallPreviewDTO previewChargeCallByResidence(Long residenceId, Integer periodNumber);
+
+    /**
+     * Retourne la liste paginée des résidences du syndic connecté qui ont un budget actif
+     */
+    Page<ResidenceBudgetSummaryDTO> getResidencesWithActiveBudget(int page, int size);
 
     /**
      * Retourne la liste paginée des budgets du syndic + totaux globaux (nb budgets, nb actifs)
@@ -95,15 +102,10 @@ public interface ChargeService {
     //--------------------------------------------------
 
     /**
-     * Aperçu avant génération d'un appel de charges.
-     * Retourne les données calculées sans rien créer en base.
-     */
-    ChargeCallPreviewDTO previewChargeCall(Long budgetId, Integer periodNumber);
-
-    /**
      * Génère un appel de charges et envoie les emails aux copropriétaires.
+     * Utilise le budget actif de la résidence.
      */
-    void generateChargeCall(Long budgetId, GenerateChargeCallDTO dto);
+    void generateChargeCall(Long residenceId, GenerateChargeCallDTO dto);
 
     
     /**
@@ -130,6 +132,12 @@ public interface ChargeService {
      * Supprime l'appel de charges et tous ses items. Seul possible si aucun paiement n'a été effectué.
      */
     void deleteChargeCall(Long chargeCallId);
+
+    /**
+     * Supprimer un appel exceptionnel
+     * Supprime l'appel exceptionnel et tous ses items. Seul possible si aucun paiement n'a été effectué.
+     */
+    void deleteExceptionalCall(Long exceptionalCallId);
 
     //--------------------------------------------------
     // ===== APPEL DE CHARGES EXCEPTIONNEL =====

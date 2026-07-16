@@ -48,6 +48,17 @@ public interface ResidenceRepository extends JpaRepository<Residence, Long> {
             @Param("city") String city,
             Pageable pageable);
 
+    /**
+     * Récupère les résidences d'un syndic qui ont un budget actif avec pagination
+     */
+    @Query("SELECT DISTINCT r FROM Residence r " +
+           "JOIN Budget b ON b.residence.id = r.id " +
+           "WHERE r.syndic.id = :syndicId AND b.status = 'ACTIVE' " +
+           "ORDER BY r.name ASC")
+    Page<Residence> findResidencesWithActiveBudget(
+            @Param("syndicId") Long syndicId,
+            Pageable pageable);
+
     // Récupère la résidence la plus récemment créée pour ce syndic (basé sur createdAt)
     Optional<Residence> findFirstBySyndicIdOrderByCreatedAtDesc(Long syndicId);
 }

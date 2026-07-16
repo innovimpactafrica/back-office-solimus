@@ -22,10 +22,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -212,6 +209,7 @@ public class ChargeServiceImpl implements ChargeService {
         log.setRelatedEntityType("BUDGET");
         log.setRelatedEntityId(savedBudget.getId());
         log.setActor(currentSyndic);
+        log.setCreatedAt(LocalDateTime.now());
         log.setMessage("Budget créé — " + savedBudget.getReference());
         activityLogRepository.save(log);
 
@@ -574,6 +572,7 @@ public class ChargeServiceImpl implements ChargeService {
         log.setRelatedEntityType("BUDGET");
         log.setRelatedEntityId(budget.getId());
         log.setActor(currentSyndic);
+        log.setCreatedAt(LocalDateTime.now());
         log.setMessage("Budget clôturé — " + budget.getReference());
         activityLogRepository.save(log);
     }
@@ -636,6 +635,53 @@ public class ChargeServiceImpl implements ChargeService {
 
     @Override
     @Transactional(readOnly = true)
+    public Page<ResidenceBudgetSummaryDTO> getResidencesWithActiveBudget(int page, int size) {
+        User currentSyndic = getCurrentUser();
+        Pageable pageable = PageRequest.of(page, size);
+
+        // Récupérer la fréquence depuis les paramètres du syndic
+        ChargeFrequency frequency = syndicFinancialSettingsRepository.findBySyndicId(currentSyndic.getId())
+                .map(SyndicFinancialSettings::getChargeFrequency)
+                .orElse(ChargeFrequency.TRIMESTRIEL);
+
+        // Déterminer le nombre de périodes et générer la liste
+        int numberOfPeriods = (frequency == ChargeFrequency.TRIMESTRIEL) ? 4 : 12;
+        List<Integer> availablePeriods = new ArrayList<>();
+        for (int i = 1; i <= numberOfPeriods; i++) {
+            availablePeriods.add(i);
+        }
+
+        // Récupérer les résidences du syndic connecté qui ont un budget actif avec pagination SQL
+        Page<Residence> residencePage = residenceRepository.findResidencesWithActiveBudget(
+                currentSyndic.getId(), pageable);
+
+        // Récupérer tous les budgets actifs du syndic pour avoir les détails
+        List<Budget> activeBudgets = budgetRepository.findBySyndicIdAndStatus(currentSyndic.getId(), BudgetStatus.ACTIVE);
+
+        // Créer une map pour un accès rapide par residenceId
+        Map<Long, Budget> budgetByResidenceId = activeBudgets.stream()
+                .collect(Collectors.toMap(b -> b.getResidence().getId(), b -> b));
+
+        // Construire le DTO pour chaque résidence
+        List<ResidenceBudgetSummaryDTO> dtos = residencePage.getContent().stream()
+                .map(residence -> {
+                    Budget budget = budgetByResidenceId.get(residence.getId());
+                    return ResidenceBudgetSummaryDTO.builder()
+                            .id(residence.getId())
+                            .residenceName(residence.getName())
+                            .referenceBudget(budget.getReference())
+                            .anneeBudget(budget.getAnnee())
+                            .availablePeriods(availablePeriods)
+                            .frequency(frequency)
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        return new PageImpl<>(dtos, pageable, residencePage.getTotalElements());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public ChargeCallPreviewDTO previewChargeCallByResidence(Long residenceId, Integer periodNumber) {
         // 1. Récupérer le budget actif de la résidence
         Budget budget = budgetRepository.findByResidenceIdAndStatus(residenceId, BudgetStatus.ACTIVE)
@@ -655,11 +701,12 @@ public class ChargeServiceImpl implements ChargeService {
         // 4. Déterminer le nombre de périodes
         int numberOfPeriods = (frequency == ChargeFrequency.TRIMESTRIEL) ? 4 : 12;
 
-        // 5. Vérifier qu'aucun ChargeCall n'existe déjà pour cette période
-        chargeCallRepository.findByBudgetIdAndYearAndPeriodNumber(budget.getId(), budget.getAnnee(), periodNumber)
-                .ifPresent(chargeCall -> {
-                    throw new RuntimeException("Un appel de charges existe déjà pour cette période");
-                });
+        // 5. Vérifier si un appel de charges existe déjà pour cette période pour récupérer les dates
+        Optional<ChargeCall> existingChargeCall = chargeCallRepository.findByBudgetIdAndYearAndPeriodNumber(
+                budget.getId(), budget.getAnnee(), periodNumber);
+
+        LocalDate sentDate = existingChargeCall.map(ChargeCall::getSentDate).orElse(null);
+        LocalDate dueDate = existingChargeCall.map(ChargeCall::getDueDate).orElse(null);
 
         // 6. Calculer le montant total de la période
         BigDecimal totalAmount = budget.getBudgetTotal()
@@ -682,7 +729,7 @@ public class ChargeServiceImpl implements ChargeService {
                             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
                     BigDecimal quotePart = totalAmount.multiply(tantiemeCoOwner)
-                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                            .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
 
                     CoOwnerQuotePartPreviewDTO item = CoOwnerQuotePartPreviewDTO.builder()
                             .coOwnerId(property.getOwner().getId())
@@ -704,100 +751,8 @@ public class ChargeServiceImpl implements ChargeService {
                 .year(budget.getAnnee())
                 .periodNumber(periodNumber)
                 .totalAmount(totalAmount)
-                .repartition(repartition)
-                .totalTantieme(totalTantieme)
-                .coOwnersCount(repartition.size())
-                .build();
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public ChargeCallPreviewDTO previewChargeCall(Long budgetId, Integer periodNumber) {
-        // 1. Récupérer le budget et vérifier l'appartenance au syndic
-        Budget budget = budgetRepository.findById(budgetId)
-                .orElseThrow(() -> new RuntimeException("Budget non trouvé"));
-
-        User currentSyndic = getCurrentUser();
-        if (!budget.getSyndic().getId().equals(currentSyndic.getId())) {
-            throw new ForbiddenException("Ce budget ne vous appartient pas");
-        }
-
-        // 2. Récupérer la fréquence depuis les paramètres du syndic
-        // Repli sur la fréquence par défaut (TRIMESTRIEL) si le syndic n'a jamais persisté ses paramètres,
-        // pour rester cohérent avec GET /settings/financial qui renvoie les valeurs par défaut.
-        ChargeFrequency frequency = syndicFinancialSettingsRepository.findBySyndicId(currentSyndic.getId())
-                .map(SyndicFinancialSettings::getChargeFrequency)
-                .orElse(ChargeFrequency.TRIMESTRIEL);
-
-        // 3. Déterminer le nombre de périodes (4 si trimestriel, 12 si mensuel)
-        int numberOfPeriods;
-        if (frequency == ChargeFrequency.TRIMESTRIEL) {
-            numberOfPeriods = 4;
-        } else {
-            numberOfPeriods = 12;
-        }
-
-        // 4. Vérifier qu'aucun ChargeCall n'existe déjà pour cette période
-        chargeCallRepository.findByBudgetIdAndYearAndPeriodNumber(budgetId, budget.getAnnee(), periodNumber)
-                .ifPresent(chargeCall -> {
-                    throw new RuntimeException("Un appel de charges existe déjà pour cette période");
-                });
-
-        // 5. Calculer le montant total de la période (budget / nombre de périodes)
-        BigDecimal totalAmount = budget.getBudgetTotal()
-                .divide(BigDecimal.valueOf(numberOfPeriods), 2, RoundingMode.HALF_UP);
-
-        // 6. Construire la répartition par copropriétaire (fusionné par owner)
-        List<Property> properties = propertyRepository.findByResidenceId(budget.getResidence().getId());
-        List<CoOwnerQuotePartPreviewDTO> repartition = new ArrayList<>();
-        BigDecimal totalTantieme = BigDecimal.ZERO;
-
-        for (Property property : properties) {
-            if (property.getOwner() != null) {
-                // Vérifier si le copropriétaire est déjà dans la liste
-                boolean alreadyAdded = false;
-                for (CoOwnerQuotePartPreviewDTO item : repartition) {
-                    if (item.getCoOwnerId().equals(property.getOwner().getId())) {
-                        alreadyAdded = true;
-                        break;
-                    }
-                }
-
-                if (!alreadyAdded) {
-                    // Calculer le tantième total de ce copropriétaire (somme de ses lots)
-                    BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-                    for (Property p : properties) {
-                        if (p.getOwner() != null && p.getOwner().getId().equals(property.getOwner().getId())) {
-                            tantiemeCoOwner = tantiemeCoOwner.add(
-                                    p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO
-                            );
-                        }
-                    }
-
-                    // Calculer la quote-part (totalAmount * tantieme / 100)
-                    BigDecimal quotePart = totalAmount.multiply(tantiemeCoOwner)
-                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-
-                    CoOwnerQuotePartPreviewDTO item = CoOwnerQuotePartPreviewDTO.builder()
-                            .coOwnerId(property.getOwner().getId())
-                            .coOwnerName(property.getOwner().getFirstName() + " " + property.getOwner().getLastName())
-                            .tantieme(tantiemeCoOwner)
-                            .quotePart(quotePart)
-                            .build();
-
-                    repartition.add(item);
-                    totalTantieme = totalTantieme.add(tantiemeCoOwner);
-                }
-            }
-        }
-
-        // 7. Construire et retourner l'aperçu
-        return ChargeCallPreviewDTO.builder()
-                .budgetReference("BUD-" + budget.getAnnee())
-                .residenceName(budget.getResidence().getName())
-                .year(budget.getAnnee())
-                .periodNumber(periodNumber)
-                .totalAmount(totalAmount)
+                .sentDate(sentDate)
+                .dueDate(dueDate)
                 .repartition(repartition)
                 .totalTantieme(totalTantieme)
                 .coOwnersCount(repartition.size())
@@ -809,18 +764,19 @@ public class ChargeServiceImpl implements ChargeService {
      */
     @Override
     @Transactional
-    public void generateChargeCall(Long budgetId, GenerateChargeCallDTO dto) {
-        // 1. Récupérer le budget et vérifier l'appartenance au syndic
-        Budget budget = budgetRepository.findById(budgetId)
-                .orElseThrow(() -> new RuntimeException("Budget non trouvé"));
+    public void generateChargeCall(Long residenceId, GenerateChargeCallDTO dto) {
+        // 1. Récupérer le budget actif de la résidence
+        Budget budget = budgetRepository.findByResidenceIdAndStatus(residenceId, BudgetStatus.ACTIVE)
+                .orElseThrow(() -> new RuntimeException("Aucun budget actif pour cette résidence"));
 
+        // 2. Vérifier l'appartenance au syndic
         User currentSyndic = getCurrentUser();
         if (!budget.getSyndic().getId().equals(currentSyndic.getId())) {
             throw new ForbiddenException("Ce budget ne vous appartient pas");
         }
 
-        // 2. Vérifier qu'aucun ChargeCall n'existe déjà pour cette période
-        chargeCallRepository.findByBudgetIdAndYearAndPeriodNumber(budgetId, budget.getAnnee(), dto.getPeriodNumber())
+        // 3. Vérifier qu'aucun ChargeCall n'existe déjà pour cette période
+        chargeCallRepository.findByBudgetIdAndYearAndPeriodNumber(budget.getId(), budget.getAnnee(), dto.getPeriodNumber())
                 .ifPresent(chargeCall -> {
                     throw new RuntimeException("Un appel de charges existe déjà pour cette période");
                 });
@@ -883,7 +839,7 @@ public class ChargeServiceImpl implements ChargeService {
 
                     // Calculer la quote-part (totalAmount * tantieme / 100)
                     BigDecimal quotePart = totalAmount.multiply(tantiemeCoOwner)
-                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                            .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
 
                     // Générer la référence
                     String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-"  + "-" + property.getOwner().getId();
@@ -912,6 +868,7 @@ public class ChargeServiceImpl implements ChargeService {
         log.setRelatedEntityType("CHARGE_CALL");
         log.setRelatedEntityId(savedChargeCall.getId());
         log.setActor(currentSyndic);
+        log.setCreatedAt(LocalDateTime.now());
         log.setMessage("Appel de charges généré — " + savedChargeCall.getReference());
         activityLogRepository.save(log);
 
@@ -1111,6 +1068,47 @@ public class ChargeServiceImpl implements ChargeService {
         log.info("Appel de charges {} supprimé par le syndic {}", chargeCallId, currentSyndic.getId());
     }
 
+    @Override
+    @Transactional
+    public void deleteExceptionalCall(Long exceptionalCallId) {
+        // Récupérer l'appel exceptionnel, erreur si introuvable
+        ExceptionalCall exceptionalCall = exceptionalCallRepository.findById(exceptionalCallId)
+                .orElseThrow(() -> new RuntimeException("Appel exceptionnel non trouvé"));
+
+        // Vérifier que cet appel appartient bien au syndic connecté
+        User currentSyndic = getCurrentUser();
+        if (!exceptionalCall.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à supprimer cet appel exceptionnel");
+        }
+
+        // Vérifier qu'aucun paiement COMPLETED n'a été effectué
+        boolean hasCompletedPayments = exceptionalCall.getItems().stream()
+                .anyMatch(item -> item.getPaidAmount().compareTo(BigDecimal.ZERO) > 0);
+        if (hasCompletedPayments) {
+            throw new BadRequestException("Impossible de supprimer : des paiements ont déjà été effectués sur cet appel exceptionnel");
+        }
+
+        // Supprimer les paiements d'abord (PENDING) - seulement s'il y en a
+        if (!exceptionalCall.getItems().isEmpty()) {
+            exceptionalCallPaymentRepository.deleteByExceptionalCallId(exceptionalCallId);
+        }
+
+        // Supprimer les items ensuite - seulement s'il y en a
+        if (!exceptionalCall.getItems().isEmpty()) {
+            exceptionalCallItemRepository.deleteByExceptionalCallId(exceptionalCallId);
+        }
+
+        // Supprimer les documents - seulement s'il y en a
+        if (!exceptionalCall.getDocuments().isEmpty()) {
+            exceptionalCallDocumentRepository.deleteByExceptionalCallId(exceptionalCallId);
+        }
+
+        // Supprimer l'appel exceptionnel
+        exceptionalCallRepository.delete(exceptionalCall);
+
+        log.info("Appel exceptionnel {} supprimé par le syndic {}", exceptionalCallId, currentSyndic.getId());
+    }
+
 
     // ============================================================
     // APPEL DE CHARGES EXCEPTIONNEL
@@ -1159,6 +1157,7 @@ public class ChargeServiceImpl implements ChargeService {
         log.setRelatedEntityType("EXCEPTIONAL_CALL");
         log.setRelatedEntityId(saved.getId());
         log.setActor(currentSyndic);
+        log.setCreatedAt(LocalDateTime.now());
         log.setMessage("Appel exceptionnel créé — " + saved.getTitle());
         activityLogRepository.save(log);
 
@@ -1221,7 +1220,7 @@ public class ChargeServiceImpl implements ChargeService {
                 // Quote-part = montant total × (tantième du copropriétaire / 100)
                 BigDecimal quotePart = dto.getTotalAmount()
                         .multiply(tantiemeCoOwner)
-                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                        .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
 
                 ExceptionalCallItem item = new ExceptionalCallItem();
                 item.setExceptionalCall(exceptionalCall);
@@ -1319,6 +1318,7 @@ public class ChargeServiceImpl implements ChargeService {
         log.setRelatedEntityId(saved.getId());
         log.setActor(currentSyndic);
         log.setMessage("Appel exceptionnel activé — " + saved.getReference());
+        log.setCreatedAt(saved.getActivatedAt());
         activityLogRepository.save(log);
 
         // Envoi des emails et notifications push aux copropriétaires concernés (non-bloquant)
@@ -1650,6 +1650,7 @@ public class ChargeServiceImpl implements ChargeService {
         log.setRelatedEntityType("EXCEPTIONAL_CALL");
         log.setRelatedEntityId(exceptionalCall.getId());
         log.setActor(currentSyndic);
+        log.setCreatedAt(LocalDateTime.now());
         log.setMessage("Appel exceptionnel clôturé — " + exceptionalCall.getReference());
         activityLogRepository.save(log);
     }
@@ -2362,7 +2363,7 @@ public class ChargeServiceImpl implements ChargeService {
     // Calcule un pourcentage (montant / total * 100), protégé contre la division par zéro
     private int calculatePercentage(BigDecimal montant, BigDecimal total) {
         // Si le total est nul ou négatif, on retourne 0 pour éviter une division par zéro
-        if (total.compareTo(BigDecimal.ZERO) <= 0) {
+        if (total == null || total.compareTo(BigDecimal.ZERO) <= 0) {
             return 0;
         }
         // Multiplie le montant par 100, divise par le total, arrondit à l'entier le plus proche

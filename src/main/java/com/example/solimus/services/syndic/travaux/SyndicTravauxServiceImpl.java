@@ -774,6 +774,11 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             throw new ForbiddenException("Vous n'êtes pas autorisé à modifier cette intervention");
         }
 
+        // Vérifier que l'intervention est toujours en attente de devis
+        if (request.getStatus() != InterventionStatus.PENDING) {
+            throw new BadRequestException("Impossible d'ajouter des photos : l'intervention n'est plus en attente de devis");
+        }
+
         // Ajouter les nouvelles photos aux existantes
         if (photoUrls != null && !photoUrls.isEmpty()) {
             if (request.getPhotoUrls() == null) {

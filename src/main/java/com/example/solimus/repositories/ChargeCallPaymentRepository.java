@@ -100,4 +100,8 @@ public interface ChargeCallPaymentRepository extends JpaRepository<ChargeCallPay
     @Modifying
     @Query("DELETE FROM ChargeCallPayment p WHERE p.chargeCallItem.chargeCall.id = :chargeCallId")
     void deleteByChargeCallId(@Param("chargeCallId") Long chargeCallId);
+
+    // Paiements COMPLETED d'un syndic, paginés directement en base
+    Page<ChargeCallPayment> findByChargeCallItemChargeCallBudgetSyndicIdAndStatus(
+            Long syndicId, PaymentStatus status, Pageable pageable);
 }

@@ -43,7 +43,7 @@ public class SwaggerConfig {
                 .addTagsItem(new Tag().name("Syndic - Résidences"))
                 .addTagsItem(new Tag().name("Syndic - Copropriétaires"))
                 .addTagsItem(new Tag().name("Syndic - Charges"))
-                .addTagsItem(new Tag().name("Syndic - Réunions"))
+                .addTagsItem(new Tag().name("Syndic - Finances"))
                 .addTagsItem(new Tag().name("Prestataire"))
                 .addTagsItem(new Tag().name("Prestataire - Abonnement"));
     }

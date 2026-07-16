@@ -2,6 +2,7 @@ package com.example.solimus.controllers;
 
 
 import com.example.solimus.dtos.syndic.charge.*;
+import com.example.solimus.dtos.syndic.residence.ResidenceCardDTO;
 import com.example.solimus.dtos.syndic.residence.ResidenceDTO;
 import com.example.solimus.services.syndic.charge.ChargeService;
 import com.example.solimus.services.syndic.residence.SyndicResidenceService;
@@ -23,20 +24,31 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic/budget")
 @RequiredArgsConstructor
-@Tag(name = "Syndic - Budget Prévisionnel", description = "Gestion du budget prévisionnel par le syndic")
+@Tag(name = "Syndic - Charges", description = "Gestion des charges par le syndic")
 public class SyndicBudgetController {
 
     private final ChargeService chargeService;
     private final SyndicResidenceService syndicResidenceService;
 
-    @Operation(summary = "Lister les résidences du syndic", description = "Récupère toutes les résidences gérées par le syndic connecté")
+    @Operation(summary = "Lister les résidences du syndic", description = "Récupère toutes les résidences gérées par le syndic connecté", tags = {"Syndic - Charges"})
     @GetMapping("/residences")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
-    public ResponseEntity<List<ResidenceDTO>> getMesResidences() {
-        return ResponseEntity.ok(syndicResidenceService.getMesResidences());
+    public ResponseEntity<Page<ResidenceCardDTO>> getMesResidences(
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        return ResponseEntity.ok(syndicResidenceService.getResidencesPaginated(null, null, null, page, size));
     }
 
-    @Operation(summary = "Années disponibles pour budget", description = "Retourne l'année actuelle et les 3 prochaines années")
+    @Operation(summary = "Lister les résidences avec budget actif", description = "Récupère les résidences du syndic connecté qui ont un budget actif", tags = {"Syndic - Charges"})
+    @GetMapping("/residences/with-active-budget")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    public ResponseEntity<Page<ResidenceBudgetSummaryDTO>> getResidencesWithActiveBudget(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(chargeService.getResidencesWithActiveBudget(page, size));
+    }
+
+    @Operation(summary = "Années disponibles pour budget", description = "Retourne l'année actuelle et les 3 prochaines années", tags = {"Syndic - Charges"})
     @GetMapping("/years")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<List<Integer>> getAvailableYears() {
@@ -45,14 +57,14 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(years);
     }
 
-    @Operation(summary = "Aperçu de la résidence pour création de budget", description = "Récupère les informations de la résidence avec la liste des copropriétaires et leurs tantièmes")
+    @Operation(summary = "Aperçu de la résidence pour création de budget", description = "Récupère les informations de la résidence avec la liste des copropriétaires et leurs tantièmes", tags = {"Syndic - Charges"})
     @GetMapping("/residence/{residenceId}/preview")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<BudgetResidencePreviewDTO> getResidencePreview(@PathVariable Long residenceId) {
         return ResponseEntity.ok(chargeService.getResidencePreview(residenceId));
     }
 
-    @Operation(summary = "Aperçu appel de charges par résidence", description = "Retourne l'aperçu de l'appel de charges (budget id, année, résidence, répartition) en utilisant le budget actif de la résidence")
+    @Operation(summary = "Aperçu appel de charges par résidence", description = "Retourne l'aperçu de l'appel de charges (budget id, année, résidence, répartition) en utilisant le budget actif de la résidence", tags = {"Syndic - Charges"})
     @GetMapping("/residence/{residenceId}/charge-call-preview")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<ChargeCallPreviewDTO> previewChargeCallByResidence(
@@ -61,14 +73,14 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.previewChargeCallByResidence(residenceId, periodNumber));
     }
 
-    @Operation(summary = "Créer un budget prévisionnel", description = "Crée un nouveau budget prévisionnel pour une résidence avec ses postes budgétaires")
+    @Operation(summary = "Créer un budget prévisionnel", description = "Crée un nouveau budget prévisionnel pour une résidence avec ses postes budgétaires", tags = {"Syndic - Charges"})
     @PostMapping
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<BudgetDetailDTO> createBudget(@RequestBody CreateBudgetDTO dto) {
         return ResponseEntity.ok(chargeService.createBudget(dto));
     }
 
-    @Operation(summary = "Mettre à jour partiellement un budget prévisionnel", description = "Met à jour partiellement un budget existant. Seuls les champs fournis sont mis à jour.")
+    @Operation(summary = "Mettre à jour partiellement un budget prévisionnel", description = "Met à jour partiellement un budget existant. Seuls les champs fournis sont mis à jour.", tags = {"Syndic - Charges"})
     @PatchMapping("/{budgetId}")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<BudgetDetailDTO> updateBudget(
@@ -77,7 +89,7 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.updateBudget(budgetId, dto));
     }
 
-    @Operation(summary = "Lister les budgets", description = "Retourne la liste paginée des budgets du syndic connecté avec les totaux globaux (nombre de budgets, nombre de budgets actifs)")
+    @Operation(summary = "Lister les budgets", description = "Retourne la liste paginée des budgets du syndic connecté avec les totaux globaux (nombre de budgets, nombre de budgets actifs)", tags = {"Syndic - Charges"})
     @GetMapping("/budgets")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<BudgetListResponse> getBudgets(
@@ -88,7 +100,7 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "Détail d'un budget avec KPIs Onglet 1", description = "Retourne le détail d'un budget avec les 4 KPIs (total, dépenses réelles, écart, consommation) et le tableau des postes budgétaires")
+    @Operation(summary = "Détail d'un budget avec KPIs Onglet 1", description = "Retourne le détail d'un budget avec les 4 KPIs (total, dépenses réelles, écart, consommation) et le tableau des postes budgétaires", tags = {"Syndic - Charges"})
     @GetMapping("/budgets/{id}/overview")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<BudgetOverviewDTO> getBudgetOverview(@PathVariable Long id) {
@@ -96,7 +108,7 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(overview);
     }
 
-     @Operation(summary = "Répartition du budget entre copropriétaires(onglet 2 poste Budgetaire)", description = "Retourne la quote-part de chaque copropriétaire sur ce budget, calculée via son tantième")
+     @Operation(summary = "Répartition du budget entre copropriétaires(onglet 2 poste Budgetaire)", description = "Retourne la quote-part de chaque copropriétaire sur ce budget, calculée via son tantième", tags = {"Syndic - Charges"})
     @GetMapping("/budgets/{id}/repartition")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<Page<BudgetRepartitionItemDTO>> getBudgetRepartition(
@@ -106,7 +118,7 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.getBudgetRepartition(id, page, size));
     }
 
-    @Operation(summary = "Liste des appels de charges liés à un budget", description = "Retourne tous les appels de charges générés pour ce budget avec leur statut calculé à la volée")
+    @Operation(summary = "Liste des appels de charges liés à un budget", description = "Retourne tous les appels de charges générés pour ce budget avec leur statut calculé à la volée", tags = {"Syndic - Charges"})
     @GetMapping("/budgets/{id}/charge-calls")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<Page<BudgetLinkedChargeCallDTO>> getBudgetLinkedChargeCalls(
@@ -116,7 +128,7 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.getBudgetLinkedChargeCalls(id, page, size));
     }
 
-    @Operation(summary = "Historique d'un budget (onglet 4 poste budgetaire)", description = "Retourne le journal des événements d'un budget (création, clôture...)")
+    @Operation(summary = "Historique d'un budget (onglet 4 poste budgetaire)", description = "Retourne le journal des événements d'un budget (création, clôture...)", tags = {"Syndic - Charges"})
     @GetMapping("/budgets/{id}/history")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<Page<HistoryItemDTO>> getBudgetHistory(
@@ -126,7 +138,7 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.getBudgetHistory(id, page, size));
     }
 
-    @Operation(summary = "Détail d'un budget", description = "Récupère le détail complet d'un budget avec la répartition par copropriétaire")
+    @Operation(summary = "Détail d'un budget", description = "Récupère le détail complet d'un budget avec la répartition par copropriétaire", tags = {"Syndic - Charges"})
     @GetMapping("/{budgetId}")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<BudgetDetailDTO> getBudgetDetail(@PathVariable Long budgetId) {
@@ -136,25 +148,17 @@ public class SyndicBudgetController {
     // ============================================================
     // APPEL DE CHARGES
     // ============================================================
-    @Operation(summary = "Aperçu avant génération d'appel de charges", description = "Retourne les données calculées sans rien créer en base")
-    @GetMapping("/{budgetId}/charge-call-preview")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
-    public ResponseEntity<ChargeCallPreviewDTO> previewChargeCall(
-            @PathVariable Long budgetId,
-            @RequestParam Integer periodNumber) {
-        return ResponseEntity.ok(chargeService.previewChargeCall(budgetId, periodNumber));
-    }
-
-    @Operation(summary = "Générer un appel de charges", description = "Génère l'appel de charges et envoie les emails aux copropriétaires")
-    @PostMapping("/{budgetId}/generate-charge-call")
+    @Operation(summary = "Générer un appel de charges", description = "Génère l'appel de charges et envoie les emails aux copropriétaires", tags = {"Syndic - Charges"})
+    @PostMapping("/residence/{residenceId}/generate-charge-call")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<Void> generateChargeCall(
-            @PathVariable Long budgetId,
+            @PathVariable Long residenceId,
             @RequestBody @Valid GenerateChargeCallDTO dto) {
-        chargeService.generateChargeCall(budgetId, dto);
+        chargeService.generateChargeCall(residenceId, dto);
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(summary = "Lister les appels de charges", tags = {"Syndic - Charges"})
     @GetMapping("/charge-calls")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<ChargeCallListResponse> getChargeCalls(
@@ -163,18 +167,21 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.getChargeCallsForSyndic(page, size));
     }
 
+    @Operation(summary = "Détail d'un appel de charges", tags = {"Syndic - Charges"})
     @GetMapping("/charge-calls/{id}")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<ChargeCallDetailDTO> getChargeCallDetail(@PathVariable Long id) {
         return ResponseEntity.ok(chargeService.getChargeCallDetail(id));
     }
 
+    @Operation(summary = "Relancer un appel de charges", tags = {"Syndic - Charges"})
     @PatchMapping("/charge-calls/{id}/remind")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<Integer> remindChargeCall(@PathVariable Long id) {
         return ResponseEntity.ok(chargeService.remindChargeCall(id));
     }
 
+    @Operation(summary = "Supprimer un appel de charges", tags = {"Syndic - Charges"})
     @DeleteMapping("/charge-calls/{id}")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     public ResponseEntity<Void> deleteChargeCall(@PathVariable Long id) {
@@ -182,18 +189,26 @@ public class SyndicBudgetController {
         return ResponseEntity.noContent().build();
     }
 
+    @Operation(summary = "Supprimer un appel exceptionnel", tags = {"Syndic - Charges"})
+    @DeleteMapping("/exceptional-calls/{id}")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    public ResponseEntity<Void> deleteExceptionalCall(@PathVariable Long id) {
+        chargeService.deleteExceptionalCall(id);
+        return ResponseEntity.noContent().build();
+    }
+
     // ============================================================
     // APPEL DE CHARGES EXCEPTIONNEL
     // ============================================================
 
-    @Operation(summary = "Créer un Appel Exceptionnel — Section 1 (Informations générales)", tags = {"Syndic - Charges Exceptionnelles"})
+    @Operation(summary = "Créer un Appel Exceptionnel — Section 1 (Informations générales)", tags = {"Syndic - Charges"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/exceptional-calls")
     public ResponseEntity<ExceptionalCallDetailDTO> createExceptionalCall(@RequestBody @Valid CreateExceptionalCallDTO dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(chargeService.createExceptionalCall(dto));
     }
 
-    @Operation(summary = "Compléter les informations financières d'un appel exceptionnel — Section 2", tags = {"Syndic - Charges Exceptionnelles"})
+    @Operation(summary = "Compléter les informations financières d'un appel exceptionnel — Section 2", tags = {"Syndic - Charges"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PatchMapping("/exceptional-calls/{id}/financial-info")
     public ResponseEntity<ExceptionalCallDetailDTO> updateExceptionalCallFinancialInfo(
@@ -202,7 +217,7 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.updateExceptionalCallFinancialInfo(id, dto));
     }
 
-    @Operation(summary = "Activer un appel exceptionnel — Section 3 (Validation & Documents)", tags = {"Syndic - Charges Exceptionnelles"})
+    @Operation(summary = "Activer un appel exceptionnel — Section 3 (Validation & Documents)", tags = {"Syndic - Charges"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping(value = "/exceptional-calls/{id}/activate", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ExceptionalCallDetailDTO> activateExceptionalCall(
@@ -212,7 +227,7 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.activateExceptionalCall(id, requiresAgValidation, documents));
     }
 
-    @Operation(summary = "Lister les appels exceptionnels du syndic", tags = {"Syndic - Charges Exceptionnelles"})
+    @Operation(summary = "Lister les appels exceptionnels du syndic", tags = {"Syndic - Charges"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/exceptional-calls")
     public ResponseEntity<ExceptionalCallListResponse> getExceptionalCalls(
@@ -221,14 +236,14 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.getExceptionalCallsForSyndic(page, size));
     }
 
-    @Operation(summary = "Vue d'ensemble d'un appel exceptionnel (onglet 1)", tags = {"Syndic - Charges Exceptionnelles"})
+    @Operation(summary = "Vue d'ensemble d'un appel exceptionnel (onglet 1)", tags = {"Syndic - Charges"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/exceptional-calls/{id}/overview")
     public ResponseEntity<ExceptionalCallOverviewDTO> getExceptionalCallOverview(@PathVariable Long id) {
         return ResponseEntity.ok(chargeService.getExceptionalCallOverview(id));
     }
 
-    @Operation(summary = "Répartition d'un appel exceptionnel entre copropriétaires (onglet 2)", tags = {"Syndic - Charges Exceptionnelles"})
+    @Operation(summary = "Répartition d'un appel exceptionnel entre copropriétaires (onglet 2)", tags = {"Syndic - Charges"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/exceptional-calls/{id}/repartition")
     public ResponseEntity<Page<ExceptionalCallItemDetailDTO>> getExceptionalCallRepartition(
@@ -238,7 +253,7 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.getExceptionalCallRepartition(id, page, size));
     }
 
-    @Operation(summary = "Paiements reçus pour un appel exceptionnel (onglet 3)", tags = {"Syndic - Charges Exceptionnelles"})
+    @Operation(summary = "Paiements reçus pour un appel exceptionnel (onglet 3)", tags = {"Syndic - Charges"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/exceptional-calls/{id}/payments")
     public ResponseEntity<Page<ExceptionalCallPaymentDTO>> getExceptionalCallPayments(
@@ -248,7 +263,7 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.getExceptionalCallPayments(id, page, size));
     }
 
-    @Operation(summary = "Documents rattachés à un appel exceptionnel (onglet 4)", tags = {"Syndic - Charges Exceptionnelles"})
+    @Operation(summary = "Documents rattachés à un appel exceptionnel (onglet 4)", tags = {"Syndic - Charges"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/exceptional-calls/{id}/documents")
     public ResponseEntity<Page<ExceptionalCallDocumentDTO>> getExceptionalCallDocuments(
@@ -258,7 +273,7 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.getExceptionalCallDocuments(id, page, size));
     }
 
-    @Operation(summary = "Historique des événements d'un appel exceptionnel (onglet 5)", tags = {"Syndic - Charges Exceptionnelles"})
+    @Operation(summary = "Historique des événements d'un appel exceptionnel (onglet 5)", tags = {"Syndic - Charges"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/exceptional-calls/{id}/history")
     public ResponseEntity<Page<ExceptionalCallHistoryDTO>> getExceptionalCallHistory(
@@ -268,7 +283,7 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.getExceptionalCallHistory(id, page, size));
     }
 
-    @Operation(summary = "Clôturer un appel exceptionnel", tags = {"Syndic - Charges Exceptionnelles"})
+    @Operation(summary = "Clôturer un appel exceptionnel", tags = {"Syndic - Charges"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PatchMapping("/exceptional-calls/{id}/close")
     public ResponseEntity<Void> closeExceptionalCall(@PathVariable Long id) {
@@ -276,7 +291,7 @@ public class SyndicBudgetController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "Recherche d'équipements communs pour autocomplétion des postes budgétaires", tags = {"Syndic - Budget Prévisionnel"})
+    @Operation(summary = "Recherche d'équipements communs pour autocomplétion des postes budgétaires", tags = {"Syndic - Charges"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/common-facilities/search")
     public ResponseEntity<Page<CommonFacilitySuggestionDTO>> searchCommonFacilities(

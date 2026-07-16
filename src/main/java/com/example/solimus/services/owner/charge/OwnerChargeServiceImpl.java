@@ -54,6 +54,7 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
     // 2 sources différentes (ChargeCallItem + ExceptionalCallItem) en une seule liste unifiée.
     // Le volume par copropriétaire reste toujours faible, donc pas d'impact de performance.
     @Override
+    @Transactional(readOnly = true)
     public MyChargeListResponse getMyCharges(String search, ChargeType type, String status, Long residenceId, int page, int size) {
 
         // Récupère le copropriétaire connecté
@@ -109,6 +110,7 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
     // =========================================================================
 
     @Override
+    @Transactional(readOnly = true)
     public MyChargeDetailDTO getChargeDetail(ChargeType type, Long id) {
 
         // Récupère le copropriétaire connecté

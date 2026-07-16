@@ -1,4 +1,4 @@
-package com.example.solimus.dtos.syndic;
+package com.example.solimus.dtos.owner.travaux;
 
 import com.example.solimus.enums.PaymentMethod;
 import lombok.AllArgsConstructor;
