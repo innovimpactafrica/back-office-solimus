@@ -2,33 +2,41 @@
 # Résidence : une seule création
 # A relire : Il y a un FileController dans coopachat qui sert de proxy :
 
-Fonctionnement coopachat :
+# Ajouter sur ajout meeting 
+// Upload de chaque document fourni et rattachement à la réunion.
+// Tous les documents ajoutés à ce stade sont typés CONVOCATION par défaut —
+// les autres types (PV, rapport financier...) seront ajoutés plus tard, séparément.
+if (documents != null) {
+for (MultipartFile file : documents) {
 
-Backend stocke dans MinIO → retourne objectKey (uuid.jpg)
-Frontend demande : https://api.coopachat.innovimpactdev.cloud/api/files/uuid.jpg
-FileController intercepte /api/files/{path} et stream le fichier depuis MinIO
-Pourquoi cette architecture ?
+        // Verifie que le fichier n'est pas vide
+        if (file.isEmpty()) {
+            throw new BadRequestException("Un des fichiers fournis est vide");
+        }
 
-MinIO n'est pas exposé publiquement
-Le backend sert de proxy sécurisé
-Les images passent par le backend (endpoint public permitAll)
-Je dois vérifier si solimus a aussi un FileController :
+        // Verifie la taille maximale : 20 Mo
+        long maxSizeBytes = 20L * 1024 * 1024; // 20 Mo en octets
+        if (file.getSize() > maxSizeBytes) {
+            throw new BadRequestException("Le fichier " + file.getOriginalFilename() + " dépasse la taille maximale autorisée (20 Mo)");
+        }
 
-SearchedFileController|/files|/uploads in c:/PROJECT/projet-innov/back-office-solimus
-Thought for 1s
-Read
-FileController.java
-Thought for 5s
-Parfait ! Solimus a déjà un FileController identique à coopachat. L'architecture est déjà en place :
+        // Verifie l'extension autorisee : PDF, DOCX, XLSX uniquement
+        String originalFileName = file.getOriginalFilename();
+        if (originalFileName == null || !hasAllowedExtension(originalFileName)) {
+            throw new BadRequestException("Format de fichier non autorisé pour " + originalFileName + ". Formats acceptés : PDF, DOCX, XLSX");
+        }
 
-Architecture solimus (identique à coopachat) :
+        String fileUrl = minioService.uploadFile(file, "meetings");
 
-Images stockées dans MinIO
-Backend retourne objectKey (uuid.jpg)
-Frontend construit : https://api.solimus.innovimpactdev.cloud/api/files/uuid.jpg
-FileController (/api/files/{path}) stream le fichier depuis MinIO
-Rien à modifier côté backend solimus - tout est déjà configuré comme coopachat. Le frontend solimus doit simplement :
+        MeetingDocument doc = new MeetingDocument();
+        doc.setMeeting(savedMeeting);
+        doc.setFileName(originalFileName);
+        doc.setFileUrl(fileUrl);
+        doc.setFileSizeKb(file.getSize() / 1024);
+        doc.setDocumentType(MeetingDocumentType.CONVOCATION);
 
-Avoir imageServerUrl dans environment.ts
-Construire les URLs comme coopachat : ${imageServerUrl}/files/${objectKey}
-L'architecture est cohérente entre les deux projets.
+        savedMeeting.getDocuments().add(doc);
+    }
+}
+
+#

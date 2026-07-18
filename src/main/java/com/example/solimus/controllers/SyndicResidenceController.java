@@ -149,8 +149,10 @@ public class SyndicResidenceController {
     @Operation(summary = "Lister tous les types de biens (dropdown) (Étape 2)", tags = {"Syndic - Résidences"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/property-types")
-    public ResponseEntity<List<PropertyTypeDTO>> getAllPropertyTypes() {
-        return ResponseEntity.ok(residenceService.getAllPropertyTypes());
+    public ResponseEntity<Page<PropertyTypeDTO>> getAllPropertyTypes(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(residenceService.getAllPropertyTypes(page, size));
     }
 
     // =========================================================================
@@ -159,8 +161,10 @@ public class SyndicResidenceController {
     @Operation(summary = "Lister les types d'équipements avec leurs champs (Étape 3)", tags = {"Syndic - Résidences"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/facility-types")
-    public ResponseEntity<List<FacilityTypeDTO>> getFacilityTypes() {
-        return ResponseEntity.ok(residenceService.getFacilityTypes());
+    public ResponseEntity<Page<FacilityTypeDTO>> getFacilityTypes(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(residenceService.getFacilityTypes(page, size));
     }
 
     @Operation(summary = "Mettre à jour les options de sécurité d'une résidence (Étape 3)", tags = {"Syndic - Résidences"})

@@ -17,10 +17,7 @@ import com.example.solimus.repositories.*;
 import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.*;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -421,14 +418,13 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     // =========================================================================
     @Override
     @Transactional(readOnly = true)
-    public List<PropertyTypeDTO> getAllPropertyTypes() {
-        return propertyTypeRepository.findAll()
-                .stream()
+    public Page<PropertyTypeDTO> getAllPropertyTypes(int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
+        return propertyTypeRepository.findAll(pageable)
                 .map(type -> PropertyTypeDTO.builder()
                         .id(type.getId())
                         .name(type.getName())
-                        .build())
-                .collect(Collectors.toList());
+                        .build());
     }
 
     // =========================================================================
@@ -540,18 +536,16 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     // =========================================================================
     @Override
     @Transactional(readOnly = true)
-    public List<FacilityTypeDTO> getFacilityTypes() {
-
-        return facilityTypeRepository.findByIsActiveTrue()
-                .stream()
+    public Page<FacilityTypeDTO> getFacilityTypes(int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
+        return facilityTypeRepository.findByIsActiveTrue(pageable)
                 .map(type -> FacilityTypeDTO.builder()
                         .id(type.getId())
                         .name(type.getName())
                         .icon(type.getIcon())
                         // on cherche les champs dans la map — liste vide si type inconnu
                         .fields(FACILITY_FIELDS.getOrDefault(type.getName(), List.of()))
-                        .build())
-                .collect(Collectors.toList());
+                        .build());
     }
 
     @Override
@@ -1806,6 +1800,11 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     private ResidenceDTO mapToResidenceDTO(Residence res) {
         String presignedPhotoUrl = res.getPhotoUrl();
 
+        // Récupère le budget le plus récent de la résidence
+        BigDecimal annualBudget = budgetRepository.findMostRecentByResidenceId(res.getId())
+                .map(Budget::getBudgetTotal)
+                .orElse(null);
+
         return ResidenceDTO.builder()
             .id(res.getId())
             .name(res.getName())
@@ -1819,7 +1818,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             .lotsCount(res.getLotsCount())
             .constructionDate(res.getConstructionDate())
             .renovationDate(res.getRenovationDate())
-            .annualBudget(res.getAnnualBudget())
+            .annualBudget(annualBudget)
             .healthStatus(res.getHealthStatus())
             .syndicId(res.getSyndic() != null
                 ? res.getSyndic().getId() : null)

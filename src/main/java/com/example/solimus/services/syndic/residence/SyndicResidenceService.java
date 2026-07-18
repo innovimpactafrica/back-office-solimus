@@ -59,13 +59,13 @@ public interface SyndicResidenceService {
     void updateResidence(Long residenceId, CreateResidenceDTO dto, MultipartFile photo);
 
     //Étape 2 _ Lister tous les types de biens (pour dropdown lors de la création d'un lot)
-    List<PropertyTypeDTO> getAllPropertyTypes();
+    Page<PropertyTypeDTO> getAllPropertyTypes(int page, int size);
 
     //  Étape 2 — Lister les copropriétaires pour l'affectation d'un lot
     List<CoOwnerSelectionDTO> searchCoOwnersForSelection(String search);
 
     //  Étape 3 — Lister les types d'équipement avec leurs champs
-    List<FacilityTypeDTO> getFacilityTypes();
+    Page<FacilityTypeDTO> getFacilityTypes(int page, int size);
 
     //  Étape 3 — Ajouter un équipement commun à une résidence
     void addFacility(Long residenceId, AddFacilityDTO dto);

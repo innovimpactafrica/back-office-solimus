@@ -56,6 +56,11 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
     @Query("SELECT COUNT(DISTINCT p.owner) FROM Property p WHERE p.residence.id = :residenceId AND p.owner IS NOT NULL")
     long countDistinctOwnersByResidenceId(@Param("residenceId") Long residenceId);
 
+    // Copropriétaires distincts d'une résidence (évite les doublons si plusieurs lots)
+    @Query("SELECT DISTINCT p.owner FROM Property p " +
+           "WHERE p.residence.id = :residenceId AND p.owner IS NOT NULL")
+    List<com.example.solimus.entities.User> findDistinctOwnersByResidenceId(@Param("residenceId") Long residenceId);
+
     // Compter les biens d'un syndic (toutes résidences confondues)
     @Query("SELECT COUNT(p) FROM Property p WHERE p.residence.syndic.id = :syndicId")
     long countByResidenceSyndicId(@Param("syndicId") Long syndicId);
@@ -115,4 +120,5 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
             @Param("coOwnerId") Long coOwnerId,
             @Param("syndicId") Long syndicId,
             Pageable pageable);
+
 }

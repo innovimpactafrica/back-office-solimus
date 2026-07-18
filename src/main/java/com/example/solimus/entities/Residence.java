@@ -139,12 +139,6 @@ public class Residence {
     // =========================================================================
 
     /**
-     * Budget annuel de fonctionnement de la résidence en FCFA.
-     */
-    @Column(name = "annual_budget", precision = 15, scale = 2)
-    private BigDecimal annualBudget;
-
-    /**
      * Indicateur global de santé financière de la résidence.
      * Calculé automatiquement à partir des impayés et incidents.
      * Valeurs : BONNE, MOYENNE, CRITIQUE

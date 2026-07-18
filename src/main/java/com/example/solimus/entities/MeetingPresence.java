@@ -1,6 +1,5 @@
 package com.example.solimus.entities;
 
-import com.example.solimus.enums.AttendanceStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -26,16 +25,6 @@ public class MeetingPresence {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "meeting_participant_id", nullable = false)
     private MeetingParticipant meetingParticipant;
-
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "meeting_id", nullable = false)
-    private Meeting meeting;
-
-    /**
-     * Statut de présence de ce copropriétaire le jour de l'AG.
-     */
-    @Enumerated(EnumType.STRING)
-    private AttendanceStatus attendanceStatus;
 
     /**
      * Tantième de ce copropriétaire, SNAPSHOTTÉ au moment de l'AG (pas recalculé depuis

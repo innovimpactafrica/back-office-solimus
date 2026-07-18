@@ -59,6 +59,9 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
     // Lister les AG d'un syndic par statut
     List<Meeting> findBySyndicIdAndStatus(Long syndicId, MeetingStatus status);
 
+    // Nombre d'AG du syndic pour plusieurs statuts a la fois (ex: UPCOMING + IN_PROGRESS)
+    long countBySyndicIdAndStatusIn(Long syndicId, List<MeetingStatus> statuses);
+
     // Compter les AG terminées d'un syndic dans l'année en cours
     @Query("SELECT COUNT(m) FROM Meeting m WHERE m.syndic.id = :syndicId " +
            "AND m.status = :status " +
@@ -100,23 +103,57 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
 
     long countByResidence_Syndic_IdAndStatusIn(Long syndicId, List<MeetingStatus> statuses);
 
-    // ===== STATS DE PARTICIPATION PAR REUNION (une seule requete pour toute la page) =====
+    // ===== STATS DE PARTICIPATION PAR REUNION (une seule requête pour toute la page) =====
     @Query("SELECT new com.example.solimus.repositories.meeting.MeetingParticipationStats(" +
-           "mp.meetingParticipant.meeting.id, " +
-           "COUNT(mp), " +
-           "SUM(CASE WHEN mp.hasSigned = true THEN 1 ELSE 0 END), " +
-           "SUM(mp.tantiemeSnapshot), " +
-           "SUM(CASE WHEN mp.hasSigned = true THEN mp.tantiemeSnapshot ELSE 0 END)) " +
-           "FROM MeetingPresence mp " +
-           "WHERE mp.meetingParticipant.meeting.id IN :meetingIds " +
-           "GROUP BY mp.meetingParticipant.meeting.id")
+            "mp.meetingParticipant.meeting.id, " +
+            "COUNT(mp), " +
+            "SUM(CASE WHEN mp.hasSigned = true THEN 1 ELSE 0 END), " +
+            "SUM(mp.tantiemeSnapshot), " +
+            "SUM(CASE WHEN mp.hasSigned = true THEN mp.tantiemeSnapshot END)) " +
+            "FROM MeetingPresence mp " +
+            "WHERE mp.meetingParticipant.meeting.id IN :meetingIds " +
+            "GROUP BY mp.meetingParticipant.meeting.id")
     List<MeetingParticipationStats> findParticipationStats(@Param("meetingIds") List<Long> meetingIds);
 
-    // ===== NOMBRE DE DOCUMENTS PAR REUNION (une seule requete pour toute la page) =====
+
+    // ===== NOMBRE DE DOCUMENTS PAR REUNION (une seule requête pour toute la page) =====
     @Query("SELECT new com.example.solimus.repositories.meeting.MeetingDocumentCount(" +
            "d.meeting.id, COUNT(d)) " +
            "FROM MeetingDocument d " +
            "WHERE d.meeting.id IN :meetingIds " +
            "GROUP BY d.meeting.id")
     List<MeetingDocumentCount> countDocumentsByMeetingIds(@Param("meetingIds") List<Long> meetingIds);
+
+    // Réunions dont la date de convocation est atteinte et pas encore envoyée
+    @Query("SELECT m FROM Meeting m " +
+           "WHERE m.status = 'UPCOMING' " +
+           "AND m.convocationSent = false " +
+           "AND m.convocationSentDate <= :today")
+    List<Meeting> findMeetingsWithPendingConvocation(@Param("today") LocalDate today);
+
+    // Réunions ou ce copropriétaire est convoqué, filtrées sur UPCOMING uniquement
+    @Query("SELECT DISTINCT mp.meeting FROM MeetingParticipant mp " +
+            "WHERE mp.user.id = :userId " +
+            "AND mp.meeting.status = 'UPCOMING' " +
+            "ORDER BY mp.meeting.meetingDate ASC")
+    Page<Meeting> findUpcomingMeetingsByParticipantUserId(@Param("userId") Long userId, Pageable pageable);
+
+    //  Réunions d'un copropriétaire sur un mois donné, tous statuts confondus
+    @Query("SELECT DISTINCT mp.meeting FROM MeetingParticipant mp " +
+            "WHERE mp.user.id = :userId " +
+            "AND mp.meeting.meetingDate BETWEEN :startOfMonth AND :endOfMonth " +
+            "ORDER BY mp.meeting.meetingDate ASC")
+    List<Meeting> findMeetingsByParticipantUserIdAndMonth(@Param("userId") Long userId,
+                                                          @Param("startOfMonth") LocalDate startOfMonth,
+                                                          @Param("endOfMonth") LocalDate endOfMonth);
+
+    // Réunions à venir d'un copropriétaire sur un mois précis (UPCOMING uniquement)
+    @Query("SELECT DISTINCT mp.meeting FROM MeetingParticipant mp " +
+            "WHERE mp.user.id = :userId " +
+            "AND mp.meeting.status = 'UPCOMING' " +
+            "AND mp.meeting.meetingDate BETWEEN :startOfMonth AND :endOfMonth " +
+            "ORDER BY mp.meeting.meetingDate ASC")
+    List<Meeting> findUpcomingMeetingsByParticipantUserIdAndMonth(@Param("userId") Long userId,
+                                                                    @Param("startOfMonth") LocalDate startOfMonth,
+                                                                    @Param("endOfMonth") LocalDate endOfMonth);
 }

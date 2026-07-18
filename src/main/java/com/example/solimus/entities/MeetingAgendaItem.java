@@ -24,9 +24,17 @@ public class MeetingAgendaItem {
     @Column(nullable = false)
     private String title;
 
+    // Description du point, optionnelle — remplie si le syndic l'a saisie, sinon reste null
+    @Column(name = "description", columnDefinition = "TEXT")
+    private String description;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "meeting_id", nullable = false)
     private Meeting meeting;
+
+    // Indique si ce point nécessite une décision formelle (true) ou s'il est juste informatif (false)
+    @Column(name = "requires_resolution", nullable = false)
+    private Boolean requiresResolution = false;
 
     // ===== NOUVEAU : TEXTE DE LA RESOLUTION =====
     @Column(name = "resolution_text", columnDefinition = "TEXT")

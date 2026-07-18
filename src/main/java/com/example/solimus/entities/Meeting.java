@@ -34,9 +34,11 @@ public class Meeting {
     private String title;
 
     @Enumerated(EnumType.STRING)
+    @Column(length = 20)
     private MeetingType type;
 
     @Enumerated(EnumType.STRING)
+    @Column(length = 20)
     private MeetingStatus status;
 
     private LocalDate meetingDate;
@@ -56,6 +58,10 @@ public class Meeting {
     private Boolean sendByPlatformNotification = false;
     private Boolean sendBySms = false;
 
+    // Passe à true une fois la convocation réellement envoyée par le job planifié
+    @Column(name = "convocation_sent", nullable = false)
+    private Boolean convocationSent = false;
+
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "residence_id", nullable = false)
     private Residence residence;
@@ -72,10 +78,6 @@ public class Meeting {
     // Documents joints à la réunion
     @OneToMany(mappedBy = "meeting", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<MeetingDocument> documents = new ArrayList<>();
-
-    // Copropriétaires ayant émargé/participé à la réunion, avec leur tantième au moment de la réunion
-    @OneToMany(mappedBy = "meeting", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<MeetingPresence> presences = new ArrayList<>();
 
     @CreationTimestamp
     @Column(updatable = false)

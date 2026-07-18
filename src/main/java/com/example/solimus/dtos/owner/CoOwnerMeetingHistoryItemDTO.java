@@ -1,6 +1,5 @@
 package com.example.solimus.dtos.owner;
 
-import com.example.solimus.enums.AttendanceStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -26,6 +25,6 @@ public class CoOwnerMeetingHistoryItemDTO {
     // Vote de ce copropriétaire (null pour l'instant, dépend de Vote)
     private String vote;
 
-    // Statut de présence de ce copropriétaire
-    private AttendanceStatus attendanceStatus;
+    // Signature de présence de ce copropriétaire
+    private Boolean hasSigned;
 }

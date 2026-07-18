@@ -30,7 +30,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> 
             String relatedEntityType,
             Long relatedEntityId);
 
-    // Version paginée
+    // Cherche toutes les entrées de l'historique (ActivityLog) liées à une EntityType précise,
     Page<ActivityLog> findByRelatedEntityTypeAndRelatedEntityIdOrderByCreatedAtDesc(
             String relatedEntityType,
             Long relatedEntityId,
@@ -65,4 +65,10 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> 
     @Query("SELECT a FROM ActivityLog a JOIN FETCH a.residence WHERE a.residence.syndic.id = :syndicId " +
            "ORDER BY a.createdAt DESC")
     List<ActivityLog> findByResidenceSyndicIdOrderByCreatedAtDesc(@Param("syndicId") Long syndicId, Pageable pageable);
+
+    // Compte les entrées d'historique liées à une entité précise (ex: une réunion)
+    long countByRelatedEntityTypeAndRelatedEntityId(String relatedEntityType, Long relatedEntityId);
+
+
+
 }

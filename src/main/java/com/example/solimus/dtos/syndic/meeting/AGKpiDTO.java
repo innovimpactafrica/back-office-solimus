@@ -11,7 +11,7 @@ import lombok.*;
 @AllArgsConstructor
 public class AGKpiDTO {
 
-    private long totalCount;     // nombre total d'AG, tous statuts confondus (y compris annulees)
+    private long totalCount;     // nombre total d'AG, tous statuts confondus (y compris annulées)
     private long plannedCount;   // statut UPCOMING + IN_PROGRESS
     private long completedCount; // statut COMPLETED
     private long draftCount;     // statut DRAFT

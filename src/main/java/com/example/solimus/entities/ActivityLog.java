@@ -74,6 +74,7 @@ public class ActivityLog {
     @Column
     private String detail;
 
-    @Column(name = "created_at")
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 }

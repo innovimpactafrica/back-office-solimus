@@ -15,6 +15,7 @@ import com.example.solimus.dtos.syndic.settings.UpdateSecurityFeatureDTO;
 import com.example.solimus.dtos.syndic.settings.UpdateSyndicFinancialSettingsDTO;
 import com.example.solimus.dtos.syndic.settings.UpdateSyndicProfileDTO;
 import com.example.solimus.enums.FacilityCategory;
+import org.springframework.data.domain.Page;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -24,7 +25,7 @@ public interface SyndicSettingsService {
     //--------------------------------------------------
     // ===== TYPES D'ÉQUIPEMENTS =====
     //--------------------------------------------------
-    List<FacilityTypeDTO> getAllFacilityTypes();
+    Page<FacilityTypeDTO> getAllFacilityTypes(int page, int size);
 
     void createFacilityType(String name, String category, String description, Boolean isActive, MultipartFile icon);
 
@@ -35,7 +36,7 @@ public interface SyndicSettingsService {
     //--------------------------------------------------
     // ===== SPÉCIALITÉS =====
     //--------------------------------------------------
-    List<SpecialtyDTO> getAllSpecialties();
+    Page<SpecialtyDTO> getAllSpecialties(int page, int size);
 
     void createSpecialty(String name, String description, MultipartFile icon);
 
@@ -46,7 +47,7 @@ public interface SyndicSettingsService {
     //--------------------------------------------------
     // ===== TYPES D'APPARTEMENT =====
     //--------------------------------------------------
-    List<PropertyTypeDTO> getAllPropertyTypes();
+    Page<PropertyTypeDTO> getAllPropertyTypes(int page, int size);
 
     void createPropertyType(CreatePropertyTypeDTO dto);
 
@@ -57,7 +58,7 @@ public interface SyndicSettingsService {
     //--------------------------------------------------
     // ===== OPTIONS DE SÉCURITÉ =====
     //--------------------------------------------------
-    List<SecurityFeatureDTO> getAllSecurityFeatures();
+    Page<SecurityFeatureDTO> getAllSecurityFeatures(int page, int size);
 
     void createSecurityFeature(String label, String description, Boolean isActive, MultipartFile icon);
 

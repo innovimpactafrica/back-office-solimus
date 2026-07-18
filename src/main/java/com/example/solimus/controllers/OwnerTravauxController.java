@@ -51,7 +51,7 @@ public class OwnerTravauxController {
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/specialties")
     public ResponseEntity<List<SpecialtyDTO>> getAllSpecialties() {
-        return ResponseEntity.ok(syndicParametreService.getAllSpecialties());
+        return ResponseEntity.ok(syndicParametreService.getAllSpecialties(0, 100).getContent());
     }
 
     @Operation(summary = "Lister mes résidences")

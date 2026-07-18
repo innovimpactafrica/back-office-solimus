@@ -460,7 +460,7 @@ public class DasboardServiceImpl implements DashboardService {
             case PAYMENT_RECEIVED, CHARGE_CALL_GENERATED -> "Paiement";
             case INTERVENTION_REPORTED, INTERVENTION_RESOLVED -> "Incident";
             case PROVIDER_ASSIGNED -> "Prestataire";
-            case MEETING_CREATED, MEETING_PUBLISHED -> "Réunion";
+            case MEETING_CREATED, MEETING_PUBLISHED, MEETING_DELETED -> "Réunion";
             case MEETING_DOCUMENT_ADDED -> "Document";
             case COMMENT_ADDED -> "Commentaire";
             case BUDGET_CREATED, BUDGET_CLOSED -> "Budget";

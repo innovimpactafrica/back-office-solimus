@@ -34,6 +34,10 @@ import com.example.solimus.repositories.UserRepository;
 import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -67,10 +71,10 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     //Listing
     @Override
     @Transactional(readOnly = true)
-    public List<FacilityTypeDTO> getAllFacilityTypes() {
-        return facilityTypeRepository.findAll().stream()
-                .map(this::toDTO)
-                .collect(Collectors.toList());
+    public Page<FacilityTypeDTO> getAllFacilityTypes(int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
+        return facilityTypeRepository.findAll(pageable)
+                .map(this::toDTO);
     }
 
     @Override
@@ -161,10 +165,10 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     //Listing
     @Override
     @Transactional(readOnly = true)
-    public List<SpecialtyDTO> getAllSpecialties() {
-        return specialtyRepository.findAll().stream()
-                .map(s -> new SpecialtyDTO(s.getId(), s.getName(), s.getDescription(), s.getIcon()))
-                .collect(Collectors.toList());
+    public Page<SpecialtyDTO> getAllSpecialties(int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
+        return specialtyRepository.findAll(pageable)
+                .map(s -> new SpecialtyDTO(s.getId(), s.getName(), s.getDescription(), s.getIcon()));
     }
 
     //Création
@@ -226,14 +230,14 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     //Listing
     @Override
     @Transactional(readOnly = true)
-    public List<PropertyTypeDTO> getAllPropertyTypes() {
-        return propertyTypeRepository.findAll().stream()
+    public Page<PropertyTypeDTO> getAllPropertyTypes(int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
+        return propertyTypeRepository.findAll(pageable)
                 .map(pt -> PropertyTypeDTO.builder()
                         .id(pt.getId())
                         .name(pt.getName())
                         .description(pt.getDescription())
-                        .build())
-                .collect(Collectors.toList());
+                        .build());
     }
 
     //Création
@@ -284,17 +288,16 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<SecurityFeatureDTO> getAllSecurityFeatures() {
-        return securityFeatureRepository.findAll()
-                .stream()
+    public Page<SecurityFeatureDTO> getAllSecurityFeatures(int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by("label").ascending());
+        return securityFeatureRepository.findAll(pageable)
                 .map(sf -> SecurityFeatureDTO.builder()
                         .id(sf.getId())
                         .label(sf.getLabel())
                         .description(sf.getDescription())
                         .active(sf.isActive())
                         .icon(sf.getIcon())
-                        .build())
-                .collect(Collectors.toList());
+                        .build());
     }
 
     @Override

@@ -14,6 +14,8 @@ public interface MeetingPresenceRepository extends JpaRepository<MeetingPresence
 
     List<MeetingPresence> findByMeetingParticipantMeetingId(Long meetingId);
 
+    MeetingPresence findByMeetingParticipantId(Long meetingParticipantId);
+
     // ===== TOUTES LES PRESENCES D'UN COPROPRIETAIRE POUR LES AG TERMINEES (pour le taux de participation) =====
     @Query("SELECT mpr FROM MeetingPresence mpr " +
            "WHERE mpr.meetingParticipant.user.id = :userId " +

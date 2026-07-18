@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -29,7 +30,11 @@ public class MeetingDocument {
     private Long fileSizeKb;
 
     @Enumerated(EnumType.STRING)
-    private MeetingDocumentType documentType;
+    private MeetingDocumentType documentType; // nullable
+
+    private String title;           // nullable
+    private String description;     // nullable
+    private LocalDate documentDate; // nullable
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "meeting_id", nullable = false)

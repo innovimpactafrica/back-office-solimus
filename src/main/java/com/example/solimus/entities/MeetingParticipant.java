@@ -31,6 +31,11 @@ public class MeetingParticipant {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    // Liste des références de lots de ce copropriétaire, séparées par virgule (ex: "Apt 8D, Apt 4E")
+    // Figée au moment de la génération, comme le tantième sur MeetingPresence
+    @Column(name = "apartments")
+    private String apartments;
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;

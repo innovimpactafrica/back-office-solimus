@@ -40,14 +40,15 @@ public class CreateMeetingDTO {
 
     private LocalDate convocationSentDate;
 
+    @NotBlank(message = "Le message de convocation est obligatoire")
     private String convocationMessage;
 
     private Boolean sendByEmail;
     private Boolean sendByPlatformNotification;
     private Boolean sendBySms;
 
-    // Ordre du jour — juste une liste de titres, dans l'ordre voulu
-    private List<String> agendaItems;
+    // Ordre du jour — liste de points avec titre et description optionnelle
+    private List<AgendaItemDTO> agendaItems;
 
     // true = publier directement (UPCOMING), false = enregistrer en brouillon (DRAFT)
     @NotNull(message = "Vous devez préciser si c'est un brouillon ou une publication")

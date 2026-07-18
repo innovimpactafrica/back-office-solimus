@@ -154,8 +154,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                     participant.getMeeting().getId());
             for (MeetingPresence presence : presences) {
                 if (presence.getMeetingParticipant().getId().equals(participant.getId())) {
-                    if (presence.getAttendanceStatus() == AttendanceStatus.PRESENT 
-                        || presence.getAttendanceStatus() == AttendanceStatus.REPRESENTE) {
+                    if (Boolean.TRUE.equals(presence.getHasSigned())) {
                         presentOrProxyMeetings++;
                     }
                     break;
@@ -190,17 +189,16 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             List<MeetingPresence> allPresences = meetingPresenceRepository.findByMeetingParticipantMeetingId(
                     meeting.getId());
 
-            java.math.BigDecimal sumTantiemePresentOrRepresented = java.math.BigDecimal.ZERO;
+            BigDecimal sumTantiemePresentOrRepresented = BigDecimal.ZERO;
             for (MeetingPresence presence : allPresences) {
-                if (presence.getAttendanceStatus() == AttendanceStatus.PRESENT 
-                    || presence.getAttendanceStatus() == AttendanceStatus.REPRESENTE) {
+                if (Boolean.TRUE.equals(presence.getHasSigned())) {
                     if (presence.getTantiemeSnapshot() != null) {
                         sumTantiemePresentOrRepresented = sumTantiemePresentOrRepresented.add(presence.getTantiemeSnapshot());
                     }
                 }
             }
 
-            java.math.BigDecimal sumTantiemeTotal = java.math.BigDecimal.ZERO;
+            BigDecimal sumTantiemeTotal = java.math.BigDecimal.ZERO;
             for (MeetingPresence presence : allPresences) {
                 if (presence.getTantiemeSnapshot() != null) {
                     sumTantiemeTotal = sumTantiemeTotal.add(presence.getTantiemeSnapshot());
@@ -208,18 +206,18 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             }
 
             Double quorumPercentage = 0.0;
-            if (sumTantiemeTotal.compareTo(java.math.BigDecimal.ZERO) > 0) {
+            if (sumTantiemeTotal.compareTo(BigDecimal.ZERO) > 0) {
                 quorumPercentage = sumTantiemePresentOrRepresented
-                        .divide(sumTantiemeTotal, 4, java.math.RoundingMode.HALF_UP)
-                        .multiply(java.math.BigDecimal.valueOf(100))
+                        .divide(sumTantiemeTotal, 4, RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(100))
                         .doubleValue();
             }
 
             // Trouver la présence de ce copropriétaire
-            AttendanceStatus attendanceStatus = null;
+            Boolean hasSigned = null;
             for (MeetingPresence presence : allPresences) {
                 if (presence.getMeetingParticipant().getId().equals(participant.getId())) {
-                    attendanceStatus = presence.getAttendanceStatus();
+                    hasSigned = presence.getHasSigned();
                     break;
                 }
             }
@@ -230,7 +228,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                     .meetingTitle(meeting.getTitle())
                     .quorumPercentage(quorumPercentage)
                     .vote(null) // null pour l'instant, dépend de Vote
-                    .attendanceStatus(attendanceStatus)
+                    .hasSigned(hasSigned)
                     .build();
             history.add(item);
         }
@@ -393,7 +391,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 // Vérifier que l'AG appartient au syndic
                 if (meeting.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
                     // Récupérer les documents de cette AG
-                    List<MeetingDocument> meetingDocs = meetingDocumentRepository.findByMeetingId(meeting.getId());
+                    Page<MeetingDocument> meetingDocs = meetingDocumentRepository.findByMeetingId(meeting.getId(),Pageable.unpaged());
                     for (MeetingDocument meetingDoc : meetingDocs) {
                         String title = "PV — " + meeting.getTitle();
                         CoOwnerDocumentItemDTO item = CoOwnerDocumentItemDTO.builder()

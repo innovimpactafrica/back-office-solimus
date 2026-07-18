@@ -12,11 +12,11 @@ import lombok.*;
 @AllArgsConstructor
 public class AGListResponseDTO {
 
-    private AGKpiDTO kpis;            // les 4 compteurs du haut de page (Total, Planifiees, Terminees, Brouillons)
+    private AGKpiDTO kpis;            // les 4 compteurs du haut de page (Total, Planifiées, Terminées, Brouillons)
 
-    private Integer totalMeetings;    // nombre total d'AG correspondant aux filtres (avant pagination)
+    private long totalMeetings;    // nombre total d'AG correspondant aux filtres (avant pagination)
     private List<AGCardDTO> meetings; // liste des cartes AG pour la page courante
 
-    private Integer currentPage;      // page actuelle
-    private Integer totalPages;       // nombre total de pages
+    private long currentPage;      // page actuelle
+    private long totalPages;       // nombre total de pages
 }

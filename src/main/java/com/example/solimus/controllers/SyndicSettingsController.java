@@ -20,6 +20,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -41,8 +42,10 @@ public class SyndicSettingsController {
     @Operation(summary = "Lister tous les types d'équipements")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/facility-types")
-    public ResponseEntity<List<FacilityTypeDTO>> getAllFacilityTypes() {
-        return ResponseEntity.ok(syndicSettingsService.getAllFacilityTypes());
+    public ResponseEntity<Page<FacilityTypeDTO>> getAllFacilityTypes(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(syndicSettingsService.getAllFacilityTypes(page, size));
     }
 
     @Operation(summary = "Créer un nouveau type d'équipement")
@@ -85,8 +88,10 @@ public class SyndicSettingsController {
     @Operation(summary = "Lister toutes les spécialités")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/specialties")
-    public ResponseEntity<List<SpecialtyDTO>> getAllSpecialties() {
-        return ResponseEntity.ok(syndicSettingsService.getAllSpecialties());
+    public ResponseEntity<Page<SpecialtyDTO>> getAllSpecialties(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(syndicSettingsService.getAllSpecialties(page, size));
     }
 
     @Operation(summary = "Créer une spécialité")
@@ -125,8 +130,10 @@ public class SyndicSettingsController {
     @Operation(summary = "Lister tous les types d'appartement")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/property-types")
-    public ResponseEntity<List<PropertyTypeDTO>> getAllPropertyTypes() {
-        return ResponseEntity.ok(syndicSettingsService.getAllPropertyTypes());
+    public ResponseEntity<Page<PropertyTypeDTO>> getAllPropertyTypes(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(syndicSettingsService.getAllPropertyTypes(page, size));
     }
 
     @Operation(summary = "Créer un type d'appartement")
@@ -160,8 +167,10 @@ public class SyndicSettingsController {
     @Operation(summary = "Lister toutes les options de sécurité")
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/security-features")
-    public ResponseEntity<List<SecurityFeatureDTO>> getAllSecurityFeatures() {
-        return ResponseEntity.ok(syndicSettingsService.getAllSecurityFeatures());
+    public ResponseEntity<Page<SecurityFeatureDTO>> getAllSecurityFeatures(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(syndicSettingsService.getAllSecurityFeatures(page, size));
     }
 
     @Operation(summary = "Créer une option de sécurité")
