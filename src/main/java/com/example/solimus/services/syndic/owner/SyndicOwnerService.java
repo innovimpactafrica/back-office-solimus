@@ -1,20 +1,16 @@
 package com.example.solimus.services.syndic.owner;
 
-import com.example.solimus.dtos.owner.CoOwnerDocumentItemDTO;
 import com.example.solimus.dtos.owner.CoOwnerInterventionsResponseDTO;
 import com.example.solimus.dtos.owner.CoOwnerMeetingsDTO;
 import com.example.solimus.dtos.owner.CoOwnerResidenceDTO;
 import com.example.solimus.dtos.syndic.owner.*;
 import com.example.solimus.dtos.syndic.residence.ActivityLogItemDTO;
-import com.example.solimus.enums.CoOwnerDocumentCategory;
 import com.example.solimus.enums.Nationality;
 import com.example.solimus.enums.Title;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
-import java.util.List;
 
 public interface SyndicOwnerService {
 
@@ -51,11 +47,9 @@ public interface SyndicOwnerService {
     /** Travaux d'un copropriétaire (onglet Travaux du détail) */
     CoOwnerInterventionsResponseDTO getCoOwnerInterventions(Long coOwnerId);
 
-    /** Documents d'un copropriétaire (onglet Documents du détail) */
-    Page<CoOwnerDocumentItemDTO> getCoOwnerDocuments(Long coOwnerId, String category, Integer page, Integer size);
-
-    /** Ajouter un document à un copropriétaire */
-    CoOwnerDocumentItemDTO addDocument(Long coOwnerId, CoOwnerDocumentCategory category, String title, MultipartFile file);
+    /** Documents d'un copropriétaire, toutes sources confondues (manuel, AG, charges exceptionnelles)(onglet Documents du détail) */
+    CoOwnerDocumentUnifiedListResponseDTO getCoOwnerDocuments(Long coOwnerId, String search, String category,
+                                                              int page, int size);
 
     /** Activité récente d'un copropriétaire (panneau Activité Récente du détail) */
     Page<ActivityLogItemDTO> getCoOwnerActivityLog(Long coOwnerId, Integer page, Integer size);

@@ -406,6 +406,16 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
     // Compte les interventions d'un syndic ayant un statut précis
     long countByResidenceSyndicIdAndStatus(Long syndicId, InterventionStatus status);
 
+    // Dernière intervention urgente déclarée pour un syndic (non résolue ni annulée)
+    @Query("SELECT i FROM InterventionRequest i WHERE i.residence.syndic.id = :syndicId " +
+           "AND i.urgencyLevel = :urgency " +
+           "AND i.status NOT IN (com.example.solimus.enums.InterventionStatus.FINAL_VALIDATION, com.example.solimus.enums.InterventionStatus.CANCELLED) " +
+           "ORDER BY i.createdAt DESC")
+    List<InterventionRequest> findLatestUrgentBySyndicId(
+            @Param("syndicId") Long syndicId,
+            @Param("urgency") UrgencyLevel urgency,
+            Pageable pageable);
+
     // Recherche paginée des interventions d'un syndic, avec filtres optionnels (recherche titre, statut, résidence)
     @Query("SELECT i FROM InterventionRequest i WHERE i.residence.syndic.id = :syndicId " +
             "AND (:search IS NULL OR LOWER(i.title) LIKE LOWER(CONCAT('%', :search, '%'))) " +

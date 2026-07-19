@@ -141,33 +141,49 @@ public class FinanceServiceImpl implements FinanceService {
                 .toList();
     }
 
-    // Construit le graphique cumulatif "Trésorerie vs Appels de charges", toutes résidences du syndic confondues.
-    // Affiche les 6 DERNIERS MOIS GLISSANTS (se terminant au mois actuel), et non pas toujours Jan-Jun,
-    // pour que le graphique reste pertinent peu importe la période de l'année où le syndic consulte le dashboard.
-    private List<TreasuryEvolutionPointDTO> buildTreasuryEvolutionGlobal(Long syndicId, Long walletId) {
+    @Override
+    @Transactional(readOnly = true)
+    public List<TreasuryEvolutionPointDTO> getTreasuryEvolution(Long residenceId) {
+
+        // Récupère le syndic actuellement connecté
+        User currentSyndic = getCurrentUser();
+
+        // Récupère le wallet du syndic (peut être null si aucun wallet n'a encore été créé)
+        SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId()).orElse(null);
+        Long walletId = wallet != null ? wallet.getId() : null;
+
+        // Construit le graphique : filtré par résidence si fournie, sinon global (wallet)
+        return buildTreasuryEvolution(currentSyndic.getId(), walletId, residenceId);
+    }
+
+    // Construit le graphique cumulatif "Trésorerie vs Appels de charges" sur les 6 DERNIERS MOIS GLISSANTS.
+    // Si residenceId est fourni, filtre trésorerie et appels de charges sur cette résidence ;
+    // sinon, calcule sur toutes les résidences du syndic (wallet global).
+    private List<TreasuryEvolutionPointDTO> buildTreasuryEvolution(Long syndicId, Long walletId, Long residenceId) {
 
         // Tableau des libellés de mois affichés sur le graphique
         String[] monthLabels = {"Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"};
         List<TreasuryEvolutionPointDTO> result = new ArrayList<>();
 
-        // Récupère tous les ChargeCall du syndic, toutes résidences confondues
-        List<ChargeCall> allChargeCalls = chargeCallRepository.findByBudgetSyndicId(syndicId);
+        // Récupère les ChargeCall : d'une résidence précise, ou de tout le syndic si résidence absente
+        List<ChargeCall> allChargeCalls = (residenceId != null)
+                ? chargeCallRepository.findByBudgetResidenceId(residenceId)
+                : chargeCallRepository.findByBudgetSyndicId(syndicId);
 
-        // Calcule le premier mois à afficher : 5 mois avant le mois actuel,
-        // pour obtenir 6 mois au total en incluant le mois en cours
+        // Calcule le premier mois à afficher : 5 mois avant le mois actuel (6 mois au total)
         LocalDate now = LocalDate.now();
         LocalDate startMonth = now.withDayOfMonth(1).minusMonths(5);
 
-        // Parcourt les 6 derniers mois, en remontant progressivement depuis startMonth jusqu'au mois actuel
+        // Parcourt les 6 derniers mois, du plus ancien au plus récent
         for (int i = 0; i < 6; i++) {
 
-            // Calcule le mois courant de cette itération (peut chevaucher 2 années civiles différentes)
             LocalDate currentMonthDate = startMonth.plusMonths(i);
-            // Calcule la date de fin de ce mois (= début du mois suivant)
             LocalDate endOfMonth = currentMonthDate.plusMonths(1);
 
-            // Calcule le solde du wallet à la fin de ce mois
-            BigDecimal treasury = calculerSoldeADate(walletId, endOfMonth.atStartOfDay());
+            // Calcule le solde à la fin de ce mois : par résidence si fournie, sinon global (wallet)
+            BigDecimal treasury = (residenceId != null)
+                    ? syndicWalletTransactionRepository.sumAllByResidenceId(residenceId, endOfMonth.atStartOfDay())
+                    : calculerSoldeADate(walletId, endOfMonth.atStartOfDay());
 
             // Additionne tous les ChargeCall créés avant la fin de ce mois (cumul progressif)
             BigDecimal chargeCallsCumulated = allChargeCalls.stream()
@@ -175,8 +191,6 @@ public class FinanceServiceImpl implements FinanceService {
                     .map(ChargeCall::getTotalAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-            // Construit le point de données pour ce mois, en utilisant le vrai index du mois (0-11)
-            // pour choisir le bon libellé, peu importe où on se trouve dans la boucle
             TreasuryEvolutionPointDTO point = new TreasuryEvolutionPointDTO();
             point.setMonthLabel(monthLabels[currentMonthDate.getMonthValue() - 1]);
             point.setTreasury(treasury);
@@ -187,6 +201,13 @@ public class FinanceServiceImpl implements FinanceService {
 
         // Retourne les 6 points construits, du plus ancien au plus récent
         return result;
+    }
+
+    // Construit le graphique cumulatif "Trésorerie vs Appels de charges", toutes résidences du syndic confondues.
+    // Affiche les 6 DERNIERS MOIS GLISSANTS (se terminant au mois actuel), et non pas toujours Jan-Jun,
+    // pour que le graphique reste pertinent peu importe la période de l'année où le syndic consulte le dashboard.
+    private List<TreasuryEvolutionPointDTO> buildTreasuryEvolutionGlobal(Long syndicId, Long walletId) {
+        return buildTreasuryEvolution(syndicId, walletId, null);
     }
 
     // ============================================================

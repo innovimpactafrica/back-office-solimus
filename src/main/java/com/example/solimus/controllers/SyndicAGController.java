@@ -2,6 +2,7 @@ package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.syndic.meeting.*;
 import com.example.solimus.dtos.syndic.residence.ResidenceCardDTO;
+import com.example.solimus.enums.MeetingDocumentType;
 import com.example.solimus.enums.MeetingStatus;
 import com.example.solimus.enums.MeetingType;
 import com.example.solimus.services.syndic.residence.SyndicResidenceService;
@@ -14,6 +15,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -220,5 +223,77 @@ public class SyndicAGController {
     public ResponseEntity<String> deleteMeeting(@PathVariable Long meetingId) {
         syndicMeetingService.deleteMeeting(meetingId);
         return ResponseEntity.ok("Réunion supprimée avec succès");
+    }
+
+    @Operation(summary = "Liste légère des réunions d'une résidence (pour un sélecteur)")
+    @GetMapping("/residences/{residenceId}/summaries")
+    public ResponseEntity<List<MeetingSummaryDTO>> getMeetingSummariesByResidence(@PathVariable Long residenceId) {
+        return ResponseEntity.ok(syndicMeetingService.getMeetingSummariesByResidence(residenceId));
+    }
+
+    @Operation(summary = "Créer un nouveau document AG complet (page Documents générale)")
+    @PostMapping(value = "/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<MeetingDocumentRowDTO> createMeetingDocument(
+            @RequestParam Long meetingId,
+            @RequestParam(required = false) String title,
+            @RequestParam(required = false) String description,
+            @Parameter(description = "Date du document au format jj/mm/aaaa", schema = @Schema(type = "string", example = "15/06/2026"))
+            @RequestParam(required = false)
+            @DateTimeFormat(pattern = "dd/MM/yyyy") LocalDate documentDate,
+            @RequestParam(required = false) MeetingDocumentType documentType,
+            @RequestPart("file") MultipartFile file) {
+
+        CreateMeetingDocumentDTO dto = CreateMeetingDocumentDTO.builder()
+                .meetingId(meetingId)
+                .title(title)
+                .description(description)
+                .documentDate(documentDate)
+                .documentType(documentType)
+                .build();
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(syndicMeetingService.createMeetingDocument(dto, file));
+    }
+
+    @Operation(summary = "Mettre à jour les métadonnées d'un document AG existant (page Documents générale)")
+    @PatchMapping("/documents/{documentId}")
+    public ResponseEntity<MeetingDocumentRowDTO> updateMeetingDocument(
+            @PathVariable Long documentId,
+            @RequestParam(required = false) String title,
+            @RequestParam(required = false) String description,
+            @Parameter(description = "Date du document au format jj/mm/aaaa", schema = @Schema(type = "string", example = "15/06/2026"))
+            @RequestParam(required = false)
+            @DateTimeFormat(pattern = "dd/MM/yyyy") LocalDate documentDate,
+            @RequestParam(required = false) MeetingDocumentType documentType) {
+
+        UpdateMeetingDocumentDTO dto = UpdateMeetingDocumentDTO.builder()
+                .title(title)
+                .description(description)
+                .documentDate(documentDate)
+                .documentType(documentType)
+                .build();
+
+        return ResponseEntity.ok(syndicMeetingService.updateMeetingDocument(documentId, dto));
+
+    }
+
+    @Operation(summary = "Listing général des documents AG (recherche + filtres) (page Documents générale)")
+    @GetMapping("/documents")
+    public ResponseEntity<MeetingDocumentListResponseDTO> getMeetingDocumentsList(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) MeetingDocumentType documentType,
+            @RequestParam(required = false) Long residenceId,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "12") Integer size) {
+
+        return ResponseEntity.ok(syndicMeetingService.getMeetingDocumentsList(
+                search, documentType, residenceId, page, size));
+    }
+
+    // ===== Détail d'un document (quorum, documents liés, résolutions, historique) =====
+    @Operation(summary = "Détail d'un document AG (quorum, documents liés, historique)(page Documents générale)")
+    @GetMapping("/documents/{documentId}")
+    public ResponseEntity<MeetingDocumentDetailDTO> getMeetingDocumentDetail(@PathVariable Long documentId) {
+        return ResponseEntity.ok(syndicMeetingService.getMeetingDocumentDetail(documentId));
     }
 }

@@ -40,6 +40,10 @@ public class MeetingDocument {
     @JoinColumn(name = "meeting_id", nullable = false)
     private Meeting meeting;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "uploaded_by_id")
+    private User uploadedBy; // nullable, qui a ajouté ce document
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;

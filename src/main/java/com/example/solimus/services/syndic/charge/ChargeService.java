@@ -96,6 +96,12 @@ public interface ChargeService {
      */
     void closeBudget(Long budgetId);
 
+    /**
+     * Supprimer un budget prévisionnel
+     * Supprime le budget et tous ses postes budgétaires associés
+     */
+    void deleteBudget(Long budgetId);
+
   
     //--------------------------------------------------
     // ===== APPEL DE CHARGES =====

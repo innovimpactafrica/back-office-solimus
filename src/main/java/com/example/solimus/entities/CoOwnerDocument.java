@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
  * DOCUMENT D'UN COPROPRIÉTAIRE
  * ============================================================================
  * Document uploadé manuellement par le syndic (titre de propriété, contrat,
- * pièce d'identité). Distinct des PV d'assemblée (déjà gérés via MeetingDocument)
+ * pièce d'identité). Distinct des PV d'assemblée (déjà gérés via MeetingDocument) et ExceptionalCallDocument
  * et des reçus de paiement (pas encore gérés — chantier séparé futur).
  */
 @Entity

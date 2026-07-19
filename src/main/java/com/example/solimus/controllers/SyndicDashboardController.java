@@ -3,6 +3,7 @@ package com.example.solimus.controllers;
 import com.example.solimus.dtos.syndic.dashboard.*;
 import com.example.solimus.dtos.syndic.travaux.SyndicResidenceDTO;
 import com.example.solimus.services.syndic.dashboard.DashboardService;
+import com.example.solimus.services.syndic.finance.FinanceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import java.util.List;
 public class SyndicDashboardController {
 
     private final DashboardService dashboardService;
+    private final FinanceService financeService;
 
     // =========================================================================
     // KPIS PRINCIPAUX
@@ -37,13 +39,13 @@ public class SyndicDashboardController {
     // ÉVOLUTION FINANCIÈRE
     // =========================================================================
 
-    // residenceId est optionnel : même logique de repli automatique
-    @Operation(summary = "Graphique Trésorerie vs Appels de charges (filtré par résidence, ou dernière résidence créée si non précisé)", tags = {"Syndic - Tableau de Bord"})
+    // residenceId est optionnel : si absent, calcule sur toutes les résidences (wallet global)
+    @Operation(summary = "Graphique Trésorerie vs Appels de charges (filtré par résidence, ou toutes résidences si non précisé)", tags = {"Syndic - Tableau de Bord"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/dashboard/financial-evolution")
     public ResponseEntity<List<TreasuryEvolutionPointDTO>> getFinancialEvolution(
             @RequestParam(required = false) Long residenceId) {
-        return ResponseEntity.ok(dashboardService.getFinancialEvolution(residenceId));
+        return ResponseEntity.ok(financeService.getTreasuryEvolution(residenceId));
     }
 
     // =========================================================================

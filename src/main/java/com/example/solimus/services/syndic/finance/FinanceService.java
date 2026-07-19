@@ -1,5 +1,6 @@
 package com.example.solimus.services.syndic.finance;
 
+import com.example.solimus.dtos.syndic.dashboard.TreasuryEvolutionPointDTO;
 import com.example.solimus.dtos.syndic.finance.FinanceDashboardDTO;
 import com.example.solimus.dtos.syndic.finance.FinancePaymentRowDTO;
 import com.example.solimus.dtos.syndic.finance.RecentPaymentDTO;
@@ -19,6 +20,13 @@ public interface FinanceService {
      * Dashboard "Finances" — trésorerie, charges collectées, impayés, dépenses + graphique cumulatif
      */
     FinanceDashboardDTO getFinanceDashboard();
+
+    /**
+     * Graphique cumulatif "Trésorerie vs Appels de charges" sur les 6 derniers mois glissants.
+     * residenceId est OPTIONNEL : si fourni, filtre sur cette résidence ;
+     * si absent, calcule sur toutes les résidences du syndic (wallet global).
+     */
+    List<TreasuryEvolutionPointDTO> getTreasuryEvolution(Long residenceId);
 
     /**
      * Liste des derniers paiements reçus (toutes résidences du syndic)

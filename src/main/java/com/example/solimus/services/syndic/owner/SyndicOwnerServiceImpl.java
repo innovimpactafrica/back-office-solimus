@@ -1,6 +1,5 @@
 package com.example.solimus.services.syndic.owner;
 
-import com.example.solimus.dtos.owner.CoOwnerDocumentItemDTO;
 import com.example.solimus.dtos.owner.CoOwnerInterventionRowDTO;
 import com.example.solimus.dtos.owner.CoOwnerInterventionsResponseDTO;
 import com.example.solimus.dtos.owner.CoOwnerMeetingsDTO;
@@ -28,12 +27,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+
+import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Year;
@@ -65,6 +65,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
     private final CoOwnerDocumentRepository coOwnerDocumentRepository;
     private final MeetingDocumentRepository meetingDocumentRepository;
     private final ActivityLogRepository activityLogRepository;
+    private final CoOwnerDocumentUnifiedRepository coOwnerDocumentUnifiedRepository;
 
 
     //----------------------------------------------------------------------
@@ -334,158 +335,76 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 .build();
     }
 
-    /**
-     * Documents d'un copropriétaire (onglet Documents du détail)
-     */
+    // =========================================================================
+    // Documents d'un copropriétaire précis, toutes sources confondues (onglet Documents, côté syndic)
+    // =========================================================================
     @Override
     @Transactional(readOnly = true)
-    public Page<CoOwnerDocumentItemDTO> getCoOwnerDocuments(Long coOwnerId, String category, Integer page, Integer size) {
-        // Récupérer le syndic connecté
-        User currentSyndic = getCurrentUser();
+    public CoOwnerDocumentUnifiedListResponseDTO getCoOwnerDocuments(Long coOwnerId, String search, String category,
+                                                                     int page, int size) {
 
-        // Récupérer le copropriétaire
-        User coOwner = userRepository.findById(coOwnerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
+        // Prépare la pagination
+        Pageable pageable = PageRequest.of(page, size);
 
-        // Vérifier que le copropriétaire a au moins un lot chez le syndic
-        long apartmentsCount = propertyRepository.countApartmentsByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
-        if (apartmentsCount == 0) {
-            throw new ForbiddenException("Ce copropriétaire n'a pas de lot dans vos résidences");
+        // Nettoie le texte de recherche (retire les espaces inutiles, met null si vide)
+        String searchFilter = null;
+        if (search != null && !search.isBlank()) {
+            searchFilter = search.trim();
         }
 
-        // Liste unifiée de tous les documents
-        List<CoOwnerDocumentItemDTO> allDocuments = new ArrayList<>();
-
-        // 1. Documents uploadés manuellement (CoOwnerDocument)
-        if (category == null || category.equals("PROPERTY_TITLE")
-            || category.equals("CONTRACT") || category.equals("IDENTITY_DOCUMENT")) {
-            
-            List<CoOwnerDocument> coOwnerDocs;
-            if (category == null) {
-                coOwnerDocs = coOwnerDocumentRepository.findByCoOwnerId(coOwnerId);
-            } else {
-                CoOwnerDocumentCategory docCategory = CoOwnerDocumentCategory.valueOf(category);
-                coOwnerDocs = coOwnerDocumentRepository.findByCoOwnerIdAndCategory(coOwnerId, docCategory);
-            }
-
-            for (CoOwnerDocument doc : coOwnerDocs) {
-                String categoryLabel = getCategoryLabel(doc.getCategory());
-                CoOwnerDocumentItemDTO item = CoOwnerDocumentItemDTO.builder()
-                        .title(doc.getTitle())
-                        .category(categoryLabel)
-                        .date(doc.getCreatedAt())
-                        .fileSizeKb(doc.getFileSizeKb())
-                        .fileType(doc.getFileType())
-                        .fileUrl(doc.getFileName())
-                        .build();
-                allDocuments.add(item);
-            }
+        // Nettoie le filtre de catégorie
+        String categoryFilter = null;
+        if (category != null && !category.isBlank()) {
+            categoryFilter = category.trim();
         }
 
-        // 2. PV d'assemblée (MeetingDocument)
-        if (category == null || category.equals("PV_ASSEMBLEE")) {
-            // Récupérer les AG où ce copropriétaire était convoqué
-            List<MeetingParticipant> participants = meetingParticipantRepository.findByUser(coOwner);
-            for (MeetingParticipant participant : participants) {
-                Meeting meeting = participant.getMeeting();
-                // Vérifier que l'AG appartient au syndic
-                if (meeting.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
-                    // Récupérer les documents de cette AG
-                    Page<MeetingDocument> meetingDocs = meetingDocumentRepository.findByMeetingId(meeting.getId(),Pageable.unpaged());
-                    for (MeetingDocument meetingDoc : meetingDocs) {
-                        String title = "PV — " + meeting.getTitle();
-                        CoOwnerDocumentItemDTO item = CoOwnerDocumentItemDTO.builder()
-                                .title(title)
-                                .category("PV d'assemblée")
-                                .date(meetingDoc.getCreatedAt())
-                                .fileSizeKb(meetingDoc.getFileSizeKb())
-                                .fileType(meetingDoc.getDocumentType() != null ? meetingDoc.getDocumentType().name() : null)
-                                .fileUrl(meetingDoc.getFileName())
-                                .build();
-                        allDocuments.add(item);
-                    }
-                }
-            }
+        // Récupère la page de résultats fusionnés (manuel + AG + charges exceptionnelles)
+        Page<Object[]> resultPage = coOwnerDocumentUnifiedRepository.searchCoOwnerDocumentsUnified(
+                coOwnerId, searchFilter, categoryFilter, pageable);
+
+        List<CoOwnerDocumentUnifiedDTO> documents = new ArrayList<>();
+
+        // Chaque ligne est un tableau brut de colonnes, il faut extraire chaque valeur une par une,
+        // dans l'ordre exact du SELECT (source_type, source_id, title, file_name, file_url, file_size_kb, category, created_at)
+        for (Object[] row : resultPage.getContent()) {
+
+            String sourceType = (String) row[0];
+            Long sourceId = ((Number) row[1]).longValue();
+            String title = (String) row[2];
+            String fileName = (String) row[3];
+            String fileUrl = (String) row[4];
+            Long fileSizeKb = row[5] != null ? ((Number) row[5]).longValue() : null;
+            String cat = (String) row[6];
+
+            // La date revient sous forme de Timestamp SQL, à convertir en LocalDateTime
+            Timestamp createdAtTimestamp = (Timestamp) row[7];
+            LocalDateTime createdAt = createdAtTimestamp != null ? createdAtTimestamp.toLocalDateTime() : null;
+
+            // Extrait le format depuis le nom de fichier (ex: "PV.pdf" -> "PDF")
+            String format = extractFormat(fileName);
+
+            documents.add(CoOwnerDocumentUnifiedDTO.builder()
+                    .sourceType(sourceType)
+                    .sourceId(sourceId)
+                    .title(title)
+                    .fileName(fileName)
+                    .fileUrl(fileUrl)
+                    .fileSizeKb(fileSizeKb)
+                    .format(format)
+                    .category(cat)
+                    .createdAt(createdAt)
+                    .build());
         }
 
-        // 3. Reçus de paiement — liste vide pour l'instant (pas de source disponible)
-        // Rien à ajouter
-
-        // Trier par date décroissante
-        for (int i = 0; i < allDocuments.size() - 1; i++) {
-            for (int j = 0; j < allDocuments.size() - i - 1; j++) {
-                if (allDocuments.get(j).getDate().isBefore(allDocuments.get(j + 1).getDate())) {
-                    CoOwnerDocumentItemDTO temp = allDocuments.get(j);
-                    allDocuments.set(j, allDocuments.get(j + 1));
-                    allDocuments.set(j + 1, temp);
-                }
-            }
-        }
-
-        // Pagination manuelle
-        int totalElements = allDocuments.size();
-        int fromIndex = Math.min(page * size, totalElements);
-        int toIndex = Math.min(fromIndex + size, totalElements);
-        List<CoOwnerDocumentItemDTO> pageContent = allDocuments.subList(fromIndex, toIndex);
-
-        return new PageImpl<>(pageContent, PageRequest.of(page, size), totalElements);
-    }
-
-    /**
-     * Ajouter un document à un copropriétaire
-     */
-    @Override
-    @Transactional
-    public CoOwnerDocumentItemDTO addDocument(Long coOwnerId, CoOwnerDocumentCategory category, 
-            String title, MultipartFile file) {
-        // Récupérer le syndic connecté
-        User currentSyndic = getCurrentUser();
-
-        // Récupérer le copropriétaire
-        User coOwner = userRepository.findById(coOwnerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
-
-        // Vérifier que le copropriétaire a au moins un lot chez le syndic
-        long apartmentsCount = propertyRepository.countApartmentsByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
-        if (apartmentsCount == 0) {
-            throw new ForbiddenException("Ce copropriétaire n'a pas de lot dans vos résidences");
-        }
-
-        // Upload vers MinIO
-        String fileUrl;
-        Long fileSizeKb;
-        try {
-            fileUrl = minioService.uploadFile(file, "co-owner-documents");
-            fileSizeKb = file.getSize() / 1024;
-        } catch (Exception e) {
-            throw new BadRequestException("Erreur lors de l'upload du fichier");
-        }
-
-        // Déduire le type de fichier depuis l'extension
-        String fileType = getFileType(file.getOriginalFilename());
-
-        // Créer et sauvegarder le document
-        CoOwnerDocument document = new CoOwnerDocument();
-        document.setCoOwner(coOwner);
-        document.setCategory(category);
-        document.setTitle(title);
-        document.setFileName(file.getOriginalFilename());
-        document.setFileUrl(fileUrl);
-        document.setFileSizeKb(fileSizeKb);
-        document.setFileType(fileType);
-        coOwnerDocumentRepository.save(document);
-
-        // Retourner le DTO
-        String categoryLabel = getCategoryLabel(category);
-        return CoOwnerDocumentItemDTO.builder()
-                .title(title)
-                .category(categoryLabel)
-                .date(document.getCreatedAt())
-                .fileSizeKb(fileSizeKb)
-                .fileType(fileType)
-                .fileUrl(fileUrl)
+        // Construit la réponse finale : documents de la page + infos de pagination
+        return CoOwnerDocumentUnifiedListResponseDTO.builder()
+                .totalCount(resultPage.getTotalElements())
+                .documents(documents)
+                .currentPage(resultPage.getNumber())
+                .totalPages(resultPage.getTotalPages())
                 .build();
     }
+
 
     /**
      * Convertir l'enum en label affichable
@@ -1045,65 +964,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 .build();
     }
 
-    //------------------------------------------
-    //Les méthodes utilitaires 
-    //------------------------------------------
-    private PropertySummaryDTO mapToPropertySummaryDTO(Property property) {
-        return PropertySummaryDTO.builder()
-                .id(property.getId())
-                .reference(property.getReference())
-                .build();
-    }
-
-    private ResidenceSummaryDTO mapToResidenceSummaryDTO(Residence residence) {
-        return ResidenceSummaryDTO.builder()
-                .id(residence.getId())
-                .name(residence.getName())
-                .build();
-    }
-
-    private CoOwnerListDTO mapToCoOwnerListDTO(User user, User currentSyndic) {
-
-        // Calculer le nombre d'appartements (lots) restreint aux résidences du syndic
-        long apartmentsCount = propertyRepository
-                .countApartmentsByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
-
-        // Calculer le nombre de résidences distinctes restreint au syndic
-        long residencesCount = propertyRepository
-                .countResidencesByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
-
-        // Récupère le nombre de jours de retard le plus important parmi tous ses items impayés
-        Integer maxDaysLate = chargeCallItemRepository
-                .findMaxDaysLateByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
-
-        // Applique la même logique de statut que le reste de l'application (Paiements/Impayés)
-        String status;
-        if (maxDaysLate == null || maxDaysLate <= 0) {
-            status = "A_JOUR";
-        } else if (maxDaysLate <= 30) {
-            status = "RETARD";
-        } else {
-            status = "CRITIQUE";
-        }
-
-        // Calculer le solde global : SUM(paidAmount) - SUM(quotePart)
-        // Négatif = doit de l'argent, Zéro = il ne doit pas d'argent
-        BigDecimal solde = chargeCallItemRepository
-                .calculateSoldeByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
-
-        // Construire le DTO avec tous les champs calculés
-        return CoOwnerListDTO.builder()
-                .id(user.getId())
-                .fullName(user.getFirstName() + " " + user.getLastName())
-                .photoUrl(user.getProfilePhotoUrl())
-                .email(user.getEmail())
-                .phone(user.getPhone())
-                .apartmentsCount((int) apartmentsCount)
-                .residencesCount((int) residencesCount)
-                .status(status)
-                .solde(solde)
-                .build();
-    }
     @Override
     @Transactional(readOnly = true)
     public Page<CoOwnerPropertyItemDTO> getCoOwnerProperties(Long coOwnerId, Integer page, Integer size) {
@@ -1151,6 +1011,50 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         List<CoOwnerPropertyItemDTO> pageContent = result.subList(fromIndex, toIndex);
 
         return new PageImpl<>(pageContent, PageRequest.of(page, size), totalElements);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<CoOwnerPaymentItemDTO> getCoOwnerPayments(Long coOwnerId, String status, Integer page, Integer size) {
+
+        // Récupérer le syndic connecté
+        User currentSyndic = getCurrentUser();
+
+        // Récupérer le copropriétaire
+        User coOwner = userRepository.findById(coOwnerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
+
+        // Vérifier que le copropriétaire a au moins un lot chez le syndic
+        long apartmentsCount = propertyRepository.countApartmentsByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
+        if (apartmentsCount == 0) {
+            throw new ForbiddenException("Ce copropriétaire n'a pas de lot dans vos résidences");
+        }
+
+        // Paginer les paiements
+        Pageable pageable = PageRequest.of(page, size);
+        Page<ChargeCallPayment> paymentPage = chargeCallPaymentRepository
+                .findByCoOwnerAndSyndicAndStatus(coOwnerId, currentSyndic.getId(), status, pageable);
+
+        // Mapper en DTOs
+        ArrayList<CoOwnerPaymentItemDTO> dtos = new ArrayList<>();
+        for (ChargeCallPayment payment : paymentPage.getContent()) {
+            LocalDateTime date = payment.getPaidAt() != null ? payment.getPaidAt() : payment.getCreatedAt();
+            String paymentMethod = payment.getMethod() != null ? payment.getMethod().name() : null;
+            String statusStr = payment.getStatus().name();
+            Boolean receiptAvailable = payment.getStatus().name().equals("COMPLETED");
+
+            CoOwnerPaymentItemDTO dto = CoOwnerPaymentItemDTO.builder()
+                    .date(date)
+                    .reference(payment.getReference())
+                    .amount(payment.getAmount())
+                    .paymentMethod(paymentMethod)
+                    .status(statusStr)
+                    .receiptAvailable(receiptAvailable)
+                    .build();
+            dtos.add(dto);
+        }
+
+        return new PageImpl<>(dtos, pageable, paymentPage.getTotalElements());
     }
 
     @Override
@@ -1311,88 +1215,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public Page<CoOwnerPaymentItemDTO> getCoOwnerPayments(Long coOwnerId, String status, Integer page, Integer size) {
-
-        // Récupérer le syndic connecté
-        User currentSyndic = getCurrentUser();
-
-        // Récupérer le copropriétaire
-        User coOwner = userRepository.findById(coOwnerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
-
-        // Vérifier que le copropriétaire a au moins un lot chez le syndic
-        long apartmentsCount = propertyRepository.countApartmentsByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
-        if (apartmentsCount == 0) {
-            throw new ForbiddenException("Ce copropriétaire n'a pas de lot dans vos résidences");
-        }
-
-        // Paginer les paiements
-        Pageable pageable = PageRequest.of(page, size);
-        Page<ChargeCallPayment> paymentPage = chargeCallPaymentRepository
-                .findByCoOwnerAndSyndicAndStatus(coOwnerId, currentSyndic.getId(), status, pageable);
-
-        // Mapper en DTOs
-        ArrayList<CoOwnerPaymentItemDTO> dtos = new ArrayList<>();
-        for (ChargeCallPayment payment : paymentPage.getContent()) {
-            LocalDateTime date = payment.getPaidAt() != null ? payment.getPaidAt() : payment.getCreatedAt();
-            String paymentMethod = payment.getMethod() != null ? payment.getMethod().name() : null;
-            String statusStr = payment.getStatus().name();
-            Boolean receiptAvailable = payment.getStatus().name().equals("COMPLETED");
-
-            CoOwnerPaymentItemDTO dto = CoOwnerPaymentItemDTO.builder()
-                    .date(date)
-                    .reference(payment.getReference())
-                    .amount(payment.getAmount())
-                    .paymentMethod(paymentMethod)
-                    .status(statusStr)
-                    .receiptAvailable(receiptAvailable)
-                    .build();
-            dtos.add(dto);
-        }
-
-        return new PageImpl<>(dtos, pageable, paymentPage.getTotalElements());
-    }
-
-    private User getCurrentUser() {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        return userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
-    }
-
-    // Calculer la charge annuelle pour un seul lot
-    private BigDecimal calculateAnnualChargeForProperty(Property property, int currentYear) {
-        var budgetOpt = budgetRepository.findByResidenceIdAndAnnee(property.getResidence().getId(), currentYear);
-        if (budgetOpt.isEmpty()) {
-            return BigDecimal.ZERO;
-        }
-        var budget = budgetOpt.get();
-        return budget.getBudgetTotal()
-                .multiply(property.getTantieme())
-                .divide(BigDecimal.valueOf(100));
-    }
-
-    /**
-     * Calcule le statut composite d'une intervention (EN_ATTENTE, EN_COURS, RESOLU)
-     * Réutilisé par le Kanban Travaux et l'onglet Travaux du détail copropriétaire
-     */
-    private String calculateInterventionStatusGroup(InterventionStatus status) {
-        if (status == InterventionStatus.PENDING 
-            || status == InterventionStatus.SYNDIC_ASSIGNED 
-            || status == InterventionStatus.QUOTE_VALIDATED) {
-            return "EN_ATTENTE";
-        }
-        if (status == InterventionStatus.STARTED) {
-            return "EN_COURS";
-        }
-        if (status == InterventionStatus.FINISHED || status == InterventionStatus.FINAL_VALIDATION) {
-            return "RESOLU";
-        }
-        // CANCELLED ne devrait pas arriver ici (exclu des requêtes)
-        return null;
-    }
-
-    @Override
     @Transactional
     public void updateCoOwner(Long coOwnerId, String firstName, String lastName, String email, String phone,
                               Title title , LocalDate birthDate, Nationality nationality,
@@ -1425,7 +1247,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         // Mise à jour partielle des champs CoOwnerProfile
         CoOwnerProfile profile = coOwnerProfileRepository.findByUserId(coOwnerId)
                 .orElse(null);
-        
+
         if (profile != null) {
             if (title != null) {
                 profile.setTitle(title);
@@ -1486,4 +1308,116 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         // Supprimer l'utilisateur
         userRepository.delete(coOwner);
     }
+
+    //------------------------------------------
+    //Les méthodes utilitaires
+    //------------------------------------------
+    private PropertySummaryDTO mapToPropertySummaryDTO(Property property) {
+        return PropertySummaryDTO.builder()
+                .id(property.getId())
+                .reference(property.getReference())
+                .build();
+    }
+
+    private ResidenceSummaryDTO mapToResidenceSummaryDTO(Residence residence) {
+        return ResidenceSummaryDTO.builder()
+                .id(residence.getId())
+                .name(residence.getName())
+                .build();
+    }
+
+
+    // Extrait l'extension d'un nom de fichier en majuscules (ex: "PV.pdf" -> "PDF")
+    // Retourne null si le nom de fichier est vide ou n'a pas d'extension
+    private String extractFormat(String fileName) {
+        if (fileName == null || !fileName.contains(".")) {
+            return null;
+        }
+        String extension = fileName.substring(fileName.lastIndexOf(".") + 1);
+        return extension.toUpperCase();
+    }
+
+    private CoOwnerListDTO mapToCoOwnerListDTO(User user, User currentSyndic) {
+
+        // Calculer le nombre d'appartements (lots) restreint aux résidences du syndic
+        long apartmentsCount = propertyRepository
+                .countApartmentsByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
+
+        // Calculer le nombre de résidences distinctes restreint au syndic
+        long residencesCount = propertyRepository
+                .countResidencesByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
+
+        // Récupère le nombre de jours de retard le plus important parmi tous ses items impayés
+        Integer maxDaysLate = chargeCallItemRepository
+                .findMaxDaysLateByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
+
+        // Applique la même logique de statut que le reste de l'application (Paiements/Impayés)
+        String status;
+        if (maxDaysLate == null || maxDaysLate <= 0) {
+            status = "A_JOUR";
+        } else if (maxDaysLate <= 30) {
+            status = "RETARD";
+        } else {
+            status = "CRITIQUE";
+        }
+
+        // Calculer le solde global : SUM(paidAmount) - SUM(quotePart)
+        // Négatif = doit de l'argent, Zéro = il ne doit pas d'argent
+        BigDecimal solde = chargeCallItemRepository
+                .calculateSoldeByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
+
+        // Construire le DTO avec tous les champs calculés
+        return CoOwnerListDTO.builder()
+                .id(user.getId())
+                .fullName(user.getFirstName() + " " + user.getLastName())
+                .photoUrl(user.getProfilePhotoUrl())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .apartmentsCount((int) apartmentsCount)
+                .residencesCount((int) residencesCount)
+                .status(status)
+                .solde(solde)
+                .build();
+    }
+
+
+    private User getCurrentUser() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
+    }
+
+    // Calculer la charge annuelle pour un seul lot
+    private BigDecimal calculateAnnualChargeForProperty(Property property, int currentYear) {
+        var budgetOpt = budgetRepository.findByResidenceIdAndAnnee(property.getResidence().getId(), currentYear);
+        if (budgetOpt.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        var budget = budgetOpt.get();
+        return budget.getBudgetTotal()
+                .multiply(property.getTantieme())
+                .divide(BigDecimal.valueOf(100));
+    }
+
+    /**
+     * Calcule le statut composite d'une intervention (EN_ATTENTE, EN_COURS, RESOLU)
+     * Réutilisé par le Kanban Travaux et l'onglet Travaux du détail copropriétaire
+     */
+    private String calculateInterventionStatusGroup(InterventionStatus status) {
+        if (status == InterventionStatus.PENDING 
+            || status == InterventionStatus.SYNDIC_ASSIGNED 
+            || status == InterventionStatus.QUOTE_VALIDATED) {
+            return "EN_ATTENTE";
+        }
+        if (status == InterventionStatus.STARTED) {
+            return "EN_COURS";
+        }
+        if (status == InterventionStatus.FINISHED || status == InterventionStatus.FINAL_VALIDATION) {
+            return "RESOLU";
+        }
+        // CANCELLED ne devrait pas arriver ici (exclu des requêtes)
+        return null;
+    }
+
+
 }

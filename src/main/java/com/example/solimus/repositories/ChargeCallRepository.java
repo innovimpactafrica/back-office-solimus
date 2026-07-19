@@ -31,6 +31,11 @@ public interface ChargeCallRepository extends JpaRepository<ChargeCall, Long> {
     List<ChargeCall> findByBudgetId(Long budgetId);
 
     /**
+     * Vérifie si des appels de charges existent pour un budget.
+     */
+    boolean existsByBudgetId(Long budgetId);
+
+    /**
      * Lister tous les appels de charges d'une résidence.
      */
     List<ChargeCall> findByBudgetResidenceId(Long residenceId);

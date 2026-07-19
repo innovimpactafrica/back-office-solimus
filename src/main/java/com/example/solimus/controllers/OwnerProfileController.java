@@ -1,5 +1,6 @@
 package com.example.solimus.controllers;
 
+import com.example.solimus.dtos.owner.document.CoOwnerDocumentListResponseDTO;
 import com.example.solimus.dtos.owner.signalement.CreateSignalementDTO;
 import com.example.solimus.dtos.owner.signalement.SignalementCardDTO;
 import com.example.solimus.dtos.owner.signalement.SignalementDetailDTO;
@@ -9,10 +10,12 @@ import com.example.solimus.enums.IncidentLocationType;
 import com.example.solimus.enums.SignalementStatus;
 import com.example.solimus.enums.UrgencyLevel;
 import com.example.solimus.services.minio.MinioService;
+import com.example.solimus.services.owner.document.CoOwnerDocumentService;
 import com.example.solimus.services.owner.profile.ProfileService;
 import com.example.solimus.services.owner.signalement.OwnerSignalementService;
 import com.example.solimus.services.provider.profile.ProviderProfileService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -36,6 +39,7 @@ public class OwnerProfileController {
     private final ProviderProfileService providerProfileService;
     private final OwnerSignalementService signalementService;
     private final MinioService minioService;
+    private final CoOwnerDocumentService coOwnerDocumentService;
 
     // =========================================================================
     // PROFIL
@@ -145,5 +149,21 @@ public class OwnerProfileController {
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     public ResponseEntity<SignalementDetailDTO> getSignalementDetail(@PathVariable Long id) {
         return ResponseEntity.ok(signalementService.getSignalementDetail(id));
+    }
+
+    // =========================================================================
+    // DOCUMENTS
+    // =========================================================================
+
+    @Operation(summary = "Mes documents (AG + charges exceptionnelles fusionnés, avec recherche et filtre)")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    @GetMapping("/documents")
+    public ResponseEntity<CoOwnerDocumentListResponseDTO> getMyDocuments(
+            @RequestParam(required = false) String search,
+            @Parameter(description = "Catégorie exacte (CONVOCATION, FINANCIAL, REPORT, PV_AG, OTHER, Charges)")
+            @RequestParam(required = false) String category,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        return ResponseEntity.ok(coOwnerDocumentService.getMyDocuments(search, category, page, size));
     }
 }

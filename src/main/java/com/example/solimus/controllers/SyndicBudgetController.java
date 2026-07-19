@@ -145,6 +145,22 @@ public class SyndicBudgetController {
         return ResponseEntity.ok(chargeService.getBudgetDetail(budgetId));
     }
 
+    @Operation(summary = "Clôturer un budget prévisionnel", description = "Change le statut du budget à CLOSED et trace l'action dans le journal d'activité", tags = {"Syndic - Charges"})
+    @PatchMapping("/{budgetId}/close")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    public ResponseEntity<Void> closeBudget(@PathVariable Long budgetId) {
+        chargeService.closeBudget(budgetId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Supprimer un budget prévisionnel", description = "Supprime le budget et tous ses postes budgétaires associés. Impossible si le budget est déjà clôturé.", tags = {"Syndic - Charges"})
+    @DeleteMapping("/{budgetId}")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    public ResponseEntity<Void> deleteBudget(@PathVariable Long budgetId) {
+        chargeService.deleteBudget(budgetId);
+        return ResponseEntity.noContent().build();
+    }
+
     // ============================================================
     // APPEL DE CHARGES
     // ============================================================

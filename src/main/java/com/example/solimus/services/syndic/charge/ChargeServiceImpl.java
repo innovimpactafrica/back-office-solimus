@@ -577,6 +577,45 @@ public class ChargeServiceImpl implements ChargeService {
         activityLogRepository.save(log);
     }
 
+    @Override
+    @Transactional
+    public void deleteBudget(Long budgetId) {
+
+        Budget budget = budgetRepository.findById(budgetId)
+                .orElseThrow(() -> new RuntimeException("Budget non trouvé"));
+
+        User currentSyndic = getCurrentUser();
+        if (!budget.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à supprimer ce budget");
+        }
+
+        if (budget.getStatus() == BudgetStatus.CLOSED) {
+            throw new BadRequestException("Impossible de supprimer un budget clôturé");
+        }
+
+        // Vérifie si des appels de charges ont été générés pour ce budget
+        if (chargeCallRepository.existsByBudgetId(budgetId)) {
+            throw new BadRequestException("Impossible de supprimer un budget qui a déjà des appels de charges générés");
+        }
+
+        // Supprime d'abord les postes budgétaires associés
+        budgetItemRepository.deleteByBudgetId(budgetId);
+
+        // Puis supprime le budget
+        budgetRepository.delete(budget);
+
+        // Trace la suppression dans le journal d'activité
+        ActivityLog log = new ActivityLog();
+        log.setResidence(budget.getResidence());
+        log.setType(ActivityType.BUDGET_DELETED);
+        log.setRelatedEntityType("BUDGET");
+        log.setRelatedEntityId(budgetId);
+        log.setActor(currentSyndic);
+        log.setCreatedAt(LocalDateTime.now());
+        log.setMessage("Budget supprimé — " + budget.getReference());
+        activityLogRepository.save(log);
+    }
+
     // ============================================================
     // HISTORIQUE D'UN BUDGET (onglet "Historique")
     // ============================================================

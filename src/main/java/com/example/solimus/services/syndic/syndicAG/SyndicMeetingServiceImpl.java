@@ -129,6 +129,7 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
 
                 MeetingDocument doc = new MeetingDocument();
                 doc.setMeeting(savedMeeting);
+                doc.setUploadedBy(currentSyndic);
                 doc.setFileName(file.getOriginalFilename());
                 doc.setFileUrl(fileUrl);
                 doc.setFileSizeKb(file.getSize() / 1024);
@@ -625,17 +626,8 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
 
         List<MeetingDocumentRowDTO> rows = new ArrayList<>();
 
-        for (MeetingDocument doc :  docPage.getContent()) {
-            MeetingDocumentRowDTO row = MeetingDocumentRowDTO.builder()
-                    .id(doc.getId())
-                    .fileName(doc.getFileName())
-                    .fileUrl(doc.getFileUrl())
-                    .fileSizeKb(doc.getFileSizeKb())
-                    .documentType(doc.getDocumentType() != null ? doc.getDocumentType().name() : null)
-                    .documentTypeLabel(doc.getDocumentType() != null ? doc.getDocumentType().getLabel() : null)
-                    .createdAt(doc.getCreatedAt())
-                    .build();
-            rows.add(row);
+        for (MeetingDocument doc : docPage.getContent()) {
+            rows.add(toDocumentRowDTO(doc));
         }
 
         return MeetingDocumentsTabResponseDTO.builder()
@@ -643,7 +635,6 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
                 .documents(rows)
                 .currentPage(docPage.getNumber())
                 .totalPages(docPage.getTotalPages())
-
                 .build();
     }
 
@@ -652,13 +643,13 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
     // =========================================================================
     @Override
     @Transactional
-    public List <MeetingDocumentRowDTO> addMeetingDocuments(Long meetingId, List<MultipartFile> files) {
+    public List<MeetingDocumentRowDTO> addMeetingDocuments(Long meetingId, List<MultipartFile> files) {
 
         // Récupère la réunion, erreur si introuvable
         Meeting meeting = meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Réunion introuvable"));
 
-        // ETAPE 1 : on valide TOUS les fichiers d'abord, avant d'uploader quoi que ce soit
+        // ÉTAPE 1 : on valide TOUS les fichiers d'abord, avant d'uploader quoi que ce soit
         for (MultipartFile file : files) {
 
             if (file.isEmpty()) {
@@ -676,7 +667,7 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
             }
         }
 
-        // ETAPE 2 : tous les fichiers sont valides, on peut maintenant les uploader un par un
+        // ÉTAPE 2 : tous les fichiers sont validés, on peut maintenant les uploader un par un
         // Aucun type n'est imposé à ce stade — le syndic pourra préciser le type,
         // le titre et la description plus tard, depuis la page Documents générale.
         List<MeetingDocumentRowDTO> results = new ArrayList<>();
@@ -687,6 +678,7 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
 
             MeetingDocument doc = new MeetingDocument();
             doc.setMeeting(meeting);
+            doc.setUploadedBy(getCurrentUser());
             doc.setFileName(file.getOriginalFilename());
             doc.setFileUrl(fileUrl);
             doc.setFileSizeKb(file.getSize() / 1024);
@@ -704,15 +696,7 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
                     .build();
             activityLogRepository.save(activityLog);
 
-            results.add(MeetingDocumentRowDTO.builder()
-                    .id(savedDoc.getId())
-                    .fileName(savedDoc.getFileName())
-                    .fileUrl(savedDoc.getFileUrl())
-                    .fileSizeKb(savedDoc.getFileSizeKb())
-                    .documentType(savedDoc.getDocumentType() != null ? savedDoc.getDocumentType().name() : null)
-                    .documentTypeLabel(savedDoc.getDocumentType() != null ? savedDoc.getDocumentType().getLabel() : null)
-                    .createdAt(savedDoc.getCreatedAt())
-                    .build());
+            results.add(toDocumentRowDTO(savedDoc));
         }
 
         return results;
@@ -720,7 +704,7 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
 
     // =========================================================================
     // Historique des événements d'une réunion (onglet Historique de la modale)
-   // =========================================================================
+    // =========================================================================
     @Override
     @Transactional(readOnly = true)
     public MeetingHistoryTabResponseDTO getMeetingHistory(Long meetingId, int page, int size) {
@@ -822,6 +806,26 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         List<String> apartmentReferences = new ArrayList<>();    // références de tous ses lots (ex: "Apt 8D")
     }
 
+    // Convertit une entité MeetingDocument en DTO d'affichage, en gérant les champs optionnels
+    private MeetingDocumentRowDTO toDocumentRowDTO(MeetingDocument doc) {
+        return MeetingDocumentRowDTO.builder()
+                .id(doc.getId())
+                .fileName(doc.getFileName())
+                .fileUrl(doc.getFileUrl())
+                .fileSizeKb(doc.getFileSizeKb())
+                .documentType(doc.getDocumentType() != null ? doc.getDocumentType().name() : null)
+                .documentTypeLabel(doc.getDocumentType() != null ? doc.getDocumentType().getLabel() : null)
+                .title(doc.getTitle())
+                .description(doc.getDescription())
+                .documentDate(doc.getDocumentDate())
+                .uploadedByName(formatActorName(doc.getUploadedBy()))
+                .meetingId(doc.getMeeting().getId())
+                .meetingTitle(doc.getMeeting().getTitle())
+                .residenceName(doc.getMeeting().getResidence().getName())
+                .createdAt(doc.getCreatedAt())
+                .build();
+    }
+
     // Formate le nom d'affichage d'un utilisateur avec son rôle, ex: "Syndic - Abdou Diop"
     // Retourne "Système" si l'utilisateur est null (ex: log génère automatiquement par un job planifié)
     private String formatActorName(User user) {
@@ -916,6 +920,278 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
                 .detail(meeting.getTitle())
                 .build();
         activityLogRepository.save(activityLog);
+    }
+
+    // =========================================================================
+    // Module Document
+    // =========================================================================
+
+    // =========================================================================
+    // Liste légère des réunions d'une résidence (pour le sélecteur de la modale)
+    // =========================================================================
+    @Override
+    @Transactional(readOnly = true)
+    public List<MeetingSummaryDTO> getMeetingSummariesByResidence(Long residenceId) {
+        return meetingRepository.findMeetingSummariesByResidenceId(residenceId);
+    }
+
+    // =========================================================================
+    // Ajoute un nouveau document complet (page Documents générale)
+    // =========================================================================
+    @Override
+    @Transactional
+    public MeetingDocumentRowDTO createMeetingDocument(CreateMeetingDocumentDTO dto, MultipartFile file) {
+
+        // Récupère la réunion, erreur si introuvable
+        Meeting meeting = meetingRepository.findById(dto.getMeetingId())
+                .orElseThrow(() -> new ResourceNotFoundException("Réunion introuvable"));
+
+        // Vérifie que le fichier n'est pas vide
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException("Aucun fichier fourni");
+        }
+
+        // Vérifie la taille maximale : 20 Mo
+        long maxSizeBytes = 20L * 1024 * 1024;
+        if (file.getSize() > maxSizeBytes) {
+            throw new BadRequestException("Le fichier dépasse la taille maximale autorisée (20 Mo)");
+        }
+
+        // Vérifie l'extension autorisée
+        String originalFileName = file.getOriginalFilename();
+        if (originalFileName == null || !hasAllowedExtension(originalFileName)) {
+            throw new BadRequestException("Format de fichier non autorisé. Formats acceptés : PDF, DOCX, XLSX");
+        }
+
+        // Envoie le fichier vers MinIO, une fois toutes les vérifications passées
+        String fileUrl = minioService.uploadFile(file, "meetings");
+
+        // Construit et sauvegarde l'entité document, avec toutes les métadonnées fournies
+        MeetingDocument doc = new MeetingDocument();
+        doc.setMeeting(meeting);
+        doc.setUploadedBy(getCurrentUser());
+        doc.setFileName(originalFileName);
+        doc.setFileUrl(fileUrl);
+        doc.setFileSizeKb(file.getSize() / 1024);
+        doc.setDocumentType(dto.getDocumentType()); // reste null si non fourni
+        doc.setTitle(dto.getTitle());
+        doc.setDescription(dto.getDescription());
+        doc.setDocumentDate(dto.getDocumentDate());
+
+        MeetingDocument savedDoc = meetingDocumentRepository.save(doc);
+
+        // Trace l'événement dans l'historique
+        ActivityLog activityLog = ActivityLog.builder()
+                .residence(meeting.getResidence())
+                .type(ActivityType.MEETING_DOCUMENT_ADDED)
+                .relatedEntityType("MEETING_DOCUMENT")
+                .relatedEntityId(savedDoc.getId())
+                .message("Document ajouté")
+                .detail(savedDoc.getTitle() != null ? savedDoc.getTitle() : savedDoc.getFileName())
+                .build();
+        activityLogRepository.save(activityLog);
+
+        return toDocumentRowDTO(savedDoc);
+    }
+
+    // =========================================================================
+    // Met à jour les métadonnées d'un document déjà existant
+    // =========================================================================
+    @Override
+    @Transactional
+    public MeetingDocumentRowDTO updateMeetingDocument(Long documentId, UpdateMeetingDocumentDTO dto) {
+
+        // Récupère le document, erreur si introuvable
+        MeetingDocument doc = meetingDocumentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Document introuvable"));
+
+        // Ne modifie que les champs fournis, laisse les autres intacts
+        if (dto.getTitle() != null) {
+            doc.setTitle(dto.getTitle());
+        }
+        if (dto.getDescription() != null) {
+            doc.setDescription(dto.getDescription());
+        }
+        if (dto.getDocumentDate() != null) {
+            doc.setDocumentDate(dto.getDocumentDate());
+        }
+        if (dto.getDocumentType() != null) {
+            doc.setDocumentType(dto.getDocumentType());
+        }
+
+        MeetingDocument savedDoc = meetingDocumentRepository.save(doc);
+
+        // Trace la modification dans l'historique
+        ActivityLog activityLog = ActivityLog.builder()
+                .residence(doc.getMeeting().getResidence())
+                .type(ActivityType.MEETING_DOCUMENT_UPDATED)
+                .relatedEntityType("MEETING_DOCUMENT")
+                .relatedEntityId(savedDoc.getId())
+                .message("Document modifié")
+                .detail(savedDoc.getTitle() != null ? savedDoc.getTitle() : savedDoc.getFileName())
+                .build();
+        activityLogRepository.save(activityLog);
+
+        return toDocumentRowDTO(savedDoc);
+    }
+
+    // =========================================================================
+    // Listing général des documents AG (page Documents, toutes résidences confondues)
+    // =========================================================================
+    @Override
+    @Transactional(readOnly = true)
+    public MeetingDocumentListResponseDTO getMeetingDocumentsList(String search, MeetingDocumentType documentType,
+                                                                  Long residenceId, int page, int size) {
+
+        // Récupère le syndic actuellement connecté
+        User currentSyndic = getCurrentUser();
+
+        // Prépare la pagination avec la page et la taille demandées
+        Pageable pageable = PageRequest.of(page, size);
+
+        // Nettoie le texte de recherche (retire les espaces inutiles, met null si vide)
+        String searchFilter = null;
+        if (search != null && !search.isBlank()) {
+            searchFilter = search.trim();
+        }
+
+        // Récupère la page de documents correspondant aux filtres (recherche, type, résidence)
+        Page<MeetingDocument> docPage = meetingDocumentRepository.searchDocuments(
+                currentSyndic.getId(), searchFilter, documentType, residenceId, pageable);
+
+        // Convertit chaque document trouvé en DTO d'affichage
+        List<MeetingDocumentRowDTO> rows = new ArrayList<>();
+        for (MeetingDocument doc : docPage.getContent()) {
+            rows.add(toDocumentRowDTO(doc));
+        }
+
+        // Construit la réponse finale : documents de la page + infos de pagination
+        return MeetingDocumentListResponseDTO.builder()
+                .totalCount(docPage.getTotalElements())
+                .documents(rows)
+                .currentPage(docPage.getNumber())
+                .totalPages(docPage.getTotalPages())
+                .build();
+    }
+
+    // =========================================================================
+    // Détail d'un document AG (page détail, avec quorum + documents liés + historique)
+    // =========================================================================
+    @Override
+    @Transactional (readOnly = true)
+    public MeetingDocumentDetailDTO getMeetingDocumentDetail(Long documentId) {
+
+        // Récupère le document, erreur si introuvable
+        MeetingDocument document = meetingDocumentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Document introuvable"));
+
+        Meeting meeting = document.getMeeting();
+
+        // Récupère les stats de participation, sous forme de liste d'un seul élément
+        // (findParticipationStats est conçue pour plusieurs réunions à la fois, ici on ne lui donne qu'un id)
+        List<MeetingParticipationStats> statsList = meetingRepository.findParticipationStats(List.of(meeting.getId()));
+
+        // Si la liste est vide (réunion pas encore publiée, aucune stat trouvée), stats = null
+        // Sinon, on prend le seul élément de la liste
+        MeetingParticipationStats stats = statsList.isEmpty() ? null : statsList.get(0);
+
+        // Nombre de convoqués : 0 par défaut si aucune stat trouvée
+        long convoquesCount = stats != null ? stats.getTotalParticipants() : 0;
+
+        // Nombre de présents (ayant signé) : 0 par défaut si aucune stat trouvée
+        long participantsCount = stats != null ? stats.getSignedCount() : 0;
+
+        // Taux de participation pondéré par tantième, 0% par défaut
+        double quorumPercentage = 0.0;
+
+        // On ne calcule le pourcentage que si on a bien des stats ET un tantième total valide (> 0),
+        // pour éviter une division par zéro
+        if (stats != null && stats.getTotalTantieme() != null
+                && stats.getTotalTantieme().compareTo(BigDecimal.ZERO) > 0) {
+            quorumPercentage = stats.getSignedTantieme().doubleValue()
+                    / stats.getTotalTantieme().doubleValue() * 100.0;
+        }
+
+        // Récupère tous les autres documents de la même réunion, en excluant celui qu'on regarde actuellement
+        List<MeetingDocument> linkedDocs = meetingDocumentRepository.findByMeetingIdAndIdNot(meeting.getId(), documentId);
+
+        // Convertit chaque document lié trouvé en DTO d'affichage
+        List<MeetingDocumentRowDTO> linkedDocumentDTOs = new ArrayList<>();
+        for (MeetingDocument linked : linkedDocs) {
+            linkedDocumentDTOs.add(toDocumentRowDTO(linked));
+        }
+
+        // Parcourt tous les points de l'ordre du jour de la réunion parente
+        List<ResolutionRowDTO> resolutionDTOs = new ArrayList<>();
+        for (MeetingAgendaItem item : meeting.getAgendaItems()) {
+
+            // Ignore les points purement informatifs, ne garde que ceux marqués "nécessite une résolution"
+            if (!Boolean.TRUE.equals(item.getRequiresResolution())) {
+                continue;
+            }
+
+            // Construit la ligne résolution pour ce point
+            resolutionDTOs.add(ResolutionRowDTO.builder()
+                    .id(item.getId())
+                    .title(item.getTitle())
+                    .description(item.getDescription())
+                    .resolutionStatus(item.getResolutionStatus().name())
+                    .resolutionStatusLabel(item.getResolutionStatus().getDescription())
+                    .observations(item.getResolutionText())
+                    .build());
+        }
+
+        // Récupère tous les logs d'historique liés spécifiquement à CE document (pas à la réunion entière)
+        List<ActivityLog> logs = activityLogRepository
+                .findByRelatedEntityTypeAndRelatedEntityIdOrderByCreatedAtDesc("MEETING_DOCUMENT", documentId);
+
+        // Convertit chaque log en DTO d'affichage
+        List<MeetingHistoryRowDTO> historyDTOs = new ArrayList<>();
+        for (ActivityLog log : logs) {
+            historyDTOs.add(MeetingHistoryRowDTO.builder()
+                    .message(log.getMessage())
+                    .actorName(formatActorName(log.getActor()))
+                    .createdAt(log.getCreatedAt())
+                    .build());
+        }
+
+        // Extrait le format depuis le nom de fichier (ex: "PV.pdf" -> "PDF")
+        String format = null;
+        if (document.getFileName() != null && document.getFileName().contains(".")) {
+            String extension = document.getFileName().substring(document.getFileName().lastIndexOf(".") + 1);
+            format = extension.toUpperCase();
+        }
+
+        // Construit et retourne le DTO complet, avec toutes les infos assemblées
+        return MeetingDocumentDetailDTO.builder()
+                .id(document.getId())
+                .fileName(document.getFileName())
+                .fileUrl(document.getFileUrl())
+                .documentType(document.getDocumentType() != null ? document.getDocumentType().name() : null)
+                .documentTypeLabel(document.getDocumentType() != null ? document.getDocumentType().getLabel() : null)
+                .title(document.getTitle())
+                .description(document.getDescription())
+                .documentDate(document.getDocumentDate())
+                .fileSizeKb(document.getFileSizeKb())
+                .format(format)
+                .uploadedByName(formatActorName(document.getUploadedBy()))
+                .createdAt(document.getCreatedAt())
+                .meetingId(meeting.getId())
+                .meetingTitle(meeting.getTitle())
+                .meetingType(meeting.getType().name())
+                .meetingTypeLabel(meeting.getType().getLabel())
+                .residenceName(meeting.getResidence().getName())
+                .meetingDate(meeting.getMeetingDate())
+                .meetingStartTime(meeting.getStartTime())
+                .location(meeting.getLocation())
+                .organizerName(formatActorName(meeting.getSyndic()))
+                .convoquesCount(convoquesCount)
+                .participantsCount(participantsCount)
+                .quorumPercentage(quorumPercentage)
+                .linkedDocuments(linkedDocumentDTOs)
+                .resolutions(resolutionDTOs)
+                .history(historyDTOs)
+                .build();
     }
 
 }

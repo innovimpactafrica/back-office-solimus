@@ -138,29 +138,8 @@ public class DasboardServiceImpl implements DashboardService {
     }
 
     // =========================================================================
-    // ÉVOLUTION FINANCIÈRE (graphique, résidence optionnelle avec repli automatique)
-    // =========================================================================
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<TreasuryEvolutionPointDTO> getFinancialEvolution(Long residenceId) {
-
-        // Récupère le syndic actuellement connecté
-        User currentSyndic = getCurrentUser();
-
-        // Résout la résidence à utiliser : celle fournie, ou la plus récente créée par ce syndic si absente
-        Long resolvedResidenceId = resolveResidenceId(residenceId, currentSyndic);
-
-        // Récupère le wallet du syndic
-        SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId()).orElse(null);
-        Long walletId = (wallet != null) ? wallet.getId() : null;
-
-        // Construit et retourne le graphique cumulatif pour l'année en cours, pour cette résidence
-        return buildTreasuryEvolutionByResidence(resolvedResidenceId, walletId, LocalDate.now().getYear());
-    }
-
-    // =========================================================================
-    // ALERTES IMPORTANTES (Impayés significatifs + AG à préparer, toutes résidences)
+    // ALERTES IMPORTANTES (AG à venir + paiements en retard + intervention urgente)
+    // Vue résumée, toutes résidences confondues (max 3 alertes)
     // =========================================================================
 
     @Override
@@ -172,43 +151,59 @@ public class DasboardServiceImpl implements DashboardService {
         // Liste qui va contenir toutes les alertes, tous types confondus
         List<AlertDTO> alerts = new ArrayList<>();
 
-        // --- Impayés significatifs (> 1 000 000 FCFA) ---
+        // --- AG à venir (la plus proche) ---
 
-        // Récupère tous les ChargeCallItem du syndic dont le solde impayé dépasse 1 million
-        List<ChargeCallItem> significantUnpaid = chargeCallItemRepository
-                .findByChargeCallBudgetSyndicIdAndRemainingAmountGreaterThan(
-                        currentSyndic.getId(), BigDecimal.valueOf(1_000_000));
+        // Récupère toutes les réunions à venir (UPCOMING) pour ce syndic
+        List<Meeting> upcomingMeetings = meetingRepository
+                .findBySyndicIdAndStatus(currentSyndic.getId(), MeetingStatus.UPCOMING);
 
-        // Transforme chaque impayé significatif en alerte
-        for (ChargeCallItem item : significantUnpaid) {
-            AlertDTO alert = new AlertDTO();
-            alert.setType("UNPAID");
-            alert.setTitle("Impayé Important");
-            // Construit le texte descriptif : résidence + montant
-            alert.setDescription(item.getChargeCall().getBudget().getResidence().getName()
-                    + " - " + item.getRemainingAmount() + " FCFA");
-            alert.setOccurredAt(item.getChargeCall().getCreatedAt());
-            alerts.add(alert);
-        }
+        // Sélectionne la réunion la plus proche (date de réunion la plus petite)
+        Meeting nearestMeeting = upcomingMeetings.stream()
+                .filter(m -> m.getMeetingDate() != null)
+                .min((a, b) -> a.getMeetingDate().compareTo(b.getMeetingDate()))
+                .orElse(null);
 
-        // --- AG à préparer (statut DRAFT) ---
-
-        // Récupère toutes les réunions encore en brouillon pour ce syndic
-        List<Meeting> draftMeetings = meetingRepository.findBySyndicIdAndStatus(currentSyndic.getId(), MeetingStatus.DRAFT);
-
-        // Transforme chaque réunion en brouillon en alerte
-        for (Meeting meeting : draftMeetings) {
+        if (nearestMeeting != null) {
             AlertDTO alert = new AlertDTO();
             alert.setType("MEETING");
-            alert.setTitle("AG à préparer");
-            // Construit le texte descriptif : résidence + date de la réunion formatée
-            alert.setDescription(meeting.getResidence().getName() + " - "
-                    + meeting.getMeetingDate().format(DateTimeFormatter.ofPattern("d MMMM yyyy")));
-            alert.setOccurredAt(meeting.getCreatedAt());
+            alert.setTitle("AG à venir");
+            alert.setDescription(nearestMeeting.getResidence().getName() + " - "
+                    + nearestMeeting.getMeetingDate().format(DateTimeFormatter.ofPattern("d MMMM yyyy")));
+            alert.setOccurredAt(nearestMeeting.getCreatedAt());
             alerts.add(alert);
         }
 
-        // Trie toutes les alertes (impayés + AG mélangées) par date décroissante, les plus récentes en premier
+        // --- Paiements en retard (alerte si plus de 10) ---
+
+        // Compte les lignes en retard (échéance dépassée) et non soldées, toutes résidences
+        long latePaymentsCount = chargeCallItemRepository.countLateUnpaidBySyndicId(currentSyndic.getId());
+
+        if (latePaymentsCount > 10) {
+            AlertDTO alert = new AlertDTO();
+            alert.setType("UNPAID");
+            alert.setTitle("Paiements en retard");
+            alert.setDescription(latePaymentsCount + " paiements en retard");
+            alert.setOccurredAt(LocalDateTime.now());
+            alerts.add(alert);
+        }
+
+        // --- Intervention urgente (la dernière déclarée) ---
+
+        // Récupère la dernière intervention urgente non résolue déclarée pour ce syndic
+        List<InterventionRequest> urgentInterventions = interventionRequestRepository
+                .findLatestUrgentBySyndicId(currentSyndic.getId(), UrgencyLevel.URGENT, PageRequest.of(0, 1));
+
+        if (!urgentInterventions.isEmpty()) {
+            InterventionRequest intervention = urgentInterventions.get(0);
+            AlertDTO alert = new AlertDTO();
+            alert.setType("INTERVENTION");
+            alert.setTitle("Intervention urgente");
+            alert.setDescription(intervention.getResidence().getName() + " - " + intervention.getTitle());
+            alert.setOccurredAt(intervention.getCreatedAt());
+            alerts.add(alert);
+        }
+
+        // Trie toutes les alertes par date décroissante, les plus récentes en premier
         alerts.sort((a, b) -> b.getOccurredAt().compareTo(a.getOccurredAt()));
 
         // Calcule le texte "il y a Xh" pour chaque alerte, une fois l'ordre final déterminé
@@ -400,43 +395,6 @@ public class DasboardServiceImpl implements DashboardService {
         return items.stream().map(ChargeCallItem::getRemainingAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    // Construit le graphique cumulatif Trésorerie vs Appels de charges, mois par mois, pour une résidence
-    private List<TreasuryEvolutionPointDTO> buildTreasuryEvolutionByResidence(Long residenceId, Long walletId, int year) {
-
-        // Tableau des libellés de mois affichés sur le graphique
-        String[] monthLabels = {"Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"};
-        List<TreasuryEvolutionPointDTO> result = new ArrayList<>();
-
-        // Récupère tous les ChargeCall de cette résidence, toutes années confondues
-        List<ChargeCall> allChargeCalls = chargeCallRepository.findByBudgetResidenceId(residenceId);
-
-        // Parcourt les 6 premiers mois de l'année
-        for (int month = 1; month <= 6; month++) {
-            // Calcule la date de fin de ce mois (= début du mois suivant)
-            LocalDate endOfMonth = LocalDate.of(year, month, 1).plusMonths(1);
-
-            // Calcule le solde du wallet à la fin de ce mois
-            BigDecimal treasury = calculerSoldeADate(walletId, endOfMonth.atStartOfDay());
-
-            // Additionne tous les ChargeCall créés avant la fin de ce mois (cumul progressif)
-            BigDecimal chargeCallsCumulated = allChargeCalls.stream()
-                    .filter(cc -> cc.getCreatedAt().isBefore(endOfMonth.atStartOfDay()))
-                    .map(ChargeCall::getTotalAmount)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            // Construit le point de données pour ce mois
-            TreasuryEvolutionPointDTO point = new TreasuryEvolutionPointDTO();
-            point.setMonthLabel(monthLabels[month - 1]);
-            point.setTreasury(treasury);
-            point.setChargeCallsCumulated(chargeCallsCumulated);
-
-            result.add(point);
-        }
-
-        // Retourne les 6 points construits
-        return result;
-    }
-
     // Construit une ligne du tableau "Activités Récentes"
     private ActivityRowDTO buildActivityRow(ActivityLog log) {
 
@@ -461,9 +419,9 @@ public class DasboardServiceImpl implements DashboardService {
             case INTERVENTION_REPORTED, INTERVENTION_RESOLVED -> "Incident";
             case PROVIDER_ASSIGNED -> "Prestataire";
             case MEETING_CREATED, MEETING_PUBLISHED, MEETING_DELETED -> "Réunion";
-            case MEETING_DOCUMENT_ADDED -> "Document";
+            case MEETING_DOCUMENT_ADDED, MEETING_DOCUMENT_DOWNLOADED, MEETING_DOCUMENT_VIEWED, MEETING_DOCUMENT_UPDATED -> "Document";
             case COMMENT_ADDED -> "Commentaire";
-            case BUDGET_CREATED, BUDGET_CLOSED -> "Budget";
+            case BUDGET_CREATED, BUDGET_CLOSED, BUDGET_DELETED -> "Budget";
             case EXCEPTIONAL_CALL_CREATED, EXCEPTIONAL_CALL_ACTIVATED, EXCEPTIONAL_CALL_CLOSED -> "Appel exceptionnel";
         };
     }

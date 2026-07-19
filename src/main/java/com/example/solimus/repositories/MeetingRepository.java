@@ -1,5 +1,7 @@
 package com.example.solimus.repositories;
 
+
+import com.example.solimus.dtos.syndic.meeting.MeetingSummaryDTO;
 import com.example.solimus.entities.Meeting;
 import com.example.solimus.entities.Residence;
 import com.example.solimus.enums.MeetingStatus;
@@ -138,14 +140,6 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
             "ORDER BY mp.meeting.meetingDate ASC")
     Page<Meeting> findUpcomingMeetingsByParticipantUserId(@Param("userId") Long userId, Pageable pageable);
 
-    //  Réunions d'un copropriétaire sur un mois donné, tous statuts confondus
-    @Query("SELECT DISTINCT mp.meeting FROM MeetingParticipant mp " +
-            "WHERE mp.user.id = :userId " +
-            "AND mp.meeting.meetingDate BETWEEN :startOfMonth AND :endOfMonth " +
-            "ORDER BY mp.meeting.meetingDate ASC")
-    List<Meeting> findMeetingsByParticipantUserIdAndMonth(@Param("userId") Long userId,
-                                                          @Param("startOfMonth") LocalDate startOfMonth,
-                                                          @Param("endOfMonth") LocalDate endOfMonth);
 
     // Réunions à venir d'un copropriétaire sur un mois précis (UPCOMING uniquement)
     @Query("SELECT DISTINCT mp.meeting FROM MeetingParticipant mp " +
@@ -156,4 +150,9 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
     List<Meeting> findUpcomingMeetingsByParticipantUserIdAndMonth(@Param("userId") Long userId,
                                                                     @Param("startOfMonth") LocalDate startOfMonth,
                                                                     @Param("endOfMonth") LocalDate endOfMonth);
+
+    // Liste légère des réunions d'une résidence, pour un sélecteur
+    @Query("SELECT new com.example.solimus.dtos.syndic.meeting.MeetingSummaryDTO(m.id, m.title, m.meetingDate) " +
+            "FROM Meeting m WHERE m.residence.id = :residenceId ORDER BY m.meetingDate DESC")
+    List<MeetingSummaryDTO> findMeetingSummariesByResidenceId(@Param("residenceId") Long residenceId);
 }

@@ -236,6 +236,13 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId AND i.paidAmount < i.quotePart")
     List<ChargeCallItem> findAllUnpaidByBudgetSyndicId(@Param("syndicId") Long syndicId);
 
+    // Compte les lignes en retard (date d'échéance dépassée) et non soldées pour un syndic (toutes résidences)
+    @Query("SELECT COUNT(i) FROM ChargeCallItem i " +
+           "WHERE i.chargeCall.budget.syndic.id = :syndicId " +
+           "AND i.paidAmount < i.quotePart " +
+           "AND i.chargeCall.dueDate < CURRENT_DATE")
+    long countLateUnpaidBySyndicId(@Param("syndicId") Long syndicId);
+
     // Supprimer tous les items d'un appel de charges
     void deleteByChargeCallId(Long chargeCallId);
 }

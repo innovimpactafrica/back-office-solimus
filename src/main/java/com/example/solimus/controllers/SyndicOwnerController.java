@@ -1,21 +1,10 @@
 package com.example.solimus.controllers;
 
-import com.example.solimus.dtos.owner.CoOwnerDocumentItemDTO;
 import com.example.solimus.dtos.owner.CoOwnerInterventionsResponseDTO;
 import com.example.solimus.dtos.owner.CoOwnerMeetingsDTO;
 import com.example.solimus.dtos.owner.CoOwnerResidenceDTO;
-import com.example.solimus.dtos.syndic.owner.CreateCoOwnerDTO;
+import com.example.solimus.dtos.syndic.owner.*;
 import com.example.solimus.dtos.syndic.residence.ActivityLogItemDTO;
-import com.example.solimus.enums.CoOwnerDocumentCategory;
-import com.example.solimus.dtos.syndic.owner.PropertySummaryDTO;
-import com.example.solimus.dtos.syndic.owner.ResidenceSummaryDTO;
-import com.example.solimus.dtos.syndic.owner.CoOwnerListDTO;
-import com.example.solimus.dtos.syndic.owner.CoOwnerSearchResultDTO;
-import com.example.solimus.dtos.syndic.owner.CoOwnerDetailDTO;
-import com.example.solimus.dtos.syndic.owner.CoOwnerPropertyAssignmentDTO;
-import com.example.solimus.dtos.syndic.owner.CoOwnerPropertyItemDTO;
-import com.example.solimus.dtos.syndic.owner.CoOwnerFinancesDTO;
-import com.example.solimus.dtos.syndic.owner.CoOwnerPaymentItemDTO;
 import com.example.solimus.enums.Nationality;
 import com.example.solimus.enums.Title;
 import com.example.solimus.services.syndic.owner.SyndicOwnerService;
@@ -28,7 +17,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.data.domain.Page;
@@ -37,7 +25,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -48,6 +35,7 @@ public class SyndicOwnerController {
 
     private final SyndicOwnerService syndicOwnerService;
     private final ObjectMapper objectMapper;
+
 
     @Operation(summary = "Ajouter un copropriétaire (Workflow OTP) avec photo", tags = {"Syndic - Copropriétaires"},
             description = "propertiesJson filtre par résidence pour les lots")
@@ -197,27 +185,21 @@ public class SyndicOwnerController {
         return ResponseEntity.ok(syndicOwnerService.getCoOwnerInterventions(coOwnerId));
     }
 
-    @Operation(summary = "Documents d'un copropriétaire (onglet Documents du détail)", tags = {"Syndic - Copropriétaires"})
+    @Operation(summary = "Documents d'un copropriétaire (manuel + AG + charges exceptionnelles, fusionnés)", tags = {"Syndic - Copropriétaires"})
     @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/{coOwnerId}/documents")
-    public ResponseEntity<Page<CoOwnerDocumentItemDTO>> getCoOwnerDocuments(
+    public ResponseEntity<CoOwnerDocumentUnifiedListResponseDTO> getCoOwnerDocuments(
             @PathVariable Long coOwnerId,
+            @RequestParam(required = false) String search,
+            @Parameter(description = "Catégorie exacte. Depuis MeetingDocument : CONVOCATION, FINANCIAL, REPORT, PV_AG, OTHER. " +
+                    "Depuis ExceptionalCallDocument : Charges. " +
+                    "Depuis CoOwnerDocument (coffre manuel) : PROPERTY_TITLE, CONTRACT, IDENTITY_DOCUMENT, PAYMENT_RECEIPT")
             @RequestParam(required = false) String category,
             @RequestParam(defaultValue = "0") Integer page,
             @RequestParam(defaultValue = "10") Integer size) {
-        return ResponseEntity.ok(syndicOwnerService.getCoOwnerDocuments(coOwnerId, category, page, size));
-    }
 
-    @Operation(summary = "Ajouter un document à un copropriétaire", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
-    @PostMapping(value = "/co-owners/{coOwnerId}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<CoOwnerDocumentItemDTO> addDocument(
-            @PathVariable Long coOwnerId,
-            @RequestParam CoOwnerDocumentCategory category,
-            @RequestParam String title,
-            @RequestPart("file") MultipartFile file) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(syndicOwnerService.addDocument(coOwnerId, category, title, file));
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerDocuments(
+                coOwnerId, search, category, page, size));
     }
 
     @Operation(summary = "Activité récente d'un copropriétaire (panneau Activité Récente du détail)", tags = {"Syndic - Copropriétaires"})

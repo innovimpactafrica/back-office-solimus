@@ -15,12 +15,6 @@ public interface DashboardService {
     MainDashboardDTO getMainDashboard(Long residenceId);
 
     /**
-     * Retourne le graphique "Évolution Financière".
-     * residenceId est OPTIONNEL : même logique de repli que getMainDashboard.
-     */
-    List<TreasuryEvolutionPointDTO> getFinancialEvolution(Long residenceId);
-
-    /**
      * Retourne les alertes importantes du syndic, toutes résidences confondues.
      */
     List<AlertDTO> getImportantAlerts();
