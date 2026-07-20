@@ -1,6 +1,6 @@
 package com.example.solimus.controllers;
 
-import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanDTO;
+import com.example.solimus.dtos.admin.subscription.ProviderPlanDTO;
 import com.example.solimus.dtos.provider.subscription.InitiateSubscriptionPaymentDTO;
 import com.example.solimus.dtos.provider.subscription.SubscriptionPaymentResponseDTO;
 import com.example.solimus.services.provider.subscription.SubscriptionPaymentService;

@@ -1,9 +1,11 @@
 package com.example.solimus.services.payment;
 
 import com.example.solimus.entities.ChargeCallPayment;
+import com.example.solimus.entities.ExceptionalCallPayment;
 import com.example.solimus.entities.PaymentProvider;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.repositories.ChargeCallPaymentRepository;
+import com.example.solimus.repositories.ExceptionalCallPaymentRepository;
 import com.example.solimus.repositories.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +23,7 @@ public class PaymentSchedulerServiceImpl implements PaymentSchedulerService {
 
     private final PaymentRepository paymentRepository;
     private final ChargeCallPaymentRepository chargeCallPaymentRepository;
+    private final ExceptionalCallPaymentRepository exceptionalCallPaymentRepository;
 
     /**
      * Fait passer en FAILED les paiements PENDING créés depuis plus de 5 minutes
@@ -77,5 +80,31 @@ public class PaymentSchedulerServiceImpl implements PaymentSchedulerService {
         chargeCallPaymentRepository.saveAll(staleChargePayments);
 
         log.info("{} paiements de charges PENDING expirés et passés en FAILED", staleChargePayments.size());
+    }
+
+    /**
+     * Fait passer en FAILED les paiements de charges exceptionnelles PENDING créés depuis plus de 5 minutes
+     * sans avoir reçu de callback TouchPay. S'exécute toutes les minutes.
+     */
+    @Scheduled(cron = "0 * * * * *") // toutes les minutes
+    @Transactional
+    public void failStalePendingExceptionalChargePayments() {
+
+        LocalDateTime timeoutThreshold = LocalDateTime.now().minusMinutes(5);
+
+        List<ExceptionalCallPayment> staleExceptionalPayments = exceptionalCallPaymentRepository
+                .findByStatusAndCreatedAtBefore(PaymentStatus.PENDING, timeoutThreshold);
+
+        if (staleExceptionalPayments.isEmpty()) {
+            return;
+        }
+
+        for (ExceptionalCallPayment payment : staleExceptionalPayments) {
+            payment.setStatus(PaymentStatus.FAILED);
+        }
+
+        exceptionalCallPaymentRepository.saveAll(staleExceptionalPayments);
+
+        log.info("{} paiements de charges exceptionnelles PENDING expirés et passés en FAILED", staleExceptionalPayments.size());
     }
 }

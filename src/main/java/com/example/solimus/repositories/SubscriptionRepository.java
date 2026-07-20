@@ -1,6 +1,6 @@
 package com.example.solimus.repositories;
 
-import com.example.solimus.entities.Subscription;
+import com.example.solimus.entities.ProviderSubscription;
 import com.example.solimus.enums.SubscriptionStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -12,25 +12,25 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface SubscriptionRepository extends JpaRepository<Subscription, Long> {
+public interface SubscriptionRepository extends JpaRepository<ProviderSubscription, Long> {
 
     // Récupère le dernier abonnement d'un prestataire (le plus récent selon endDate)
     // → utilisé avant de créer un nouveau paiement, pour vérifier qu'il n'a pas déjà un abonnement actif
-    Optional<Subscription> findFirstByProviderIdOrderByEndDateDesc(Long providerId);
+    Optional<ProviderSubscription> findFirstByProviderIdOrderByEndDateDesc(Long providerId);
 
     // Récupère tous les abonnements d'un prestataire, du plus récent au plus ancien
     // → utilisé pour l'écran "Mon abonnement" (carte actuelle + historique des paiements)
-    Page<Subscription> findByProviderIdOrderByStartDateDesc(Long providerId, Pageable pageable);
+    Page<ProviderSubscription> findByProviderIdOrderByStartDateDesc(Long providerId, Pageable pageable);
 
     // Récupère l'abonnement correspondant à une référence de transaction TouchPay (SUB-xxx)
     // → utilisé par le bridge et le callback pour retrouver la bonne ligne
-    Optional<Subscription> findByTransactionRef(String transactionRef);
+    Optional<ProviderSubscription> findByTransactionRef(String transactionRef);
 
     // Récupère tous les abonnements ACTIVE dont la date de fin est dépassée
     // → utilisé par le scheduler horaire pour les faire passer en EXPIRED
-    List<Subscription> findByStatusAndEndDateBefore(SubscriptionStatus status, LocalDateTime dateTime);
+    List<ProviderSubscription> findByStatusAndEndDateBefore(SubscriptionStatus status, LocalDateTime dateTime);
 
     // Récupère tous les paiements PENDING créés avant un certain seuil de temps
     // → utilisé par le scheduler chaque minute pour les faire passer en FAILED après 5 min
-    List<Subscription> findByStatusAndCreatedAtBefore(SubscriptionStatus status, LocalDateTime dateTime);
+    List<ProviderSubscription> findByStatusAndCreatedAtBefore(SubscriptionStatus status, LocalDateTime dateTime);
 }

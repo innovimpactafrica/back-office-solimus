@@ -1,8 +1,8 @@
 package com.example.solimus.services.admin;
 
 import com.example.solimus.dtos.admin.*;
-import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanDTO;
-import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanRequestDTO;
+import com.example.solimus.dtos.admin.subscription.ProviderPlanDTO;
+import com.example.solimus.dtos.admin.subscription.ProviderPlanRequestDTO;
 import com.example.solimus.dtos.provider.wallet.WithdrawalRequestDTO;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.ERole;

@@ -1,16 +1,12 @@
 package com.example.solimus.services.provider.subscription;
 
-import com.example.solimus.dtos.admin.settingsAdmin.ProviderPlanDTO;
-import com.example.solimus.dtos.provider.profile.MySubscriptionDTO;
-import com.example.solimus.dtos.provider.profile.SubscriptionHistoryItemDTO;
+import com.example.solimus.dtos.admin.subscription.ProviderPlanDTO;
 import com.example.solimus.dtos.provider.subscription.InitiateSubscriptionPaymentDTO;
 import com.example.solimus.dtos.provider.subscription.SubscriptionPaymentResponseDTO;
 import com.example.solimus.entities.ProviderPlan;
-import com.example.solimus.entities.Subscription;
+import com.example.solimus.entities.ProviderSubscription;
 import com.example.solimus.entities.User;
 import com.example.solimus.enums.SubscriptionStatus;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.ProviderPlanRepository;
@@ -27,7 +23,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -56,7 +51,7 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
         subscriptionRepository.findFirstByProviderIdOrderByEndDateDesc(currentProvider.getId())
 
                 // Si on en a trouvé un, on vérifie s'il est encore actif en ce moment précis
-                .filter(Subscription::isCurrentlyActive)
+                .filter(ProviderSubscription::isCurrentlyActive)
 
                 // S'il est toujours actif, on refuse la création d'un nouveau paiement
                 .ifPresent(sub -> {
@@ -90,7 +85,7 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
         String transactionRef = generateReference("SUB");
 
         // On crée l'objet Subscription qui va représenter cette tentative de paiement
-        Subscription subscription = new Subscription();
+        ProviderSubscription subscription = new ProviderSubscription();
 
         // On rattache cette souscription au prestataire connecté
         subscription.setProvider(currentProvider);
@@ -162,7 +157,7 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
 
         // On récupère toutes les Subscription encore marquées ACTIVE
         // mais dont la date de fin est déjà passée par rapport à maintenant
-        List<Subscription> expired = subscriptionRepository
+        List<ProviderSubscription> expired = subscriptionRepository
                 .findByStatusAndEndDateBefore(SubscriptionStatus.ACTIVE, LocalDateTime.now());
 
         // S'il n'y en a aucune, pas besoin d'aller plus loin
@@ -171,7 +166,7 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
         }
 
         // Pour chaque abonnement trouvé, on bascule son statut à EXPIRED
-        for (Subscription subscription : expired) {
+        for (ProviderSubscription subscription : expired) {
             subscription.setStatus(SubscriptionStatus.EXPIRED);
         }
 
@@ -194,7 +189,7 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
         LocalDateTime timeoutThreshold = LocalDateTime.now().minusMinutes(5);
 
         // On récupère les Subscription encore PENDING mais créées avant ce seuil
-        List<Subscription> staleSubscriptions = subscriptionRepository
+        List<ProviderSubscription> staleSubscriptions = subscriptionRepository
                 .findByStatusAndCreatedAtBefore(SubscriptionStatus.PENDING, timeoutThreshold);
 
         if (staleSubscriptions.isEmpty()) {
@@ -202,7 +197,7 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
         }
 
         // On les fait toutes basculer en FAILED — le prestataire devra réinitier un paiement
-        for (Subscription subscription : staleSubscriptions) {
+        for (ProviderSubscription subscription : staleSubscriptions) {
             subscription.setStatus(SubscriptionStatus.FAILED);
         }
 

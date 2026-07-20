@@ -832,7 +832,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
         // Vérifier si le prestataire a un abonnement actif
         boolean isVerified = subscriptionRepository
                 .findFirstByProviderIdOrderByEndDateDesc(quote.getProvider().getId())
-                .map(Subscription::isCurrentlyActive)
+                .map(ProviderSubscription::isCurrentlyActive)
                 .orElse(false);
 
         // --- Calcul du score qualité/prix ---
@@ -967,7 +967,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
         List<ProviderProfile> activeSubscribers = candidates.stream()
                 .filter(profile -> subscriptionRepository
                         .findFirstByProviderIdOrderByEndDateDesc(profile.getUser().getId())
-                        .map(Subscription::isCurrentlyActive)
+                        .map(ProviderSubscription::isCurrentlyActive)
                         .orElse(false))
                 .toList();
 

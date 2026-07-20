@@ -1,6 +1,5 @@
 package com.example.solimus.config;
 
-import com.example.solimus.entities.Subscription;
 import com.example.solimus.entities.User;
 import com.example.solimus.repositories.SubscriptionRepository;
 import com.example.solimus.repositories.UserRepository;

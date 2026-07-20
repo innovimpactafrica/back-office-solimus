@@ -17,13 +17,7 @@ import com.example.solimus.entities.User;
 import com.example.solimus.enums.ChargeFrequency;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
-import com.example.solimus.repositories.BudgetRepository;
-import com.example.solimus.repositories.ChargeCallItemRepository;
-import com.example.solimus.repositories.MeetingParticipantRepository;
-import com.example.solimus.repositories.MeetingRepository;
-import com.example.solimus.repositories.NotificationRepository;
-import com.example.solimus.repositories.PropertyRepository;
-import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.repositories.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -52,6 +46,7 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
     private final MeetingRepository meetingRepository;
     private final MeetingParticipantRepository meetingParticipantRepository;
     private final NotificationRepository notificationRepository;
+    private final ResidenceRepository residenceRepository;
 
     // =========================================================================
     // Liste des biens du copropriétaire (pour le sélecteur "Mon bien")

@@ -4,6 +4,7 @@ import com.example.solimus.dtos.owner.charge.ChargePaymentReceiptDTO;
 import com.example.solimus.dtos.owner.charge.ChargePaymentResponseDTO;
 import com.example.solimus.dtos.owner.charge.InitierPaiementChargeDTO;
 import com.example.solimus.dtos.owner.charge.*;
+import com.example.solimus.dtos.owner.dashboard.OwnerResidenceDTO;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.ChargeFrequency;
 import com.example.solimus.enums.ChargeType;
@@ -103,6 +104,34 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .totalPages(totalPages)
                 .totalElements(filtered.size())
                 .build();
+    }
+
+    // =========================================================================
+    // Liste des résidences du copropriétaire connecté (id + nom)
+    // =========================================================================
+    @Override
+    @Transactional(readOnly = true)
+    public List<OwnerResidenceDTO> getMyResidences() {
+
+        User currentOwner = getCurrentUser();
+
+        // Récupère tous les lots du copropriétaire
+        List<Property> properties = propertyRepository.findAllByOwnerId(currentOwner.getId());
+
+        // Récupère les résidences uniques (dédupliquées)
+        List<Residence> residences = properties.stream()
+                .map(Property::getResidence)
+                .filter(residence -> residence != null)
+                .distinct()
+                .toList();
+
+        // Convertit en DTO (id + nom uniquement)
+        return residences.stream()
+                .map(r -> OwnerResidenceDTO.builder()
+                        .id(r.getId())
+                        .name(r.getName())
+                        .build())
+                .toList();
     }
 
     // =========================================================================

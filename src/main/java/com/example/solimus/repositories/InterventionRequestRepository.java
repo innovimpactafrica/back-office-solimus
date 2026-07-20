@@ -406,6 +406,12 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
     // Compte les interventions d'un syndic ayant un statut précis
     long countByResidenceSyndicIdAndStatus(Long syndicId, InterventionStatus status);
 
+    // Compte les interventions d'un syndic créées dans une période donnée
+    long countByResidenceSyndicIdAndCreatedAtBetween(Long syndicId, LocalDateTime start, LocalDateTime end);
+
+    // Compte les interventions d'un syndic créées dans une période donnée, avec un statut précis
+    long countByResidenceSyndicIdAndCreatedAtBetweenAndStatus(Long syndicId, LocalDateTime start, LocalDateTime end, InterventionStatus status);
+
     // Dernière intervention urgente déclarée pour un syndic (non résolue ni annulée)
     @Query("SELECT i FROM InterventionRequest i WHERE i.residence.syndic.id = :syndicId " +
            "AND i.urgencyLevel = :urgency " +

@@ -47,8 +47,8 @@ public class DasboardServiceImpl implements DashboardService {
         // Récupère le syndic actuellement connecté
         User currentSyndic = getCurrentUser();
 
-        // Résout la résidence à utiliser : celle fournie, ou la plus récente créée par ce syndic si absente
-        Long resolvedResidenceId = resolveResidenceId(residenceId, currentSyndic);
+        // Résout la résidence à utiliser : celle fournie, ou null pour calculs globaux
+        Long resolvedResidenceId = (residenceId != null) ? resolveResidenceId(residenceId, currentSyndic) : null;
 
         // Récupère le wallet du syndic (peut être null si aucun wallet n'a encore été créé)
         SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId()).orElse(null);
@@ -57,23 +57,51 @@ public class DasboardServiceImpl implements DashboardService {
         // Crée le DTO de réponse vide
         MainDashboardDTO dto = new MainDashboardDTO();
 
-        // --- Trésorerie Totale (filtrée sur la résidence résolue) ---
+        // --- Trésorerie Totale (globale ou filtrée par résidence) ---
 
-        // Calcule le solde actuel du wallet, uniquement les transactions de cette résidence
-        BigDecimal treasuryBrute = syndicWalletTransactionRepository.sumAllByResidenceId(resolvedResidenceId, LocalDateTime.now());
-        dto.setTreasuryTotal(treasuryBrute);
+        BigDecimal treasuryBrute;
+        BigDecimal retraitsReserves;
+
+        if (resolvedResidenceId != null) {
+            // Mode filtré par résidence
+            treasuryBrute = syndicWalletTransactionRepository.sumAllByResidenceId(resolvedResidenceId, LocalDateTime.now());
+            retraitsReserves = (walletId != null)
+                    ? syndicWithdrawalRequestRepository.sumPendingAndValidatedByWalletAndResidence(walletId, resolvedResidenceId)
+                    : BigDecimal.ZERO;
+        } else {
+            // Mode global (toutes résidences)
+            treasuryBrute = calculerSoldeADate(walletId, LocalDateTime.now());
+            retraitsReserves = (walletId != null)
+                    ? syndicWithdrawalRequestRepository.sumPendingAndValidatedByWalletAndResidence(walletId, null)
+                    : BigDecimal.ZERO;
+        }
+
+        // Trésorerie disponible = transactions - retraits réservés
+        BigDecimal treasuryDisponible = treasuryBrute.subtract(retraitsReserves);
+        dto.setTreasuryTotal(treasuryDisponible);
 
         // Calcule la date de fin du mois précédent (= début du mois actuel)
         LocalDateTime finMoisPrecedent = LocalDate.now().withDayOfMonth(1).atStartOfDay();
-        // Calcule le solde qu'il y avait à cette date-là, pour cette résidence
-        BigDecimal treasuryMoisPrecedent = syndicWalletTransactionRepository.sumAllByResidenceId(resolvedResidenceId, finMoisPrecedent);
-        // Calcule la variation en pourcentage entre les deux soldes
+
+        // Calcule le solde qu'il y avait à cette date-là (global ou filtré)
+        BigDecimal treasuryMoisPrecedent;
+        if (resolvedResidenceId != null) {
+            treasuryMoisPrecedent = syndicWalletTransactionRepository.sumAllByResidenceId(resolvedResidenceId, finMoisPrecedent);
+        } else {
+            treasuryMoisPrecedent = calculerSoldeADate(walletId, finMoisPrecedent);
+        }
+
+        // Calcule la variation en pourcentage (uniquement sur les flux de transactions, sans les retraits réservés)
         dto.setTreasuryEvolutionPercent(calculerVariation(treasuryBrute, treasuryMoisPrecedent).doubleValue());
 
-        // --- Taux de Recouvrement + Impayés (filtrés sur la résidence résolue) ---
+        // --- Taux de Recouvrement + Impayés (globaux ou filtrés par résidence) ---
 
-        // Récupère tous les ChargeCallItem de cette résidence, toutes périodes confondues
-        List<ChargeCallItem> allItems = chargeCallItemRepository.findByChargeCallBudgetResidenceId(resolvedResidenceId);
+        List<ChargeCallItem> allItems;
+        if (resolvedResidenceId != null) {
+            allItems = chargeCallItemRepository.findByChargeCallBudgetResidenceId(resolvedResidenceId);
+        } else {
+            allItems = chargeCallItemRepository.findAllByBudgetSyndicId(currentSyndic.getId());
+        }
 
         // Additionne tous les montants dus
         BigDecimal totalDue = allItems.stream().map(ChargeCallItem::getQuotePart).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -92,8 +120,8 @@ public class DasboardServiceImpl implements DashboardService {
         dto.setUnpaidAmount(totalUnpaid);
 
         // Calcule les évolutions vs le mois dernier (comparaison mois complet vs mois complet précédent)
-        dto.setRecoveryRateEvolutionPercent(calculateRecoveryRateEvolution(resolvedResidenceId));
-        dto.setUnpaidEvolutionPercent(calculateUnpaidEvolution(resolvedResidenceId));
+        dto.setRecoveryRateEvolutionPercent(calculateRecoveryRateEvolution(resolvedResidenceId, currentSyndic.getId()));
+        dto.setUnpaidEvolutionPercent(calculateUnpaidEvolution(resolvedResidenceId, currentSyndic.getId()));
 
         // --- Résidences Gérées (TOUJOURS global syndic, indépendant de la résidence sélectionnée) ---
 
@@ -107,31 +135,57 @@ public class DasboardServiceImpl implements DashboardService {
                 .sum();
         dto.setTotalLotsCount(totalLots);
 
-        // --- Incidents Ouverts (filtrés sur la résidence résolue) ---
+        // --- Incidents Ouverts (globaux ou filtrés par résidence) ---
 
         // Liste des statuts considérés comme "ouverts" (tout sauf clôturé ou annulé)
         List<InterventionStatus> openStatuses = List.of(
                 InterventionStatus.PENDING, InterventionStatus.SYNDIC_ASSIGNED,
                 InterventionStatus.QUOTE_VALIDATED, InterventionStatus.STARTED, InterventionStatus.FINISHED
         );
-        // Compte les incidents ouverts de cette résidence
-        dto.setOpenIncidentsCount(interventionRequestRepository.countByResidenceIdAndStatusIn(resolvedResidenceId, openStatuses));
-        // Compte parmi eux ceux qui sont urgents
-        dto.setUrgentIncidentsCount(interventionRequestRepository
-                .countByResidenceIdAndStatusInAndUrgencyLevel(resolvedResidenceId, openStatuses, UrgencyLevel.URGENT));
 
-        // --- Interventions du Jour (filtrées sur la résidence résolue) ---
+        long openIncidentsCount;
+        long urgentIncidentsCount;
+
+        if (resolvedResidenceId != null) {
+            // Mode filtré par résidence
+            openIncidentsCount = interventionRequestRepository.countByResidenceIdAndStatusIn(resolvedResidenceId, openStatuses);
+            urgentIncidentsCount = interventionRequestRepository
+                    .countByResidenceIdAndStatusInAndUrgencyLevel(resolvedResidenceId, openStatuses, UrgencyLevel.URGENT);
+        } else {
+            // Mode global (toutes résidences)
+            openIncidentsCount = interventionRequestRepository.countByResidenceSyndicIdAndStatusIn(currentSyndic.getId(), openStatuses);
+            urgentIncidentsCount = interventionRequestRepository
+                    .countByResidenceSyndicIdAndStatusInAndUrgencyLevel(currentSyndic.getId(), openStatuses, UrgencyLevel.URGENT);
+        }
+
+        dto.setOpenIncidentsCount(openIncidentsCount);
+        dto.setUrgentIncidentsCount(urgentIncidentsCount);
+
+        // --- Interventions du Jour (globales ou filtrées par résidence) ---
 
         // Calcule les bornes de la journée actuelle (00h00 à 23h59)
         LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
         LocalDateTime endOfToday = startOfToday.plusDays(1);
 
-        // Compte le nombre d'interventions créées aujourd'hui, pour cette résidence
-        dto.setTodayInterventionsCount(interventionRequestRepository
-                .countByResidenceIdAndCreatedAtBetween(resolvedResidenceId, startOfToday, endOfToday));
-        // Compte parmi elles celles encore en attente de devis (considérées "planifiées")
-        dto.setPlannedInterventionsCount(interventionRequestRepository
-                .countByResidenceIdAndCreatedAtBetweenAndStatus(resolvedResidenceId, startOfToday, endOfToday, InterventionStatus.PENDING));
+        long todayInterventionsCount;
+        long plannedInterventionsCount;
+
+        if (resolvedResidenceId != null) {
+            // Mode filtré par résidence
+            todayInterventionsCount = interventionRequestRepository
+                    .countByResidenceIdAndCreatedAtBetween(resolvedResidenceId, startOfToday, endOfToday);
+            plannedInterventionsCount = interventionRequestRepository
+                    .countByResidenceIdAndCreatedAtBetweenAndStatus(resolvedResidenceId, startOfToday, endOfToday, InterventionStatus.PENDING);
+        } else {
+            // Mode global (toutes résidences)
+            todayInterventionsCount = interventionRequestRepository
+                    .countByResidenceSyndicIdAndCreatedAtBetween(currentSyndic.getId(), startOfToday, endOfToday);
+            plannedInterventionsCount = interventionRequestRepository
+                    .countByResidenceSyndicIdAndCreatedAtBetweenAndStatus(currentSyndic.getId(), startOfToday, endOfToday, InterventionStatus.PENDING);
+        }
+
+        dto.setTodayInterventionsCount(todayInterventionsCount);
+        dto.setPlannedInterventionsCount(plannedInterventionsCount);
 
         // Retourne le DTO complet avec toutes les 6 cards remplies
         return dto;
@@ -334,7 +388,7 @@ public class DasboardServiceImpl implements DashboardService {
     }
 
     // Calcule l'évolution du taux de recouvrement entre le mois dernier complet et le mois d'avant
-    private Double calculateRecoveryRateEvolution(Long residenceId) {
+    private Double calculateRecoveryRateEvolution(Long residenceId, Long syndicId) {
 
         // Calcule les bornes de dates du mois dernier complet
         LocalDate now = LocalDate.now();
@@ -344,19 +398,26 @@ public class DasboardServiceImpl implements DashboardService {
         LocalDate startMonthBefore = startLastMonth.minusMonths(1);
 
         // Calcule le taux de recouvrement pour chacune des deux périodes
-        double lastMonthRate = getRecoveryRateForPeriod(residenceId, startLastMonth, endLastMonth);
-        double monthBeforeRate = getRecoveryRateForPeriod(residenceId, startMonthBefore, startLastMonth);
+        double lastMonthRate = getRecoveryRateForPeriod(residenceId, syndicId, startLastMonth, endLastMonth);
+        double monthBeforeRate = getRecoveryRateForPeriod(residenceId, syndicId, startMonthBefore, startLastMonth);
 
         // Retourne la différence en points de pourcentage
         return lastMonthRate - monthBeforeRate;
     }
 
     // Calcule le taux de recouvrement sur une période donnée
-    private double getRecoveryRateForPeriod(Long residenceId, LocalDate start, LocalDate end) {
-        // Récupère les items de la résidence créés dans cette période précise
-        List<ChargeCallItem> items = chargeCallItemRepository
-                .findByChargeCallBudgetResidenceIdAndChargeCallCreatedAtBetween(
-                        residenceId, start.atStartOfDay(), end.atStartOfDay());
+    private double getRecoveryRateForPeriod(Long residenceId, Long syndicId, LocalDate start, LocalDate end) {
+        // Récupère les items de la résidence ou du syndic créés dans cette période précise
+        List<ChargeCallItem> items;
+        if (residenceId != null) {
+            items = chargeCallItemRepository
+                    .findByChargeCallBudgetResidenceIdAndChargeCallCreatedAtBetween(
+                            residenceId, start.atStartOfDay(), end.atStartOfDay());
+        } else {
+            items = chargeCallItemRepository
+                    .findByChargeCallBudgetSyndicIdAndChargeCallCreatedAtBetween(
+                            syndicId, start.atStartOfDay(), end.atStartOfDay());
+        }
 
         // Additionne les montants dus et payés sur cette période
         BigDecimal due = items.stream().map(ChargeCallItem::getQuotePart).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -368,7 +429,7 @@ public class DasboardServiceImpl implements DashboardService {
     }
 
     // Calcule l'évolution du montant impayé entre le mois dernier complet et le mois d'avant
-    private Double calculateUnpaidEvolution(Long residenceId) {
+    private Double calculateUnpaidEvolution(Long residenceId, Long syndicId) {
 
         // Calcule les bornes de dates du mois dernier complet et du mois d'avant
         LocalDate now = LocalDate.now();
@@ -377,19 +438,26 @@ public class DasboardServiceImpl implements DashboardService {
         LocalDate startMonthBefore = startLastMonth.minusMonths(1);
 
         // Calcule le montant impayé pour chacune des deux périodes
-        BigDecimal lastMonthUnpaid = getUnpaidForPeriod(residenceId, startLastMonth, endLastMonth);
-        BigDecimal monthBeforeUnpaid = getUnpaidForPeriod(residenceId, startMonthBefore, startLastMonth);
+        BigDecimal lastMonthUnpaid = getUnpaidForPeriod(residenceId, syndicId, startLastMonth, endLastMonth);
+        BigDecimal monthBeforeUnpaid = getUnpaidForPeriod(residenceId, syndicId, startMonthBefore, startLastMonth);
 
         // Retourne la variation en pourcentage entre les deux périodes
         return calculerVariation(lastMonthUnpaid, monthBeforeUnpaid).doubleValue();
     }
 
     // Calcule le montant impayé sur une période donnée
-    private BigDecimal getUnpaidForPeriod(Long residenceId, LocalDate start, LocalDate end) {
-        // Récupère les items de la résidence créés dans cette période précise
-        List<ChargeCallItem> items = chargeCallItemRepository
-                .findByChargeCallBudgetResidenceIdAndChargeCallCreatedAtBetween(
-                        residenceId, start.atStartOfDay(), end.atStartOfDay());
+    private BigDecimal getUnpaidForPeriod(Long residenceId, Long syndicId, LocalDate start, LocalDate end) {
+        // Récupère les items de la résidence ou du syndic créés dans cette période précise
+        List<ChargeCallItem> items;
+        if (residenceId != null) {
+            items = chargeCallItemRepository
+                    .findByChargeCallBudgetResidenceIdAndChargeCallCreatedAtBetween(
+                            residenceId, start.atStartOfDay(), end.atStartOfDay());
+        } else {
+            items = chargeCallItemRepository
+                    .findByChargeCallBudgetSyndicIdAndChargeCallCreatedAtBetween(
+                            syndicId, start.atStartOfDay(), end.atStartOfDay());
+        }
 
         // Additionne les soldes restants de tous ces items
         return items.stream().map(ChargeCallItem::getRemainingAmount).reduce(BigDecimal.ZERO, BigDecimal::add);

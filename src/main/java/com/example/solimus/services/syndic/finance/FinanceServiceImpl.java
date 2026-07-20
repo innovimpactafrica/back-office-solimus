@@ -30,6 +30,7 @@ public class FinanceServiceImpl implements FinanceService {
     private final UserRepository userRepository;
     private final SyndicWalletRepository syndicWalletRepository;
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
+    private final SyndicWithdrawalRequestRepository syndicWithdrawalRequestRepository;
     private final ChargeCallPaymentRepository chargeCallPaymentRepository;
     private final ChargeCallItemRepository chargeCallItemRepository;
     private final ChargeCallRepository chargeCallRepository;
@@ -56,9 +57,18 @@ public class FinanceServiceImpl implements FinanceService {
 
         // Calcule le solde actuel du wallet (somme de toutes les transactions jusqu'à maintenant)
         BigDecimal treasuryBrute = calculerSoldeADate(walletId, LocalDateTime.now());
-        dto.setTreasuryGlobal(treasuryBrute);
+
+        // Retraits déjà réservés (PENDING + COMPLETED) : cet argent ne doit plus être disponible
+        BigDecimal retraitsReserves = walletId != null
+                ? syndicWithdrawalRequestRepository.sumPendingAndValidatedByWalletAndResidence(walletId, null)
+                : BigDecimal.ZERO;
+
+        // Trésorerie disponible = transactions - retraits réservés
+        BigDecimal treasuryDisponible = treasuryBrute.subtract(retraitsReserves);
+        dto.setTreasuryGlobal(treasuryDisponible);
 
         // Calcule le solde qu'il y avait au début du mois en cours, pour comparer l'évolution
+        // (variation calculée uniquement sur les flux de transactions, sans les retraits réservés)
         LocalDateTime finMoisPrecedent = LocalDate.now().withDayOfMonth(1).atStartOfDay();
         BigDecimal treasuryMoisPrecedent = calculerSoldeADate(walletId, finMoisPrecedent);
         dto.setTreasuryEvolutionPercent(calculerVariation(treasuryBrute, treasuryMoisPrecedent).doubleValue());

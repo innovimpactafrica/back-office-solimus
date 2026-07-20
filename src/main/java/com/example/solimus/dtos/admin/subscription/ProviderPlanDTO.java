@@ -1,4 +1,4 @@
-package com.example.solimus.dtos.admin.settingsAdmin;
+package com.example.solimus.dtos.admin.subscription;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

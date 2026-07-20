@@ -9,6 +9,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -21,6 +23,9 @@ public interface ExceptionalCallPaymentRepository extends JpaRepository<Exceptio
     // Récupère les paiements d'un appel exceptionnel, filtrés par statut, paginés directement en base
     Page<ExceptionalCallPayment> findByExceptionalCallItemExceptionalCallIdAndStatus(
             Long exceptionalCallId, PaymentStatus status, Pageable pageable);
+
+    // Récupère les paiements expirés (PENDING depuis plus de X minutes)
+    List<ExceptionalCallPayment> findByStatusAndCreatedAtBefore(PaymentStatus status, LocalDateTime createdAt);
 
     // Supprime tous les paiements d'un appel exceptionnel via JPQL
     @Query("DELETE FROM ExceptionalCallPayment ecp WHERE ecp.exceptionalCallItem.exceptionalCall.id = :exceptionalCallId")

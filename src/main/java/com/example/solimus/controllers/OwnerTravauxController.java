@@ -1,6 +1,8 @@
 package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.intervention.CoOwnerQuoteCardDTO;
+
+import com.example.solimus.dtos.owner.dashboard.OwnerResidenceDTO;
 import com.example.solimus.dtos.syndic.travaux.PayDepositDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.owner.travaux.ValiderTravauxDTO;
@@ -19,6 +21,7 @@ import com.example.solimus.enums.InterventionManagementMode;
 import com.example.solimus.enums.InterventionStatus;
 import com.example.solimus.enums.UrgencyLevel;
 import com.example.solimus.services.minio.MinioService;
+import com.example.solimus.services.owner.charge.OwnerChargeService;
 import com.example.solimus.services.owner.travaux.ownerTraveauxService;
 import com.example.solimus.services.syndic.settings.SyndicSettingsService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -46,6 +49,7 @@ public class OwnerTravauxController {
     private final SyndicSettingsService syndicParametreService;
     private final ownerTraveauxService ownerTraveauxService;
     private final MinioService minioService;
+    private final OwnerChargeService ownerChargeService;
 
     @Operation(summary = "Lister toutes les spécialités disponibles")
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
@@ -57,8 +61,8 @@ public class OwnerTravauxController {
     @Operation(summary = "Lister mes résidences")
     @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/residences")
-    public ResponseEntity<List<ResidenceDTO>> getMyResidences() {
-        return ResponseEntity.ok(ownerTraveauxService.getMyResidences());
+    public ResponseEntity<List<OwnerResidenceDTO>> getMyResidences() {
+        return ResponseEntity.ok(ownerChargeService.getMyResidences());
     }
 
     @Operation(summary = "Lister les parties communes d'une résidence")

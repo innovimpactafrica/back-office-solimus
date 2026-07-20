@@ -110,7 +110,7 @@ public class SolimusPaymentBridgeController {
     public PaymentBridgeDTO getBridgeSubscription(@PathVariable String transactionRef) {
 
         // On recherche la Subscription créée en PENDING par le service initiatePayment
-        Subscription subscription = subscriptionRepository
+        ProviderSubscription subscription = subscriptionRepository
                 .findByTransactionRef(transactionRef)
                 // Si rien n'est trouvé, la référence envoyée par le front est invalide ou expirée
                 .orElseThrow(() -> new ResourceNotFoundException("Abonnement introuvable"));

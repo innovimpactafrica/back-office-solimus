@@ -29,7 +29,7 @@ import java.time.LocalDateTime;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class Subscription {
+public class ProviderSubscription {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

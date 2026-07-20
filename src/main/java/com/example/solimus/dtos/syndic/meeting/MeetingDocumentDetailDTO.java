@@ -26,7 +26,7 @@ public class MeetingDocumentDetailDTO {
     private LocalDate documentDate;
     private Long fileSizeKb;
     private String format;           // extension du fichier (ex: "PDF")
-    private String uploadedByName;   // ex: "Syndic - Abdou Diop"
+    private String uploadedByName;   // ex: "Syndic -Diarra"
     private LocalDateTime createdAt;
 
     // ----- Infos réunion parente -----
@@ -38,7 +38,7 @@ public class MeetingDocumentDetailDTO {
     private LocalDate meetingDate;
     private LocalTime meetingStartTime;
     private String location;
-    private String organizerName;      // ex: "Syndic - Abdou Diop"
+    private String organizerName;      // ex: "Syndic - Diarra"
 
     // ----- Présence et quorum de la réunion parente -----
     private long convoquesCount;

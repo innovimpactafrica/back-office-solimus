@@ -23,6 +23,18 @@ public interface SyndicWithdrawalRequestRepository extends JpaRepository<SyndicW
            "WHERE r.wallet.id = :walletId AND r.status IN (com.example.solimus.enums.WithdrawalStatus.PENDING, com.example.solimus.enums.WithdrawalStatus.COMPLETED)")
     BigDecimal sumPendingAndValidatedByWallet(@Param("walletId") Long walletId);
 
+    /**
+     * Somme des retraits en cours (PENDING) ou validés (COMPLETED) pour un wallet,
+     * optionnellement filtré par résidence.
+     * Utilisé pour calculer la trésorerie disponible réelle (transactions - retraits réservés)
+     */
+    @Query("SELECT COALESCE(SUM(r.amount), 0) FROM SyndicWithdrawalRequest r " +
+           "WHERE r.wallet.id = :walletId " +
+           "AND r.status IN (com.example.solimus.enums.WithdrawalStatus.PENDING, com.example.solimus.enums.WithdrawalStatus.COMPLETED) " +
+           "AND (:residenceId IS NULL OR r.residence.id = :residenceId)")
+    BigDecimal sumPendingAndValidatedByWalletAndResidence(@Param("walletId") Long walletId,
+                                                          @Param("residenceId") Long residenceId);
+
     /** Somme des retraits COMPLETED (validés) liés à un poste budgétaire précis.
       Pas besoin de filtrer par résidence/année en plus : chaque BudgetItem appartient
       à un seul Budget (lui-même unique par résidence+année), donc budgetItemId identifie

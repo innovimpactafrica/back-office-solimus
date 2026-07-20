@@ -4,6 +4,7 @@ import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
 import com.example.solimus.dtos.owner.dashboard.OwnerDashboardHeaderDTO;
 import com.example.solimus.dtos.owner.dashboard.OwnerDashboardKpiDTO;
 import com.example.solimus.dtos.owner.dashboard.OwnerPendingChargeDTO;
+import com.example.solimus.dtos.owner.dashboard.OwnerPropertySelectorDTO;
 import com.example.solimus.dtos.owner.meeting.OwnerMeetingCardDTO;
 import com.example.solimus.services.owner.dashboard.CoOwnerDashboardService;
 import io.swagger.v3.oas.annotations.Operation;

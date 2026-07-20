@@ -1,4 +1,4 @@
-package com.example.solimus.dtos.admin.settingsAdmin;
+package com.example.solimus.dtos.admin.subscription;
 
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;

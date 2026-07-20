@@ -177,7 +177,7 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
         User currentProvider = getCurrentUser();
 
         // 2. Récupérer l'abonnement le plus récent (pour la carte actuelle)
-        Optional<Subscription> latestSubscription = subscriptionRepository
+        Optional<ProviderSubscription> latestSubscription = subscriptionRepository
                 .findFirstByProviderIdOrderByEndDateDesc(currentProvider.getId());
 
         // 3. Si aucun abonnement, retourner un DTO vide (pas d'abonnement)
@@ -194,7 +194,7 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
         }
 
         // 4. Construire la carte de l'abonnement actuel
-        Subscription currentSubscription = latestSubscription.get();
+        ProviderSubscription currentSubscription = latestSubscription.get();
 
         // Nom du plan d'abonnement (ex: "Premium"), avec fallback si null
         String planName = currentSubscription.getProviderPlan() != null
@@ -213,7 +213,7 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
                 : null;
 
         // 5. Récupérer l'historique des paiements (paginé)
-        Page<Subscription> subscriptionsPage = subscriptionRepository
+        Page<ProviderSubscription> subscriptionsPage = subscriptionRepository
                 .findByProviderIdOrderByStartDateDesc(currentProvider.getId(), pageable);
 
         // 6. Construire la page d'historique

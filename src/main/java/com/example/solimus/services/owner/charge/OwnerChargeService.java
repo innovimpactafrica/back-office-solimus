@@ -4,7 +4,10 @@ import com.example.solimus.dtos.owner.charge.ChargePaymentReceiptDTO;
 import com.example.solimus.dtos.owner.charge.ChargePaymentResponseDTO;
 import com.example.solimus.dtos.owner.charge.InitierPaiementChargeDTO;
 import com.example.solimus.dtos.owner.charge.*;
+import com.example.solimus.dtos.owner.dashboard.OwnerResidenceDTO;
 import com.example.solimus.enums.ChargeType;
+
+import java.util.List;
 
 public interface OwnerChargeService {
 
@@ -13,6 +16,11 @@ public interface OwnerChargeService {
      * avec recherche, filtre par type, statut et résidence — tous optionnels.
      */
     MyChargeListResponse getMyCharges(String search, ChargeType type, String status, Long residenceId, int page, int size);
+
+    /**
+     * Liste des résidences du copropriétaire connecté (id + nom)
+     */
+    List<OwnerResidenceDTO> getMyResidences();
 
     /**
      * Détail complet d'une charge précise (courante ou exceptionnelle selon le type fourni).

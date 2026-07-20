@@ -17,7 +17,6 @@ import com.example.solimus.enums.IncidentLocationType;
 import com.example.solimus.enums.InitiatedBy;
 import com.example.solimus.enums.InterventionManagementMode;
 import com.example.solimus.enums.InterventionStatus;
-import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.QuoteStatus;
 import com.example.solimus.enums.WalletTransactionCategory;
 import com.example.solimus.exceptions.BadRequestException;
@@ -42,7 +41,6 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 
@@ -829,7 +827,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         List<ProviderProfile> abonnesActifs = candidates.stream()
                 .filter(profile -> subscriptionRepository
                         .findFirstByProviderIdOrderByEndDateDesc(profile.getUser().getId())
-                        .map(Subscription::isCurrentlyActive)
+                        .map(ProviderSubscription::isCurrentlyActive)
                         .orElse(false))
                 .toList();
 

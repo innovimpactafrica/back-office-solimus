@@ -1,10 +1,7 @@
 package com.example.solimus.controllers;
 
-import com.example.solimus.dtos.owner.charge.ChargePaymentReceiptDTO;
-import com.example.solimus.dtos.owner.charge.ChargePaymentResponseDTO;
-import com.example.solimus.dtos.owner.charge.InitierPaiementChargeDTO;
-import com.example.solimus.dtos.owner.charge.MyChargeDetailDTO;
-import com.example.solimus.dtos.owner.charge.MyChargeListResponse;
+import com.example.solimus.dtos.owner.charge.*;
+import com.example.solimus.dtos.owner.dashboard.OwnerResidenceDTO;
 import com.example.solimus.enums.ChargeType;
 import com.example.solimus.services.owner.charge.OwnerChargeService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/coowner/charges")
@@ -37,6 +36,13 @@ public class OwnerChargeController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(chargeService.getMyCharges(search, type, status, residenceId, page, size));
+    }
+
+    @Operation(summary = "Lister mes résidences", description = "Liste des résidences où le copropriétaire a au moins un lot")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    @GetMapping("/residences")
+    public ResponseEntity<List<OwnerResidenceDTO>> getMyResidences() {
+        return ResponseEntity.ok(chargeService.getMyResidences());
     }
 
     // =========================================================================
