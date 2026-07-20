@@ -25,6 +25,9 @@ public class ProviderDashboardDTO {
     // URL de la photo de profil du prestataire
     private String profilePhotoUrl;
 
+    // Nombre de notifications non lues
+    private long unreadNotificationsCount;
+
     // ===== COMPTEURS PRINCIPAUX (KPIs) =====
 
     // Nombre total de demandes d'intervention reçues

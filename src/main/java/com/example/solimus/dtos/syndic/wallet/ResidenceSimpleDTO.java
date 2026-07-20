@@ -1,4 +1,4 @@
-package com.example.solimus.dtos.dashboard;
+package com.example.solimus.dtos.syndic.wallet;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -9,9 +9,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CoOwnerPropertyDTO {
-
+public class ResidenceSimpleDTO {
     private Long id;
-    private String reference;
-    private String residenceName;
+    private String name;
 }

@@ -61,4 +61,14 @@ public interface ResidenceRepository extends JpaRepository<Residence, Long> {
 
     // Récupère la résidence la plus récemment créée pour ce syndic (basé sur createdAt)
     Optional<Residence> findFirstBySyndicIdOrderByCreatedAtDesc(Long syndicId);
+
+    // Récupère les résidences de ce syndic, triées de la plus récemment active
+    // à la moins récemment active, en se basant sur la date de leur DERNIÈRE
+    // transaction wallet (via une sous-requête qui calcule MAX(transactionDate)
+    // pour chaque résidence). Utilisée pour le widget "Résidences actives"
+    // de la Vue d'ensemble du portefeuille financier.
+    @Query("SELECT r FROM Residence r " +
+           "WHERE r.syndic.id = :syndicId " +
+           "ORDER BY (SELECT MAX(t.transactionDate) FROM SyndicWalletTransaction t WHERE t.residence.id = r.id) DESC")
+    List<Residence> findMostRecentlyActiveResidences(@Param("syndicId") Long syndicId, Pageable pageable);
 }

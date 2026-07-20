@@ -58,6 +58,12 @@ public class SyndicWalletTransaction {
     @Column(length = 255)
     private String label;
 
+    // Nom du bénéficiaire/émetteur, figé au moment de la transaction
+    // (copropriétaire pour CHARGES, prestataire pour TRAVAUX)
+    // Évite de perdre l'info si le copropriétaire/prestataire est supprimé plus tard
+    @Column(length = 255)
+    private String beneficiaryName;
+
     // Mode de paiement en texte libre, snapshotté au moment de la création
     // Ex: "Virement", "Prélèvement", "Carte Bancaire"
     @Column(length = 100)

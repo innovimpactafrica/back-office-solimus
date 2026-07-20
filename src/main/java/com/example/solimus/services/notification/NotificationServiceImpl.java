@@ -1,11 +1,12 @@
 package com.example.solimus.services.notification;
 
+import com.example.solimus.entities.Notification;
 import com.example.solimus.entities.User;
 import com.example.solimus.exceptions.ResourceNotFoundException;
+import com.example.solimus.repositories.NotificationRepository;
 import com.example.solimus.repositories.UserRepository;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.Message;
-import com.google.firebase.messaging.Notification;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -15,10 +16,7 @@ import org.springframework.stereotype.Service;
 public class NotificationServiceImpl implements NotificationService{
 
     private final UserRepository userRepository;
-
-    //---------------------------------------------------
-    // Gestion Notification
-    //----------------------------------------------------
+    private final NotificationRepository notificationRepository; // notre nouvelle entité
 
     @Override
     public void saveFcmToken(String fcmToken) {
@@ -36,30 +34,37 @@ public class NotificationServiceImpl implements NotificationService{
     @Override
     public void sendPush(Long userId, String title, String body) {
 
-        // cherche l'utilisateur cible en base
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
 
-        // vérifie que l'utilisateur a bien un token FCM enregistré
+        // ÉTAPE 1 : on enregistre TOUJOURS la notification en base, même si le push Firebase échoue
+        // (ça reste utile pour l'historique et le compteur, peu importe si le téléphone est connecté ou pas)
+       Notification persistedNotification = new Notification();
+        persistedNotification.setUser(user);
+        persistedNotification.setTitle(title);
+        persistedNotification.setBody(body);
+        persistedNotification.setRead(false);
+        notificationRepository.save(persistedNotification);
+
+        // ÉTAPE 2 : si pas de token FCM, on s'arrête là (déjà enregistré en base, mais pas de push physique)
         if (user.getFcmToken() == null) {
-            return; // si pas de token, on ne fait rien — l'utilisateur n'a pas encore connecté l'app mobile
+            return;
         }
 
-        Notification notification = Notification.builder() // on construit la notification
-                .setTitle(title) // titre qui apparaîtra en haut de la notification sur le téléphone
-                .setBody(body) // corps du message
-                .build(); // finalise la construction
+        // ÉTAPE 3 : construit et envoie le push Firebase (classe Notification de Firebase, différente de la nôtre)
+        com.google.firebase.messaging.Notification firebaseNotification = com.google.firebase.messaging.Notification.builder()
+                .setTitle(title)
+                .setBody(body)
+                .build();
 
-        Message message = Message.builder() // on construit le message complet à envoyer à Firebase
-                .setToken(user.getFcmToken()) // on cible le téléphone de cet utilisateur via son token
-                .setNotification(notification) // on attache la notification construite juste au-dessus
-                .build(); // finalise la construction
+        Message message = Message.builder()
+                .setToken(user.getFcmToken())
+                .setNotification(firebaseNotification)
+                .build();
 
         try {
-            FirebaseMessaging.getInstance().send(message); // envoie le message à Firebase — Firebase le livre sur le téléphone
+            FirebaseMessaging.getInstance().send(message);
         } catch (Exception e) {
-            // on log l'erreur mais on ne bloque pas le reste du traitement
-            // ex: si le token est expiré, on ne veut pas faire planter toute la demande d'intervention
             System.err.println("Erreur envoi push userId=" + userId + " : " + e.getMessage());
         }
     }

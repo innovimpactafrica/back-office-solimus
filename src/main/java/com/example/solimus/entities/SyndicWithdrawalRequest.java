@@ -57,6 +57,14 @@ public class SyndicWithdrawalRequest {
     @JoinColumn(name = "budget_item_id")
     private BudgetItem budgetItem;
 
+    // Compte de réception (RIB ou numéro de téléphone)
+    @Column(length = 255)
+    private String accountNumber;
+
+    // Motif du retrait
+    @Column(length = 500)
+    private String reason;
+
     // Statut de la demande
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

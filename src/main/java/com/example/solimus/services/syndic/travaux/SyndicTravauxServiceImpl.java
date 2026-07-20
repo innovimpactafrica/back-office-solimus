@@ -499,7 +499,12 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
         // Wallet SOLIMUS → débit interne synchrone + crédit direct du wallet prestataire
         SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId())
-                .orElseThrow(() -> new BadRequestException("Aucun wallet trouvé pour ce syndic"));
+                .orElseGet(() -> {
+                    SyndicWallet newWallet = SyndicWallet.builder()
+                            .syndic(currentSyndic)
+                            .build();
+                    return syndicWalletRepository.save(newWallet);
+                });
 
         // Vérifie que le solde est suffisant
         BigDecimal soldeDisponible = syndicWalletTransactionRepository.sumTransactionsUpTo(wallet.getId(), LocalDateTime.now());
@@ -514,6 +519,10 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         transaction.setCategory(WalletTransactionCategory.TRAVAUX);
         transaction.setAmount(dto.getMontant().negate());
         transaction.setLabel("Acompte — " + request.getTitle());
+        transaction.setBeneficiaryName(
+                request.getSelectedProvider() != null
+                        ? request.getSelectedProvider().getFirstName() + " " + request.getSelectedProvider().getLastName()
+                        : "Prestataire");
         transaction.setTransactionDate(LocalDateTime.now());
         syndicWalletTransactionRepository.save(transaction);
 
@@ -604,6 +613,10 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             throw new BadRequestException("Les travaux ne sont pas encore terminés");
         }
 
+        if (request.getStatus() == InterventionStatus.FINAL_VALIDATION) {
+            throw new BadRequestException("Budget déjà clôturé");
+        }
+
         BigDecimal solde = request.getRemainingAmount() != null ? request.getRemainingAmount() : BigDecimal.ZERO;
 
         if (solde.compareTo(BigDecimal.ZERO) <= 0) {
@@ -612,7 +625,12 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
         // Récupère le wallet syndic
         SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId())
-                .orElseThrow(() -> new BadRequestException("Aucun wallet trouvé pour ce syndic"));
+                .orElseGet(() -> {
+                    SyndicWallet newWallet = SyndicWallet.builder()
+                            .syndic(currentSyndic)
+                            .build();
+                    return syndicWalletRepository.save(newWallet);
+                });
 
         // Vérifie que le solde du wallet est suffisant
         BigDecimal soldeDisponible = syndicWalletTransactionRepository.sumTransactionsUpTo(wallet.getId(), LocalDateTime.now());
@@ -627,6 +645,10 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         transaction.setCategory(WalletTransactionCategory.TRAVAUX);
         transaction.setAmount(solde.negate());
         transaction.setLabel("Solde final — " + request.getTitle());
+        transaction.setBeneficiaryName(
+                request.getSelectedProvider() != null
+                        ? request.getSelectedProvider().getFirstName() + " " + request.getSelectedProvider().getLastName()
+                        : "Prestataire");
         transaction.setTransactionDate(LocalDateTime.now());
         syndicWalletTransactionRepository.save(transaction);
 

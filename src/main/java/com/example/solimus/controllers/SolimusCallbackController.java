@@ -323,6 +323,7 @@ public class SolimusCallbackController {
                     transaction.setCategory(WalletTransactionCategory.CHARGES);
                     transaction.setAmount(paiement.getAmount());
                     transaction.setLabel("Paiement charges — " + item.getReference());
+                    transaction.setBeneficiaryName(paiement.getOwner().getFirstName() + " " + paiement.getOwner().getLastName());
                     transaction.setMode(paiement.getMethod() != null ? paiement.getMethod().name() : null);
                     transaction.setTransactionDate(LocalDateTime.now());
                     transaction.setReference(paiement.getReference());
@@ -403,6 +404,7 @@ public class SolimusCallbackController {
                     transaction.setCategory(WalletTransactionCategory.CHARGES);
                     transaction.setAmount(paiement.getAmount());
                     transaction.setLabel("Paiement charge exceptionnelle — " + item.getExceptionalCall().getTitle());
+                    transaction.setBeneficiaryName(paiement.getOwner().getFirstName() + " " + paiement.getOwner().getLastName());
                     transaction.setMode(paiement.getMethod() != null ? paiement.getMethod().name() : null);
                     transaction.setTransactionDate(LocalDateTime.now());
                     transaction.setReference(paiement.getReference());

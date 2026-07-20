@@ -751,7 +751,7 @@ public class ChargeServiceImpl implements ChargeService {
         BigDecimal totalAmount = budget.getBudgetTotal()
                 .divide(BigDecimal.valueOf(numberOfPeriods), 2, RoundingMode.HALF_UP);
 
-        // 7. Construire la répartition par copropriétaire
+        // 7. Construire la répartition par copropriétaire (calcul automatique selon tantièmes)
         List<Property> properties = propertyRepository.findByResidenceId(residenceId);
         List<CoOwnerQuotePartPreviewDTO> repartition = new ArrayList<>();
         BigDecimal totalTantieme = BigDecimal.ZERO;
@@ -854,45 +854,79 @@ public class ChargeServiceImpl implements ChargeService {
         List<Property> properties = propertyRepository.findByResidenceId(budget.getResidence().getId());
         List<ChargeCallItem> items = new ArrayList<>();
 
-        for (Property property : properties) {
-            if (property.getOwner() != null) {
-                // Vérifier si le copropriétaire a déjà un item
-                boolean alreadyAdded = false;
-                for (ChargeCallItem item : items) {
-                    if (item.getCoOwner().getId().equals(property.getOwner().getId())) {
-                        alreadyAdded = true;
-                        break;
+        if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
+            // Mode CUSTOM — le syndic a saisi manuellement chaque montant
+            if (dto.getCustomAmounts() == null || dto.getCustomAmounts().isEmpty()) {
+                throw new BadRequestException("Saisissez un montant pour chaque copropriétaire en mode Personnalisée");
+            }
+
+            for (CustomCoOwnerAmountDTO customAmount : dto.getCustomAmounts()) {
+                User coOwner = userRepository.findById(customAmount.getCoOwnerId())
+                        .orElseThrow(() -> new RuntimeException("Copropriétaire introuvable"));
+
+                // Snapshotter le tantième même en mode personnalisé, pour affichage/référence uniquement
+                BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
+                for (Property p : properties) {
+                    if (p.getOwner() != null && p.getOwner().getId().equals(customAmount.getCoOwnerId())) {
+                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO);
                     }
                 }
 
-                if (!alreadyAdded) {
-                    // Calculer le tantième total de ce copropriétaire (somme de ses lots)
-                    BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-                    for (Property p : properties) {
-                        if (p.getOwner() != null && p.getOwner().getId().equals(property.getOwner().getId())) {
-                            tantiemeCoOwner = tantiemeCoOwner.add(
-                                    p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO
-                            );
+                String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-" + "-" + coOwner.getId();
+
+                ChargeCallItem item = new ChargeCallItem();
+                item.setChargeCall(chargeCall);
+                item.setReference(referenceCCI);
+                item.setCoOwner(coOwner);
+                item.setTantieme(tantiemeCoOwner);
+                item.setQuotePart(customAmount.getAmount()); // montant saisi manuellement, pas calculé
+                item.setPaidAmount(BigDecimal.ZERO);
+                item.setRemainingAmount(customAmount.getAmount());
+
+                items.add(item);
+            }
+        } else {
+            // Mode OWNERSHIP_SHARES — calcul automatique selon les tantièmes
+            for (Property property : properties) {
+                if (property.getOwner() != null) {
+                    // Vérifier si le copropriétaire a déjà un item
+                    boolean alreadyAdded = false;
+                    for (ChargeCallItem item : items) {
+                        if (item.getCoOwner().getId().equals(property.getOwner().getId())) {
+                            alreadyAdded = true;
+                            break;
                         }
                     }
 
-                    // Calculer la quote-part (totalAmount * tantieme / 100)
-                    BigDecimal quotePart = totalAmount.multiply(tantiemeCoOwner)
-                            .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
+                    if (!alreadyAdded) {
+                        // Calculer le tantième total de ce copropriétaire (somme de ses lots)
+                        BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
+                        for (Property p : properties) {
+                            if (p.getOwner() != null && p.getOwner().getId().equals(property.getOwner().getId())) {
+                                tantiemeCoOwner = tantiemeCoOwner.add(
+                                        p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO
+                                );
+                            }
+                        }
 
-                    // Générer la référence
-                    String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-"  + "-" + property.getOwner().getId();
+                        // Calculer la quote-part (totalAmount * tantieme / 100)
+                        BigDecimal quotePart = totalAmount.multiply(tantiemeCoOwner)
+                                .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
 
-                    ChargeCallItem item = new ChargeCallItem();
-                    item.setChargeCall(chargeCall);
-                    item.setReference(referenceCCI);
-                    item.setCoOwner(property.getOwner());
-                    item.setTantieme(tantiemeCoOwner);
-                    item.setQuotePart(quotePart);
-                    item.setPaidAmount(BigDecimal.ZERO);
-                    item.setRemainingAmount(quotePart);
+                        // Générer la référence
+                        String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-"  + "-" + property.getOwner().getId();
 
-                    items.add(item);
+                        ChargeCallItem item = new ChargeCallItem();
+                        item.setChargeCall(chargeCall);
+                        item.setReference(referenceCCI);
+                        item.setCoOwner(property.getOwner());
+                        item.setTantieme(tantiemeCoOwner);
+                        item.setQuotePart(quotePart);
+                        item.setPaidAmount(BigDecimal.ZERO);
+                        item.setRemainingAmount(quotePart);
+
+                        items.add(item);
+                    }
                 }
             }
         }

@@ -1,6 +1,8 @@
 package com.example.solimus.services.provider;
 
 import com.example.solimus.dtos.provider.*;
+import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
+import com.example.solimus.dtos.owner.dashboard.NotificationRowDTO;
 import com.example.solimus.dtos.provider.profile.ProviderProfileDTO;
 import com.example.solimus.dtos.provider.profile.UpdateProviderProfileDTO;
 import com.example.solimus.dtos.provider.wallet.WalletDTO;
@@ -12,6 +14,7 @@ import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.EstimatedDelayRepository;
 import com.example.solimus.repositories.InterventionCommentRepository;
 import com.example.solimus.repositories.InterventionRequestRepository;
+import com.example.solimus.repositories.NotificationRepository;
 import com.example.solimus.repositories.QuoteRepository;
 import com.example.solimus.repositories.UserRepository;
 import com.example.solimus.repositories.ProviderWalletRepository;
@@ -29,6 +32,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,6 +62,7 @@ public class ProviderServiceImpl implements ProviderService {
     private final PaymentRepository paymentRepository;
     private final PasswordEncoder passwordEncoder;
     private final com.example.solimus.repositories.ProviderProfileRepository providerProfileRepository;
+    private final NotificationRepository notificationRepository;
 
 
     /**
@@ -69,13 +74,16 @@ public class ProviderServiceImpl implements ProviderService {
         // Étape 1 : Récupérer le prestataire connecté
         User currentProvider = getCurrentUser();
         Long providerId = currentProvider.getId();
-        com.example.solimus.entities.ProviderProfile profile = providerProfileRepository.findByUser(currentProvider)
+        ProviderProfile profile = providerProfileRepository.findByUser(currentProvider)
                 .orElseThrow(() -> new ResourceNotFoundException("Profil prestataire introuvable"));
 
         // Étape 2 : Récupérer les informations d'identité
         String companyName = profile.getCompanyName() != null ? profile.getCompanyName() : "Prestataire";
         String role = "Prestataire";
         String profilePhotoUrl = currentProvider.getProfilePhotoUrl();
+
+        // Étape 2.5 : Compter les notifications non lues
+        long unreadNotificationsCount = notificationRepository.countByUserAndReadFalse(currentProvider);
 
         // Étape 3 : Calculer les KPIs principaux du mois courant
         // - totalRequestsCount : Nombre total de demandes reçues (prestataire notifié)
@@ -175,6 +183,7 @@ public class ProviderServiceImpl implements ProviderService {
                 .companyName(companyName)                       // Nom de l'entreprise du prestataire
                 .role(role)                                     // Rôle du prestataire connecté ("Prestataire")
                 .profilePhotoUrl(profilePhotoUrl)               // URL de la photo de profil
+                .unreadNotificationsCount(unreadNotificationsCount) // Nombre de notifications non lues
                 .totalRequestsCount(totalRequestsCount)         // Total des demandes d'intervention reçues
                 .pendingQuotesCount(pendingQuotesCount)         // Devis envoyés en attente de validation par le syndic
                 .inProgressCount(inProgressCount)               // Interventions actuellement en cours de réalisation
@@ -191,6 +200,49 @@ public class ProviderServiceImpl implements ProviderService {
                 .totalInterventions(totalInterventions)         // Total cumulé de toutes ses interventions à vie
                 .variationHebdo(variationHebdo)                 // Tendance des revenus par rapport à la semaine d'avant (%)
                 .build();
+    }
+
+    // =========================================================================
+    // Liste paginée des notifications du prestataire connecté
+    // =========================================================================
+    @Override
+    @Transactional(readOnly = true)
+    public NotificationListResponseDTO getMyNotifications(int page, int size) {
+
+        User currentUser = getCurrentUser();
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Notification> notificationPage = notificationRepository.findByUserOrderByCreatedAtDesc(currentUser, pageable);
+
+        List<NotificationRowDTO> rows = new ArrayList<>();
+
+        for (Notification notification : notificationPage.getContent()) {
+            rows.add(NotificationRowDTO.builder()
+                    .id(notification.getId())
+                    .title(notification.getTitle())
+                    .body(notification.getBody())
+                    .read(notification.getRead())
+                    .createdAt(notification.getCreatedAt())
+                    .build());
+        }
+
+        return NotificationListResponseDTO.builder()
+                .totalCount(notificationPage.getTotalElements())
+                .notifications(rows)
+                .currentPage(notificationPage.getNumber())
+                .totalPages(notificationPage.getTotalPages())
+                .build();
+    }
+
+    // =========================================================================
+    // Marque toutes les notifications du prestataire connecté comme lues
+    // =========================================================================
+    @Override
+    @Transactional
+    public void markAllNotificationsAsRead() {
+
+        User currentUser = getCurrentUser();
+        notificationRepository.markAllAsReadByUser(currentUser);
     }
 
 

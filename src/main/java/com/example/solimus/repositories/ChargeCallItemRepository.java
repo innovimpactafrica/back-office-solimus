@@ -243,6 +243,26 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
            "AND i.chargeCall.dueDate < CURRENT_DATE")
     long countLateUnpaidBySyndicId(@Param("syndicId") Long syndicId);
 
+    // Additionne tout ce qui reste à payer pour ce copropriétaire, dans cette résidence,
+    // toutes périodes de charge confondues (peu importe le statut de chaque ChargeCall)
+    @Query("SELECT COALESCE(SUM(item.remainingAmount), 0) FROM ChargeCallItem item " +
+           "WHERE item.coOwner.id = :coOwnerId " +
+           "AND item.chargeCall.budget.residence.id = :residenceId " +
+           "AND item.remainingAmount > 0")
+    BigDecimal sumRemainingAmountByCoOwnerAndResidence(@Param("coOwnerId") Long coOwnerId,
+                                                      @Param("residenceId") Long residenceId);
+
+    // Charges en attente (remainingAmount > 0) de ce copropriétaire pour une résidence précise,
+    // triées par échéance la plus proche en premier
+    @Query("SELECT item FROM ChargeCallItem item " +
+           "WHERE item.coOwner.id = :coOwnerId " +
+           "AND item.chargeCall.budget.residence.id = :residenceId " +
+           "AND item.remainingAmount > 0 " +
+           "ORDER BY item.chargeCall.dueDate ASC")
+    List<ChargeCallItem> findPendingItemsByCoOwnerAndResidence(@Param("coOwnerId") Long coOwnerId,
+                                                              @Param("residenceId") Long residenceId,
+                                                              Pageable pageable);
+
     // Supprimer tous les items d'un appel de charges
     void deleteByChargeCallId(Long chargeCallId);
 }

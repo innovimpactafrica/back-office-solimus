@@ -1,9 +1,12 @@
 package com.example.solimus.enums;
 
+import lombok.Getter;
+
 /**
  * Statut agrégé d'un ChargeCall, calculé à partir du statut
  * de paiement de ses ChargeCallItem.
  */
+@Getter
 public enum ChargeCallStatus {
     SENT("Envoyé"),       // Aucun paiement reçu
     PARTIAL("Partiel"),   // Au moins un paiement, mais pas total
@@ -15,7 +18,4 @@ public enum ChargeCallStatus {
         this.label = label;
     }
 
-    public String getLabel() {
-        return label;
-    }
 }

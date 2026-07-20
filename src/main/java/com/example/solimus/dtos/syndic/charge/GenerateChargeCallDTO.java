@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Data
 @Builder
@@ -22,4 +23,7 @@ public class GenerateChargeCallDTO {
 
     @NotNull(message = "La date d'échéance est obligatoire")
     private LocalDate dueDate;
+
+    // Montants personnalisés pour chaque copropriétaire (mode CUSTOM uniquement)
+    private List<CustomCoOwnerAmountDTO> customAmounts;
 }

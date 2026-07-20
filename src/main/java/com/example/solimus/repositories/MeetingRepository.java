@@ -151,6 +151,16 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
                                                                     @Param("startOfMonth") LocalDate startOfMonth,
                                                                     @Param("endOfMonth") LocalDate endOfMonth);
 
+    // Réunions à venir d'un copropriétaire, limitées à une résidence précise
+    @Query("SELECT DISTINCT mp.meeting FROM MeetingParticipant mp " +
+           "WHERE mp.user.id = :userId " +
+           "AND mp.meeting.status = 'UPCOMING' " +
+           "AND mp.meeting.residence.id = :residenceId " +
+           "ORDER BY mp.meeting.meetingDate ASC")
+    List<Meeting> findUpcomingMeetingsByParticipantUserIdAndResidenceId(@Param("userId") Long userId,
+                                                                       @Param("residenceId") Long residenceId,
+                                                                       Pageable pageable);
+
     // Liste légère des réunions d'une résidence, pour un sélecteur
     @Query("SELECT new com.example.solimus.dtos.syndic.meeting.MeetingSummaryDTO(m.id, m.title, m.meetingDate) " +
             "FROM Meeting m WHERE m.residence.id = :residenceId ORDER BY m.meetingDate DESC")
