@@ -4,7 +4,6 @@ import com.example.solimus.dtos.owner.charge.ChargePaymentReceiptDTO;
 import com.example.solimus.dtos.owner.charge.ChargePaymentResponseDTO;
 import com.example.solimus.dtos.owner.charge.InitierPaiementChargeDTO;
 import com.example.solimus.dtos.owner.charge.*;
-import com.example.solimus.dtos.owner.dashboard.OwnerResidenceDTO;
 import com.example.solimus.enums.ChargeType;
 
 import java.util.List;

@@ -1,4 +1,4 @@
-package com.example.solimus.dtos.owner.dashboard;
+package com.example.solimus.dtos.owner.charge;
 
 import lombok.*;
 

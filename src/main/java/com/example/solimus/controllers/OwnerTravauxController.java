@@ -1,8 +1,7 @@
 package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.intervention.CoOwnerQuoteCardDTO;
-
-import com.example.solimus.dtos.owner.dashboard.OwnerResidenceDTO;
+import com.example.solimus.dtos.owner.charge.OwnerResidenceDTO;
 import com.example.solimus.dtos.syndic.travaux.PayDepositDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.owner.travaux.ValiderTravauxDTO;

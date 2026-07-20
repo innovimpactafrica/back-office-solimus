@@ -1,7 +1,6 @@
 package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.owner.charge.*;
-import com.example.solimus.dtos.owner.dashboard.OwnerResidenceDTO;
 import com.example.solimus.enums.ChargeType;
 import com.example.solimus.services.owner.charge.OwnerChargeService;
 import io.swagger.v3.oas.annotations.Operation;
