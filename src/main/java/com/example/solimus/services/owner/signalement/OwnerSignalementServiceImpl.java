@@ -165,6 +165,13 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
 
     // Construit une carte de signalement pour la liste
     private SignalementCardDTO buildSignalementCard(Signalement signalement) {
+        // Convertir les photos en URLs publiques directes
+        List<String> photoUrls = signalement.getPhotoUrls() != null
+                ? signalement.getPhotoUrls().stream()
+                        .map(minioService::getFileUrl)
+                        .toList()
+                : new ArrayList<>();
+
         return SignalementCardDTO.builder()
                 .id(signalement.getId())
                 .title(signalement.getTitle())
@@ -172,6 +179,7 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
                 .createdAt(signalement.getCreatedAt())
                 .urgencyLevel(signalement.getUrgencyLevel().name())
                 .status(signalement.getStatus().getLabel())
+                .photoUrls(photoUrls)
                 .build();
     }
 

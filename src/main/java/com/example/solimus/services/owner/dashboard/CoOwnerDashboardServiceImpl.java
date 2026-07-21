@@ -15,6 +15,7 @@ import com.example.solimus.entities.Property;
 import com.example.solimus.entities.Residence;
 import com.example.solimus.entities.User;
 import com.example.solimus.enums.ChargeFrequency;
+import com.example.solimus.enums.RepartitionMode;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
@@ -161,18 +162,24 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
         if (budgetOpt.isPresent()) {
             var budget = budgetOpt.get();
 
-            // Somme des tantièmes de ce copropriétaire dans cette résidence (tous ses lots confondus)
-            BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-            List<Property> properties = propertyRepository.findAllByOwnerId(currentUser.getId());
-            for (Property p : properties) {
-                if (p.getResidence().getId().equals(residenceId)) {
-                    tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme());
+            if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
+                // Mode CUSTOM : sommer les quoteParts des ChargeCallItem générés pour ce copropriétaire
+                annualCharge = chargeCallItemRepository.sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(
+                        currentUser.getId(), residenceId, currentYear);
+            } else {
+                // Mode OWNERSHIP_SHARES : calcul basé sur les tantièmes
+                BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
+                List<Property> properties = propertyRepository.findAllByOwnerId(currentUser.getId());
+                for (Property p : properties) {
+                    if (p.getResidence().getId().equals(residenceId)) {
+                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme());
+                    }
                 }
-            }
 
-            annualCharge = budget.getBudgetTotal()
-                    .multiply(tantiemeCoOwner)
-                    .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+                annualCharge = budget.getBudgetTotal()
+                        .multiply(tantiemeCoOwner)
+                        .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+            }
         }
 
         // ===== 2. RESTANT À PAYER =====

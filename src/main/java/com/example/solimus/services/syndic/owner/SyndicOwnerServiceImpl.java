@@ -911,18 +911,25 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
 
             var budget = budgetOpt.get();
 
-            // Calculer le tantième total du copropriétaire dans cette résidence
-            BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-            for (Property p : allProperties) {
-                if (p.getResidence().getId().equals(residenceId)) {
-                    tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme());
+            BigDecimal partResidence;
+            if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
+                // Mode CUSTOM : sommer les quoteParts des ChargeCallItem générés pour ce copropriétaire
+                partResidence = chargeCallItemRepository.sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(
+                        coOwnerId, residenceId, currentYear);
+            } else {
+                // Mode OWNERSHIP_SHARES : calcul basé sur les tantièmes
+                BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
+                for (Property p : allProperties) {
+                    if (p.getResidence().getId().equals(residenceId)) {
+                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme());
+                    }
                 }
-            }
 
-            // Calculer la part : budgetTotal * (tantiemeCoOwner / 100)
-            BigDecimal partResidence = budget.getBudgetTotal()
-                    .multiply(tantiemeCoOwner)
-                    .divide(BigDecimal.valueOf(100));
+                // Calculer la part : budgetTotal * (tantiemeCoOwner / 100)
+                partResidence = budget.getBudgetTotal()
+                        .multiply(tantiemeCoOwner)
+                        .divide(BigDecimal.valueOf(100));
+            }
 
             annualCharges = annualCharges.add(partResidence);
         }
@@ -1090,17 +1097,24 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         var budgetOpt = budgetRepository.findByResidenceIdAndAnnee(residenceId, currentYear);
         if (budgetOpt.isPresent()) {
             var budget = budgetOpt.get();
-            // Calculer le tantième total du copropriétaire dans cette résidence
-            BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-            List<Property> properties = propertyRepository.findAllByOwnerId(coOwnerId);
-            for (Property p : properties) {
-                if (p.getResidence().getId().equals(residenceId)) {
-                    tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme());
+
+            if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
+                // Mode CUSTOM : sommer les quoteParts des ChargeCallItem générés pour ce copropriétaire
+                annualCharges = chargeCallItemRepository.sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(
+                        coOwnerId, residenceId, currentYear);
+            } else {
+                // Mode OWNERSHIP_SHARES : calcul basé sur les tantièmes
+                BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
+                List<Property> properties = propertyRepository.findAllByOwnerId(coOwnerId);
+                for (Property p : properties) {
+                    if (p.getResidence().getId().equals(residenceId)) {
+                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme());
+                    }
                 }
+                annualCharges = budget.getBudgetTotal()
+                        .multiply(tantiemeCoOwner)
+                        .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
             }
-            annualCharges = budget.getBudgetTotal()
-                    .multiply(tantiemeCoOwner)
-                    .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
         }
 
         // 2. Calculer monthlyCharges
@@ -1394,9 +1408,20 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             return BigDecimal.ZERO;
         }
         var budget = budgetOpt.get();
-        return budget.getBudgetTotal()
-                .multiply(property.getTantieme())
-                .divide(BigDecimal.valueOf(100));
+
+        if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
+            // Mode CUSTOM : sommer les quoteParts des ChargeCallItem générés pour le propriétaire de ce lot
+            if (property.getOwner() != null) {
+                return chargeCallItemRepository.sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(
+                        property.getOwner().getId(), property.getResidence().getId(), currentYear);
+            }
+            return BigDecimal.ZERO;
+        } else {
+            // Mode OWNERSHIP_SHARES : calcul basé sur les tantièmes
+            return budget.getBudgetTotal()
+                    .multiply(property.getTantieme())
+                    .divide(BigDecimal.valueOf(100));
+        }
     }
 
     /**

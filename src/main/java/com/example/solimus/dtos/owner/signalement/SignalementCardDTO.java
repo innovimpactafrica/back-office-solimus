@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 //DTO d'une carte de signalement dans la liste "Mes signalements"
 @Data
@@ -15,4 +16,5 @@ public class SignalementCardDTO {
     private LocalDateTime createdAt;
     private String urgencyLevel;
     private String status;
+    private List<String> photoUrls;
 }
