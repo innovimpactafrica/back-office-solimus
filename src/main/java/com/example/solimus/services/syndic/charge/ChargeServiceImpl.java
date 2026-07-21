@@ -884,7 +884,7 @@ public class ChargeServiceImpl implements ChargeService {
                     }
                 }
 
-                String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-" + "-" + coOwner.getId();
+                String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-" + budget.getId() + "-" + coOwner.getId();
 
                 ChargeCallItem item = new ChargeCallItem();
                 item.setChargeCall(chargeCall);
@@ -925,7 +925,7 @@ public class ChargeServiceImpl implements ChargeService {
                                 .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
 
                         // Générer la référence
-                        String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-"  + "-" + property.getOwner().getId();
+                        String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-" + budget.getId() + "-" + property.getOwner().getId();
 
                         ChargeCallItem item = new ChargeCallItem();
                         item.setChargeCall(chargeCall);
@@ -1307,6 +1307,7 @@ public class ChargeServiceImpl implements ChargeService {
                 item.setCoOwner(coOwner);
                 item.setTantieme(tantiemeCoOwner);
                 item.setQuotePart(customAmount.getAmount()); // montant saisi manuellement, pas calculé
+                item.setReference("EXCI-" + exceptionalCall.getId() + "-" + coOwner.getId());
                 exceptionalCall.getItems().add(item);
             }
         } else {
@@ -1348,6 +1349,7 @@ public class ChargeServiceImpl implements ChargeService {
                 item.setCoOwner(property.getOwner());
                 item.setTantieme(tantiemeCoOwner);
                 item.setQuotePart(quotePart);
+                item.setReference("EXCI-" + exceptionalCall.getId() + "-" + property.getOwner().getId());
                 exceptionalCall.getItems().add(item);
 
                 alreadyAddedOwnerIds.add(ownerId);

@@ -224,6 +224,12 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         List<Property> propertiesToSave = new ArrayList<>();
         for (AddPropertyDTO dto : dtos) {
 
+            // Vérifier si la référence existe déjà pour cette résidence
+            if (propertyRepository.existsByReferenceAndResidenceId(dto.getReference(), residenceId)) {
+                throw new BadRequestException(
+                        "La référence '" + dto.getReference() + "' existe déjà pour cette résidence");
+            }
+
             Property property = new Property();
             property.setReference(dto.getReference());
             property.setBloc(dto.getBloc());
@@ -293,6 +299,12 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
         // Mettre à jour uniquement les champs non-null (mise à jour partielle)
         if (dto.getReference() != null) {
+            // Vérifier si la nouvelle référence existe déjà pour cette résidence (excluant le bien actuel)
+            if (propertyRepository.existsByReferenceAndResidenceId(dto.getReference(), residenceId)
+                    && !property.getReference().equals(dto.getReference())) {
+                throw new BadRequestException(
+                        "La référence '" + dto.getReference() + "' existe déjà pour cette résidence");
+            }
             property.setReference(dto.getReference());
         }
         if (dto.getBloc() != null) {

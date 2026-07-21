@@ -31,6 +31,9 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
     // Vérifier qu'un bien précis appartient à un propriétaire dans une résidence donnée
     boolean existsByIdAndOwnerIdAndResidenceId(Long id, Long ownerId, Long residenceId);
 
+    // Vérifier si une référence existe déjà pour une résidence
+    boolean existsByReferenceAndResidenceId(String reference, Long residenceId);
+
     // Compter les biens d'une résidence
     long countByResidenceId(Long residenceId);
 
