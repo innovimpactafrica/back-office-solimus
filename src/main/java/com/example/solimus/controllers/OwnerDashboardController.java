@@ -23,6 +23,12 @@ public class OwnerDashboardController {
 
     private final CoOwnerDashboardService dashboardService;
 
+    @Operation(summary = "Liste des biens du copropriétaire connecté (sélecteur 'Mon bien')")
+    @GetMapping("/dashboard/properties")
+    public ResponseEntity<List<OwnerPropertySelectorDTO>> getMyProperties() {
+        return ResponseEntity.ok(dashboardService.getMyProperties());
+    }
+
     @Operation(summary = "En-tête du dashboard (prénom, photo, compteur de notifications non lues)")
     @GetMapping("/dashboard/header")
     public ResponseEntity<OwnerDashboardHeaderDTO> getDashboardHeader() {
