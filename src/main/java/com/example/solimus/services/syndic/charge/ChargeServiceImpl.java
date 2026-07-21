@@ -814,7 +814,7 @@ public class ChargeServiceImpl implements ChargeService {
             throw new ForbiddenException("Ce budget ne vous appartient pas");
         }
 
-        // 3. Vérifier qu'aucun ChargeCall n'existe déjà pour cette période
+        // 3. Rérifier qu'aucun ChargeCall n'existe déjà pour cette période
         chargeCallRepository.findByBudgetIdAndYearAndPeriodNumber(budget.getId(), budget.getAnnee(), dto.getPeriodNumber())
                 .ifPresent(chargeCall -> {
                     throw new RuntimeException("Un appel de charges existe déjà pour cette période");
@@ -831,6 +831,13 @@ public class ChargeServiceImpl implements ChargeService {
             numberOfPeriods = 4;
         } else {
             numberOfPeriods = 12;
+        }
+
+        // Vérifier que le periodNumber ne dépasse pas le maximum autorisé
+        if (dto.getPeriodNumber() < 1 || dto.getPeriodNumber() > numberOfPeriods) {
+            throw new BadRequestException(
+                    "Le numéro de période doit être entre 1 et " + numberOfPeriods +
+                    " pour la fréquence " + frequency.name());
         }
 
         BigDecimal totalAmount = budget.getBudgetTotal()
@@ -2793,11 +2800,21 @@ public class ChargeServiceImpl implements ChargeService {
         String periodLabel;
         if (chargeCall.getFrequency() == ChargeFrequency.TRIMESTRIEL) {
             String[] trimestres = {"T1 (Jan-Mar)", "T2 (Avr-Jui)", "T3 (Juil-Sep)", "T4 (Oct-Déc)"};
-            periodLabel = trimestres[chargeCall.getPeriodNumber() - 1] + " " + chargeCall.getYear();
+            int index = chargeCall.getPeriodNumber() - 1;
+            if (index >= 0 && index < trimestres.length) {
+                periodLabel = trimestres[index] + " " + chargeCall.getYear();
+            } else {
+                periodLabel = "Période " + chargeCall.getPeriodNumber() + " " + chargeCall.getYear();
+            }
         } else {
             // Mensuel
             String[] mois = {"Jan", "Fév", "Mar", "Avr", "Mai", "Jui", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"};
-            periodLabel = mois[chargeCall.getPeriodNumber() - 1] + " " + chargeCall.getYear();
+            int index = chargeCall.getPeriodNumber() - 1;
+            if (index >= 0 && index < mois.length) {
+                periodLabel = mois[index] + " " + chargeCall.getYear();
+            } else {
+                periodLabel = "Période " + chargeCall.getPeriodNumber() + " " + chargeCall.getYear();
+            }
         }
         return periodLabel;
     }

@@ -75,13 +75,20 @@ public class SolimusCallbackController {
     // =========================================================================
 
     @GetMapping(value = "/redirect-success", produces = "text/html")
-    public String redirectChargePaymentSuccess(@RequestParam("num_command") String reference) {
+    public String redirectPaymentSuccess(@RequestParam("num_command") String reference) {
 
-        // Confirme le paiement CÔTÉ SERVEUR, avant tout le reste — c'est ça qui garantit la fiabilité
-        handleChargePaymentCallback(reference, true);
+        // Identifie le type de paiement via le prefixe de la reference,
+        // car TouchPay n'utilise qu'une seule URL de redirection pour tous les types
+        if (reference.startsWith("CPY-")) {
+            handleChargePaymentCallback(reference, true);
+        } else if (reference.startsWith("ECP-")) {
+            handleExceptionalChargePaymentCallback(reference, true);
+        } else if (reference.startsWith("SUB-")) {
+            handleSubscriptionCallback(reference, true);
+        } else if (reference.startsWith("PAY-") || reference.startsWith("SOL-")) {
+            handleOwnerInterventionPaymentCallback(reference, true);
+        }
 
-        // Renvoie une page qui tente d'ouvrir l'app automatiquement, avec un lien de secours
-        // si l'app ne s'ouvre pas toute seule (ex: navigateur qui bloque les custom schemes)
         return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
                 "<h1 style=\"color:green;\">Paiement réussi</h1>" +
                 "<p>Votre paiement a bien été confirmé.</p>" +
@@ -93,13 +100,20 @@ public class SolimusCallbackController {
     }
 
     @GetMapping(value = "/redirect-failed", produces = "text/html")
-    public String redirectChargePaymentFailed(@RequestParam("num_command") String reference) {
+    public String redirectPaymentFailed(@RequestParam("num_command") String reference) {
 
-        // Confirme l'échec du paiement CÔTÉ SERVEUR, avant tout le reste
-        handleChargePaymentCallback(reference, false);
+        // Identifie le type de paiement via le prefixe de la reference,
+        // car TouchPay n'utilise qu'une seule URL de redirection pour tous les types
+        if (reference.startsWith("CPY-")) {
+            handleChargePaymentCallback(reference, false);
+        } else if (reference.startsWith("ECP-")) {
+            handleExceptionalChargePaymentCallback(reference, false);
+        } else if (reference.startsWith("SUB-")) {
+            handleSubscriptionCallback(reference, false);
+        } else if (reference.startsWith("PAY-") || reference.startsWith("SOL-")) {
+            handleOwnerInterventionPaymentCallback(reference, false);
+        }
 
-        // Renvoie une page qui tente d'ouvrir l'app automatiquement, avec un lien de secours
-        // si l'app ne s'ouvre pas toute seule (ex: navigateur qui bloque les custom schemes)
         return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
                 "<h1 style=\"color:red;\">Paiement échoué</h1>" +
                 "<p>Le paiement a été marqué comme échoué.</p>" +
@@ -110,73 +124,6 @@ public class SolimusCallbackController {
                 "</body></html>";
     }
 
-    @GetMapping(value = "/redirect-exceptional-success", produces = "text/html")
-    public String redirectExceptionalChargePaymentSuccess(@RequestParam("num_command") String reference) {
-
-        // Confirme le paiement CÔTÉ SERVEUR, avant tout le reste
-        handleExceptionalChargePaymentCallback(reference, true);
-
-        // Renvoie une page qui tente d'ouvrir l'app automatiquement, avec un lien de secours
-        return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
-                "<h1 style=\"color:green;\">Paiement réussi</h1>" +
-                "<p>Votre paiement a bien été confirmé.</p>" +
-                "<p><a href=\"solimus://payment/success?ref=" + reference + "\">Retourner à l'application</a></p>" +
-                "<script>" +
-                "  window.location.href = 'solimus://payment/success?ref=" + reference + "';" +
-                "</script>" +
-                "</body></html>";
-    }
-
-    @GetMapping(value = "/redirect-exceptional-failed", produces = "text/html")
-    public String redirectExceptionalChargePaymentFailed(@RequestParam("num_command") String reference) {
-
-        // Confirme l'échec du paiement CÔTÉ SERVEUR, avant tout le reste
-        handleExceptionalChargePaymentCallback(reference, false);
-
-        // Renvoie une page qui tente d'ouvrir l'app automatiquement, avec un lien de secours
-        return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
-                "<h1 style=\"color:red;\">Paiement échoué</h1>" +
-                "<p>Le paiement a été marqué comme échoué.</p>" +
-                "<p><a href=\"solimus://payment/failed?ref=" + reference + "\">Retourner à l'application</a></p>" +
-                "<script>" +
-                "  window.location.href = 'solimus://payment/failed?ref=" + reference + "';" +
-                "</script>" +
-                "</body></html>";
-    }
-
-    @GetMapping(value = "/redirect-subscription-success", produces = "text/html")
-    public String redirectSubscriptionPaymentSuccess(@RequestParam("num_command") String reference) {
-
-        // Confirme le paiement CÔTÉ SERVEUR, avant tout le reste
-        handleSubscriptionCallback(reference, true);
-
-        // Renvoie une page qui tente d'ouvrir l'app automatiquement, avec un lien de secours
-        return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
-                "<h1 style=\"color:green;\">Paiement réussi</h1>" +
-                "<p>Votre abonnement a bien été activé.</p>" +
-                "<p><a href=\"solimus://payment/success?ref=" + reference + "\">Retourner à l'application</a></p>" +
-                "<script>" +
-                "  window.location.href = 'solimus://payment/success?ref=" + reference + "';" +
-                "</script>" +
-                "</body></html>";
-    }
-
-    @GetMapping(value = "/redirect-subscription-failed", produces = "text/html")
-    public String redirectSubscriptionPaymentFailed(@RequestParam("num_command") String reference) {
-
-        // Confirme l'échec du paiement CÔTÉ SERVEUR, avant tout le reste
-        handleSubscriptionCallback(reference, false);
-
-        // Renvoie une page qui tente d'ouvrir l'app automatiquement, avec un lien de secours
-        return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
-                "<h1 style=\"color:red;\">Paiement échoué</h1>" +
-                "<p>Le paiement a été marqué comme échoué.</p>" +
-                "<p><a href=\"solimus://payment/failed?ref=" + reference + "\">Retourner à l'application</a></p>" +
-                "<script>" +
-                "  window.location.href = 'solimus://payment/failed?ref=" + reference + "';" +
-                "</script>" +
-                "</body></html>";
-    }
     // =========================================================================
     // ENDPOINT PRINCIPAL — Appelé automatiquement par InTouch après paiement
     // =========================================================================

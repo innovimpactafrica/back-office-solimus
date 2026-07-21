@@ -1044,6 +1044,37 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
     }
 
     // =========================================================================
+    // Supprime un document de réunion
+    // =========================================================================
+    @Override
+    @Transactional
+    public void deleteMeetingDocument(Long documentId) {
+
+        // Récupère le document, erreur si introuvable
+        MeetingDocument doc = meetingDocumentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Document introuvable"));
+
+        // Supprime le fichier de MinIO
+        if (doc.getFileUrl() != null) {
+            minioService.deleteFile(doc.getFileUrl());
+        }
+
+        // Trace la suppression dans l'historique
+        ActivityLog activityLog = ActivityLog.builder()
+                .residence(doc.getMeeting().getResidence())
+                .type(ActivityType.MEETING_DOCUMENT_DELETED)
+                .relatedEntityType("MEETING_DOCUMENT")
+                .relatedEntityId(doc.getId())
+                .message("Document supprimé")
+                .detail(doc.getTitle() != null ? doc.getTitle() : doc.getFileName())
+                .build();
+        activityLogRepository.save(activityLog);
+
+        // Supprime le document de la base
+        meetingDocumentRepository.delete(doc);
+    }
+
+    // =========================================================================
     // Listing général des documents AG (page Documents, toutes résidences confondues)
     // =========================================================================
     @Override

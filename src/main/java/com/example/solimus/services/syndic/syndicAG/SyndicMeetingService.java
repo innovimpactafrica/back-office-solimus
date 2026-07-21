@@ -43,6 +43,8 @@ public interface SyndicMeetingService {
 
     MeetingDocumentRowDTO updateMeetingDocument(Long documentId, UpdateMeetingDocumentDTO dto);
 
+    void deleteMeetingDocument(Long documentId);
+
     MeetingDocumentListResponseDTO getMeetingDocumentsList(String search, MeetingDocumentType documentType,
                                                            Long residenceId, int page, int size);
 

@@ -253,11 +253,6 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                     throw new BadRequestException("Seul un copropriétaire peut être propriétaire d'un lot");
                 }
 
-                // Vérifier que le compte est actif
-                if (owner.getStatus() != UserStatus.ACTIVE) {
-                    throw new BadRequestException("Le copropriétaire doit avoir un compte actif");
-                }
-
                 property.setOwner(owner);
                 property.setStatus(PropertyStatus.OCCUPE);
             } else {

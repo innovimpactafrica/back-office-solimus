@@ -277,6 +277,13 @@ public class SyndicAGController {
 
     }
 
+    @Operation(summary = "Supprimer un document AG (page Documents générale)")
+    @DeleteMapping("/documents/{documentId}")
+    public ResponseEntity<Void> deleteMeetingDocument(@PathVariable Long documentId) {
+        syndicMeetingService.deleteMeetingDocument(documentId);
+        return ResponseEntity.noContent().build();
+    }
+
     @Operation(summary = "Listing général des documents AG (recherche + filtres) (page Documents générale)")
     @GetMapping("/documents")
     public ResponseEntity<MeetingDocumentListResponseDTO> getMeetingDocumentsList(

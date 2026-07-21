@@ -23,5 +23,6 @@ public enum ActivityType {
     MEETING_DOCUMENT_DOWNLOADED, // branché sur downloadDocument() — a créer
     MEETING_DOCUMENT_VIEWED,     // branché sur getDocumentDetail()
     MEETING_DOCUMENT_UPDATED,    // branché sur updateMeetingDocument()
+    MEETING_DOCUMENT_DELETED,    // branché sur deleteMeetingDocument()
 
 }
