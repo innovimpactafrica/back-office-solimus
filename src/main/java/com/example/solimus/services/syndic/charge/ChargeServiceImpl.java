@@ -854,9 +854,13 @@ public class ChargeServiceImpl implements ChargeService {
         List<Property> properties = propertyRepository.findByResidenceId(budget.getResidence().getId());
         List<ChargeCallItem> items = new ArrayList<>();
 
-        // Priorité : si customAmounts est fourni, l'utiliser (peu importe le mode du budget)
-        if (dto.getCustomAmounts() != null && !dto.getCustomAmounts().isEmpty()) {
-            // Mode CUSTOM — le syndic a saisi manuellement chaque montant
+        // Approche stricte : respecter le mode de répartition du budget
+        if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
+            // Mode CUSTOM du budget — les customAmounts sont obligatoires
+            if (dto.getCustomAmounts() == null || dto.getCustomAmounts().isEmpty()) {
+                throw new BadRequestException("Saisissez un montant pour chaque copropriétaire en mode Personnalisée");
+            }
+
             // Validation : la somme des montants personnalisés doit être exactement égale au total de la période
             BigDecimal customTotal = dto.getCustomAmounts().stream()
                     .map(CustomCoOwnerAmountDTO::getAmount)
@@ -889,15 +893,11 @@ public class ChargeServiceImpl implements ChargeService {
                 item.setTantieme(tantiemeCoOwner);
                 item.setQuotePart(customAmount.getAmount()); // montant saisi manuellement, pas calculé
                 item.setPaidAmount(BigDecimal.ZERO);
-                item.setRemainingAmount(customAmount.getAmount());
 
                 items.add(item);
             }
-        } else if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
-            // Mode CUSTOM du budget mais aucun customAmount fourni
-            throw new BadRequestException("Saisissez un montant pour chaque copropriétaire en mode Personnalisée");
         } else {
-            // Mode OWNERSHIP_SHARES — calcul automatique selon les tantièmes
+            // Mode OWNERSHIP_SHARES — calcul automatique selon les tantièmes (customAmounts ignorés)
             for (Property property : properties) {
                 if (property.getOwner() != null) {
                     // Vérifier si le copropriétaire a déjà un item
@@ -934,7 +934,6 @@ public class ChargeServiceImpl implements ChargeService {
                         item.setTantieme(tantiemeCoOwner);
                         item.setQuotePart(quotePart);
                         item.setPaidAmount(BigDecimal.ZERO);
-                        item.setRemainingAmount(quotePart);
 
                         items.add(item);
                     }
@@ -1093,7 +1092,7 @@ public class ChargeServiceImpl implements ChargeService {
 
         // Filtre les copropriétaires qui doivent encore de l'argent
         List<ChargeCallItem> unpaidItems = chargeCall.getItems().stream()
-                .filter(item -> item.getRemainingAmount().compareTo(BigDecimal.ZERO) > 0)
+                .filter(item -> item.getQuotePart().subtract(item.getPaidAmount()).compareTo(BigDecimal.ZERO) > 0)
                 .toList();
 
         // Envoie email + notification push à chacun (non-bloquant)
@@ -1109,7 +1108,7 @@ public class ChargeServiceImpl implements ChargeService {
             try {
                 if (item.getCoOwner().isNotificationsEnabled()) {
                     String title = "Rappel de paiement";
-                    String body = buildPeriodLabel(chargeCall) + " — solde restant: " + item.getRemainingAmount() + " FCFA";
+                    String body = buildPeriodLabel(chargeCall) + " — solde restant: " + item.getQuotePart().subtract(item.getPaidAmount()) + " FCFA";
                     notificationService.sendPush(item.getCoOwner().getId(), title, body);
                 }
             } catch (Exception e) {
@@ -1273,9 +1272,13 @@ public class ChargeServiceImpl implements ChargeService {
 
         List<Property> properties = propertyRepository.findByResidenceId(exceptionalCall.getResidence().getId());
 
-        // Priorité : si customAmounts est fourni, l'utiliser (peu importe le mode)
-        if (dto.getCustomAmounts() != null && !dto.getCustomAmounts().isEmpty()) {
-            // Mode CUSTOM — le syndic a saisi manuellement chaque montant
+        // Approche stricte : respecter le mode de répartition spécifié
+        if (dto.getRepartitionMode() == RepartitionMode.CUSTOM) {
+            // Mode CUSTOM — les customAmounts sont obligatoires
+            if (dto.getCustomAmounts() == null || dto.getCustomAmounts().isEmpty()) {
+                throw new BadRequestException("Saisissez un montant pour chaque copropriétaire en mode Personnalisée");
+            }
+
             // Validation : la somme des montants personnalisés doit être exactement égale au total de l'appel exceptionnel
             BigDecimal customTotal = dto.getCustomAmounts().stream()
                     .map(CustomCoOwnerAmountDTO::getAmount)
@@ -1306,7 +1309,8 @@ public class ChargeServiceImpl implements ChargeService {
                 item.setQuotePart(customAmount.getAmount()); // montant saisi manuellement, pas calculé
                 exceptionalCall.getItems().add(item);
             }
-        } else if (dto.getRepartitionMode() == RepartitionMode.OWNERSHIP_SHARES) {
+        } else {
+            // Mode OWNERSHIP_SHARES — calcul automatique selon les tantièmes (customAmounts ignorés)
 
             // Calcul automatique par tantième — même logique de fusion par copropriétaire
             // déjà utilisée dans previewChargeCall/generateChargeCall (un copropriétaire
@@ -1348,10 +1352,6 @@ public class ChargeServiceImpl implements ChargeService {
 
                 alreadyAddedOwnerIds.add(ownerId);
             }
-
-        } else {
-            // Mode CUSTOM du DTO mais aucun customAmount fourni
-            throw new BadRequestException("Saisissez un montant pour chaque copropriétaire en mode Personnalisée");
         }
 
         ExceptionalCall saved = exceptionalCallRepository.save(exceptionalCall);
@@ -1789,7 +1789,7 @@ public class ChargeServiceImpl implements ChargeService {
         dto.setPropertyLabel(buildPropertyLabel(item));
         dto.setAmountDue(item.getQuotePart());
         dto.setAmountPaid(item.getPaidAmount());
-        dto.setBalance(item.getRemainingAmount());
+        dto.setBalance(item.getQuotePart().subtract(item.getPaidAmount()));
         dto.setStatus(calculateItemStatus(item));
 
         // Récupère la date du dernier paiement effectué sur cet item, s'il existe
@@ -1818,7 +1818,7 @@ public class ChargeServiceImpl implements ChargeService {
         List<ChargeCallItem> allUnpaidItems = chargeCallItemRepository.findAllUnpaidByBudgetSyndicId(currentSyndic.getId());
 
         BigDecimal totalUnpaidAmount = allUnpaidItems.stream()
-                .map(ChargeCallItem::getRemainingAmount)
+                .map(item -> item.getQuotePart().subtract(item.getPaidAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         List<UnpaidRowDTO> rowDtos = unpaidPage.getContent().stream()
@@ -1847,7 +1847,7 @@ public class ChargeServiceImpl implements ChargeService {
         dto.setPropertyLabel(buildPropertyLabel(item));
         dto.setStatus(calculateItemStatus(item));
         dto.setAmountDue(item.getQuotePart());
-        dto.setUnpaidBalance(item.getRemainingAmount());
+        dto.setUnpaidBalance(item.getQuotePart().subtract(item.getPaidAmount()));
         dto.setDaysLate((int) Math.max(daysLate, 0));
 
         return dto;
@@ -1869,7 +1869,7 @@ public class ChargeServiceImpl implements ChargeService {
             throw new ForbiddenException("Vous n'êtes pas autorisé à relancer ce copropriétaire");
         }
 
-        if (item.getRemainingAmount().compareTo(BigDecimal.ZERO) <= 0) {
+        if (item.getQuotePart().subtract(item.getPaidAmount()).compareTo(BigDecimal.ZERO) <= 0) {
             throw new BadRequestException("Cette charge est déjà soldée");
         }
 
@@ -1945,7 +1945,7 @@ public class ChargeServiceImpl implements ChargeService {
         List<ChargeCallItem> allUnpaidItems = chargeCallItemRepository.findAllUnpaidByBudgetSyndicId(currentSyndic.getId());
 
         BigDecimal unpaidAmount = allUnpaidItems.stream()
-                .map(ChargeCallItem::getRemainingAmount)
+                .map(item -> item.getQuotePart().subtract(item.getPaidAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         dto.setUnpaidAmount(unpaidAmount);
 
@@ -2034,7 +2034,7 @@ public class ChargeServiceImpl implements ChargeService {
 
         return calls.stream()
                 .flatMap(cc -> cc.getItems().stream())
-                .map(ChargeCallItem::getRemainingAmount)
+                .map(item -> item.getQuotePart().subtract(item.getPaidAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
@@ -2164,7 +2164,7 @@ public class ChargeServiceImpl implements ChargeService {
         try {
             if (item.getCoOwner().isNotificationsEnabled()) {
                 String title = "Rappel de paiement";
-                String body = "Solde restant: " + item.getRemainingAmount() + " FCFA";
+                String body = "Solde restant: " + item.getQuotePart().subtract(item.getPaidAmount()) + " FCFA";
                 notificationService.sendPush(item.getCoOwner().getId(), title, body);
             }
         } catch (Exception e) {
@@ -2278,7 +2278,7 @@ public class ChargeServiceImpl implements ChargeService {
         dto.setTantieme(item.getTantieme());
         dto.setQuotePart(item.getQuotePart());
         dto.setPaidAmount(item.getPaidAmount());
-        dto.setRemainingAmount(item.getRemainingAmount());
+        dto.setRemainingAmount(item.getQuotePart().subtract(item.getPaidAmount()));
 
         // Calcule le statut individuel de ce copropriétaire
         if (item.getPaidAmount().compareTo(item.getQuotePart()) >= 0) {
@@ -2298,7 +2298,7 @@ public class ChargeServiceImpl implements ChargeService {
         body.append("Résidence : ").append(chargeCall.getBudget().getResidence().getName()).append("\n");
         body.append("Période : ").append(buildPeriodLabel(chargeCall)).append("\n");
         body.append("Date d'échéance : ").append(chargeCall.getDueDate()).append("\n");
-        body.append("Montant restant à payer : ").append(item.getRemainingAmount()).append(" FCFA\n");
+        body.append("Montant restant à payer : ").append(item.getQuotePart().subtract(item.getPaidAmount())).append(" FCFA\n");
         return body.toString();
     }
 
@@ -2340,7 +2340,7 @@ public class ChargeServiceImpl implements ChargeService {
         body.append("Période : ").append(chargeCall.getPeriodNumber()).append("/").append(chargeCall.getYear()).append("\n");
         body.append("Date d'échéance : ").append(chargeCall.getDueDate()).append("\n");
         body.append("Votre quote-part : ").append(item.getQuotePart()).append("\n");
-        body.append("Montant restant à payer : ").append(item.getRemainingAmount()).append("\n");
+        body.append("Montant restant à payer : ").append(item.getQuotePart().subtract(item.getPaidAmount())).append("\n");
         return body.toString();
     }
 

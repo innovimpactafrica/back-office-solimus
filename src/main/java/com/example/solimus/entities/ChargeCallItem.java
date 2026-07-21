@@ -79,13 +79,6 @@ public class ChargeCallItem {
     @Column(name = "paid_amount")
     private BigDecimal paidAmount = BigDecimal.ZERO;
 
-    /**
-     * Montant restant à payer.
-     * Calculé : quotePart - paidAmount
-     */
-    @Column(name = "remaining_amount")
-    private BigDecimal remainingAmount;
-
     // =========================================================================
     // STATUT
     // =========================================================================

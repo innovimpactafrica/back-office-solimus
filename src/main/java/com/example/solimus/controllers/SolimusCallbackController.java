@@ -77,22 +77,36 @@ public class SolimusCallbackController {
     @GetMapping(value = "/redirect-success", produces = "text/html")
     public String redirectChargePaymentSuccess(@RequestParam("num_command") String reference) {
 
+        // Confirme le paiement CÔTÉ SERVEUR, avant tout le reste — c'est ça qui garantit la fiabilité
         handleChargePaymentCallback(reference, true);
 
+        // Renvoie une page qui tente d'ouvrir l'app automatiquement, avec un lien de secours
+        // si l'app ne s'ouvre pas toute seule (ex: navigateur qui bloque les custom schemes)
         return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
                 "<h1 style=\"color:green;\">Paiement réussi</h1>" +
                 "<p>Votre paiement a bien été confirmé.</p>" +
+                "<p><a href=\"solimus://payment/success?ref=" + reference + "\">Retourner à l'application</a></p>" +
+                "<script>" +
+                "  window.location.href = 'solimus://payment/success?ref=" + reference + "';" +
+                "</script>" +
                 "</body></html>";
     }
 
     @GetMapping(value = "/redirect-failed", produces = "text/html")
     public String redirectChargePaymentFailed(@RequestParam("num_command") String reference) {
 
+        // Confirme l'échec du paiement CÔTÉ SERVEUR, avant tout le reste
         handleChargePaymentCallback(reference, false);
 
+        // Renvoie une page qui tente d'ouvrir l'app automatiquement, avec un lien de secours
+        // si l'app ne s'ouvre pas toute seule (ex: navigateur qui bloque les custom schemes)
         return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
                 "<h1 style=\"color:red;\">Paiement échoué</h1>" +
                 "<p>Le paiement a été marqué comme échoué.</p>" +
+                "<p><a href=\"solimus://payment/failed?ref=" + reference + "\">Retourner à l'application</a></p>" +
+                "<script>" +
+                "  window.location.href = 'solimus://payment/failed?ref=" + reference + "';" +
+                "</script>" +
                 "</body></html>";
     }
     // =========================================================================

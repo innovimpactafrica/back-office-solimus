@@ -223,7 +223,7 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
                     .residenceName(residence.getName())
                     .propertyReference(propertyReferencesText)
                     .dueDate(item.getChargeCall().getDueDate())
-                    .remainingAmount(item.getRemainingAmount())
+                    .remainingAmount(item.getQuotePart().subtract(item.getPaidAmount()))
                     .status("En attente")
                     .build());
         }

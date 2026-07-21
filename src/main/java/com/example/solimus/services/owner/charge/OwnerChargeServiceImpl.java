@@ -418,7 +418,7 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .residenceName(residence.getName())
                 .residenceId(residence.getId())
                 .propertyReference(propertyRef)
-                .remainingAmount(item.getRemainingAmount())
+                .remainingAmount(item.getQuotePart().subtract(item.getPaidAmount()))
                 .dueDate(item.getChargeCall().getDueDate())
                 .status(resolveItemStatus(item.getPaidAmount(), item.getQuotePart()))
                 .build();
@@ -430,9 +430,8 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
         Residence residence = item.getExceptionalCall().getResidence();
         String propertyRef = findPropertyReference(item.getCoOwner().getId(), residence.getId());
 
-        // Calcule le solde restant, car ExceptionalCallItem n'a pas de champ remainingAmount stocké
+        // Calcule le remainingAmount à la volée
         BigDecimal remainingAmount = item.getQuotePart().subtract(item.getPaidAmount());
-
 
         return MyChargeCardDTO.builder()
                 .id(item.getId())
@@ -449,10 +448,10 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .build();
     }
 
-    // Détermine le statut d'une ligne à partir de paidAmount(montant payé)/quotePart (ce qu'on doit payé)
+    // Détermine le statut d'une ligne à partir de paidAmount et quotePart (calculé à la volée)
     private String resolveItemStatus(BigDecimal paidAmount, BigDecimal quotePart) {
-        if (paidAmount.compareTo(quotePart) >= 0) return "Payé";
-        if (paidAmount.compareTo(BigDecimal.ZERO) > 0) return "Partiel";
+        BigDecimal remaining = quotePart.subtract(paidAmount);
+        if (remaining.compareTo(BigDecimal.ZERO) <= 0) return "Payé";
         return "En attente";
     }
 
@@ -482,7 +481,7 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .reference(item.getReference())
                 .type(ChargeType.REGULAR.name())
                 .typeLabel(ChargeType.REGULAR.getDescription())
-                .remainingAmount(item.getRemainingAmount())
+                .remainingAmount(item.getQuotePart().subtract(item.getPaidAmount()))
                 .dueDate(chargeCall.getDueDate())
                 .residenceName(residence.getName())
                 .propertyReference(propertyRef)
@@ -501,9 +500,8 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
         Residence residence = exceptionalCall.getResidence();
         String propertyRef = findPropertyReference(item.getCoOwner().getId(), residence.getId());
 
-        // Calcule le solde restant, car ExceptionalCallItem n'a pas de champ remainingAmount stocké
+        // Calcule le remainingAmount à la volée
         BigDecimal remainingAmount = item.getQuotePart().subtract(item.getPaidAmount());
-
 
         return MyChargeDetailDTO.builder()
                 .id(item.getId())

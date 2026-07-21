@@ -1115,6 +1115,7 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         // On ne calcule le pourcentage que si on a bien des stats ET un tantième total valide (> 0),
         // pour éviter une division par zéro
         if (stats != null && stats.getTotalTantieme() != null
+                && stats.getSignedTantieme() != null
                 && stats.getTotalTantieme().compareTo(BigDecimal.ZERO) > 0) {
             quorumPercentage = stats.getSignedTantieme().doubleValue()
                     / stats.getTotalTantieme().doubleValue() * 100.0;

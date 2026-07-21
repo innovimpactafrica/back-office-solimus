@@ -203,7 +203,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
      * Items du syndic dont le solde impayé dépasse un seuil donné
      */
     @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId " +
-           "AND i.remainingAmount > :threshold")
+           "AND (i.quotePart - i.paidAmount) > :threshold")
     List<ChargeCallItem> findByChargeCallBudgetSyndicIdAndRemainingAmountGreaterThan(
             @Param("syndicId") Long syndicId, @Param("threshold") BigDecimal threshold);
 
@@ -258,19 +258,19 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
 
     // Additionne tout ce qui reste à payer pour ce copropriétaire, dans cette résidence,
     // toutes périodes de charge confondues (peu importe le statut de chaque ChargeCall)
-    @Query("SELECT COALESCE(SUM(item.remainingAmount), 0) FROM ChargeCallItem item " +
+    @Query("SELECT COALESCE(SUM(item.quotePart - item.paidAmount), 0) FROM ChargeCallItem item " +
            "WHERE item.coOwner.id = :coOwnerId " +
            "AND item.chargeCall.budget.residence.id = :residenceId " +
-           "AND item.remainingAmount > 0")
+           "AND (item.quotePart - item.paidAmount) > 0")
     BigDecimal sumRemainingAmountByCoOwnerAndResidence(@Param("coOwnerId") Long coOwnerId,
                                                       @Param("residenceId") Long residenceId);
 
-    // Charges en attente (remainingAmount > 0) de ce copropriétaire pour une résidence précise,
+    // Charges en attente (quotePart - paidAmount > 0) de ce copropriétaire pour une résidence précise,
     // triées par échéance la plus proche en premier
     @Query("SELECT item FROM ChargeCallItem item " +
            "WHERE item.coOwner.id = :coOwnerId " +
            "AND item.chargeCall.budget.residence.id = :residenceId " +
-           "AND item.remainingAmount > 0 " +
+           "AND (item.quotePart - item.paidAmount) > 0 " +
            "ORDER BY item.chargeCall.dueDate ASC")
     List<ChargeCallItem> findPendingItemsByCoOwnerAndResidence(@Param("coOwnerId") Long coOwnerId,
                                                               @Param("residenceId") Long residenceId,

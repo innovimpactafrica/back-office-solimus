@@ -91,7 +91,7 @@ public class FinanceServiceImpl implements FinanceService {
         // Récupère toutes les lignes de charges non soldées, toutes résidences du syndic
         List<ChargeCallItem> allUnpaidItems = chargeCallItemRepository.findAllUnpaidByBudgetSyndicId(currentSyndic.getId());
         BigDecimal unpaidAmount = allUnpaidItems.stream()
-                .map(ChargeCallItem::getRemainingAmount)
+                .map(item -> item.getQuotePart().subtract(item.getPaidAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         dto.setUnpaidAmount(unpaidAmount);
 
@@ -339,7 +339,7 @@ public class FinanceServiceImpl implements FinanceService {
         List<ChargeCallItem> allUnpaidItems = chargeCallItemRepository.findAllUnpaidByBudgetSyndicId(currentSyndic.getId());
 
         BigDecimal totalUnpaidAmount = allUnpaidItems.stream()
-                .map(ChargeCallItem::getRemainingAmount)
+                .map(item -> item.getQuotePart().subtract(item.getPaidAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         List<UnpaidRowDTO> rowDtos = unpaidPage.getContent().stream()

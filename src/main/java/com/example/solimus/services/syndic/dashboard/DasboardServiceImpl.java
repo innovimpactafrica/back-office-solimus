@@ -108,7 +108,7 @@ public class DasboardServiceImpl implements DashboardService {
         // Additionne tous les montants déjà payés
         BigDecimal totalPaid = allItems.stream().map(ChargeCallItem::getPaidAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         // Additionne tous les montants restants à payer
-        BigDecimal totalUnpaid = allItems.stream().map(ChargeCallItem::getRemainingAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalUnpaid = allItems.stream().map(item -> item.getQuotePart().subtract(item.getPaidAmount())).reduce(BigDecimal.ZERO, BigDecimal::add);
 
         // Calcule le taux de recouvrement (protection contre la division par zéro)
         double recoveryRate = 0.0;
@@ -460,7 +460,7 @@ public class DasboardServiceImpl implements DashboardService {
         }
 
         // Additionne les soldes restants de tous ces items
-        return items.stream().map(ChargeCallItem::getRemainingAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return items.stream().map(item -> item.getQuotePart().subtract(item.getPaidAmount())).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     // Construit une ligne du tableau "Activités Récentes"
