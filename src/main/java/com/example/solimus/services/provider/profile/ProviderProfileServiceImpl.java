@@ -29,7 +29,7 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
 
     private final ProviderProfileRepository providerProfileRepository;
     private final UserRepository userRepository;
-    private final SubscriptionRepository subscriptionRepository;
+    private final ProviderSubscriptionRepository providerSubscriptionRepository;
     private final QuoteRepository quoteRepository;
     private final MinioService minioService;
 
@@ -177,7 +177,7 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
         User currentProvider = getCurrentUser();
 
         // 2. Récupérer l'abonnement le plus récent (pour la carte actuelle)
-        Optional<ProviderSubscription> latestSubscription = subscriptionRepository
+        Optional<ProviderSubscription> latestSubscription = providerSubscriptionRepository
                 .findFirstByProviderIdOrderByEndDateDesc(currentProvider.getId());
 
         // 3. Si aucun abonnement, retourner un DTO vide (pas d'abonnement)
@@ -213,7 +213,7 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
                 : null;
 
         // 5. Récupérer l'historique des paiements (paginé)
-        Page<ProviderSubscription> subscriptionsPage = subscriptionRepository
+        Page<ProviderSubscription> subscriptionsPage = providerSubscriptionRepository
                 .findByProviderIdOrderByStartDateDesc(currentProvider.getId(), pageable);
 
         // 6. Construire la page d'historique

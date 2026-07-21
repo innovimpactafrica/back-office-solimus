@@ -30,7 +30,7 @@ public class SolimusPaymentBridgeController {
 
 
     // Référentiel des abonnements prestataires : SUB-*
-    private final SubscriptionRepository subscriptionRepository;
+    private final ProviderSubscriptionRepository providerSubscriptionRepository;
 
     // URL du script hébergé TouchPay (géré par InTouch)
     @Value("${touchpay.hosted.script-url}")
@@ -110,7 +110,7 @@ public class SolimusPaymentBridgeController {
     public PaymentBridgeDTO getBridgeSubscription(@PathVariable String transactionRef) {
 
         // On recherche la Subscription créée en PENDING par le service initiatePayment
-        ProviderSubscription subscription = subscriptionRepository
+        ProviderSubscription subscription = providerSubscriptionRepository
                 .findByTransactionRef(transactionRef)
                 // Si rien n'est trouvé, la référence envoyée par le front est invalide ou expirée
                 .orElseThrow(() -> new ResourceNotFoundException("Abonnement introuvable"));

@@ -78,4 +78,12 @@ public class OwnerChargeController {
             @PathVariable String transactionRef) {
         return ResponseEntity.ok(chargeService.getReceipt(transactionRef));
     }
+
+    @Operation(summary = "Vérifie le statut réel d'un paiement de charge (appelé par l'app mobile au retour de la WebView)")
+    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
+    @GetMapping("/payment-status")
+    public ResponseEntity<ChargePaymentStatusDTO> getPaymentStatus(
+            @RequestParam String reference) {
+        return ResponseEntity.ok(chargeService.getPaymentStatus(reference));
+    }
 }

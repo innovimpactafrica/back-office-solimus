@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -60,6 +61,11 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         // Vérifie que cette résidence appartient bien au syndic connecté
         if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
             throw new ForbiddenException("Vous n'êtes pas autorisé à créer une réunion pour cette résidence");
+        }
+
+        // Vérifie que la date de réunion n'est pas dans le passé
+        if (dto.getMeetingDate() != null && dto.getMeetingDate().isBefore(LocalDate.now())) {
+            throw new BadRequestException("La date de réunion ne peut pas être dans le passé");
         }
 
         // Construit l'entité Meeting à partir des champs reçus
@@ -247,8 +253,10 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
                     // On ne calcule le pourcentage que si :
                     // 1. on a bien trouvé des stats pour cette reunion (stats != null)
                     // 2. le tantième total n'est pas vide (getTotalTantieme() != null)
-                    // 3. le tantième total est supérieur a 0 (protection contre une division par zero)
+                    // 3. le tantième signé n'est pas vide (getSignedTantieme() != null)
+                    // 4. le tantième total est supérieur a 0 (protection contre une division par zero)
                     if (stats != null && stats.getTotalTantieme() != null
+                            && stats.getSignedTantieme() != null
                             && stats.getTotalTantieme().compareTo(BigDecimal.ZERO) > 0) {
 
                         // Formule : (tantieme des presents / tantieme total) x 100

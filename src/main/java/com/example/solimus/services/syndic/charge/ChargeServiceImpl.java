@@ -854,10 +854,18 @@ public class ChargeServiceImpl implements ChargeService {
         List<Property> properties = propertyRepository.findByResidenceId(budget.getResidence().getId());
         List<ChargeCallItem> items = new ArrayList<>();
 
-        if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
+        // Priorité : si customAmounts est fourni, l'utiliser (peu importe le mode du budget)
+        if (dto.getCustomAmounts() != null && !dto.getCustomAmounts().isEmpty()) {
             // Mode CUSTOM — le syndic a saisi manuellement chaque montant
-            if (dto.getCustomAmounts() == null || dto.getCustomAmounts().isEmpty()) {
-                throw new BadRequestException("Saisissez un montant pour chaque copropriétaire en mode Personnalisée");
+            // Validation : la somme des montants personnalisés doit être exactement égale au total de la période
+            BigDecimal customTotal = dto.getCustomAmounts().stream()
+                    .map(CustomCoOwnerAmountDTO::getAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            if (customTotal.compareTo(totalAmount) != 0) {
+                throw new BadRequestException(
+                        "La somme des montants personnalisés (" + customTotal + " FCFA) doit être exactement égale au total de la période (" + totalAmount + " FCFA)"
+                );
             }
 
             for (CustomCoOwnerAmountDTO customAmount : dto.getCustomAmounts()) {
@@ -885,6 +893,9 @@ public class ChargeServiceImpl implements ChargeService {
 
                 items.add(item);
             }
+        } else if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
+            // Mode CUSTOM du budget mais aucun customAmount fourni
+            throw new BadRequestException("Saisissez un montant pour chaque copropriétaire en mode Personnalisée");
         } else {
             // Mode OWNERSHIP_SHARES — calcul automatique selon les tantièmes
             for (Property property : properties) {
@@ -1262,7 +1273,40 @@ public class ChargeServiceImpl implements ChargeService {
 
         List<Property> properties = propertyRepository.findByResidenceId(exceptionalCall.getResidence().getId());
 
-        if (dto.getRepartitionMode() == RepartitionMode.OWNERSHIP_SHARES) {
+        // Priorité : si customAmounts est fourni, l'utiliser (peu importe le mode)
+        if (dto.getCustomAmounts() != null && !dto.getCustomAmounts().isEmpty()) {
+            // Mode CUSTOM — le syndic a saisi manuellement chaque montant
+            // Validation : la somme des montants personnalisés doit être exactement égale au total de l'appel exceptionnel
+            BigDecimal customTotal = dto.getCustomAmounts().stream()
+                    .map(CustomCoOwnerAmountDTO::getAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            if (customTotal.compareTo(dto.getTotalAmount()) != 0) {
+                throw new BadRequestException(
+                        "La somme des montants personnalisés (" + customTotal + " FCFA) doit être exactement égale au total de l'appel exceptionnel (" + dto.getTotalAmount() + " FCFA)"
+                );
+            }
+
+            for (CustomCoOwnerAmountDTO customAmount : dto.getCustomAmounts()) {
+                User coOwner = userRepository.findById(customAmount.getCoOwnerId())
+                        .orElseThrow(() -> new RuntimeException("Copropriétaire introuvable"));
+
+                // Snapshotter le tantième même en mode personnalisé, pour affichage/référence uniquement
+                BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
+                for (Property p : properties) {
+                    if (p.getOwner() != null && p.getOwner().getId().equals(customAmount.getCoOwnerId())) {
+                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO);
+                    }
+                }
+
+                ExceptionalCallItem item = new ExceptionalCallItem();
+                item.setExceptionalCall(exceptionalCall);
+                item.setCoOwner(coOwner);
+                item.setTantieme(tantiemeCoOwner);
+                item.setQuotePart(customAmount.getAmount()); // montant saisi manuellement, pas calculé
+                exceptionalCall.getItems().add(item);
+            }
+        } else if (dto.getRepartitionMode() == RepartitionMode.OWNERSHIP_SHARES) {
 
             // Calcul automatique par tantième — même logique de fusion par copropriétaire
             // déjà utilisée dans previewChargeCall/generateChargeCall (un copropriétaire
@@ -1306,30 +1350,8 @@ public class ChargeServiceImpl implements ChargeService {
             }
 
         } else {
-            // Mode CUSTOM — le syndic a saisi manuellement chaque montant, pas de calcul
-            if (dto.getCustomAmounts() == null || dto.getCustomAmounts().isEmpty()) {
-                throw new BadRequestException("Saisissez un montant pour chaque copropriétaire en mode Personnalisée");
-            }
-
-            for (CustomCoOwnerAmountDTO customAmount : dto.getCustomAmounts()) {
-                User coOwner = userRepository.findById(customAmount.getCoOwnerId())
-                        .orElseThrow(() -> new RuntimeException("Copropriétaire introuvable"));
-
-                // Snapshotter le tantième même en mode personnalisé, pour affichage/référence uniquement
-                BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-                for (Property p : properties) {
-                    if (p.getOwner() != null && p.getOwner().getId().equals(customAmount.getCoOwnerId())) {
-                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO);
-                    }
-                }
-
-                ExceptionalCallItem item = new ExceptionalCallItem();
-                item.setExceptionalCall(exceptionalCall);
-                item.setCoOwner(coOwner);
-                item.setTantieme(tantiemeCoOwner);
-                item.setQuotePart(customAmount.getAmount()); // montant saisi manuellement, pas calculé
-                exceptionalCall.getItems().add(item);
-            }
+            // Mode CUSTOM du DTO mais aucun customAmount fourni
+            throw new BadRequestException("Saisissez un montant pour chaque copropriétaire en mode Personnalisée");
         }
 
         ExceptionalCall saved = exceptionalCallRepository.save(exceptionalCall);

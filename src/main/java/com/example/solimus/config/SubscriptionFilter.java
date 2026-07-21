@@ -1,7 +1,7 @@
 package com.example.solimus.config;
 
 import com.example.solimus.entities.User;
-import com.example.solimus.repositories.SubscriptionRepository;
+import com.example.solimus.repositories.ProviderSubscriptionRepository;
 import com.example.solimus.repositories.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
@@ -24,7 +24,7 @@ import java.util.Map;
 public class SubscriptionFilter extends OncePerRequestFilter {
 
     private final UserRepository userRepository;
-    private final SubscriptionRepository subscriptionRepository;
+    private final ProviderSubscriptionRepository providerSubscriptionRepository;
     private final ObjectMapper objectMapper; // pour écrire la réponse JSON en cas de blocage
 
     // routes /api/provider/** accessibles sans abonnement actif
@@ -79,7 +79,7 @@ public class SubscriptionFilter extends OncePerRequestFilter {
         }
 
         // on cherche le dernier abonnement de cet utilisateur via son ID
-        boolean isActive = subscriptionRepository
+        boolean isActive = providerSubscriptionRepository
                 .findFirstByProviderIdOrderByEndDateDesc(user.getId()) // on utilise l'ID du provider
                 .map(sub -> {
                     System.out.println("DEBUG: Subscription found - Status: " + sub.getStatus() + ", EndDate: " + sub.getEndDate() + ", CurrentlyActive: " + sub.isCurrentlyActive());

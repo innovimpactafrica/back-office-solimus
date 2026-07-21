@@ -56,7 +56,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     private final CommonFacilityRepository commonFacilityRepository;
     private final InterventionRequestRepository interventionRepository;
     private final ProviderProfileRepository providerProfileRepository;
-    private final SubscriptionRepository subscriptionRepository;
+
     private final GeolocationService geolocationService;
     private final EmailService emailService;
     private final NotificationService notificationService;
@@ -67,6 +67,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
     private final ProviderWalletRepository providerWalletRepository;
     private final PaymentRepository paymentRepository;
+    private final ProviderSubscriptionRepository providerSubscriptionRepository;
 
     @Value("${solimus.geolocation.search-radius-km:30.0}")
     private double searchRadiusKm;//Rayon de recherche des prestataires
@@ -825,7 +826,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
         // Filtrer les prestataires avec abonnement actif
         List<ProviderProfile> abonnesActifs = candidates.stream()
-                .filter(profile -> subscriptionRepository
+                .filter(profile -> providerSubscriptionRepository
                         .findFirstByProviderIdOrderByEndDateDesc(profile.getUser().getId())
                         .map(ProviderSubscription::isCurrentlyActive)
                         .orElse(false))

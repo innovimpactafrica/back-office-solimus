@@ -10,7 +10,7 @@ import com.example.solimus.enums.SubscriptionStatus;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.ProviderPlanRepository;
-import com.example.solimus.repositories.SubscriptionRepository;
+import com.example.solimus.repositories.ProviderSubscriptionRepository;
 import com.example.solimus.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +31,7 @@ import java.util.UUID;
 public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentService {
 
     private final ProviderPlanRepository providerPlanRepository;
-    private final SubscriptionRepository subscriptionRepository;
+    private final ProviderSubscriptionRepository providerSubscriptionRepository;
     private final UserRepository userRepository;
 
     @Value("${app.touchpay.bridge-url}")
@@ -48,7 +48,7 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
         User currentProvider = getCurrentUser();
 
         // On va chercher son abonnement le plus récent (s'il en a déjà eu un)
-        subscriptionRepository.findFirstByProviderIdOrderByEndDateDesc(currentProvider.getId())
+        providerSubscriptionRepository.findFirstByProviderIdOrderByEndDateDesc(currentProvider.getId())
 
                 // Si on en a trouvé un, on vérifie s'il est encore actif en ce moment précis
                 .filter(ProviderSubscription::isCurrentlyActive)
@@ -114,7 +114,7 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
                 : LocalDateTime.now().plusMonths(1));
 
         // On sauvegarde cette ligne PENDING en base — elle existe avant même la confirmation TouchPay
-        subscriptionRepository.save(subscription);
+        providerSubscriptionRepository.save(subscription);
 
         // On construit l'URL de la WebView TouchPay en y insérant la référence générée plus haut
         String bridgeUrl = String.format(touchPayBridgeUrlTemplate, transactionRef);
@@ -157,7 +157,7 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
 
         // On récupère toutes les Subscription encore marquées ACTIVE
         // mais dont la date de fin est déjà passée par rapport à maintenant
-        List<ProviderSubscription> expired = subscriptionRepository
+        List<ProviderSubscription> expired = providerSubscriptionRepository
                 .findByStatusAndEndDateBefore(SubscriptionStatus.ACTIVE, LocalDateTime.now());
 
         // S'il n'y en a aucune, pas besoin d'aller plus loin
@@ -171,7 +171,7 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
         }
 
         // On sauvegarde tous les changements en une seule fois
-        subscriptionRepository.saveAll(expired);
+        providerSubscriptionRepository.saveAll(expired);
 
         log.info("{} abonnement(s) passé(s) en EXPIRED", expired.size());
     }
@@ -189,7 +189,7 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
         LocalDateTime timeoutThreshold = LocalDateTime.now().minusMinutes(5);
 
         // On récupère les Subscription encore PENDING mais créées avant ce seuil
-        List<ProviderSubscription> staleSubscriptions = subscriptionRepository
+        List<ProviderSubscription> staleSubscriptions = providerSubscriptionRepository
                 .findByStatusAndCreatedAtBefore(SubscriptionStatus.PENDING, timeoutThreshold);
 
         if (staleSubscriptions.isEmpty()) {
@@ -201,7 +201,7 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
             subscription.setStatus(SubscriptionStatus.FAILED);
         }
 
-        subscriptionRepository.saveAll(staleSubscriptions);
+        providerSubscriptionRepository.saveAll(staleSubscriptions);
 
         log.info("{} paiement(s) abonnement passé(s) en FAILED après expiration du délai de 5 minutes",
                 staleSubscriptions.size());

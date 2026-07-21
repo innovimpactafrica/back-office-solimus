@@ -54,7 +54,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
     private final SpecialtyRepository specialtyRepository;
     private final InterventionRequestRepository interventionRequestRepository;
     private final ProviderProfileRepository providerProfileRepository;
-    private final SubscriptionRepository subscriptionRepository;
+    private final ProviderSubscriptionRepository providerSubscriptionRepository;
     private final QuoteRepository quoteRepository;
     private final PaymentRepository paymentRepository;
     private final GeolocationService geolocationService;
@@ -830,7 +830,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
         long reviewCount = profil.getReviewCount() != null ? profil.getReviewCount() : 0;
 
         // Vérifier si le prestataire a un abonnement actif
-        boolean isVerified = subscriptionRepository
+        boolean isVerified = providerSubscriptionRepository
                 .findFirstByProviderIdOrderByEndDateDesc(quote.getProvider().getId())
                 .map(ProviderSubscription::isCurrentlyActive)
                 .orElse(false);
@@ -965,7 +965,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
 
         // Étape 2 : ne garder que les prestataires avec un abonnement actuellement actif
         List<ProviderProfile> activeSubscribers = candidates.stream()
-                .filter(profile -> subscriptionRepository
+                .filter(profile -> providerSubscriptionRepository
                         .findFirstByProviderIdOrderByEndDateDesc(profile.getUser().getId())
                         .map(ProviderSubscription::isCurrentlyActive)
                         .orElse(false))

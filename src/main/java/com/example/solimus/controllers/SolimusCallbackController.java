@@ -55,7 +55,7 @@ public class SolimusCallbackController {
     private final WalletService walletService;
 
     // Repository des abonnements prestataires : SUB-*
-    private final SubscriptionRepository subscriptionRepository;
+    private final ProviderSubscriptionRepository providerSubscriptionRepository;
 
     // Service email pour notifier le prestataire après activation Premium
     private final EmailService emailService;
@@ -67,6 +67,34 @@ public class SolimusCallbackController {
     private static final DateTimeFormatter DATE_FORMATTER =
             DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.FRENCH);
 
+    // =========================================================================
+    // Routes de redirection TouchPay — confirment le paiement directement
+    // côté serveur, avant même d'afficher la page. Contrairement à un fichier
+    // HTML statique, ça fonctionne même si la WebView mobile ferme la page
+    // juste après le chargement.
+    // =========================================================================
+
+    @GetMapping(value = "/redirect-success", produces = "text/html")
+    public String redirectChargePaymentSuccess(@RequestParam("num_command") String reference) {
+
+        handleChargePaymentCallback(reference, true);
+
+        return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
+                "<h1 style=\"color:green;\">Paiement réussi</h1>" +
+                "<p>Votre paiement a bien été confirmé.</p>" +
+                "</body></html>";
+    }
+
+    @GetMapping(value = "/redirect-failed", produces = "text/html")
+    public String redirectChargePaymentFailed(@RequestParam("num_command") String reference) {
+
+        handleChargePaymentCallback(reference, false);
+
+        return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
+                "<h1 style=\"color:red;\">Paiement échoué</h1>" +
+                "<p>Le paiement a été marqué comme échoué.</p>" +
+                "</body></html>";
+    }
     // =========================================================================
     // ENDPOINT PRINCIPAL — Appelé automatiquement par InTouch après paiement
     // =========================================================================
@@ -223,7 +251,7 @@ public class SolimusCallbackController {
     private ResponseEntity<Map<String, Object>> handleSubscriptionCallback(String ref, boolean succes) {
 
         // On retrouve la Subscription créée en PENDING grâce à sa référence unique
-        return subscriptionRepository.findByTransactionRef(ref)
+        return providerSubscriptionRepository.findByTransactionRef(ref)
                 .map(subscription -> {
 
                     // Anti-double callback : si TouchPay rappelle deux fois, on ne réagit pas la 2e fois
@@ -237,7 +265,7 @@ public class SolimusCallbackController {
                     if (!succes) {
                         // Le paiement a échoué côté TouchPay → on met à échec cette tentative
                         subscription.setStatus(SubscriptionStatus.FAILED);
-                        subscriptionRepository.save(subscription);
+                        providerSubscriptionRepository.save(subscription);
 
                         // On trace l'échec dans les logs pour debug
                         log.warn("Paiement abonnement échoué pour ref : {}", ref);
@@ -250,7 +278,7 @@ public class SolimusCallbackController {
 
                     // Le paiement est confirmé par TouchPay → on débloque réellement l'accès
                     subscription.setStatus(SubscriptionStatus.ACTIVE);
-                    subscriptionRepository.save(subscription);
+                    providerSubscriptionRepository.save(subscription);
 
                     // On trace l'activation réussie, avec la date d'expiration pour suivi
                     log.info("Abonnement {} activé pour prestataire {} — expire le {}",

@@ -46,7 +46,8 @@ public interface ChargeCallRepository extends JpaRepository<ChargeCall, Long> {
      */
     @Query("SELECT cc FROM ChargeCall cc " +
            "WHERE cc.budget.residence.id = :residenceId " +
-           "ORDER BY cc.year DESC, cc.periodNumber DESC")
+           "ORDER BY cc.year DESC, cc.periodNumber DESC " +
+           "LIMIT 1")
     Optional<ChargeCall> findMostRecentByResidenceId(@Param("residenceId") Long residenceId);
 
     /**

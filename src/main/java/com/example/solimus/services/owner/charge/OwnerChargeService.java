@@ -35,4 +35,9 @@ public interface OwnerChargeService {
      * Récupère le reçu d'un paiement de charge, à partir de sa référence de transaction.
      */
     ChargePaymentReceiptDTO getReceipt(String transactionRef);
+
+    /**
+     * Vérifie le statut réel d'un paiement, à la demande de l'app mobile.
+     */
+    ChargePaymentStatusDTO getPaymentStatus(String reference);
 }

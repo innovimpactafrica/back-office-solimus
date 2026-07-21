@@ -203,6 +203,31 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
         throw new ResourceNotFoundException("Référence de paiement invalide");
     }
 
+    // =========================================================================
+    // Vérifie le statut réel d'un paiement, à la demande de l'app mobile
+    // =========================================================================
+    @Override
+    @Transactional(readOnly = true)
+    public ChargePaymentStatusDTO getPaymentStatus(String reference) {
+
+        User currentUser = getCurrentUser();
+
+        ChargeCallPayment payment = chargeCallPaymentRepository.findByReference(reference)
+                .orElseThrow(() -> new ResourceNotFoundException("Paiement introuvable"));
+
+        // Vérifie que ce paiement appartient bien au copropriétaire connecté
+        if (!payment.getOwner().getId().equals(currentUser.getId())) {
+            throw new ForbiddenException("Ce paiement ne vous appartient pas");
+        }
+
+        return ChargePaymentStatusDTO.builder()
+                .reference(payment.getReference())
+                .status(payment.getStatus())
+                .amount(payment.getAmount())
+                .paidAt(payment.getPaidAt())
+                .build();
+    }
+
 
 
     // =========================================================================
