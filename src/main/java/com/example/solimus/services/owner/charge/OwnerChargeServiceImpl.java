@@ -212,9 +212,42 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
     @Transactional(readOnly = true)
     public ChargePaymentStatusDTO getPaymentStatus(String reference) {
 
+        if (reference.startsWith("CPY-")) {
+            return getPaymentStatusFromChargeCall(reference);
+        } else if (reference.startsWith("ECP-")) {
+            return getPaymentStatusFromExceptionalCall(reference);
+        }
+
+        throw new ResourceNotFoundException("Référence de paiement invalide");
+    }
+
+    // Sous-méthode : statut d'un paiement de charge courante
+    private ChargePaymentStatusDTO getPaymentStatusFromChargeCall(String reference) {
+
         User currentUser = getCurrentUser();
 
         ChargeCallPayment payment = chargeCallPaymentRepository.findByReference(reference)
+                .orElseThrow(() -> new ResourceNotFoundException("Paiement introuvable"));
+
+        // Vérifie que ce paiement appartient bien au copropriétaire connecté
+        if (!payment.getOwner().getId().equals(currentUser.getId())) {
+            throw new ForbiddenException("Ce paiement ne vous appartient pas");
+        }
+
+        return ChargePaymentStatusDTO.builder()
+                .reference(payment.getReference())
+                .status(payment.getStatus())
+                .amount(payment.getAmount())
+                .paidAt(payment.getPaidAt())
+                .build();
+    }
+
+    // Sous-méthode : statut d'un paiement de charge exceptionnelle
+    private ChargePaymentStatusDTO getPaymentStatusFromExceptionalCall(String reference) {
+
+        User currentUser = getCurrentUser();
+
+        ExceptionalCallPayment payment = exceptionalCallPaymentRepository.findByReference(reference)
                 .orElseThrow(() -> new ResourceNotFoundException("Paiement introuvable"));
 
         // Vérifie que ce paiement appartient bien au copropriétaire connecté
