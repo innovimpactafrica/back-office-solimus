@@ -8,7 +8,6 @@ import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
-import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -31,7 +30,6 @@ public class SignalementServiceImpl implements SignalementService {
     private final SpecialtyRepository specialtyRepository;
     private final InterventionRequestRepository interventionRequestRepository;
     private final NotificationService notificationService;
-    private final MinioService minioService;
 
     // =========================================================================
     // DASHBOARD
@@ -293,9 +291,7 @@ public class SignalementServiceImpl implements SignalementService {
 
         // Convertir les photos en URLs publiques directes
         List<String> photoUrls = signalement.getPhotoUrls() != null
-                ? signalement.getPhotoUrls().stream()
-                        .map(minioService::getFileUrl)
-                        .toList()
+                ? signalement.getPhotoUrls()
                 : new ArrayList<>();
 
         return SyndicSignalementDetailDTO.builder()

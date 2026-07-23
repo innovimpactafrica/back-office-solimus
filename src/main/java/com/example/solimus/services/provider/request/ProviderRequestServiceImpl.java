@@ -12,7 +12,6 @@ import com.example.solimus.repositories.InterventionRequestRepository;
 import com.example.solimus.repositories.QuoteItemRepository;
 import com.example.solimus.repositories.QuoteRepository;
 import com.example.solimus.repositories.UserRepository;
-import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -34,7 +33,6 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
     private final UserRepository userRepository;
     private final InterventionRequestRepository interventionRequestRepository;
     private final QuoteRepository quoteRepository;
-    private final MinioService minioService;
     private final EstimatedDelayRepository estimatedDelayRepository;
     private final QuoteItemRepository quoteItemRepository;
 
@@ -78,9 +76,7 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
 
             // Convertir les chemins photos en URLs publiques directes
             List<String> photoUrls = request.getPhotoUrls() != null
-                    ? request.getPhotoUrls().stream()
-                            .map(minioService::getFileUrl)
-                            .toList()
+                    ? request.getPhotoUrls()
                     : new ArrayList<>();
 
             return ProviderRequestSummaryDTO.builder()
@@ -127,9 +123,7 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
 
         // 5. Convertir les chemins photos en URLs publiques directes
         List<String> photoUrls = request.getPhotoUrls() != null
-                ? request.getPhotoUrls().stream()
-                        .map(minioService::getFileUrl)
-                        .toList()
+                ? request.getPhotoUrls()
                 : new ArrayList<>();
 
         // 6. Calculer le statut affiché pour CE prestataire précis / Déjà en listant, on liste que les demandes où il n'a pas été choisi,

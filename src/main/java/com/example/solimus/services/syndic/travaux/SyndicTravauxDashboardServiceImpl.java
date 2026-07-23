@@ -7,7 +7,6 @@ import com.example.solimus.enums.*;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
-import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -27,7 +26,6 @@ public class SyndicTravauxDashboardServiceImpl implements SyndicTravauxDashboard
     private final InterventionRequestRepository interventionRequestRepository;
     private final QuoteRepository quoteRepository;
     private final ProviderProfileRepository providerProfileRepository;
-    private final MinioService minioService;
 
     // Statuts considérés comme "ouverts" (tout sauf clôturé/annulé)
     private static final List<InterventionStatus> OPEN_STATUSES = List.of(
@@ -123,7 +121,7 @@ public class SyndicTravauxDashboardServiceImpl implements SyndicTravauxDashboard
 
         // Convertir les chemins photos en URLs publiques directes
         List<String> photoUrls = request.getPhotoUrls() != null
-                ? request.getPhotoUrls().stream().map(minioService::getFileUrl).toList()
+                ? request.getPhotoUrls()
                 : new ArrayList<>();
 
         return SyndicTravauxDetailDTO.builder()
@@ -271,10 +269,10 @@ public class SyndicTravauxDashboardServiceImpl implements SyndicTravauxDashboard
 
         // Convertit les chemins photos (avant/après) en URLs publiques directes
         List<String> photosBefore = request.getPhotoUrls() != null
-                ? request.getPhotoUrls().stream().map(minioService::getFileUrl).toList()
+                ? request.getPhotoUrls()
                 : new ArrayList<>();
         List<String> photosAfter = request.getWorkPhotoUrls() != null
-                ? request.getWorkPhotoUrls().stream().map(minioService::getFileUrl).toList()
+                ? request.getWorkPhotoUrls()
                 : new ArrayList<>();
 
         return SyndicInterventionTabDTO.builder()

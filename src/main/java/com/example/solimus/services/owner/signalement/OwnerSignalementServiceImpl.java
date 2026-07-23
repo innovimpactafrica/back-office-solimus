@@ -8,7 +8,6 @@ import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
-import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -31,7 +30,6 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
     private final PropertyRepository propertyRepository;
     private final CommonFacilityRepository commonFacilityRepository;
     private final UserRepository userRepository;
-    private final MinioService minioService;
 
     // =========================================================================
     // CRÉER UN SIGNALEMENT
@@ -165,11 +163,8 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
 
     // Construit une carte de signalement pour la liste
     private SignalementCardDTO buildSignalementCard(Signalement signalement) {
-        // Convertir les photos en URLs publiques directes
         List<String> photoUrls = signalement.getPhotoUrls() != null
-                ? signalement.getPhotoUrls().stream()
-                        .map(minioService::getFileUrl)
-                        .toList()
+                ? signalement.getPhotoUrls()
                 : new ArrayList<>();
 
         return SignalementCardDTO.builder()
@@ -197,11 +192,8 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
                         .build())
                 .toList();
 
-        // Convertir les photos en URLs publiques directes
         List<String> photoUrls = signalement.getPhotoUrls() != null
-                ? signalement.getPhotoUrls().stream()
-                        .map(minioService::getFileUrl)
-                        .toList()
+                ? signalement.getPhotoUrls()
                 : new ArrayList<>();
 
         // Construit le DTO de détail complet

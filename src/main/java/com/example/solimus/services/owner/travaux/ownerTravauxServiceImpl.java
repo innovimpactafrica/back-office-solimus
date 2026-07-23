@@ -25,7 +25,6 @@ import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.geolocation.GeolocationService;
-import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -60,7 +59,6 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
     private final GeolocationService geolocationService;
     private final EmailService emailService;
     private final NotificationService notificationService;
-    private final MinioService minioService;
     private final ReviewRepository reviewRepository;
     private final SyndicCoOwnerRelationRepository coOwnerRelationRepository;
 
@@ -1079,9 +1077,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
 
         // Convertir les chemins photos en URLs publiques directes
         List<String> photoUrls = request.getPhotoUrls() != null
-                ? request.getPhotoUrls().stream()
-                        .map(minioService::getFileUrl)
-                        .toList()
+                ? request.getPhotoUrls()
                 : new ArrayList<>();
 
         return OwnerInterventionDetailDTO.builder()

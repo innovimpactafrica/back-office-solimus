@@ -829,7 +829,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                     // Interventions ouvertes pour cette résidence
                     long openInterventions = interventionRequestRepository.countOpenByResidenceId(residence.getId());
 
-                    // Convertir l'URL de la photo en URL signée temporaire (7 jours)
+                    // Url photo
                     String photoUrl = residence.getPhotoUrl();
 
                     return ResidenceCardDTO.builder()
