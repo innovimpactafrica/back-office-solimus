@@ -5,9 +5,9 @@ package com.example.solimus.enums;
 public enum ResolutionStatus {
 
     EN_ATTENTE("En attente"),   // valeur par defaut, point pas encore traite
-    ADOPTEE("Adoptée"),         // marque comme adoptee par le syndic
-    REJETEE("Rejetée"),         // marque comme rejetee par le syndic
-    REPORTEE("Reportée");       // reportee a une prochaine reunion
+    ADOPTEE("Adoptée"),         // marque comme adoptée par le syndic
+    REJETEE("Rejetée"),         // marque comme rejetée par le syndic
+    REPORTEE("Reportée");       // reportée a une prochaine réunion
 
     private final String description; // libelle francais pour l'affichage
 

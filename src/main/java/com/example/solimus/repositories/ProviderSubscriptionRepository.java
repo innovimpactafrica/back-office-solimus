@@ -20,6 +20,9 @@ public interface ProviderSubscriptionRepository extends JpaRepository<ProviderSu
     // → utilisé avant de créer un nouveau paiement, pour vérifier qu'il n'a pas déjà un abonnement actif
     Optional<ProviderSubscription> findFirstByProviderIdOrderByEndDateDesc(Long providerId);
 
+    // Compte les abonnés sur une formule prestataire précise
+    long countByProviderPlanId(Long providerPlanId);
+
     // Récupère tous les abonnements d'un prestataire, du plus récent au plus ancien
     // → utilisé pour l'écran "Mon abonnement" (carte actuelle + historique des paiements)
     Page<ProviderSubscription> findByProviderIdOrderByStartDateDesc(Long providerId, Pageable pageable);

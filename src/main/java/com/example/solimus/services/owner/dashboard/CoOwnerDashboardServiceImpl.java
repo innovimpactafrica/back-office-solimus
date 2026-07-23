@@ -19,6 +19,7 @@ import com.example.solimus.enums.RepartitionMode;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
+import com.example.solimus.utils.ChargeAllocationUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -29,10 +30,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Year;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -167,18 +169,23 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
                 annualCharge = chargeCallItemRepository.sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(
                         currentUser.getId(), residenceId, currentYear);
             } else {
-                // Mode OWNERSHIP_SHARES : calcul basé sur les tantièmes
-                BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-                List<Property> properties = propertyRepository.findAllByOwnerId(currentUser.getId());
-                for (Property p : properties) {
-                    if (p.getResidence().getId().equals(residenceId)) {
-                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme());
-                    }
+                // Mode OWNERSHIP_SHARES : même répartition (plus grand reste) que celle utilisée pour
+                // générer/prévisualiser les charges — garantit que ce KPI affiche exactement ce que
+                // paiera réellement ce copropriétaire, sans recalcul isolé ni risque d'arrondi à 0
+                Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
+                List<Property> residenceProperties = propertyRepository.findByResidenceId(residenceId);
+                for (Property p : residenceProperties) {
+                    if (p.getOwner() == null) continue;
+                    tantiemeByOwnerId.merge(
+                            p.getOwner().getId(),
+                            p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO,
+                            BigDecimal::add);
                 }
 
-                annualCharge = budget.getBudgetTotal()
-                        .multiply(tantiemeCoOwner)
-                        .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+                Map<Long, BigDecimal> quotePartByOwnerId = ChargeAllocationUtil.distributeByLargestRemainder(
+                        budget.getBudgetTotal(), tantiemeByOwnerId);
+
+                annualCharge = quotePartByOwnerId.getOrDefault(currentUser.getId(), BigDecimal.ZERO);
             }
         }
 

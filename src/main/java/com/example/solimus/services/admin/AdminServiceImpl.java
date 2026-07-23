@@ -180,44 +180,6 @@ public class AdminServiceImpl implements AdminService {
         return mapToWithdrawalDTO(savedWithdrawal);
     }
 
-    // ============================================================================
-    // PARTIE — GESTION ABONNEMENT PRESTATAIRE
-    // ============================================================================
-    //
-    // Save transparent : crée la formule si elle n'existe pas encore,
-    // sinon met à jour la ligne existante avec les nouvelles valeurs
-    // envoyées par l'admin depuis le formulaire.
-    //
-    // ============================================================================
-
-    @Override
-    @Transactional
-    public ProviderPlanDTO saveProviderPlan(ProviderPlanRequestDTO dto) {
-
-        // On récupère la ligne existante si elle existe, sinon on en crée une nouvelle
-        ProviderPlan plan = providerPlanRepository.findFirstByOrderByIdAsc()
-                .orElse(new ProviderPlan());
-
-
-        // On ne met à jour que les champs réellement envoyés par l'admin.
-        if (dto.getName() != null) {
-            plan.setName(dto.getName());
-        }
-        if (dto.getDescription() != null) {
-            plan.setDescription(dto.getDescription());
-        }
-        if (dto.getMonthlyPrice() != null) {
-            plan.setMonthlyPrice(dto.getMonthlyPrice());
-        }
-        if (dto.getYearlyPrice() != null) {
-            plan.setYearlyPrice(dto.getYearlyPrice());
-        }
-
-        ProviderPlan saved = providerPlanRepository.save(plan);
-
-        return toDTO(saved);
-    }
-
 
     // ============================================================================
     // PARTIE — GESTION DES DÉLAIS ESTIMÉS

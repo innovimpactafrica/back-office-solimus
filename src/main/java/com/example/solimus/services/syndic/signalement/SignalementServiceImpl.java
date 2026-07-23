@@ -293,7 +293,9 @@ public class SignalementServiceImpl implements SignalementService {
 
         // Convertir les photos en URLs publiques directes
         List<String> photoUrls = signalement.getPhotoUrls() != null
-                ? new ArrayList<>(signalement.getPhotoUrls())
+                ? signalement.getPhotoUrls().stream()
+                        .map(minioService::getFileUrl)
+                        .toList()
                 : new ArrayList<>();
 
         return SyndicSignalementDetailDTO.builder()

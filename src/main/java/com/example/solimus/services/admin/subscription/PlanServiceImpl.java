@@ -1,22 +1,28 @@
 package com.example.solimus.services.admin.subscription;
 
-import com.example.solimus.dtos.admin.subscription.PlanOverviewDTO;
-import com.example.solimus.dtos.admin.subscription.SubscriptionKpiDTO;
-import com.example.solimus.dtos.admin.subscription.SyndicPlanDTO;
-import com.example.solimus.dtos.admin.subscription.SyndicPlanFeatureDTO;
-import com.example.solimus.dtos.admin.subscription.SyndicPlanRequestDTO;
+import com.example.solimus.dtos.admin.subscription.*;
 import com.example.solimus.entities.ProviderPlan;
 import com.example.solimus.entities.SyndicPlan;
+import com.example.solimus.enums.ProviderPlanFeature;
 import com.example.solimus.enums.SyndicPlanFeature;
+import com.example.solimus.enums.SubscriberType;
+import com.example.solimus.enums.SubscriptionStatus;
+import com.example.solimus.exceptions.BadRequestException;
+import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.ProviderPlanRepository;
 import com.example.solimus.repositories.ProviderSubscriptionRepository;
+import com.example.solimus.repositories.SubscriberRepository;
 import com.example.solimus.repositories.SyndicPlanRepository;
 import com.example.solimus.repositories.SyndicSubscriptionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -30,6 +36,7 @@ public class PlanServiceImpl implements PlanService {
     private final SyndicSubscriptionRepository syndicSubscriptionRepository;
     private final ProviderPlanRepository providerPlanRepository;
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
+    private final SubscriberRepository subscriberRepository;
 
     // =========================================================================
     // Création d'une nouvelle formule syndic
@@ -37,6 +44,11 @@ public class PlanServiceImpl implements PlanService {
     @Override
     @Transactional
     public SyndicPlanDTO createSyndicPlan(SyndicPlanRequestDTO dto) {
+
+        // Empêche deux formules syndic portant le même nom
+        if (syndicPlanRepository.existsByNameIgnoreCase(dto.getName())) {
+            throw new BadRequestException("Une formule syndic portant ce nom existe déjà");
+        }
 
         SyndicPlan plan = new SyndicPlan();
 
@@ -79,7 +91,7 @@ public class PlanServiceImpl implements PlanService {
 
             allPlans.add(PlanOverviewDTO.builder()
                     .id(plan.getId())
-                    .planType("SYNDIC")
+                    .planType(SubscriberType.SYNDIC)
                     .name(plan.getName())
                     .monthlyPrice(plan.getMonthlyPrice())
                     .yearlyPrice(plan.getYearlyPrice())
@@ -89,21 +101,25 @@ public class PlanServiceImpl implements PlanService {
                     .build());
         }
 
-        // Bloc 2 : l'unique formule prestataire (si elle existe déjà)
-        var providerPlanOpt = providerPlanRepository.findFirstByOrderByIdAsc();
-        if (providerPlanOpt.isPresent()) {
+        // Bloc 2 : toutes les formules prestataires
+        List<ProviderPlan> providerPlans = providerPlanRepository.findAll();
+        for (ProviderPlan providerPlan : providerPlans) {
 
-            ProviderPlan providerPlan = providerPlanOpt.get();
-            //Compte le nombre de prestataires ayant un abonnement actif pour ce plan
-            long providerSubscribersCount = providerSubscriptionRepository.countCurrentlyActive(LocalDateTime.now());
+            long providerSubscribersCount = providerSubscriptionRepository.countByProviderPlanId(providerPlan.getId());
+
+            List<String> providerFeatureLabels = new ArrayList<>();
+            for (ProviderPlanFeature feature : providerPlan.getFeatures()) {
+                providerFeatureLabels.add(feature.getLabel());
+            }
+
             allPlans.add(PlanOverviewDTO.builder()
                     .id(providerPlan.getId())
-                    .planType("PRESTATAIRE")
+                    .planType(SubscriberType.PRESTATAIRE)
                     .name(providerPlan.getName())
                     .monthlyPrice(providerPlan.getMonthlyPrice())
                     .yearlyPrice(providerPlan.getYearlyPrice())
-                    .featureLabels(new ArrayList<>()) // ProviderPlan n'a pas de fonctionnalités à cocher
-                    .active(true) // pas de champ active sur ProviderPlan, toujours actif par definition
+                    .featureLabels(providerFeatureLabels)
+                    .active(providerPlan.getActive())
                     .subscribersCount(providerSubscribersCount)
                     .build());
         }
@@ -170,8 +186,276 @@ public class PlanServiceImpl implements PlanService {
     }
 
     // =========================================================================
+    // Liste unifiée des abonnés (Syndic + Prestataire), avec recherche et filtres
+    // =========================================================================
+    @Override
+    @Transactional(readOnly = true)
+    public SubscriberListResponseDTO getAllSubscribers(String search, SubscriptionStatus status,
+                                                         SubscriberType subscriberType, int page, int size) {
+
+        Pageable pageable = PageRequest.of(page, size);
+
+        // Nettoie le texte de recherche
+        String searchFilter = null;
+        if (search != null && !search.isBlank()) {
+            searchFilter = search.trim();
+        }
+
+        // Convertit les enums en texte brut pour la requête native (comparaison exacte)
+        String statusFilter = status != null ? status.name() : null;
+        String subscriberTypeFilter = subscriberType != null ? subscriberType.name() : null;
+
+        Page<Object[]> resultPage = subscriberRepository.searchSubscribers(
+                searchFilter, statusFilter, subscriberTypeFilter, pageable);
+
+        List<SubscriberRowDTO> rows = new ArrayList<>();
+
+        // Chaque ligne est un tableau brut de colonnes, il faut extraire chaque valeur une par une,
+        // dans l'ordre exact du SELECT (subscriber_type, subscription_id, client_name, client_email,
+        // city, country, plan_name, amount, start_date, end_date, status)
+        for (Object[] row : resultPage.getContent()) {
+
+            String subscriberTypeValue = (String) row[0];
+            Long subscriptionId = ((Number) row[1]).longValue();
+            String clientName = (String) row[2];
+            String clientEmail = (String) row[3];
+            String city = (String) row[4];
+            String country = (String) row[5];
+            String planName = (String) row[6];
+            BigDecimal amount = (BigDecimal) row[7];
+
+            Timestamp startTimestamp = (Timestamp) row[8];
+            LocalDateTime startDate = startTimestamp != null ? startTimestamp.toLocalDateTime() : null;
+
+            Timestamp endTimestamp = (Timestamp) row[9];
+            LocalDateTime endDate = endTimestamp != null ? endTimestamp.toLocalDateTime() : null;
+
+            String statusValue = (String) row[10];
+            SubscriptionStatus subscriptionStatus = SubscriptionStatus.valueOf(statusValue);
+
+            rows.add(SubscriberRowDTO.builder()
+                    .subscriptionId(subscriptionId)
+                    .subscriberType(SubscriberType.valueOf(subscriberTypeValue))
+                    .clientName(clientName)
+                    .clientEmail(clientEmail)
+                    .city(city)
+                    .country(country)
+                    .planName(planName)
+                    .amount(amount)
+                    .startDate(startDate)
+                    .endDate(endDate)
+                    .status(subscriptionStatus)
+                    .statusLabel(subscriptionStatus.getLabel())
+                    .build());
+        }
+
+        return SubscriberListResponseDTO.builder()
+                .totalCount(resultPage.getTotalElements())
+                .subscribers(rows)
+                .currentPage(resultPage.getNumber())
+                .totalPages(resultPage.getTotalPages())
+                .build();
+    }
+
+    // Mise à jour d'une formule syndic existante
+    @Override
+    @Transactional
+    public SyndicPlanDTO updateSyndicPlan(Long id, SyndicPlanRequestDTO dto) {
+
+        SyndicPlan plan = syndicPlanRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Formule introuvable"));
+
+        // Ne met à jour que les champs réellement envoyés
+        if (dto.getName() != null) {
+            // Empêche de renommer cette formule avec le nom d'une autre formule syndic existante
+            if (syndicPlanRepository.existsByNameIgnoreCaseAndIdNot(dto.getName(), id)) {
+                throw new BadRequestException("Une formule syndic portant ce nom existe déjà");
+            }
+            plan.setName(dto.getName());
+        }
+        if (dto.getDescription() != null) {
+            plan.setDescription(dto.getDescription());
+        }
+        if (dto.getMonthlyPrice() != null) {
+            plan.setMonthlyPrice(dto.getMonthlyPrice());
+        }
+        if (dto.getYearlyPrice() != null) {
+            plan.setYearlyPrice(dto.getYearlyPrice());
+        }
+        if (dto.getMaxResidences() != null) {
+            plan.setMaxResidences(dto.getMaxResidences());
+        }
+        if (dto.getMaxCoOwners() != null) {
+            plan.setMaxCoOwners(dto.getMaxCoOwners());
+        }
+        if (dto.getMaxUsers() != null) {
+            plan.setMaxUsers(dto.getMaxUsers());
+        }
+        if (dto.getFeatures() != null) {
+            plan.setFeatures(dto.getFeatures());
+        }
+        if (dto.getActive() != null) {
+            plan.setActive(dto.getActive());
+        }
+
+        SyndicPlan saved = syndicPlanRepository.save(plan);
+
+        return toDTO(saved);
+    }
+
+    // Suppression d'une formule syndic
+    @Override
+    @Transactional
+    public void deleteSyndicPlan(Long id) {
+
+        SyndicPlan plan = syndicPlanRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Formule introuvable"));
+
+        // Empêche la suppression si des abonnés existent encore sur cette formule
+        long subscribersCount = syndicSubscriptionRepository.countBySyndicPlanId(id);
+        if (subscribersCount > 0) {
+            throw new BadRequestException("Impossible de supprimer une formule ayant encore des abonnés actifs");
+        }
+
+        syndicPlanRepository.delete(plan);
+    }
+
+    // Active ou désactive une formule syndic (sans la supprimer)
+    @Override
+    @Transactional
+    public SyndicPlanDTO toggleSyndicPlanStatus(Long id, boolean active) {
+
+        SyndicPlan plan = syndicPlanRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Formule introuvable"));
+
+        plan.setActive(active);
+        SyndicPlan saved = syndicPlanRepository.save(plan);
+
+        return toDTO(saved);
+    }
+
+    // ============================================================================
+    // PARTIE — GESTION ABONNEMENT PRESTATAIRE
+    // ============================================================================
+    //
+    // Save transparent : crée la formule si elle n'existe pas encore,
+    // sinon met à jour la ligne existante avec les nouvelles valeurs
+    // envoyées par l'admin depuis le formulaire.
+    //
+    // ============================================================================
+
+    // Création d'une nouvelle formule prestataire
+    @Override
+    @Transactional
+    public ProviderPlanDTO createProviderPlan(ProviderPlanRequestDTO dto) {
+
+        // Empêche deux formules prestataire portant le même nom
+        if (providerPlanRepository.existsByNameIgnoreCase(dto.getName())) {
+            throw new BadRequestException("Une formule prestataire portant ce nom existe déjà");
+        }
+
+        ProviderPlan plan = new ProviderPlan();
+        plan.setName(dto.getName());
+        plan.setDescription(dto.getDescription());
+        plan.setMonthlyPrice(dto.getMonthlyPrice());
+        plan.setYearlyPrice(dto.getYearlyPrice());
+        plan.setFeatures(dto.getFeatures() != null ? dto.getFeatures() : new HashSet<>());
+        plan.setActive(dto.getActive() != null ? dto.getActive() : true);
+
+        ProviderPlan saved = providerPlanRepository.save(plan);
+        return toProviderDTO(saved);
+    }
+
+    // Mise à jour d'une formule prestataire précise
+    @Override
+    @Transactional
+    public ProviderPlanDTO updateProviderPlan(Long id, ProviderPlanRequestDTO dto) {
+
+        ProviderPlan plan = providerPlanRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Formule introuvable"));
+
+        if (dto.getName() != null) {
+            // Empêche de renommer cette formule avec le nom d'une autre formule prestataire existante
+            if (providerPlanRepository.existsByNameIgnoreCaseAndIdNot(dto.getName(), id)) {
+                throw new BadRequestException("Une formule prestataire portant ce nom existe déjà");
+            }
+            plan.setName(dto.getName());
+        }
+        if (dto.getDescription() != null) {
+            plan.setDescription(dto.getDescription());
+        }
+        if (dto.getMonthlyPrice() != null) {
+            plan.setMonthlyPrice(dto.getMonthlyPrice());
+        }
+        if (dto.getYearlyPrice() != null) {
+            plan.setYearlyPrice(dto.getYearlyPrice());
+        }
+        if (dto.getFeatures() != null) {
+            plan.setFeatures(dto.getFeatures());
+        }
+        if (dto.getActive() != null) {
+            plan.setActive(dto.getActive());
+        }
+
+        ProviderPlan saved = providerPlanRepository.save(plan);
+        return toProviderDTO(saved);
+    }
+
+    // Active ou désactive une formule prestataire précise
+    @Override
+    @Transactional
+    public ProviderPlanDTO toggleProviderPlanStatus(Long id, boolean active) {
+
+        ProviderPlan plan = providerPlanRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Formule introuvable"));
+
+        plan.setActive(active);
+        ProviderPlan saved = providerPlanRepository.save(plan);
+        return toProviderDTO(saved);
+    }
+
+    // Suppression d'une formule prestataire précise
+    @Override
+    @Transactional
+    public void deleteProviderPlan(Long id) {
+
+        ProviderPlan plan = providerPlanRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Formule introuvable"));
+
+        long subscribersCount = providerSubscriptionRepository.countByProviderPlanId(id);
+        if (subscribersCount > 0) {
+            throw new BadRequestException("Impossible de supprimer une formule ayant encore des abonnés actifs");
+        }
+
+        providerPlanRepository.delete(plan);
+    }
+
+
+    // =========================================================================
     // Méthodes utilitaires
     // =========================================================================
+
+    /**
+     * Conversion entité → DTO.
+     */
+    private ProviderPlanDTO toProviderDTO (ProviderPlan plan) {
+
+        List<String> featureLabels = new ArrayList<>();
+        for (ProviderPlanFeature feature : plan.getFeatures()) {
+            featureLabels.add(feature.getLabel());
+        }
+
+        return ProviderPlanDTO.builder()
+                .id(plan.getId())
+                .name(plan.getName())
+                .description(plan.getDescription())
+                .monthlyPrice(plan.getMonthlyPrice())
+                .yearlyPrice(plan.getYearlyPrice())
+                .active(plan.getActive())
+                .featureLabels(featureLabels)
+                .updatedAt(plan.getUpdatedAt())
+                .build();
+    }
 
     // Convertit une entité SyndicPlan en DTO d'affichage
     private SyndicPlanDTO toDTO(SyndicPlan plan) {

@@ -61,12 +61,14 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
                             "Vous avez déjà un abonnement actif jusqu'au " + sub.getEndDate());
                 });
 
-        // On récupère la formule actuellement configurée par l'admin (nom, prix...)
-        ProviderPlan plan = providerPlanRepository.findFirstByOrderByIdAsc()
+        // On récupère la formule choisie par le prestataire dans le DTO
+        ProviderPlan plan = providerPlanRepository.findById(dto.getProviderPlanId())
+                .orElseThrow(() -> new ResourceNotFoundException("Formule d'abonnement introuvable."));
 
-                // Si l'admin n'a jamais créé de formule, on ne peut pas continuer
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Aucune formule d'abonnement n'est configurée."));
+        // On refuse si la formule choisie n'est plus proposée par l'admin
+        if (!Boolean.TRUE.equals(plan.getActive())) {
+            throw new BadRequestException("Cette formule n'est plus disponible.");
+        }
 
         // On regarde ce que le prestataire a choisi dans le DTO : annuel ou pas
         boolean isAnnual = Boolean.TRUE.equals(dto.getAnnual());
@@ -134,13 +136,14 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
     }
 
     /**
-     * Retourne le plan d'abonnement actuel pour les prestataires.
+     * Retourne les formules d'abonnement actuellement actives, proposées au choix du prestataire.
      */
     @Override
-    public ProviderPlanDTO getProviderPlan() {
-        ProviderPlan plan = providerPlanRepository.findFirstByOrderByIdAsc()
-                .orElseThrow(() -> new RuntimeException("Aucun plan d'abonnement configuré"));
-        return toDTO(plan);
+    public List<ProviderPlanDTO> getProviderPlans() {
+        return providerPlanRepository.findAll().stream()
+                .filter(plan -> Boolean.TRUE.equals(plan.getActive()))
+                .map(this::toDTO)
+                .toList();
     }
 
     // ============================================================
@@ -224,6 +227,7 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
             case FAILED -> "Échoué";
             case EXPIRED -> "Expiré";
             case CANCELLED -> "Annulé";
+            case DESACTIVATED -> "Désactivé";
         };
     }
 

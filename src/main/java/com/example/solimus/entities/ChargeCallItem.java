@@ -1,6 +1,6 @@
 package com.example.solimus.entities;
 
-import com.example.solimus.enums.PaymentStatus;
+import com.example.solimus.enums.ChargeItemPaymentStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -84,14 +84,12 @@ public class ChargeCallItem {
     // =========================================================================
 
     /**
-     * Statut de paiement de cette ligne.
-     * PENDING : non payé
-     * COMPLETED : payé intégralement
-     * FAILED : paiement échoué
+     * Statut de paiement de cette ligne, posé explicitement au moment
+     * de la confirmation d'un paiement (jamais recalculé à l'affichage).
      */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private PaymentStatus status = PaymentStatus.PENDING;
+    private ChargeItemPaymentStatus status = ChargeItemPaymentStatus.PENDING;
 
     // =========================================================================
     // AUDIT

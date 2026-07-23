@@ -740,7 +740,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
         // 4. Résidences avec impayés et pourcentage
         long residencesAvecImpayes = chargeCallItemRepository.countResidencesWithUnpaidBySyndic(
-                currentSyndic, PaymentStatus.COMPLETED);
+                currentSyndic, ChargeItemPaymentStatus.PAID);
 
         double pourcentageResidencesImpayees = 0.0;
         if (totalResidences > 0) {
@@ -1288,7 +1288,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
             // Étape 4 : Récupérer le statut
             // On utilise directement le statut PaymentStatus de l'item
-            PaymentStatus status = item.getStatus();
+            ChargeItemPaymentStatus status = item.getStatus();
 
             // Étape 5 : Récupérer la date limite
             // La date limite est sur le ChargeCall parent
@@ -1635,7 +1635,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
                 // Vérifier si la date d'échéance est dépassée et que la charge n'a toujours pas été payée.
                 if (item.getChargeCall().getDueDate().isBefore(today)
-                        && item.getStatus() != PaymentStatus.COMPLETED) {
+                        && item.getStatus() != ChargeItemPaymentStatus.PAID) {
 
                     // Le lot est considéré en retard de paiement.
                     return "OVERDUE";

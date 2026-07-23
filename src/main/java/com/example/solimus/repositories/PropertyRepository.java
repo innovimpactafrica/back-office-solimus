@@ -71,10 +71,10 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
     // Lister les biens d'une résidence avec filtres (paginé)
     // search : reference du lot OU nom du owner, LIKE insensible casse
     // floor : exact match
-    @Query("SELECT p FROM Property p WHERE p.residence.id = :residenceId " +
+    @Query("SELECT p FROM Property p LEFT JOIN p.owner o WHERE p.residence.id = :residenceId " +
            "AND (:search IS NULL OR LOWER(p.reference) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR (p.owner IS NOT NULL AND LOWER(p.owner.firstName) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-           "OR (p.owner IS NOT NULL AND LOWER(p.owner.lastName) LIKE LOWER(CONCAT('%', :search, '%')))) " +
+           "OR (o IS NOT NULL AND LOWER(o.firstName) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "OR (o IS NOT NULL AND LOWER(o.lastName) LIKE LOWER(CONCAT('%', :search, '%')))) " +
            "AND (:floor IS NULL OR p.floor = :floor) " +
            "ORDER BY p.reference ASC")
     Page<Property> findByResidenceIdWithFilters(

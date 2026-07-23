@@ -1,5 +1,6 @@
 package com.example.solimus.entities;
 
+import com.example.solimus.enums.ChargeItemPaymentStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -38,4 +39,9 @@ public class ExceptionalCallItem {
 
     @Column(nullable = false)
     private BigDecimal paidAmount = BigDecimal.ZERO;
+
+    // Posé explicitement au moment de la confirmation d'un paiement (jamais recalculé à l'affichage)
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ChargeItemPaymentStatus status = ChargeItemPaymentStatus.PENDING;
 }

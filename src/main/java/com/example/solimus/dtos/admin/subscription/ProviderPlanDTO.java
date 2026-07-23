@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * DTO retourné pour afficher la formule prestataire actuelle.
@@ -22,5 +23,7 @@ public class ProviderPlanDTO {
     private String description;
     private BigDecimal monthlyPrice;
     private BigDecimal yearlyPrice;
+    private Boolean active;
+    private List<String> featureLabels;
     private LocalDateTime updatedAt;
 }

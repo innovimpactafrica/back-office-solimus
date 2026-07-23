@@ -1,6 +1,7 @@
 package com.example.solimus.dtos.syndic.charge;
 
 import com.example.solimus.enums.RepartitionMode;
+import jakarta.validation.Valid;
 import lombok.Data;
 import java.math.BigDecimal;
 import java.util.List;
@@ -9,5 +10,7 @@ import java.util.List;
 public class UpdateExceptionalCallFinancialDTO {
     private BigDecimal totalAmount;
     private RepartitionMode repartitionMode;
+
+    @Valid
     private List<CustomCoOwnerAmountDTO> customAmounts;
 }

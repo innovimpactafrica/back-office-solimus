@@ -12,19 +12,21 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/provider/subscription")
 @RequiredArgsConstructor
 @Tag(name = "Prestataire - Abonnement", description = "Gestion de l'abonnement du prestataire")
-public class SubscriptionController {
+public class ProviderSubscriptionController {
 
     private final SubscriptionPaymentService subscriptionPaymentService;
 
-    @Operation(summary = "Obtenir le plan d'abonnement")
+    @Operation(summary = "Obtenir les formules d'abonnement actives, au choix du prestataire")
     @PreAuthorize("hasRole('ROLE_PROVIDER')")
     @GetMapping("/plan")
-    public ResponseEntity<ProviderPlanDTO> getProviderPlan() {
-        return ResponseEntity.ok(subscriptionPaymentService.getProviderPlan());
+    public ResponseEntity<List<ProviderPlanDTO>> getProviderPlans() {
+        return ResponseEntity.ok(subscriptionPaymentService.getProviderPlans());
     }
 
     @Operation(summary = "Initier le paiement d'un abonnement (mensuel ou annuel)")

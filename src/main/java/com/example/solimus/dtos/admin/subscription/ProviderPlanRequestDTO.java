@@ -1,5 +1,6 @@
 package com.example.solimus.dtos.admin.subscription;
 
+import com.example.solimus.enums.ProviderPlanFeature;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -9,6 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.Set;
 
 /**
  * DTO envoyé par l'admin pour créer ou mettre à jour la formule prestataire.
@@ -32,4 +34,8 @@ public class ProviderPlanRequestDTO {
     // Optionnel — l'admin peut ne pas proposer de prix annuel
     @DecimalMin(value = "0.0", inclusive = false, message = "Le prix annuel doit être supérieur à 0")
     private BigDecimal yearlyPrice;
+
+    private Boolean active;
+
+    private Set<ProviderPlanFeature> features;
 }

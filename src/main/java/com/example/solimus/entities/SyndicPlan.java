@@ -30,8 +30,8 @@ public class SyndicPlan {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Nom affiché de la formule (ex: "Premium")
-    @Column(name = "name", nullable = false)
+    // Nom affiché de la formule (ex: "Premium") — unique parmi les formules syndic
+    @Column(name = "name", nullable = false, unique = true)
     private String name;
 
     // Texte descriptif affiché au syndic

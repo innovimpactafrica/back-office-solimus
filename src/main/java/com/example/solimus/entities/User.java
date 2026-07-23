@@ -71,6 +71,12 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
+    @Column(name = "city")
+    private String city;
+
+    @Column(name = "country")
+    private String country;
+
     /**
      * Mot de passe hashé.
      * Peut être null avant l'activation du compte.

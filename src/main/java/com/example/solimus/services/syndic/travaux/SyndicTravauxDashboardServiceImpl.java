@@ -7,6 +7,7 @@ import com.example.solimus.enums.*;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
+import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -26,6 +27,7 @@ public class SyndicTravauxDashboardServiceImpl implements SyndicTravauxDashboard
     private final InterventionRequestRepository interventionRequestRepository;
     private final QuoteRepository quoteRepository;
     private final ProviderProfileRepository providerProfileRepository;
+    private final MinioService minioService;
 
     // Statuts considérés comme "ouverts" (tout sauf clôturé/annulé)
     private static final List<InterventionStatus> OPEN_STATUSES = List.of(
@@ -119,6 +121,11 @@ public class SyndicTravauxDashboardServiceImpl implements SyndicTravauxDashboard
             }
         }
 
+        // Convertir les chemins photos en URLs publiques directes
+        List<String> photoUrls = request.getPhotoUrls() != null
+                ? request.getPhotoUrls().stream().map(minioService::getFileUrl).toList()
+                : new ArrayList<>();
+
         return SyndicTravauxDetailDTO.builder()
                 .id(request.getId())
                 .reference(request.getReference())
@@ -144,7 +151,7 @@ public class SyndicTravauxDashboardServiceImpl implements SyndicTravauxDashboard
                 .totalEngage(request.getTotalAmount())
                 .totalPaye(calculateTotalPaye(request))
                 .participants(buildParticipants(request))
-                .photoUrls(request.getPhotoUrls())
+                .photoUrls(photoUrls)
                 .build();
     }
 
@@ -262,13 +269,21 @@ public class SyndicTravauxDashboardServiceImpl implements SyndicTravauxDashboard
                 .map(q -> q.getEstimatedDelay() != null ? q.getEstimatedDelay().getLabel() : null)
                 .orElse(null);
 
+        // Convertit les chemins photos (avant/après) en URLs publiques directes
+        List<String> photosBefore = request.getPhotoUrls() != null
+                ? request.getPhotoUrls().stream().map(minioService::getFileUrl).toList()
+                : new ArrayList<>();
+        List<String> photosAfter = request.getWorkPhotoUrls() != null
+                ? request.getWorkPhotoUrls().stream().map(minioService::getFileUrl).toList()
+                : new ArrayList<>();
+
         return SyndicInterventionTabDTO.builder()
                 .startedAt(request.getStartedAt())
                 .finishedAt(request.getFinishedAt())
                 .dureeEstimee(dureeEstimee)
                 .providerReport(lastComment)
-                .photosBefore(request.getPhotoUrls())
-                .photosAfter(request.getWorkPhotoUrls())
+                .photosBefore(photosBefore)
+                .photosAfter(photosAfter)
                 .build();
     }
 

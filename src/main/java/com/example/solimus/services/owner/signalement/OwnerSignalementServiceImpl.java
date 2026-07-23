@@ -199,7 +199,9 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
 
         // Convertir les photos en URLs publiques directes
         List<String> photoUrls = signalement.getPhotoUrls() != null
-                ? new ArrayList<>(signalement.getPhotoUrls())
+                ? signalement.getPhotoUrls().stream()
+                        .map(minioService::getFileUrl)
+                        .toList()
                 : new ArrayList<>();
 
         // Construit le DTO de détail complet

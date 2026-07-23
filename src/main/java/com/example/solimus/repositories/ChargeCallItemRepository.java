@@ -2,7 +2,7 @@ package com.example.solimus.repositories;
 
 import com.example.solimus.entities.ChargeCallItem;
 import com.example.solimus.entities.User;
-import com.example.solimus.enums.PaymentStatus;
+import com.example.solimus.enums.ChargeItemPaymentStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -61,7 +61,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
            "JOIN cc.budget b " +
            "WHERE b.residence.syndic = :syndic " +
            "AND cci.status != :paidStatus")
-    long countResidencesWithUnpaidBySyndic(@Param("syndic") User syndic, @Param("paidStatus") PaymentStatus paidStatus);
+    long countResidencesWithUnpaidBySyndic(@Param("syndic") User syndic, @Param("paidStatus") ChargeItemPaymentStatus paidStatus);
 
     // ===== CALCULS PAR RÉSIDENCE =====
 

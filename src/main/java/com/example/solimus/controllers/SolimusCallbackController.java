@@ -365,6 +365,15 @@ public class SolimusCallbackController {
                     // Met à jour la ligne de charge : ajoute ce paiement au montant déjà payé
                     ChargeCallItem item = paiement.getChargeCallItem();
                     item.setPaidAmount(item.getPaidAmount().add(paiement.getAmount()));
+
+                    // Statut posé explicitement ICI, au moment du paiement réellement confirmé —
+                    // jamais recalculé ailleurs à l'affichage
+                    if (item.getPaidAmount().compareTo(item.getQuotePart()) >= 0) {
+                        item.setStatus(ChargeItemPaymentStatus.PAID);
+                    } else {
+                        item.setStatus(ChargeItemPaymentStatus.PARTIALLY_PAID);
+                    }
+
                     chargeCallItemRepository.save(item);
 
                     // Crédite le wallet du syndic (catégorie CHARGES)
@@ -446,6 +455,15 @@ public class SolimusCallbackController {
                     // Met à jour la ligne d'appel exceptionnel
                     ExceptionalCallItem item = paiement.getExceptionalCallItem();
                     item.setPaidAmount(item.getPaidAmount().add(paiement.getAmount()));
+
+                    // Statut posé explicitement ICI, au moment du paiement réellement confirmé —
+                    // jamais recalculé ailleurs à l'affichage
+                    if (item.getPaidAmount().compareTo(item.getQuotePart()) >= 0) {
+                        item.setStatus(ChargeItemPaymentStatus.PAID);
+                    } else {
+                        item.setStatus(ChargeItemPaymentStatus.PARTIALLY_PAID);
+                    }
+
                     exceptionalCallItemRepository.save(item);
 
                     // Crédite le wallet du syndic (catégorie CHARGES)

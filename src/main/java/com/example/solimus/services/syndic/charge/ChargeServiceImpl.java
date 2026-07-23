@@ -10,6 +10,7 @@ import com.example.solimus.repositories.*;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
+import com.example.solimus.utils.ChargeAllocationUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
@@ -473,18 +474,26 @@ public class ChargeServiceImpl implements ChargeService {
             propertiesByOwner.computeIfAbsent(ownerId, k -> new ArrayList<>()).add(property);
         }
 
+        // Additionne le tantième de chaque copropriétaire (plusieurs lots = un seul tantième cumulé)
+        Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
+        for (Map.Entry<Long, List<Property>> entry : propertiesByOwner.entrySet()) {
+            BigDecimal totalTantieme = BigDecimal.ZERO;
+            for (Property p : entry.getValue()) {
+                totalTantieme = totalTantieme.add(p.getTantieme());
+            }
+            tantiemeByOwnerId.put(entry.getKey(), totalTantieme);
+        }
+
+        // Répartit le budget total entre tous les copropriétaires (méthode du plus grand reste)
+        Map<Long, BigDecimal> quotePartByOwnerId = ChargeAllocationUtil.distributeByLargestRemainder(budget.getBudgetTotal(), tantiemeByOwnerId);
+
         // Construit une ligne de répartition par copropriétaire
         List<BudgetRepartitionItemDTO> repartition = new ArrayList<>();
 
         for (Map.Entry<Long, List<Property>> entry : propertiesByOwner.entrySet()) {
+            Long ownerId = entry.getKey();
             List<Property> ownerProperties = entry.getValue();
             User owner = ownerProperties.get(0).getOwner();
-
-            // Additionne les tantièmes de tous ses lots dans cette résidence
-            BigDecimal totalTantieme = BigDecimal.ZERO;
-            for (Property p : ownerProperties) {
-                totalTantieme = totalTantieme.add(p.getTantieme());
-            }
 
             // Construit la liste des appartements séparés par virgules
             String propertiesLabel = ownerProperties.stream()
@@ -492,16 +501,11 @@ public class ChargeServiceImpl implements ChargeService {
                     .reduce((a, b) -> a + ", " + b)
                     .orElse("");
 
-            // Calcule sa quote-part du budget total, proportionnelle à son tantième
-            BigDecimal quotePart = budget.getBudgetTotal()
-                    .multiply(totalTantieme)
-                    .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
-
             BudgetRepartitionItemDTO dto = new BudgetRepartitionItemDTO();
             dto.setCoOwnerName(owner.getFirstName() + " " + owner.getLastName());
             dto.setProperties(propertiesLabel);
-            dto.setTantieme(totalTantieme);
-            dto.setQuotePart(quotePart);
+            dto.setTantieme(tantiemeByOwnerId.get(ownerId));
+            dto.setQuotePart(quotePartByOwnerId.get(ownerId));
 
             repartition.add(dto);
         }
@@ -753,34 +757,41 @@ public class ChargeServiceImpl implements ChargeService {
 
         // 7. Construire la répartition par copropriétaire (calcul automatique selon tantièmes)
         List<Property> properties = propertyRepository.findByResidenceId(residenceId);
+
+        // Fusionne les lots par copropriétaire (un copropriétaire avec plusieurs lots = un seul tantième cumulé)
+        Map<Long, User> ownerById = new LinkedHashMap<>();
+        Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
+        for (Property property : properties) {
+            if (property.getOwner() == null) continue;
+
+            Long ownerId = property.getOwner().getId();
+            ownerById.putIfAbsent(ownerId, property.getOwner());
+            tantiemeByOwnerId.merge(
+                    ownerId,
+                    property.getTantieme() != null ? property.getTantieme() : BigDecimal.ZERO,
+                    BigDecimal::add);
+        }
+
+        // Répartit le montant total entre tous les copropriétaires (méthode du plus grand reste —
+        // même logique que la génération réelle, pour que l'aperçu corresponde exactement)
+        Map<Long, BigDecimal> quotePartByOwnerId = ChargeAllocationUtil.distributeByLargestRemainder(totalAmount, tantiemeByOwnerId);
+
         List<CoOwnerQuotePartPreviewDTO> repartition = new ArrayList<>();
         BigDecimal totalTantieme = BigDecimal.ZERO;
 
-        for (Property property : properties) {
-            if (property.getOwner() != null) {
-                boolean alreadyAdded = repartition.stream()
-                        .anyMatch(item -> item.getCoOwnerId().equals(property.getOwner().getId()));
+        for (Long ownerId : tantiemeByOwnerId.keySet()) {
+            User owner = ownerById.get(ownerId);
+            BigDecimal tantiemeCoOwner = tantiemeByOwnerId.get(ownerId);
 
-                if (!alreadyAdded) {
-                    BigDecimal tantiemeCoOwner = properties.stream()
-                            .filter(p -> p.getOwner() != null && p.getOwner().getId().equals(property.getOwner().getId()))
-                            .map(p -> p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO)
-                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+            CoOwnerQuotePartPreviewDTO item = CoOwnerQuotePartPreviewDTO.builder()
+                    .coOwnerId(ownerId)
+                    .coOwnerName(owner.getFirstName() + " " + owner.getLastName())
+                    .tantieme(tantiemeCoOwner)
+                    .quotePart(quotePartByOwnerId.get(ownerId))
+                    .build();
 
-                    BigDecimal quotePart = totalAmount.multiply(tantiemeCoOwner)
-                            .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
-
-                    CoOwnerQuotePartPreviewDTO item = CoOwnerQuotePartPreviewDTO.builder()
-                            .coOwnerId(property.getOwner().getId())
-                            .coOwnerName(property.getOwner().getFirstName() + " " + property.getOwner().getLastName())
-                            .tantieme(tantiemeCoOwner)
-                            .quotePart(quotePart)
-                            .build();
-
-                    repartition.add(item);
-                    totalTantieme = totalTantieme.add(tantiemeCoOwner);
-                }
-            }
+            repartition.add(item);
+            totalTantieme = totalTantieme.add(tantiemeCoOwner);
         }
 
         return ChargeCallPreviewDTO.builder()
@@ -905,46 +916,38 @@ public class ChargeServiceImpl implements ChargeService {
             }
         } else {
             // Mode OWNERSHIP_SHARES — calcul automatique selon les tantièmes (customAmounts ignorés)
+
+            // Fusionne les lots par copropriétaire (un copropriétaire avec plusieurs lots = un seul tantième cumulé)
+            Map<Long, User> ownerById = new LinkedHashMap<>();
+            Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
             for (Property property : properties) {
-                if (property.getOwner() != null) {
-                    // Vérifier si le copropriétaire a déjà un item
-                    boolean alreadyAdded = false;
-                    for (ChargeCallItem item : items) {
-                        if (item.getCoOwner().getId().equals(property.getOwner().getId())) {
-                            alreadyAdded = true;
-                            break;
-                        }
-                    }
+                if (property.getOwner() == null) continue;
 
-                    if (!alreadyAdded) {
-                        // Calculer le tantième total de ce copropriétaire (somme de ses lots)
-                        BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-                        for (Property p : properties) {
-                            if (p.getOwner() != null && p.getOwner().getId().equals(property.getOwner().getId())) {
-                                tantiemeCoOwner = tantiemeCoOwner.add(
-                                        p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO
-                                );
-                            }
-                        }
+                Long ownerId = property.getOwner().getId();
+                ownerById.putIfAbsent(ownerId, property.getOwner());
+                tantiemeByOwnerId.merge(
+                        ownerId,
+                        property.getTantieme() != null ? property.getTantieme() : BigDecimal.ZERO,
+                        BigDecimal::add);
+            }
 
-                        // Calculer la quote-part (totalAmount * tantieme / 100)
-                        BigDecimal quotePart = totalAmount.multiply(tantiemeCoOwner)
-                                .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
+            // Répartit le montant total entre tous les copropriétaires (méthode du plus grand reste —
+            // garantit que la somme des quote-parts est exactement égale au montant total, sans qu'un
+            // petit tantième ne disparaisse à 0 FCFA par simple arrondi)
+            Map<Long, BigDecimal> quotePartByOwnerId = ChargeAllocationUtil.distributeByLargestRemainder(totalAmount, tantiemeByOwnerId);
 
-                        // Générer la référence
-                        String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-" + budget.getId() + "-" + property.getOwner().getId();
+            for (Long ownerId : tantiemeByOwnerId.keySet()) {
+                String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-" + budget.getId() + "-" + ownerId;
 
-                        ChargeCallItem item = new ChargeCallItem();
-                        item.setChargeCall(chargeCall);
-                        item.setReference(referenceCCI);
-                        item.setCoOwner(property.getOwner());
-                        item.setTantieme(tantiemeCoOwner);
-                        item.setQuotePart(quotePart);
-                        item.setPaidAmount(BigDecimal.ZERO);
+                ChargeCallItem item = new ChargeCallItem();
+                item.setChargeCall(chargeCall);
+                item.setReference(referenceCCI);
+                item.setCoOwner(ownerById.get(ownerId));
+                item.setTantieme(tantiemeByOwnerId.get(ownerId));
+                item.setQuotePart(quotePartByOwnerId.get(ownerId));
+                item.setPaidAmount(BigDecimal.ZERO);
 
-                        items.add(item);
-                    }
-                }
+                items.add(item);
             }
         }
 
@@ -1320,46 +1323,35 @@ public class ChargeServiceImpl implements ChargeService {
         } else {
             // Mode OWNERSHIP_SHARES — calcul automatique selon les tantièmes (customAmounts ignorés)
 
-            // Calcul automatique par tantième — même logique de fusion par copropriétaire
-            // déjà utilisée dans previewChargeCall/generateChargeCall (un copropriétaire
-            // avec plusieurs lots dans la résidence = une seule ligne, tantièmes additionnés)
-            List<Long> alreadyAddedOwnerIds = new ArrayList<>();
-
+            // Fusionne les lots par copropriétaire (un copropriétaire avec plusieurs lots = un seul tantième cumulé)
+            Map<Long, User> ownerById = new LinkedHashMap<>();
+            Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
             for (Property property : properties) {
                 if (property.getOwner() == null) continue;
 
                 Long ownerId = property.getOwner().getId();
-                boolean alreadyAdded = false;
-                for (Long addedId : alreadyAddedOwnerIds) {
-                    if (addedId.equals(ownerId)) {
-                        alreadyAdded = true;
-                        break;
-                    }
-                }
-                if (alreadyAdded) continue;
+                ownerById.putIfAbsent(ownerId, property.getOwner());
+                tantiemeByOwnerId.merge(
+                        ownerId,
+                        property.getTantieme() != null ? property.getTantieme() : BigDecimal.ZERO,
+                        BigDecimal::add);
+            }
 
-                // Additionner les tantièmes de tous les lots de ce copropriétaire
-                BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-                for (Property p : properties) {
-                    if (p.getOwner() != null && p.getOwner().getId().equals(ownerId)) {
-                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO);
-                    }
-                }
+            // Répartit le montant total entre tous les copropriétaires (méthode du plus grand reste —
+            // garantit que la somme des quote-parts est exactement égale au montant total, sans qu'un
+            // petit tantième ne disparaisse à 0 FCFA par simple arrondi)
+            Map<Long, BigDecimal> quotePartByOwnerId = ChargeAllocationUtil.distributeByLargestRemainder(dto.getTotalAmount(), tantiemeByOwnerId);
 
-                // Quote-part = montant total × (tantième du copropriétaire / 100)
-                BigDecimal quotePart = dto.getTotalAmount()
-                        .multiply(tantiemeCoOwner)
-                        .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
+            for (Long ownerId : tantiemeByOwnerId.keySet()) {
+                User owner = ownerById.get(ownerId);
 
                 ExceptionalCallItem item = new ExceptionalCallItem();
                 item.setExceptionalCall(exceptionalCall);
-                item.setCoOwner(property.getOwner());
-                item.setTantieme(tantiemeCoOwner);
-                item.setQuotePart(quotePart);
-                item.setReference("EXCI-" + exceptionalCall.getId() + "-" + property.getOwner().getId());
+                item.setCoOwner(owner);
+                item.setTantieme(tantiemeByOwnerId.get(ownerId));
+                item.setQuotePart(quotePartByOwnerId.get(ownerId));
+                item.setReference("EXCI-" + exceptionalCall.getId() + "-" + ownerId);
                 exceptionalCall.getItems().add(item);
-
-                alreadyAddedOwnerIds.add(ownerId);
             }
         }
 
@@ -1607,14 +1599,12 @@ public class ChargeServiceImpl implements ChargeService {
         BigDecimal remainingAmount = item.getQuotePart().subtract(item.getPaidAmount());
         dto.setRemainingAmount(remainingAmount);
 
-        // Détermine le statut individuel de ce copropriétaire
-        if (item.getPaidAmount().compareTo(item.getQuotePart()) >= 0) {
-            dto.setStatus("PAYE");
-        } else if (item.getPaidAmount().compareTo(BigDecimal.ZERO) > 0) {
-            dto.setStatus("PARTIEL");
-        } else {
-            dto.setStatus("IMPAYE");
-        }
+        // Lit le statut déjà posé au moment du paiement confirmé — ne recalcule jamais
+        dto.setStatus(switch (item.getStatus()) {
+            case PAID -> "PAYE";
+            case PARTIALLY_PAID -> "PARTIEL";
+            case PENDING -> "IMPAYE";
+        });
 
         return dto;
     }
@@ -2132,8 +2122,8 @@ public class ChargeServiceImpl implements ChargeService {
     // (RETARD 1-30j, CRITIQUE 31j+, PARTIEL si paiement partiel dans les délais, PAYE si soldée)
     private String calculateItemStatus(ChargeCallItem item) {
 
-        boolean isFullyPaid = item.getPaidAmount().compareTo(item.getQuotePart()) >= 0;
-        if (isFullyPaid) return "PAYE";
+        // Lit le statut déjà posé au moment du paiement confirmé — ne recalcule jamais
+        if (item.getStatus() == ChargeItemPaymentStatus.PAID) return "PAYE";
 
         LocalDate dueDate = item.getChargeCall().getDueDate();
         long daysLate = ChronoUnit.DAYS.between(dueDate, LocalDate.now());
@@ -2289,14 +2279,12 @@ public class ChargeServiceImpl implements ChargeService {
         dto.setPaidAmount(item.getPaidAmount());
         dto.setRemainingAmount(item.getQuotePart().subtract(item.getPaidAmount()));
 
-        // Calcule le statut individuel de ce copropriétaire
-        if (item.getPaidAmount().compareTo(item.getQuotePart()) >= 0) {
-            dto.setStatus("PAYE");
-        } else if (item.getPaidAmount().compareTo(BigDecimal.ZERO) > 0) {
-            dto.setStatus("PARTIEL");
-        } else {
-            dto.setStatus("IMPAYE");
-        }
+        // Lit le statut déjà posé au moment du paiement confirmé — ne recalcule jamais
+        dto.setStatus(switch (item.getStatus()) {
+            case PAID -> "PAYE";
+            case PARTIALLY_PAID -> "PARTIEL";
+            case PENDING -> "IMPAYE";
+        });
 
         return dto;
     }

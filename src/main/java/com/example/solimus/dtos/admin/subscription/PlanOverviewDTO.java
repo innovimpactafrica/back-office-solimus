@@ -1,5 +1,6 @@
 package com.example.solimus.dtos.admin.subscription;
 
+import com.example.solimus.enums.SubscriberType;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -14,7 +15,7 @@ import java.util.List;
 public class PlanOverviewDTO {
 
     private Long id;
-    private String planType;    // "SYNDIC" ou "PRESTATAIRE"
+    private SubscriberType planType;
     private String name;
     private BigDecimal monthlyPrice;
     private BigDecimal yearlyPrice;

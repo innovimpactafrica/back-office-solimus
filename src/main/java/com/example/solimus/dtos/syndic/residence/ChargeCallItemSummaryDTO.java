@@ -1,6 +1,6 @@
 package com.example.solimus.dtos.syndic.residence;
 
-import com.example.solimus.enums.PaymentStatus;
+import com.example.solimus.enums.ChargeItemPaymentStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -29,7 +29,7 @@ public class ChargeCallItemSummaryDTO {
     private BigDecimal amountDue;
 
     // Statut du paiement (PENDING, PAID, etc.)
-    private PaymentStatus status;
+    private ChargeItemPaymentStatus status;
 
     // Date limite de paiement
     private LocalDate dueDate;

@@ -22,6 +22,7 @@ public class MyChargeDetailDTO {
     private String period; // Ex: "T2 2026" ou "Juin 2026"
     private LocalDate issuedDate; // Date d'émission
     private String status;
+    private Boolean paymentBlocked; // true si le budget (charge courante) ou l'appel (exceptionnelle) est clôturé — plus aucun paiement possible
     private String description;
     private List<ChargeBreakdownLineDTO> breakdown; // Répartition par poste
     private BigDecimal breakdownTotal; // Total de la répartition (doit égaler amount)

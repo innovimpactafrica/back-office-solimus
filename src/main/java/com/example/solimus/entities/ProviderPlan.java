@@ -1,6 +1,7 @@
 package com.example.solimus.entities;
 
 
+import com.example.solimus.enums.ProviderPlanFeature;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -10,6 +11,8 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 // =============================================================================
 //
@@ -17,9 +20,7 @@ import java.time.LocalDateTime;
 //
 //  Il n'existe qu'UNE seule ligne dans cette table (id = 1 toujours).
 //  L'admin peut modifier le nom, la description et les prix depuis son
-//  espace "Abonnements > Prestataires", mais ne peut pas créer plusieurs
-//  formules : la règle métier est binaire (payé = accès total, sinon rien).
-//
+//  espace "Abonnements > Prestataires"//
 // =============================================================================
 @Entity
 @Table(name = "provider_plan")
@@ -34,9 +35,9 @@ public class ProviderPlan {
 
     /**
      * Nom affiché de la formule (ex: "Premium").
-     * Modifiable par l'admin, mais reste la SEULE formule payante.
+     * Unique parmi les formules prestataire.
      */
-    @Column(name = "name", nullable = false)
+    @Column(name = "name", nullable = false, unique = true)
     private String name;
 
     /**
@@ -59,6 +60,21 @@ public class ProviderPlan {
      */
     @Column(name = "yearly_price")
     private BigDecimal yearlyPrice;
+
+    /**
+     * Statut de la formule (permet de la retirer temporairement du catalogue sans la supprimer)
+     */
+    @Column(name = "active", nullable = false)
+    private Boolean active = true;
+
+    /**
+     * Fonctionnalités incluses dans cette formule.
+     */
+    @ElementCollection(targetClass = ProviderPlanFeature.class, fetch = FetchType.EAGER)
+    @CollectionTable(name = "provider_plan_features", joinColumns = @JoinColumn(name = "provider_plan_id"))
+    @Enumerated(EnumType.STRING)
+    @Column(name = "feature")
+    private Set<ProviderPlanFeature> features = new HashSet<>();
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

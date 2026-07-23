@@ -55,16 +55,6 @@ public class AdminController {
         return ResponseEntity.ok(adminService.rejectWalletWithdrawal(withdrawalId, rejectionReason));
     }
 
-    // ============================================================================
-    //  GESTION DES Abonnements
-    // ============================================================================
-
-    @Operation(summary = "Enregistrer le plan d'abonnement de prestataire", tags = {"Administration"})
-    @PostMapping("/provider-plan")
-    public ResponseEntity<ProviderPlanDTO> saveProviderPlan(
-            @RequestBody @Valid ProviderPlanRequestDTO dto) {
-        return ResponseEntity.ok(adminService.saveProviderPlan(dto));
-    }
 
     // ============================================================================
     // ⏳ GESTION DES DÉLAIS

@@ -14,6 +14,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class InitiateSubscriptionPaymentDTO{
 
+    @NotNull(message = "La formule d'abonnement est obligatoire")
+    private Long providerPlanId;
+
     @NotNull(message = "La méthode de paiement est obligatoire")
     private PaymentMethod method;
 

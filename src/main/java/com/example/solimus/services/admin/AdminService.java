@@ -28,13 +28,6 @@ public interface AdminService {
     WithdrawalRequestDTO rejectWalletWithdrawal(Long withdrawalId, String rejectionReason);
 
 
-    // --- GESTION ABONNEMENTS PRESTATAIRES ---
-    /**
-     * Crée ou met à jour la formule prestataire (save transparent).
-     * Si aucune formule n'existe encore, elle est créée.
-     * Si une formule existe déjà, elle est mise à jour avec les nouvelles valeurs.
-     */
-    ProviderPlanDTO saveProviderPlan(ProviderPlanRequestDTO dto);
 
     // --- GESTION DES DÉLAIS ---
     List<EstimatedDelayDTO> getAllEstimatedDelays();

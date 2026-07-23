@@ -1,5 +1,6 @@
 package com.example.solimus.dtos.syndic.charge;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,5 +26,6 @@ public class GenerateChargeCallDTO {
     private LocalDate dueDate;
 
     // Montants personnalisés pour chaque copropriétaire (mode CUSTOM uniquement)
+    @Valid
     private List<CustomCoOwnerAmountDTO> customAmounts;
 }

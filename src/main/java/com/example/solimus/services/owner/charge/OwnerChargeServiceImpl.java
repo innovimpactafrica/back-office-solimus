@@ -5,8 +5,10 @@ import com.example.solimus.dtos.owner.charge.ChargePaymentResponseDTO;
 import com.example.solimus.dtos.owner.charge.InitierPaiementChargeDTO;
 import com.example.solimus.dtos.owner.charge.*;
 import com.example.solimus.entities.*;
+import com.example.solimus.enums.BudgetStatus;
 import com.example.solimus.enums.ChargeFrequency;
 import com.example.solimus.enums.ChargeType;
+import com.example.solimus.enums.ExceptionalCallStatus;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
@@ -243,6 +245,11 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
             throw new ForbiddenException("Vous n'avez pas accès à cette charge");
         }
 
+        // Le budget de cette charge a été clôturé par le syndic : plus aucun paiement accepté
+        if (item.getChargeCall().getBudget().getStatus() == BudgetStatus.CLOSED) {
+            throw new BadRequestException("Le budget de cette résidence a été clôturé, cette charge n'accepte plus de paiement");
+        }
+
         BigDecimal remainingAmount = item.getQuotePart().subtract(item.getPaidAmount());
         if (remainingAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BadRequestException("Cette charge est déjà payée");
@@ -284,6 +291,11 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
 
         if (!item.getCoOwner().getId().equals(currentOwner.getId())) {
             throw new ForbiddenException("Vous n'avez pas accès à cette charge");
+        }
+
+        // Un appel clôturé par le syndic n'accepte plus aucun nouveau paiement
+        if (item.getExceptionalCall().getStatus() == ExceptionalCallStatus.CLOSED) {
+            throw new BadRequestException("Cet appel exceptionnel est clôturé, il n'accepte plus de paiement");
         }
 
         BigDecimal remainingAmount = item.getQuotePart().subtract(item.getPaidAmount());
@@ -420,7 +432,8 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .propertyReference(propertyRef)
                 .remainingAmount(item.getQuotePart().subtract(item.getPaidAmount()))
                 .dueDate(item.getChargeCall().getDueDate())
-                .status(resolveItemStatus(item.getPaidAmount(), item.getQuotePart()))
+                .status(item.getStatus().getLabel())
+                .paymentBlocked(item.getChargeCall().getBudget().getStatus() == BudgetStatus.CLOSED)
                 .build();
     }
 
@@ -444,15 +457,9 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .propertyReference(propertyRef)
                 .remainingAmount(remainingAmount)
                 .dueDate(null) // ExceptionalCall n'a pas de champ dueDate dans le modèle actuel
-                .status(resolveItemStatus(item.getPaidAmount(), item.getQuotePart()))
+                .status(item.getStatus().getLabel())
+                .paymentBlocked(item.getExceptionalCall().getStatus() == ExceptionalCallStatus.CLOSED)
                 .build();
-    }
-
-    // Détermine le statut d'une ligne à partir de paidAmount et quotePart (calculé à la volée)
-    private String resolveItemStatus(BigDecimal paidAmount, BigDecimal quotePart) {
-        BigDecimal remaining = quotePart.subtract(paidAmount);
-        if (remaining.compareTo(BigDecimal.ZERO) <= 0) return "Payé";
-        return "En attente";
     }
 
     // Récupère TOUS les biens du copropriétaire dans cette résidence, séparés par des virgules
@@ -487,7 +494,8 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .propertyReference(propertyRef)
                 .period(buildPeriodLabel(chargeCall))
                 .issuedDate(chargeCall.getSentDate())
-                .status(resolveItemStatus(item.getPaidAmount(), item.getQuotePart()))
+                .status(item.getStatus().getLabel())
+                .paymentBlocked(budget.getStatus() == BudgetStatus.CLOSED)
                 .breakdown(breakdown)
                 .breakdownTotal(breakdown.stream().map(ChargeBreakdownLineDTO::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add))
                 .build();
@@ -514,7 +522,8 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .propertyReference(propertyRef)
                 .period(String.valueOf(exceptionalCall.getCreatedAt().getYear()))
                 .issuedDate(exceptionalCall.getCreatedAt().toLocalDate())
-                .status(resolveItemStatus(item.getPaidAmount(), item.getQuotePart()))
+                .status(item.getStatus().getLabel())
+                .paymentBlocked(exceptionalCall.getStatus() == ExceptionalCallStatus.CLOSED)
                 // Pas de répartition par poste pour les appels exceptionnels (pas de BudgetItem lié)
                 .breakdown(List.of())
                 .breakdownTotal(item.getQuotePart())

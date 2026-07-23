@@ -1,20 +1,30 @@
 package com.example.solimus.services.admin.subscription;
 
-import com.example.solimus.dtos.admin.subscription.PlanOverviewDTO;
-import com.example.solimus.dtos.admin.subscription.SubscriptionKpiDTO;
-import com.example.solimus.dtos.admin.subscription.SyndicPlanDTO;
-import com.example.solimus.dtos.admin.subscription.SyndicPlanRequestDTO;
+import com.example.solimus.dtos.admin.subscription.*;
+import com.example.solimus.enums.SubscriberType;
+import com.example.solimus.enums.SubscriptionStatus;
 
 import java.util.List;
 
 public interface PlanService {
 
-    // Création d'une nouvelle formule syndic
+    // ===== Formules Syndic =====
     SyndicPlanDTO createSyndicPlan(SyndicPlanRequestDTO dto);
+    SyndicPlanDTO updateSyndicPlan(Long id, SyndicPlanRequestDTO dto);
+    SyndicPlanDTO toggleSyndicPlanStatus(Long id, boolean active);
+    void deleteSyndicPlan(Long id);
 
-    //Listing
+    // ===== Formules Prestataire =====
+    ProviderPlanDTO createProviderPlan(ProviderPlanRequestDTO dto);
+    ProviderPlanDTO updateProviderPlan(Long id, ProviderPlanRequestDTO dto);
+    ProviderPlanDTO toggleProviderPlanStatus(Long id, boolean active);
+    void deleteProviderPlan(Long id);
+
+    // ===== Listing unifié + KPIs =====
     List<PlanOverviewDTO> getAllPlansOverview();
-
-    // KPIs de la page Gestion des abonnements
     SubscriptionKpiDTO getSubscriptionKpis();
+
+    // ===== Liste unifiée des abonnés (Syndic + Prestataire) =====
+    SubscriberListResponseDTO getAllSubscribers(String search, SubscriptionStatus status,
+                                                 SubscriberType subscriberType, int page, int size);
 }
