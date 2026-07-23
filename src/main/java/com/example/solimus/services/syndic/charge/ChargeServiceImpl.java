@@ -939,13 +939,21 @@ public class ChargeServiceImpl implements ChargeService {
             for (Long ownerId : tantiemeByOwnerId.keySet()) {
                 String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-" + budget.getId() + "-" + ownerId;
 
+                BigDecimal quotePart = quotePartByOwnerId.get(ownerId);
+
                 ChargeCallItem item = new ChargeCallItem();
                 item.setChargeCall(chargeCall);
                 item.setReference(referenceCCI);
                 item.setCoOwner(ownerById.get(ownerId));
                 item.setTantieme(tantiemeByOwnerId.get(ownerId));
-                item.setQuotePart(quotePartByOwnerId.get(ownerId));
+                item.setQuotePart(quotePart);
                 item.setPaidAmount(BigDecimal.ZERO);
+
+                // Posé une seule fois ici, dès qu'on sait avec certitude que cette part vaut 0 —
+                // évite d'afficher "En attente" à un copropriétaire qui ne doit rien
+                if (quotePart.compareTo(BigDecimal.ZERO) == 0) {
+                    item.setStatus(ChargeItemPaymentStatus.NO_AMOUNT_DUE);
+                }
 
                 items.add(item);
             }
@@ -1345,12 +1353,21 @@ public class ChargeServiceImpl implements ChargeService {
             for (Long ownerId : tantiemeByOwnerId.keySet()) {
                 User owner = ownerById.get(ownerId);
 
+                BigDecimal quotePart = quotePartByOwnerId.get(ownerId);
+
                 ExceptionalCallItem item = new ExceptionalCallItem();
                 item.setExceptionalCall(exceptionalCall);
                 item.setCoOwner(owner);
                 item.setTantieme(tantiemeByOwnerId.get(ownerId));
-                item.setQuotePart(quotePartByOwnerId.get(ownerId));
+                item.setQuotePart(quotePart);
                 item.setReference("EXCI-" + exceptionalCall.getId() + "-" + ownerId);
+
+                // Posé une seule fois ici, dès qu'on sait avec certitude que cette part vaut 0 —
+                // évite d'afficher "En attente" à un copropriétaire qui ne doit rien
+                if (quotePart.compareTo(BigDecimal.ZERO) == 0) {
+                    item.setStatus(ChargeItemPaymentStatus.NO_AMOUNT_DUE);
+                }
+
                 exceptionalCall.getItems().add(item);
             }
         }
@@ -1604,6 +1621,7 @@ public class ChargeServiceImpl implements ChargeService {
             case PAID -> "PAYE";
             case PARTIALLY_PAID -> "PARTIEL";
             case PENDING -> "IMPAYE";
+            case NO_AMOUNT_DUE -> "NON_APPLICABLE";
         });
 
         return dto;
@@ -2124,6 +2142,7 @@ public class ChargeServiceImpl implements ChargeService {
 
         // Lit le statut déjà posé au moment du paiement confirmé — ne recalcule jamais
         if (item.getStatus() == ChargeItemPaymentStatus.PAID) return "PAYE";
+        if (item.getStatus() == ChargeItemPaymentStatus.NO_AMOUNT_DUE) return "NON_APPLICABLE";
 
         LocalDate dueDate = item.getChargeCall().getDueDate();
         long daysLate = ChronoUnit.DAYS.between(dueDate, LocalDate.now());
@@ -2284,6 +2303,7 @@ public class ChargeServiceImpl implements ChargeService {
             case PAID -> "PAYE";
             case PARTIALLY_PAID -> "PARTIEL";
             case PENDING -> "IMPAYE";
+            case NO_AMOUNT_DUE -> "NON_APPLICABLE";
         });
 
         return dto;

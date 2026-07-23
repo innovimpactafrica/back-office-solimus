@@ -1,5 +1,7 @@
 package com.example.solimus.utils;
 
+import com.example.solimus.exceptions.BadRequestException;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.LinkedHashMap;
@@ -26,11 +28,34 @@ public final class ChargeAllocationUtil {
      * - aucun copropriétaire avec un tantième > 0 ne peut se retrouver à 0 FCFA tant que le
      *   reste à distribuer n'est pas épuisé avant que son tour n'arrive
      *
+     * Le dénominateur utilisé est la somme RÉELLE des tantièmes des copropriétaires inclus dans
+     * cette répartition — jamais 100 fixe. Si des lots de la résidence sont vacants/non attribués,
+     * le tantième total réellement assigné à de vrais propriétaires peut être inférieur à 100% ;
+     * diviser par 100 dans ce cas ferait perdre une partie du montant, jamais facturée à personne.
+     *
      * @param totalAmount       montant total à répartir
-     * @param tantiemeByOwnerId tantième de chaque copropriétaire, par id
+     * @param tantiemeByOwnerId tantième de chaque copropriétaire, par id — aucun ne doit être nul ou ≤ 0
      * @return la part finale (en FCFA entiers) de chaque copropriétaire, par id
      */
     public static Map<Long, BigDecimal> distributeByLargestRemainder(BigDecimal totalAmount, Map<Long, BigDecimal> tantiemeByOwnerId) {
+
+        // Un tantième nul ou à 0 n'a pas de sens pour un copropriétaire — on bloque plutôt que
+        // de le laisser silencieusement disparaître de la répartition
+        for (Map.Entry<Long, BigDecimal> entry : tantiemeByOwnerId.entrySet()) {
+            if (entry.getValue() == null || entry.getValue().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BadRequestException(
+                        "Le copropriétaire id=" + entry.getKey() + " n'a pas de tantième valide (nul ou à 0). "
+                                + "Corrigez son tantième avant de générer cette répartition.");
+            }
+        }
+
+        // Dénominateur = somme réelle des tantièmes des copropriétaires inclus, pas 100 fixe
+        BigDecimal totalTantieme = tantiemeByOwnerId.values().stream()
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (totalTantieme.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Impossible de répartir : aucun copropriétaire avec un tantième valide.");
+        }
 
         // 1. Calcule la part exacte (non arrondie) de chacun, puis sa part arrondie vers le bas
         Map<Long, BigDecimal> exactShareByOwnerId = new LinkedHashMap<>();
@@ -39,7 +64,7 @@ public final class ChargeAllocationUtil {
 
         for (Map.Entry<Long, BigDecimal> entry : tantiemeByOwnerId.entrySet()) {
             BigDecimal exactShare = totalAmount.multiply(entry.getValue())
-                    .divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP);
+                    .divide(totalTantieme, 6, RoundingMode.HALF_UP);
             BigDecimal flooredShare = exactShare.setScale(0, RoundingMode.DOWN);
 
             exactShareByOwnerId.put(entry.getKey(), exactShare);
