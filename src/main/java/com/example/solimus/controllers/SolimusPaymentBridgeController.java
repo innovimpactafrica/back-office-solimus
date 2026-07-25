@@ -32,6 +32,9 @@ public class SolimusPaymentBridgeController {
     // Référentiel des abonnements prestataires : SUB-*
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
 
+    // Référentiel des abonnements syndics : SYN-*
+    private final SyndicSubscriptionRepository syndicSubscriptionRepository;
+
     // URL du script hébergé TouchPay (géré par InTouch)
     @Value("${touchpay.hosted.script-url}")
     private String touchPayHostedScriptUrl;
@@ -161,6 +164,43 @@ public class SolimusPaymentBridgeController {
 
                 .build();
     }
+
+    // ================================================
+    // BRIDGE — Abonnement syndic : création par l'admin (SYN-) ET changement de formule
+    // self-service par le syndic lui-même (SYR-) — même endpoint pour les deux
+    // ================================================
+    @GetMapping("/syndic-subscription/{transactionRef}")
+    @Transactional(readOnly = true)
+    public PaymentBridgeDTO getBridgeSyndicSubscription(@PathVariable String transactionRef) {
+
+        // On recherche l'abonnement créé en PENDING par SyndicServiceImpl.createSyndic (SYN-)
+        // ou par SyndicSubscriptionServiceImpl.initiateChangePlan (SYR-)
+        SyndicSubscription subscription = syndicSubscriptionRepository
+                .findByTransactionRef(transactionRef)
+                .orElseThrow(() -> new ResourceNotFoundException("Abonnement syndic introuvable"));
+
+        // On préremplit TouchPay avec les infos du vrai payeur (initiatedBy), pas forcément le syndic :
+        // pour SYN- c'est l'admin qui crée le compte (le syndic n'existe pas encore fonctionnellement) ;
+        // pour SYR- c'est le syndic lui-même, déjà actif, qui paie son propre changement de formule
+        User payer = subscription.getInitiatedBy();
+
+        return PaymentBridgeDTO.builder()
+                .merchantToken(touchPaySecureCode)
+                .transactionReference(transactionRef)
+                .agencyCode(touchPayAgencyCode)
+                .serviceId(touchPayDomainName)
+                .hostedScriptUrl(touchPayHostedScriptUrl)
+                .amount(subscription.getAmountPaid())
+                .city(touchPayDefaultCity)
+                .successRedirectUrl(touchPaySuccessRedirectUrl)
+                .failedRedirectUrl(touchPayFailedRedirectUrl)
+                .customerEmail(payer.getEmail())
+                .customerFirstName(payer.getFirstName())
+                .customerLastName(payer.getLastName())
+                .customerPhone(payer.getPhone())
+                .build();
+    }
+
     // ================================================
     // BRIDGE — Paiement charge courante copropriétaire (CPY-)
     // ================================================

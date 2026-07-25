@@ -1,36 +1,15 @@
 package com.example.solimus.services.syndic.settings;
 
-import com.example.solimus.dtos.syndic.settings.ChangePasswordDTO;
-import com.example.solimus.dtos.syndic.settings.CreateFacilityTypeDTO;
-import com.example.solimus.dtos.syndic.settings.CreatePropertyTypeDTO;
-import com.example.solimus.dtos.syndic.settings.CreateSpecialtyDTO;
-import com.example.solimus.dtos.syndic.settings.FacilityTypeDTO;
-import com.example.solimus.dtos.syndic.settings.PropertyTypeDTO;
-import com.example.solimus.dtos.syndic.settings.SecurityFeatureDTO;
-import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
-import com.example.solimus.dtos.syndic.settings.SyndicFinancialSettingsDTO;
-import com.example.solimus.dtos.syndic.settings.SyndicProfileDTO;
-import com.example.solimus.dtos.syndic.settings.UpdateSyndicFinancialSettingsDTO;
-import com.example.solimus.dtos.syndic.settings.UpdateSyndicProfileDTO;
-import com.example.solimus.entities.FacilityType;
-import com.example.solimus.entities.PropertyType;
-import com.example.solimus.entities.SecurityFeature;
-import com.example.solimus.entities.Specialty;
-import com.example.solimus.entities.SyndicFinancialSettings;
-import com.example.solimus.entities.User;
+import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
+import com.example.solimus.dtos.owner.dashboard.NotificationRowDTO;
+import com.example.solimus.dtos.syndic.settings.*;
+import com.example.solimus.entities.*;
 import com.example.solimus.enums.ChargeFrequency;
 import com.example.solimus.enums.Currency;
 import com.example.solimus.enums.FacilityCategory;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
-import com.example.solimus.repositories.CommonFacilityRepository;
-import com.example.solimus.repositories.FacilityTypeRepository;
-import com.example.solimus.repositories.PropertyTypeRepository;
-import com.example.solimus.repositories.ResidenceRepository;
-import com.example.solimus.repositories.SecurityFeatureRepository;
-import com.example.solimus.repositories.SpecialtyRepository;
-import com.example.solimus.repositories.SyndicFinancialSettingsRepository;
-import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.repositories.*;
 import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -63,6 +42,8 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final MinioService minioService;
+    private final SyndicProfileRepository syndicProfileRepository;
+    private final NotificationRepository notificationRepository;
 
     //--------------------------------------------------------
     // ===== TYPES D'ÉQUIPEMENTS =====
@@ -506,6 +487,102 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
         currentSyndic.setPassword(passwordEncoder.encode(dto.getNewPassword()));
         userRepository.save(currentSyndic);
         log.info("Mot de passe changé pour le syndic : {}", currentSyndic.getEmail());
+    }
+
+    // =========================================================================
+    // Récupère les préférences de notification du syndic connecté
+    // =========================================================================
+    @Override
+    @Transactional(readOnly = true)
+    public SyndicNotificationPreferencesDTO getNotificationPreferences() {
+
+        User currentUser = getCurrentUser();
+
+        SyndicProfile profile = syndicProfileRepository.findByUserId(currentUser.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Profil syndic introuvable"));
+
+        return SyndicNotificationPreferencesDTO.builder()
+                .notifNewPayments(profile.getNotifNewPayments())
+                .notifUrgentIncidents(profile.getNotifUrgentIncidents())
+                .notifUnpaidReminders(profile.getNotifUnpaidReminders())
+                .notifAgReminders(profile.getNotifAgReminders())
+                .build();
+    }
+
+    // =========================================================================
+    // Met à jour les préférences de notification du syndic connecté
+    // =========================================================================
+    @Override
+    @Transactional
+    public SyndicNotificationPreferencesDTO updateNotificationPreferences(SyndicNotificationPreferencesDTO dto) {
+
+        User currentUser = getCurrentUser();
+
+        SyndicProfile profile = syndicProfileRepository.findByUserId(currentUser.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Profil syndic introuvable"));
+
+        // Ne met à jour que les champs réellement envoyés
+        if (dto.getNotifNewPayments() != null) {
+            profile.setNotifNewPayments(dto.getNotifNewPayments());
+        }
+        if (dto.getNotifUrgentIncidents() != null) {
+            profile.setNotifUrgentIncidents(dto.getNotifUrgentIncidents());
+        }
+        if (dto.getNotifUnpaidReminders() != null) {
+            profile.setNotifUnpaidReminders(dto.getNotifUnpaidReminders());
+        }
+        if (dto.getNotifAgReminders() != null) {
+            profile.setNotifAgReminders(dto.getNotifAgReminders());
+        }
+
+        SyndicProfile saved = syndicProfileRepository.save(profile);
+
+        return SyndicNotificationPreferencesDTO.builder()
+                .notifNewPayments(saved.getNotifNewPayments())
+                .notifUrgentIncidents(saved.getNotifUrgentIncidents())
+                .notifUnpaidReminders(saved.getNotifUnpaidReminders())
+                .notifAgReminders(saved.getNotifAgReminders())
+                .build();
+    }
+
+    // =========================================================================
+    // Liste paginée des notifications du syndic connecté
+    // =========================================================================
+    @Override
+    @Transactional(readOnly = true)
+    public NotificationListResponseDTO getMyNotifications(int page, int size) {
+
+        User currentUser = getCurrentUser();
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Notification> notificationPage = notificationRepository.findByUserOrderByCreatedAtDesc(currentUser, pageable);
+
+        List<NotificationRowDTO> rows = notificationPage.getContent().stream()
+                .map(notification -> NotificationRowDTO.builder()
+                        .id(notification.getId())
+                        .title(notification.getTitle())
+                        .body(notification.getBody())
+                        .read(notification.getRead())
+                        .createdAt(notification.getCreatedAt())
+                        .build())
+                .toList();
+
+        return NotificationListResponseDTO.builder()
+                .totalCount(notificationPage.getTotalElements())
+                .notifications(rows)
+                .currentPage(notificationPage.getNumber())
+                .totalPages(notificationPage.getTotalPages())
+                .build();
+    }
+
+    // =========================================================================
+    // Marque toutes les notifications du syndic connecté comme lues
+    // =========================================================================
+    @Override
+    @Transactional
+    public void markAllNotificationsAsRead() {
+        User currentUser = getCurrentUser();
+        notificationRepository.markAllAsReadByUser(currentUser);
     }
 
     //--------------------------------------------------------

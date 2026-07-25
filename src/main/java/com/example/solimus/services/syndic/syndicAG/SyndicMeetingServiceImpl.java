@@ -11,10 +11,13 @@ import com.example.solimus.repositories.*;
 import com.example.solimus.repositories.meeting.MeetingDocumentCount;
 import com.example.solimus.repositories.meeting.MeetingParticipationStats;
 import com.example.solimus.services.minio.MinioService;
+import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +33,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SyndicMeetingServiceImpl implements SyndicMeetingService {
 
     private final MeetingRepository meetingRepository;
@@ -43,6 +47,47 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
     private final MeetingAgendaItemRepository meetingAgendaItemRepository;
     private final MeetingDocumentRepository meetingDocumentRepository;
     private final BudgetRepository budgetRepository;
+    private final NotificationService notificationService;
+
+    // =========================================================================
+    // RAPPEL AG (réunions programmées pour le lendemain)
+    // =========================================================================
+
+    /**
+     * Prévient chaque syndic la veille de ses réunions UPCOMING (respecte sa préférence "Assemblées générales").
+     * S'exécute une fois par jour ; la date de réunion ne change pas, donc chaque réunion n'est
+     * trouvée par cette requête qu'une seule fois — le jour précédent la réunion.
+     */
+    @Scheduled(cron = "0 0 8 * * *") // tous les jours à 8h
+    @Transactional
+    public void remindSyndicsOfUpcomingMeetings() {
+
+        // Récupère la date de demain
+        LocalDate tomorrow = LocalDate.now().plusDays(1);
+
+        // Recherche toutes les assemblées générales prévues demain
+        // et dont le statut est "UPCOMING"
+        List<Meeting> meetingsTomorrow = meetingRepository.findByMeetingDateAndStatus(
+                tomorrow,
+                MeetingStatus.UPCOMING
+        );
+
+        // Parcourt chaque réunion prévue demain
+        for (Meeting meeting : meetingsTomorrow) {
+
+            // Envoie une notification de rappel au syndic concerné
+            notificationService.sendAgReminderNotification(
+                    meeting.getSyndic().getId(),
+                    "Assemblée générale demain",
+                    "\"" + meeting.getTitle() + "\" a lieu demain — " + meeting.getResidence().getName()
+            );
+        }
+
+        // Écrit un log uniquement si au moins un rappel a été envoyé
+        if (!meetingsTomorrow.isEmpty()) {
+            log.info("{} réunion(s) de demain rappelée(s) aux syndics", meetingsTomorrow.size());
+        }
+    }
 
     // =========================================================================
     // Créer Réunion

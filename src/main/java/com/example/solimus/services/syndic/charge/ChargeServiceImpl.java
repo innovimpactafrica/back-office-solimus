@@ -14,6 +14,7 @@ import com.example.solimus.utils.ChargeAllocationUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -1912,6 +1913,46 @@ public class ChargeServiceImpl implements ChargeService {
         return allUnpaidItems.size();
     }
 
+    // ============================================================
+    // RELANCE AUTOMATIQUE DU SYNDIC (impayés en retard)
+    // ============================================================
+
+    /**
+     * Prévient chaque syndic concerné le lendemain de l'échéance d'un appel de charges,
+     * pour toute ligne encore impayée à cette date (statut PENDING/PARTIALLY_PAID).
+     * S'exécute une fois par jour pour les charges dont la date de fin est passé "hier" ; .
+     */
+    @Scheduled(cron = "0 0 8 * * *") // tous les jours à 8h
+    @Transactional
+    public void notifySyndicsOfOverdueUnpaidCharges() {
+
+        // Cible les appels de charges dont l'échéance était hier
+        LocalDate targetDueDate = LocalDate.now().minusDays(1);
+
+        // Récupère les appels de charges arrivés à échéance hier
+        // et ayant encore au moins un copropriétaire qui n'a pas payé
+        List<ChargeCall> overdueChargeCalls = chargeCallRepository.findByDueDateWithUnpaidItems(targetDueDate);
+
+        // Parcourt chaque appel de charges en retard
+        for (ChargeCall chargeCall : overdueChargeCalls) {
+
+            // Récupère le syndic concerné par cet appel de charges
+            User syndic = chargeCall.getBudget().getSyndic();
+
+            // Envoie une notification au syndic pour l'informer des impayés
+            notificationService.sendUnpaidReminderNotification(
+                    syndic.getId(),
+                    "Impayés en retard",
+                    "L'appel de charges " + chargeCall.getReference() +
+                            " est en retard de paiement pour un ou plusieurs copropriétaires."
+            );
+        }
+
+        // Écrit un log uniquement si au moins une notification a été envoyée
+        if (!overdueChargeCalls.isEmpty()) {
+            log.info("{} appel(s) de charges en retard notifié(s) aux syndics", overdueChargeCalls.size());
+        }
+    }
     // ============================================================
     // DASHBOARD "GESTION DES CHARGES"
     // ============================================================

@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/syndic/signalements")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('REPORT_MANAGEMENT')")
 @Tag(name = "Syndic - Signalements", description = "Gestion des signalements par le syndic")
 public class SyndicSignalementController {
 
@@ -24,7 +25,6 @@ public class SyndicSignalementController {
     // =========================================================================
 
     @Operation(summary = "Dashboard des signalements", description = "Retourne les 4 KPIs (total, en cours, traités, en attente)")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/dashboard")
     public ResponseEntity<SignalementDashboardDTO> getDashboard() {
         return ResponseEntity.ok(signalementService.getDashboard());
@@ -35,7 +35,6 @@ public class SyndicSignalementController {
     // =========================================================================
 
     @Operation(summary = "Lister les signalements (syndic)", description = "Liste paginée avec recherche et filtres")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping
     public ResponseEntity<SyndicSignalementListResponse> getSignalements(
             @RequestParam(required = false) String search,
@@ -51,7 +50,6 @@ public class SyndicSignalementController {
     // =========================================================================
 
     @Operation(summary = "Détail d'un signalement (syndic)")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/{id}")
     public ResponseEntity<SyndicSignalementDetailDTO> getSignalementDetail(@PathVariable Long id) {
         return ResponseEntity.ok(signalementService.getSignalementDetailForSyndic(id));
@@ -62,7 +60,6 @@ public class SyndicSignalementController {
     // =========================================================================
 
     @Operation(summary = "Résoudre un signalement sans travaux")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/{id}/resolve")
     public ResponseEntity<Void> resolveWithoutWork(
             @PathVariable Long id, @Valid @RequestBody ResolveSignalementDTO dto) {
@@ -75,7 +72,6 @@ public class SyndicSignalementController {
     // =========================================================================
 
     @Operation(summary = "Transformer un signalement en demande de travaux")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/{id}/convert-to-work")
     public ResponseEntity<Long> convertToWork(
             @PathVariable Long id, @Valid @RequestBody ConvertToWorkDTO dto) {

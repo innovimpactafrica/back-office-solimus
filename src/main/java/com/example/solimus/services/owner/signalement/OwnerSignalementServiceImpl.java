@@ -4,10 +4,12 @@ import com.example.solimus.dtos.owner.signalement.*;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.IncidentLocationType;
 import com.example.solimus.enums.SignalementStatus;
+import com.example.solimus.enums.UrgencyLevel;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
+import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -30,6 +32,7 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
     private final PropertyRepository propertyRepository;
     private final CommonFacilityRepository commonFacilityRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     // =========================================================================
     // CRÉER UN SIGNALEMENT
@@ -90,6 +93,16 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
 
         // Sauvegarde le signalement en base
         signalementRepository.save(signalement);
+
+        // Alerte le syndic si le signalement est urgent (respecte sa préférence "Incidents urgents")
+        if (signalement.getUrgencyLevel() == UrgencyLevel.URGENT && residence.getSyndic() != null) {
+            notificationService.sendUrgentIncidentNotification(
+                    residence.getSyndic().getId(),
+                    "Incident urgent signalé",
+                    currentOwner.getFirstName() + " " + currentOwner.getLastName() +
+                            " a signalé un problème urgent : " + signalement.getTitle()
+            );
+        }
     }
 
     // =========================================================================

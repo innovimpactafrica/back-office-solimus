@@ -28,6 +28,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('RESIDENCE_MANAGEMENT')")
 @Tag(name = "Syndic - Résidences", description = "Gestion des résidences par le syndic")
 public class SyndicResidenceController {
 
@@ -41,7 +42,6 @@ public class SyndicResidenceController {
     // =========================================================================
 
     @Operation(summary = "Créer une nouvelle résidence (Étape 1)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping(value = "/residences", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ResidenceDTO> createResidence(
             @RequestParam String name,
@@ -100,7 +100,6 @@ public class SyndicResidenceController {
     // =========================================================================
 
     @Operation(summary = "Ajouter un ou plusieurs lots/appartements (Étape 2)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/residences/{id}/properties")
     public ResponseEntity<List<PropertyDTO>> addProperties(
             @PathVariable Long id,
@@ -109,7 +108,6 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Modifier un lot/appartement (Étape 2)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PutMapping("/residences/{id}/properties/{propertyId}")
     public ResponseEntity<PropertyDTO> updateProperty(
             @PathVariable Long id,
@@ -119,7 +117,6 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Supprimer un lot/appartement (Étape 2)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @DeleteMapping("/residences/{id}/properties/{propertyId}")
     public ResponseEntity<Void> deleteProperty(
             @PathVariable Long id,
@@ -129,7 +126,6 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Lister les lots d'une résidence (paginé) (Étape 2)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{id}/properties")
     public ResponseEntity<Page<PropertyListDTO>> getPropertiesPaginated(
             @PathVariable Long id,
@@ -139,7 +135,6 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Lister les copropriétaires pour affecter un lot (Étape 2)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/properties/co-owners")
     public ResponseEntity<List<CoOwnerSelectionDTO>> searchCoOwnersForSelection(
             @RequestParam(required = false) String search) {
@@ -147,7 +142,6 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Lister tous les types de biens (dropdown) (Étape 2)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/property-types")
     public ResponseEntity<Page<PropertyTypeDTO>> getAllPropertyTypes(
             @RequestParam(defaultValue = "0") int page,
@@ -159,7 +153,6 @@ public class SyndicResidenceController {
     // ÉTAPE 3 — BIENS COMMUNS
     // =========================================================================
     @Operation(summary = "Lister les types d'équipements avec leurs champs (Étape 3)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/facility-types")
     public ResponseEntity<Page<FacilityTypeDTO>> getFacilityTypes(
             @RequestParam(defaultValue = "0") int page,
@@ -168,7 +161,6 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Mettre à jour les options de sécurité d'une résidence (Étape 3)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PutMapping("/residences/{id}/security-features")
     public ResponseEntity<Void> updateSecurityFeatures(
             @PathVariable Long id,
@@ -178,7 +170,6 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Sauvegarder l'étape 3 complète (équipements + sécurité) (Étape 3)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/residences/{id}/step3")
     public ResponseEntity<Void> saveStep3(
             @PathVariable Long id,
@@ -188,7 +179,6 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Modifier les informations générales d'une résidence (mise à jour partielle)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PatchMapping(value = "/residences/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Void> updateResidence(
             @PathVariable Long id,
@@ -248,14 +238,12 @@ public class SyndicResidenceController {
     // =========================================================================
 
     @Operation(summary = "Statistiques globales du dashboard résidences", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/dashboard/stats")
     public ResponseEntity<ResidenceDashboardStatsDTO> getDashboardStats() {
         return ResponseEntity.ok(residenceService.getDashboardStats());
     }
 
     @Operation(summary = "Liste paginée et filtrée des résidences (cartes)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/list")
     public ResponseEntity<Page<ResidenceCardDTO>> getResidencesPaginated(
             @RequestParam(required = false) String search,
@@ -267,7 +255,6 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Lister les options de sécurité disponibles (Étape 3)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/security-features")
     public ResponseEntity<List<SecurityFeatureLabelDTO>> getSecurityFeatures() {
         return ResponseEntity.ok(residenceService.getSecurityFeatures());
@@ -277,14 +264,12 @@ public class SyndicResidenceController {
     // ONGLET 1
     // =========================================================================
     @Operation(summary = "Statistiques du bandeau d'indicateurs d'une résidence", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{id}/stats")
     public ResponseEntity<ResidenceHeaderStatsDTO> getResidenceStats(@PathVariable Long id) {
         return ResponseEntity.ok(residenceService.getResidenceStats(id));
     }
 
     @Operation(summary = "Contenu de l'onglet Vue générale d'une résidence", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{id}")
     public ResponseEntity<ResidenceDetailDTO> getResidenceGeneralView(@PathVariable Long id) {
         return ResponseEntity.ok(residenceService.getResidenceGeneralView(id));
@@ -294,7 +279,6 @@ public class SyndicResidenceController {
     // ONGLET 2
     // =========================================================================
     @Operation(summary = "Lister les lots d'une résidence avec filtres (onglet Appartements)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/properties/list")
     public ResponseEntity<Page<PropertyListItemDTO>> getPropertiesPaginatedWithFilters(
             @PathVariable Long residenceId,
@@ -311,7 +295,6 @@ public class SyndicResidenceController {
     // ONGLET 3
     // =========================================================================
     @Operation(summary = "Lister les équipements communs d'une résidence avec filtres (onglet Biens communs)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/common-facilities")
     public ResponseEntity<List<CommonFacilityListItemDTO>> getCommonFacilitiesWithFilters(
             @PathVariable Long residenceId,
@@ -322,7 +305,6 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Détail d'un équipement commun (onglet Biens communs)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/common-facilities/{facilityId}")
     public ResponseEntity<CommonFacilityDetailDTO> getCommonFacilityDetail(
             @PathVariable Long residenceId,
@@ -331,7 +313,6 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Kanban des interventions (onglet Travaux)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/interventions/kanban")
     public ResponseEntity<InterventionKanbanResponseDTO> getInterventionsKanban(
             @PathVariable Long residenceId) {
@@ -342,7 +323,6 @@ public class SyndicResidenceController {
     // ONGLET 4
     // =========================================================================
     @Operation(summary = "Évolution mensuelle des paiements collectés (onglet Finances)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/finances/payments-evolution")
     public ResponseEntity<List<MonthlyPaymentDTO>> getMonthlyPaymentsEvolution(
             @PathVariable Long residenceId,
@@ -351,7 +331,6 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Répartition des vraies dépenses par catégorie (onglet Finances)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/finances/expenses-breakdown")
     public ResponseEntity<ExpenseBreakdownDTO> getExpensesBreakdown(
             @PathVariable Long residenceId,
@@ -360,7 +339,6 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Liste des appels de charges par copropriétaire (onglet Finances)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/finances/charge-calls-summary")
     public ResponseEntity<List<ChargeCallItemSummaryDTO>> getChargeCallsSummary(
             @PathVariable Long residenceId) {
@@ -368,7 +346,6 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Liste des transactions récentes du wallet (onglet Finances)", tags = {"Syndic - Résidences"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/wallet/transactions/recent")
     public ResponseEntity<List<WalletTransactionDTO>> getRecentWalletTransactions(
             @PathVariable Long residenceId,
@@ -378,7 +355,6 @@ public class SyndicResidenceController {
 
     @Operation(summary = "Journal d'activité d'une résidence (panneau Activité Récente)", tags = {"Syndic - Résidences"},
             description = "scope=interventions filtre par 'INTERVENTION' pour avoir les travaux")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/activity-log")
     public ResponseEntity<Page<ActivityLogItemDTO>> getActivityLog(
             @PathVariable Long residenceId,

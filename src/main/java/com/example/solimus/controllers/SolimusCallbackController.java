@@ -4,17 +4,21 @@ import com.example.solimus.entities.*;
 import com.example.solimus.enums.*;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.auth.EmailService;
+import com.example.solimus.services.notification.NotificationService;
 import com.example.solimus.services.provider.ProviderService;
 import com.example.solimus.services.provider.wallet.WalletService;
+import com.example.solimus.utils.PasswordGeneratorUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -57,11 +61,23 @@ public class SolimusCallbackController {
     // Repository des abonnements prestataires : SUB-*
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
 
-    // Service email pour notifier le prestataire après activation Premium
+    // Repository des abonnements syndics : SYN-*
+    private final SyndicSubscriptionRepository syndicSubscriptionRepository;
+
+    // Repository des profils société syndic, pour récupérer le nom de société à l'activation
+    private final SyndicProfileRepository syndicProfileRepository;
+
+    // Encodeur utilisé pour chiffrer le mot de passe temporaire généré au moment de l'activation du syndic
+    private final PasswordEncoder passwordEncoder;
+
+    // Service email pour notifier le prestataire après activation Premium, et le syndic après activation de son compte
     private final EmailService emailService;
 
     // Repository des logs d'activité pour tracer les paiements
     private final ActivityLogRepository activityLogRepository;
+
+    // Service de notifications push, pour alerter le syndic des nouveaux paiements
+    private final NotificationService notificationService;
 
     // Formateur de date pour l'email de confirmation Premium (ex: "01 Janvier 2026")
     private static final DateTimeFormatter DATE_FORMATTER =
@@ -77,7 +93,7 @@ public class SolimusCallbackController {
     @GetMapping(value = "/redirect-success", produces = "text/html")
     public String redirectPaymentSuccess(@RequestParam("num_command") String reference) {
 
-        // Identifie le type de paiement via le prefixe de la reference,
+        // Identifie le type de paiement via le prefixe de la référence,
         // car TouchPay n'utilise qu'une seule URL de redirection pour tous les types
         if (reference.startsWith("CPY-")) {
             handleChargePaymentCallback(reference, true);
@@ -85,6 +101,10 @@ public class SolimusCallbackController {
             handleExceptionalChargePaymentCallback(reference, true);
         } else if (reference.startsWith("SUB-")) {
             handleSubscriptionCallback(reference, true);
+        } else if (reference.startsWith("SYN-")) {
+            handleSyndicSubscriptionCallback(reference, true);
+        } else if (reference.startsWith("SYR-")) {
+            handleSyndicPlanChangeCallback(reference, true);
         } else if (reference.startsWith("PAY-") || reference.startsWith("SOL-")) {
             handleOwnerInterventionPaymentCallback(reference, true);
         }
@@ -110,6 +130,10 @@ public class SolimusCallbackController {
             handleExceptionalChargePaymentCallback(reference, false);
         } else if (reference.startsWith("SUB-")) {
             handleSubscriptionCallback(reference, false);
+        } else if (reference.startsWith("SYN-")) {
+            handleSyndicSubscriptionCallback(reference, false);
+        } else if (reference.startsWith("SYR-")) {
+            handleSyndicPlanChangeCallback(reference, false);
         } else if (reference.startsWith("PAY-") || reference.startsWith("SOL-")) {
             handleOwnerInterventionPaymentCallback(reference, false);
         }
@@ -160,6 +184,16 @@ public class SolimusCallbackController {
         if (ref.startsWith("SUB-")) {
             // On route vers le traitement spécifique à l'abonnement
             return handleSubscriptionCallback(ref, succes);
+        }
+
+        if (ref.startsWith("SYN-")) {
+            // On route vers le traitement spécifique à l'abonnement syndic
+            return handleSyndicSubscriptionCallback(ref, succes);
+        }
+
+        if (ref.startsWith("SYR-")) {
+            // On route vers le traitement spécifique au changement de formule syndic (self-service)
+            return handleSyndicPlanChangeCallback(ref, succes);
         }
 
         if (ref.startsWith("CPY-")) {
@@ -331,6 +365,166 @@ public class SolimusCallbackController {
 
 
     // =========================================================================
+    // CAS 2b — Paiement abonnement syndic à la création du compte (SYN-)
+    // =========================================================================
+    private ResponseEntity<Map<String, Object>> handleSyndicSubscriptionCallback(String ref, boolean succes) {
+
+        // On retrouve l'abonnement créé en PENDING par SyndicServiceImpl.createSyndic
+        return syndicSubscriptionRepository.findByTransactionRef(ref)
+                .map(subscription -> {
+
+                    // Anti-double callback : basé sur le résultat du PAIEMENT (jamais retouché ensuite),
+                    // pas sur le statut de l'abonnement qui, lui, peut évoluer plus tard pour d'autres raisons
+                    if (subscription.getPaymentStatus() == PaymentStatus.COMPLETED) {
+                        return ResponseEntity.ok(Map.<String, Object>of(
+                                "success", true,
+                                "message", "Abonnement déjà activé"
+                        ));
+                    }
+
+                    if (!succes) {
+                        // Le paiement a échoué côté TouchPay → le compte syndic reste PENDING
+                        // (jamais activé) et sera purgé automatiquement par le scheduler
+                        subscription.setStatus(SubscriptionStatus.FAILED);
+                        subscription.setPaymentStatus(PaymentStatus.FAILED);
+                        syndicSubscriptionRepository.save(subscription);
+
+                        log.warn("Paiement abonnement syndic échoué pour ref : {}", ref);
+
+                        return ResponseEntity.ok(Map.<String, Object>of(
+                                "success", true,
+                                "message", "Paiement abonnement syndic marqué comme échoué"
+                        ));
+                    }
+
+                    // Le paiement est confirmé par TouchPay → on active réellement le compte syndic.
+                    // Le mot de passe temporaire n'existe qu'à partir de maintenant : c'est le seul
+                    // moment où le syndic a réellement payé, donc le seul moment légitime pour lui
+                    // donner accès et lui envoyer ses identifiants.
+                    User syndic = subscription.getSyndic();
+                    String temporaryPassword = PasswordGeneratorUtil.generateTemporaryPassword();
+                    syndic.setPassword(passwordEncoder.encode(temporaryPassword));
+                    syndic.setStatus(UserStatus.ACTIVE);
+
+                    subscription.setStatus(SubscriptionStatus.ACTIVE);
+                    // Posé une seule fois, ici, et jamais modifié ensuite — même si l'abonnement expire,
+                    // est annulé ou désactivé plus tard, ce paiement précis restera "Payé" dans l'historique
+                    subscription.setPaymentStatus(PaymentStatus.COMPLETED);
+                    syndicSubscriptionRepository.save(subscription);
+
+                    String companyName = syndicProfileRepository.findByUserId(syndic.getId())
+                            .map(SyndicProfile::getCompanyName) //SI on trouve son profil on le map pour avoir le nom de l'entreprise
+                            .orElse(null);
+
+                    emailService.sendSyndicAccountCreated(
+                            syndic.getEmail(),
+                            temporaryPassword,
+                            syndic.getFirstName(),
+                            companyName);
+
+                    log.info("Abonnement syndic {} activé pour {} — expire le {} — identifiants envoyés par email",
+                            ref,
+                            syndic.getEmail(),
+                            subscription.getEndDate().format(DATE_FORMATTER));
+
+                    return ResponseEntity.ok(Map.<String, Object>of(
+                            "success", true,
+                            "message", "Abonnement syndic activé avec succès"
+                    ));
+                })
+                .orElseGet(() -> ResponseEntity.badRequest().body(
+                        Map.<String, Object>of(
+                                "success", false,
+                                "message", "Abonnement syndic introuvable pour la référence : " + ref
+                        )
+                ));
+    }
+
+    // =========================================================================
+    // CAS 2c — Changement de formule syndic en self-service (SYR-)
+    // =========================================================================
+    private ResponseEntity<Map<String, Object>> handleSyndicPlanChangeCallback(String ref, boolean succes) {
+
+        // On retrouve le nouvel abonnement créé en PENDING par SyndicSubscriptionServiceImpl.initiateChangePlan
+        return syndicSubscriptionRepository.findByTransactionRef(ref)
+                .map(subscription -> {
+
+                    // Anti-double callback, basé sur le résultat du paiement de CETTE tentative précise
+                    if (subscription.getPaymentStatus() == PaymentStatus.COMPLETED) {
+                        return ResponseEntity.ok(Map.<String, Object>of(
+                                "success", true,
+                                "message", "Changement de formule déjà confirmé"
+                        ));
+                    }
+
+                    if (!succes) {
+                        // Le paiement a échoué → la nouvelle formule n'est jamais activée,
+                        // l'abonnement en cours du syndic (s'il y en a un) n'est pas touché
+                        subscription.setStatus(SubscriptionStatus.FAILED);
+                        subscription.setPaymentStatus(PaymentStatus.FAILED);
+                        syndicSubscriptionRepository.save(subscription);
+
+                        log.warn("Changement de formule syndic échoué pour ref : {}", ref);
+
+                        return ResponseEntity.ok(Map.<String, Object>of(
+                                "success", true,
+                                "message", "Changement de formule marqué comme échoué"
+                        ));
+                    }
+
+                    // Le paiement est confirmé → la nouvelle formule devient active immédiatement.
+                    // Contrairement à SYN- (création de compte), le syndic est déjà actif : on ne touche
+                    // ni à son mot de passe ni à son statut, on n'envoie pas l'email "compte créé"
+                    subscription.setStatus(SubscriptionStatus.ACTIVE);
+                    subscription.setPaymentStatus(PaymentStatus.COMPLETED);
+                    syndicSubscriptionRepository.save(subscription);
+
+                    User syndic = subscription.getSyndic();
+
+                    // On annule l'éventuel ancien abonnement encore actif de ce syndic — la nouvelle
+                    // formule le remplace immédiatement, pas de chevauchement. Son paymentStatus reste
+                    // COMPLETED pour toujours : il a bel et bien été payé en son temps, seul son cycle
+                    // de vie s'arrête ici prématurément
+                    //On cherche les Abonnement(s) encore ACTIVE d'un syndic, autre que celui-ci — utilisé au changement de formule
+                    // (SYR-) pour annuler l'ancien abonnement remplacé par le nouveau
+                    List<SyndicSubscription> previousActive = syndicSubscriptionRepository
+                            .findActiveBySyndicIdExcluding(syndic.getId(), subscription.getId());
+                    //une fois trouvé on change le statut
+                    for (SyndicSubscription old : previousActive) {
+                        old.setStatus(SubscriptionStatus.CANCELLED);
+                    }
+                    syndicSubscriptionRepository.saveAll(previousActive);
+
+                    // Confirmation simple par email — pas de nouveaux identifiants à envoyer ici
+                    emailService.sendEmail(
+                            syndic.getEmail(),
+                            "Changement de formule confirmé",
+                            "Bonjour " + syndic.getFirstName() + ",\n\n" +
+                                    "Votre changement de formule vers \"" + subscription.getSyndicPlan().getName() +
+                                    "\" a bien été confirmé. Votre nouvel abonnement est actif jusqu'au " +
+                                    subscription.getEndDate().format(DATE_FORMATTER) + ".\n\n" +
+                                    "L'équipe SOLIMUS");
+
+                    log.info("Changement de formule {} confirmé pour {} — nouvelle formule {} — expire le {}",
+                            ref,
+                            syndic.getEmail(),
+                            subscription.getSyndicPlan().getName(),
+                            subscription.getEndDate().format(DATE_FORMATTER));
+
+                    return ResponseEntity.ok(Map.<String, Object>of(
+                            "success", true,
+                            "message", "Changement de formule confirmé avec succès"
+                    ));
+                })
+                .orElseGet(() -> ResponseEntity.badRequest().body(
+                        Map.<String, Object>of(
+                                "success", false,
+                                "message", "Changement de formule introuvable pour la référence : " + ref
+                        )
+                ));
+    }
+
+    // =========================================================================
     // CAS 3 — Paiement charge courante copropriétaire (CPY-)
     // =========================================================================
     private ResponseEntity<Map<String, Object>> handleChargePaymentCallback(
@@ -405,6 +599,14 @@ public class SolimusCallbackController {
                     activityLog.setMessage("Paiement charges reçu");
                     activityLog.setDetail(item.getReference() + " — " + paiement.getAmount() + " FCFA");
                     activityLogRepository.save(activityLog);
+
+                    // Alerte push le syndic (si sa préférence "Nouveaux paiements" est activée)
+                    notificationService.sendNewPaymentNotification(
+                            residence.getSyndic().getId(),
+                            "Nouveau paiement reçu",
+                            paiement.getOwner().getFirstName() + " " + paiement.getOwner().getLastName() +
+                                    " a payé " + paiement.getAmount() + " FCFA — " + item.getReference()
+                    );
 
                     log.info("Charge {} payée avec succès — item {}", ref, item.getId());
 
@@ -495,6 +697,14 @@ public class SolimusCallbackController {
                     activityLog.setMessage("Paiement charge exceptionnelle reçu");
                     activityLog.setDetail(item.getExceptionalCall().getTitle() + " — " + paiement.getAmount() + " FCFA");
                     activityLogRepository.save(activityLog);
+
+                    // Alerte push le syndic (si sa préférence "Nouveaux paiements" est activée)
+                    notificationService.sendNewPaymentNotification(
+                            residence.getSyndic().getId(),
+                            "Nouveau paiement reçu",
+                            paiement.getOwner().getFirstName() + " " + paiement.getOwner().getLastName() +
+                                    " a payé " + paiement.getAmount() + " FCFA — " + item.getExceptionalCall().getTitle()
+                    );
 
                     log.info("Charge exceptionnelle {} payée avec succès — item {}", ref, item.getId());
 

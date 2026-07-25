@@ -94,7 +94,9 @@
         // 🧭 Construire l’URL API selon le type de paiement
         // =========================================
         // PAY- / SOL- → paiement normal
-        // SUB- → abonnement
+        // SUB- → abonnement prestataire
+        // SYN- → abonnement syndic (création de compte)
+        // SYR- → changement de formule syndic (self-service)
         // WIT- → retrait wallet
         // CPY- → paiement charge
         // ECP- -> paiement charge exceptionnelle
@@ -103,6 +105,9 @@
                 return `${apiBaseUrl}/api/payments/bridge/payment/${ref}`;
             } else if (ref.startsWith('SUB-')) {
                 return `${apiBaseUrl}/api/payments/bridge/subscription/${ref}`;
+            } else if (ref.startsWith('SYN-') || ref.startsWith('SYR-')) {
+                // Même endpoint bridge pour les deux : il lit toujours le payeur réel (initiatedBy)
+                return `${apiBaseUrl}/api/payments/bridge/syndic-subscription/${ref}`;
             } else if (ref.startsWith('WIT-')) {
                 return `${apiBaseUrl}/api/payments/bridge/withdrawal/${ref}`;
             } else if (ref.startsWith('CPY-')) {

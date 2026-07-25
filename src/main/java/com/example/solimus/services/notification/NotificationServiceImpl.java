@@ -1,9 +1,11 @@
 package com.example.solimus.services.notification;
 
 import com.example.solimus.entities.Notification;
+import com.example.solimus.entities.SyndicProfile;
 import com.example.solimus.entities.User;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.NotificationRepository;
+import com.example.solimus.repositories.SyndicProfileRepository;
 import com.example.solimus.repositories.UserRepository;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.Message;
@@ -11,12 +13,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
+
 @Service
 @RequiredArgsConstructor
 public class NotificationServiceImpl implements NotificationService{
 
     private final UserRepository userRepository;
-    private final NotificationRepository notificationRepository; // notre nouvelle entité
+    private final NotificationRepository notificationRepository;
+    private final SyndicProfileRepository syndicProfileRepository;
 
     @Override
     public void saveFcmToken(String fcmToken) {
@@ -68,6 +73,74 @@ public class NotificationServiceImpl implements NotificationService{
             System.err.println("Erreur envoi push userId=" + userId + " : " + e.getMessage());
         }
     }
+
+    // =========================================================================
+    // Envoie un push "Nouveau paiement" au syndic, si sa préférence est activée
+    // =========================================================================
+    @Override
+    public void sendNewPaymentNotification(Long syndicUserId, String title, String body) {
+
+        Optional<SyndicProfile> profileOpt = syndicProfileRepository.findByUserId(syndicUserId);
+
+        // Vérifie si le profil existe ET si sa préférence "notifNewPayments" est activée.
+        // Si aucun profil n'est trouvé (cas rare/imprévu), on envoie quand même par sécurité "(orElse(true)",plutôt que de bloquer silencieusement
+        boolean shouldSend = profileOpt.map(SyndicProfile::getNotifNewPayments).orElse(true);
+
+        // N'envoie le push que si la vérification ci-dessus a donné le feu vert (true)
+        if (shouldSend) {
+            sendPush(syndicUserId, title, body);
+        }
+    }
+
+    // =========================================================================
+    // Envoie un push "Incident urgent" au syndic, si sa préférence est activée
+    // =========================================================================
+    public void sendUrgentIncidentNotification(Long syndicUserId, String title, String body) {
+
+        // Vérifie si le profil existe ET si sa préférence "NotifUrgentIncidents" est activée.
+        // Si aucun profil n'est trouvé (cas rare/imprévu), on envoie quand même par sécurité "(orElse(true)",plutôt que de bloquer silencieusement
+        Optional<SyndicProfile> profileOpt = syndicProfileRepository.findByUserId(syndicUserId);
+        boolean shouldSend = profileOpt.map(SyndicProfile::getNotifUrgentIncidents).orElse(true);
+
+        // N'envoie le push que si la vérification ci-dessus a donné le feu vert (true)
+        if (shouldSend) {
+            sendPush(syndicUserId, title, body);
+        }
+    }
+
+    // =========================================================================
+    // Envoie un push "Relance impayé" au syndic, si sa préférence est activée
+    // =========================================================================
+    public void sendUnpaidReminderNotification(Long syndicUserId, String title, String body) {
+
+        // Vérifie si le profil existe ET si sa préférence "NotifUnpaidReminders" est activée.
+        // Si aucun profil n'est trouvé (cas rare/imprévu), on envoie quand même par sécurité "(orElse(true)",plutôt que de bloquer silencieusement
+        Optional<SyndicProfile> profileOpt = syndicProfileRepository.findByUserId(syndicUserId);
+        boolean shouldSend = profileOpt.map(SyndicProfile::getNotifUnpaidReminders).orElse(true);
+
+        // N'envoie le push que si la vérification ci-dessus a donné le feu vert (true)
+        if (shouldSend) {
+            sendPush(syndicUserId, title, body);
+        }
+    }
+
+    // =========================================================================
+    // Envoie un push "Rappel AG" au syndic, si sa préférence est activée
+    // =========================================================================
+    public void sendAgReminderNotification(Long syndicUserId, String title, String body) {
+
+        // Vérifie si le profil existe ET si sa préférence "NotifAgReminders" est activée.
+        // Si aucun profil n'est trouvé (cas rare/imprévu), on envoie quand même par sécurité "(orElse(true)",plutôt que de bloquer silencieusement
+        Optional<SyndicProfile> profileOpt = syndicProfileRepository.findByUserId(syndicUserId);
+        boolean shouldSend = profileOpt.map(SyndicProfile::getNotifAgReminders).orElse(true);
+
+        // N'envoie le push que si la vérification ci-dessus a donné le feu vert (true)
+        if (shouldSend) {
+            sendPush(syndicUserId, title, body);
+        }
+    }
+
+
 
     //---------------------------------------------------
     // Méthodes utilitaires

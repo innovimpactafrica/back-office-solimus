@@ -42,6 +42,19 @@ public class SyndicProfile {
     @Column(precision = 10, scale = 7)
     private BigDecimal longitude;
 
+    // Préférences de notification — chacune activée par défaut
+    @Column(name = "notif_new_payments", nullable = false)
+    private Boolean notifNewPayments = true; // reçoit une notification à chaque paiement reçu
+
+    @Column(name = "notif_urgent_incidents", nullable = false)
+    private Boolean notifUrgentIncidents = true; // reçoit une alerte pour les incidents urgents
+
+    @Column(name = "notif_unpaid_reminders", nullable = false)
+    private Boolean notifUnpaidReminders = true; // reçoit une notification aux échéances de relance impayés
+
+    @Column(name = "notif_ag_reminders", nullable = false)
+    private Boolean notifAgReminders = true; // reçoit un rappel pour les AG planifiées
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

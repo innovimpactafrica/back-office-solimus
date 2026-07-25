@@ -25,6 +25,9 @@ public interface SyndicCoOwnerRelationRepository extends JpaRepository<SyndicOwn
     // Récupérer toutes les relations d'un syndic (paginé)
     Page<SyndicOwnerRelation> findAllBySyndicId(Long syndicId, Pageable pageable);
 
+    // Compte les copropriétaires liés à ce syndic — utilisé pour vérifier la limite maxCoOwners de sa formule
+    long countBySyndicId(Long syndicId);
+
     // Rechercher les copropriétaires liés à un syndic avec filtre de recherche
     @Query("SELECT r.coOwner FROM SyndicOwnerRelation r " +
            "WHERE r.syndic.id = :syndicId " +

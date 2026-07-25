@@ -279,4 +279,53 @@ public class EmailServiceImpl implements EmailService {
             log.error("Erreur lors de l'envoi de la notification de signalement résolu à {} : {}", email, e.getMessage());
         }
     }
+
+    // =========================================================================
+    // SYNDIC — CRÉATION DE COMPTE PAR L'ADMIN
+    // =========================================================================
+    @Override
+    public void sendSyndicAccountCreated(String email, String temporaryPassword, String firstName, String companyName) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(mailFrom);
+            helper.setTo(email);
+            helper.setSubject("Votre accès " + appName + " — " + companyName);
+
+            String safeName = HtmlUtils.htmlEscape(firstName != null ? firstName : "");
+            String safeApp = HtmlUtils.htmlEscape(appName);
+            String safeEmail = HtmlUtils.htmlEscape(email);
+            String safePassword = HtmlUtils.htmlEscape(temporaryPassword);
+
+            String textBody = String.format(
+                    "Bonjour %s,%n%n" +
+                            "Un compte syndic vient d'être créé pour vous sur %s.%n%n" +
+                            "Identifiant de connexion : %s%n" +
+                            "Mot de passe temporaire : %s%n%n" +
+                            "Après votre première connexion, vous pouvez modifier ce mot de passe depuis le module \"Mon profil\".%n%n" +
+                            "Cordialement,%nL'équipe %s",
+                    firstName != null ? firstName : "", appName, email, temporaryPassword, appName
+            );
+
+            String htmlBody = "<html><body style=\"font-family:sans-serif;font-size:15px;line-height:1.6;color:#333;\">" +
+                    "<p>Bonjour <strong>" + safeName + "</strong>,</p>" +
+                    "<p>Un compte syndic vient d'être créé pour vous sur <strong>" + safeApp + "</strong>.</p>" +
+                    "<div style=\"background-color:#f9f9f9;padding:15px;border-left:4px solid #1a56db;margin:20px 0;\">" +
+                    "<strong>Identifiant :</strong> " + safeEmail + "<br>" +
+                    "<strong>Mot de passe temporaire :</strong> <code style=\"font-size:16px;\">" + safePassword + "</code>" +
+                    "</div>" +
+                    "<p>Après votre première connexion, vous pouvez modifier ce mot de passe depuis le module <strong>\"Mon profil\"</strong>.</p>" +
+                    "<p>Cordialement,<br>L'équipe <strong>" + safeApp + "</strong></p>" +
+                    "</body></html>";
+
+            helper.setText(textBody, htmlBody);
+            mailSender.send(message);
+            log.info("Identifiants syndic envoyés avec succès à : {}", email);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de l'envoi des identifiants syndic à {} : {}", email, e.getMessage(), e);
+            throw new RuntimeException("Impossible d'envoyer l'email des identifiants syndic", e);
+        }
+    }
 }

@@ -133,6 +133,9 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
            "AND m.convocationSentDate <= :today")
     List<Meeting> findMeetingsWithPendingConvocation(@Param("today") LocalDate today);
 
+    // Réunions programmées (UPCOMING) à cette date précise — utilisé par le job de rappel AG syndic
+    List<Meeting> findByMeetingDateAndStatus(LocalDate meetingDate, MeetingStatus status);
+
     // Réunions ou ce copropriétaire est convoqué, filtrées sur UPCOMING uniquement
     @Query("SELECT DISTINCT mp.meeting FROM MeetingParticipant mp " +
             "WHERE mp.user.id = :userId " +

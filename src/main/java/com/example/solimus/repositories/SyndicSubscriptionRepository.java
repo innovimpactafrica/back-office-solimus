@@ -1,6 +1,9 @@
 package com.example.solimus.repositories;
 
 import com.example.solimus.entities.SyndicSubscription;
+import com.example.solimus.enums.SubscriptionStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -8,9 +11,37 @@ import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface SyndicSubscriptionRepository extends JpaRepository<SyndicSubscription, Long> {
+
+    // Retrouve l'abonnement PENDING créé à l'initiation du paiement, à partir de la référence TouchPay
+    Optional<SyndicSubscription> findByTransactionRef(String transactionRef);
+
+    // Abonnements encore PENDING créés avant ce seuil — utilisé par le scheduler d'expiration
+    List<SyndicSubscription> findByStatusAndCreatedAtBefore(SubscriptionStatus status, LocalDateTime dateTime);
+
+    // Abonnements FAILED dont le syndic n'a jamais été activé (aucun paiement n'a jamais abouti pour ce compte) —
+    // ce sont des comptes orphelins à purger pour libérer l'email/téléphone
+    //s.syndic.status désigne le champ status de User(userSyndic) (Compte utilisateur)
+    @Query("SELECT s FROM SyndicSubscription s WHERE s.status = 'FAILED' AND s.syndic.status = 'PENDING'")
+    List<SyndicSubscription> findFailedWithNeverActivatedSyndic();
+
+    // Abonnement le plus récent d'un syndic (par date de fin) — utilisé pour la page "Mon abonnement"
+    Optional<SyndicSubscription> findFirstBySyndicIdOrderByEndDateDesc(Long syndicId);
+
+    // Historique paginé des abonnements d'un syndic (paiements passés), du plus récent au plus ancien
+    Page<SyndicSubscription> findBySyndicIdOrderByCreatedAtDesc(Long syndicId, Pageable pageable);
+
+    // Abonnements ACTIVE dont la date de fin est déjà dépassée — utilisé par le scheduler d'expiration
+    List<SyndicSubscription> findByStatusAndEndDateBefore(SubscriptionStatus status, LocalDateTime dateTime);
+
+    // Abonnement(s) encore ACTIVE d'un syndic, autre que celui-ci — utilisé au changement de formule
+    // (SYR-) pour annuler l'ancien abonnement remplacé par le nouveau
+    @Query("SELECT s FROM SyndicSubscription s WHERE s.syndic.id = :syndicId AND s.status = 'ACTIVE' AND s.id <> :excludeId")
+    List<SyndicSubscription> findActiveBySyndicIdExcluding(@Param("syndicId") Long syndicId, @Param("excludeId") Long excludeId);
 
     // Compte les abonnés actuels sur une formule précise
     long countBySyndicPlanId(Long syndicPlanId);

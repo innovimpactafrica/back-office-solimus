@@ -47,4 +47,10 @@ public interface EmailService {
      * Envoie une notification à un copropriétaire pour un signalement résolu par le syndic.
      */
     void sendSignalementResoluNotification(String email, String firstName, String signalementTitle, String noteCloture);
+
+    /**
+     * Envoie les identifiants (email + mot de passe temporaire) à un syndic créé par l'admin.
+     * Précise qu'il peut changer ce mot de passe depuis "Mon profil" après sa première connexion.
+     */
+    void sendSyndicAccountCreated(String email, String temporaryPassword, String firstName, String companyName);
 }

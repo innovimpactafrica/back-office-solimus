@@ -1,19 +1,15 @@
 package com.example.solimus.controllers;
 
-import com.example.solimus.dtos.syndic.settings.ChangePasswordDTO;
-import com.example.solimus.dtos.syndic.settings.CreateFacilityTypeDTO;
-import com.example.solimus.dtos.syndic.settings.CreatePropertyTypeDTO;
-import com.example.solimus.dtos.syndic.settings.CreateSpecialtyDTO;
-import com.example.solimus.dtos.syndic.settings.FacilityTypeDTO;
-import com.example.solimus.dtos.syndic.settings.PropertyTypeDTO;
-import com.example.solimus.dtos.syndic.settings.SecurityFeatureDTO;
-import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
-import com.example.solimus.dtos.syndic.settings.SyndicFinancialSettingsDTO;
-import com.example.solimus.dtos.syndic.settings.SyndicProfileDTO;
-import com.example.solimus.dtos.syndic.settings.UpdateSyndicFinancialSettingsDTO;
-import com.example.solimus.dtos.syndic.settings.UpdateSyndicProfileDTO;
+import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
+import com.example.solimus.dtos.syndic.settings.*;
+import com.example.solimus.dtos.syndic.subscription.InitiateSyndicPlanChangeDTO;
+import com.example.solimus.dtos.syndic.subscription.MySyndicSubscriptionDTO;
+import com.example.solimus.dtos.syndic.subscription.SyndicPlanChangeResponseDTO;
+import com.example.solimus.dtos.syndic.subscription.SyndicPlanOptionDTO;
+import com.example.solimus.dtos.syndic.subscription.SyndicSubscriptionHistoryDTO;
 import com.example.solimus.enums.FacilityCategory;
 import com.example.solimus.services.syndic.settings.SyndicSettingsService;
+import com.example.solimus.services.syndic.subscription.SyndicSubscriptionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -36,6 +32,7 @@ import java.util.List;
 public class SyndicSettingsController {
 
     private final SyndicSettingsService syndicSettingsService;
+    private final SyndicSubscriptionService syndicSubscriptionService;
 
     // ===== TYPES D'ÉQUIPEMENTS =====
 
@@ -223,6 +220,39 @@ public class SyndicSettingsController {
         return ResponseEntity.noContent().build();
     }
 
+    // ===== PRÉFÉRENCES DE NOTIFICATIONS =====
+    @Operation(summary = "Récupère les préférences de notification du syndic connecté")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/notification-preferences")
+    public ResponseEntity<SyndicNotificationPreferencesDTO> getNotificationPreferences() {
+        return ResponseEntity.ok(syndicSettingsService.getNotificationPreferences());
+    }
+
+    @Operation(summary = "Met à jour les préférences de notification du syndic connecté")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PatchMapping("/notification-preferences")
+    public ResponseEntity<SyndicNotificationPreferencesDTO> updateNotificationPreferences(
+            @RequestBody SyndicNotificationPreferencesDTO dto) {
+        return ResponseEntity.ok(syndicSettingsService.updateNotificationPreferences(dto));
+    }
+
+    @Operation(summary = "Lister mes notifications (paginé)")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/notifications")
+    public ResponseEntity<NotificationListResponseDTO> getMyNotifications(
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "20") Integer size) {
+        return ResponseEntity.ok(syndicSettingsService.getMyNotifications(page, size));
+    }
+
+    @Operation(summary = "Marquer toutes mes notifications comme lues")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PatchMapping("/notifications/mark-all-read")
+    public ResponseEntity<Void> markAllNotificationsAsRead() {
+        syndicSettingsService.markAllNotificationsAsRead();
+        return ResponseEntity.noContent().build();
+    }
+
     // ===== PROFIL SYNDIC =====
 
     @Operation(summary = "Récupérer le profil du syndic connecté")
@@ -258,5 +288,38 @@ public class SyndicSettingsController {
     public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordDTO dto) {
         syndicSettingsService.changePassword(dto);
         return ResponseEntity.noContent().build();
+    }
+
+    // ===== ABONNEMENT =====
+
+    @Operation(summary = "Consulter mon abonnement actuel")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/subscription/me")
+    public MySyndicSubscriptionDTO getMySubscription() {
+        return syndicSubscriptionService.getMySubscription();
+    }
+
+    @Operation(summary = "Consulter mon historique de paiements d'abonnement")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/subscription/history")
+    public Page<SyndicSubscriptionHistoryDTO> getSubscriptionPaymentHistory(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return syndicSubscriptionService.getPaymentHistory(page, size);
+    }
+
+    @Operation(summary = "Lister les formules disponibles pour un changement d'abonnement")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @GetMapping("/subscription/plans")
+    public List<SyndicPlanOptionDTO> listAvailableSubscriptionPlans() {
+        return syndicSubscriptionService.listAvailablePlans();
+    }
+
+    @Operation(summary = "Initier le paiement d'un changement de formule (self-service)")
+    @PreAuthorize("hasRole('ROLE_SYNDIC')")
+    @PostMapping("/subscription/change-plan")
+    public SyndicPlanChangeResponseDTO initiateSubscriptionPlanChange(
+            @RequestBody @Valid InitiateSyndicPlanChangeDTO dto) {
+        return syndicSubscriptionService.initiateChangePlan(dto);
     }
 }

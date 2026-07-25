@@ -30,6 +30,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic/travaux")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('INCIDENT_MANAGEMENT')")
 @Tag(name = "Syndic - Travaux", description = "Gestion des travaux par le syndic")
 public class SyndicTravauxController {
 
@@ -42,7 +43,6 @@ public class SyndicTravauxController {
     // LISTER LES RÉSIDENCES DU SYNDIC
     // =========================================================================
     @Operation(summary = "Lister mes résidences")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences")
     public ResponseEntity<Page<SyndicResidenceDTO>> getMesResidences(
             @RequestParam(defaultValue = "0") Integer page,
@@ -54,7 +54,6 @@ public class SyndicTravauxController {
     // LISTER LES LOTS D'UNE RÉSIDENCE
     // =========================================================================
     @Operation(summary = "Lister les lots d'une résidence")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/properties")
     public ResponseEntity<Page<PropertyDTO>> getPropertiesByResidence(
             @PathVariable Long residenceId,
@@ -67,7 +66,6 @@ public class SyndicTravauxController {
     // LISTER LES BIENS COMMUNS D'UNE RÉSIDENCE
     // =========================================================================
     @Operation(summary = "Lister les biens communs d'une résidence")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/common-facilities")
     public ResponseEntity<Page<CommonFacilityDTO>> getCommonFacilitiesByResidence(
             @PathVariable Long residenceId,
@@ -80,7 +78,6 @@ public class SyndicTravauxController {
     // LISTER LES SPÉCIALITÉS
     // =========================================================================
     @Operation(summary = "Lister toutes les spécialités")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/specialties")
     public ResponseEntity<Page<SpecialtyDTO>> getAllSpecialties(
             @RequestParam(defaultValue = "0") Integer page,
@@ -92,7 +89,6 @@ public class SyndicTravauxController {
     // CRÉATION D'INTERVENTION
     // =========================================================================
     @Operation(summary = "Créer une demande de travaux (Avec upload Minio)", tags = {"Syndic - Travaux"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping(value = "/interventions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> createIntervention(
             @Parameter(description = "Titre court de l'intervention (ex: Fuite d'eau)")
@@ -164,7 +160,6 @@ public class SyndicTravauxController {
     // =========================================================================
 
     @Operation(summary = "Envoyer une demande de partie commune aux prestataires")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/interventions/{interventionId}/send-to-providers")
     public ResponseEntity<String> sendToProviders(@PathVariable Long interventionId) {
         syndicTravauxService.sendToProviders(interventionId);
@@ -176,7 +171,6 @@ public class SyndicTravauxController {
     // =========================================================================
 
     @Operation(summary = "Créer un avis pour une intervention terminée")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/interventions/{interventionId}/review")
     public ResponseEntity<String> createReview(
             @PathVariable Long interventionId,
@@ -190,7 +184,6 @@ public class SyndicTravauxController {
     // =========================================================================
 
     @Operation(summary = "Valider un devis", description = "Valide un devis pour une intervention de partie commune, rejette les autres")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PatchMapping("/interventions/{id}/quotes/{quoteId}/validate")
     public ResponseEntity<Void> validateQuote(@PathVariable Long id, @PathVariable Long quoteId) {
         syndicTravauxService.validateQuote(id, quoteId);
@@ -198,14 +191,12 @@ public class SyndicTravauxController {
     }
 
     @Operation(summary = "Résumé pour le modal Acompte")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/interventions/{id}/deposit-summary")
     public ResponseEntity<SyndicDepositSummaryDTO> getDepositSummary(@PathVariable Long id) {
         return ResponseEntity.ok(syndicTravauxService.getDepositSummary(id));
     }
 
     @Operation(summary = "Payer un acompte")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/interventions/{id}/deposit")
     public ResponseEntity<SyndicPaymentResultDTO> payDeposit(
             @PathVariable Long id, @Valid @RequestBody SyndicPayDepositDTO dto) {
@@ -213,14 +204,12 @@ public class SyndicTravauxController {
     }
 
     @Operation(summary = "Résumé pour le modal Paiement final")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/interventions/{id}/balance-summary")
     public ResponseEntity<SyndicBalancePaymentSummaryDTO> getBalanceSummary(@PathVariable Long id) {
         return ResponseEntity.ok(syndicTravauxService.getBalanceSummary(id));
     }
 
     @Operation(summary = "Payer le solde final et clôturer")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/interventions/{id}/pay-balance")
     public ResponseEntity<SyndicPaymentResultDTO> payBalanceAndClose(
             @PathVariable Long id, @Valid @RequestBody SyndicPayDepositDTO dto) {
@@ -232,7 +221,6 @@ public class SyndicTravauxController {
     // =========================================================================
 
     @Operation(summary = "Mettre à jour partiellement une demande d'intervention avec upload MinIO (uniquement si en attente de devis)")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PatchMapping(value = "/interventions/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Void> updateIntervention(
             @PathVariable Long id,
@@ -294,7 +282,6 @@ public class SyndicTravauxController {
     }
 
     @Operation(summary = "Supprimer une demande d'intervention (uniquement si en attente de devis)")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @DeleteMapping("/interventions/{id}")
     public ResponseEntity<Void> deleteIntervention(@PathVariable Long id) {
         syndicTravauxService.deleteIntervention(id);
@@ -302,7 +289,6 @@ public class SyndicTravauxController {
     }
 
     @Operation(summary = "Ajouter des photos à une intervention existante (avec upload MinIO)")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping(value = "/interventions/{id}/photos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<List<String>> addPhotosToIntervention(
             @PathVariable Long id,
@@ -326,7 +312,6 @@ public class SyndicTravauxController {
     // =========================================================================
 
     @Operation(summary = "Dashboard des travaux", description = "Retourne les 6 KPIs (ouverts, urgents, en attente devis, en cours, résolus, clôturés)")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/dashboard")
     public ResponseEntity<TravauxDashboardDTO> getDashboard() {
         return ResponseEntity.ok(syndicTravauxDashboardService.getDashboard());
@@ -337,7 +322,6 @@ public class SyndicTravauxController {
     // =========================================================================
 
     @Operation(summary = "Lister les incidents travaux", description = "Liste paginée avec recherche, filtre par statut et résidence")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/incidents")
     public ResponseEntity<SyndicTravauxListResponse> getIncidents(
             @RequestParam(required = false) String search,
@@ -353,7 +337,6 @@ public class SyndicTravauxController {
     // =========================================================================
 
     @Operation(summary = "Vue générale d'un incident (onglet 1)")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/incidents/{id}")
     public ResponseEntity<SyndicTravauxDetailDTO> getVueGenerale(@PathVariable Long id) {
         return ResponseEntity.ok(syndicTravauxDashboardService.getVueGenerale(id));
@@ -364,14 +347,12 @@ public class SyndicTravauxController {
     // =========================================================================
 
     @Operation(summary = "Liste des devis reçus pour un incident (onglet 2)")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/incidents/{id}/quotes")
     public ResponseEntity<List<SyndicQuoteCardDTO>> getQuotes(@PathVariable Long id) {
         return ResponseEntity.ok(syndicTravauxDashboardService.getQuotes(id));
     }
 
     @Operation(summary = "Détail d'un devis précis (onglet 2 → clic)")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/incidents/{id}/quotes/{quoteId}")
     public ResponseEntity<SyndicQuoteDetailDTO> getQuoteDetail(
             @PathVariable Long id, @PathVariable Long quoteId) {
@@ -383,7 +364,6 @@ public class SyndicTravauxController {
     // =========================================================================
 
     @Operation(summary = "Données de l'onglet Intervention (onglet 3)")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/incidents/{id}/intervention")
     public ResponseEntity<SyndicInterventionTabDTO> getInterventionTab(@PathVariable Long id) {
         return ResponseEntity.ok(syndicTravauxDashboardService.getInterventionTab(id));
@@ -394,7 +374,6 @@ public class SyndicTravauxController {
     // =========================================================================
 
     @Operation(summary = "Historique complet d'un incident (onglet 4)")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/incidents/{id}/history")
     public ResponseEntity<List<SyndicHistoryItemDTO>> getHistory(@PathVariable Long id) {
         return ResponseEntity.ok(syndicTravauxDashboardService.getHistory(id));

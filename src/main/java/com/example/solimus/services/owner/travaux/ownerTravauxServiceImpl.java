@@ -918,7 +918,9 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
 
     /**
      * Notifie le syndic de la résidence d'une demande de travaux sur partie commune créée par un copropriétaire.
-     * Envoie une notification push et un email au syndic si les notifications sont activées.
+     * Le push n'est envoyé que si l'incident est urgent (et que sa préférence "Incidents urgents" est activée) —
+     * pour une demande non urgente, le syndic la retrouve dans son tableau de bord Travaux, sans push.
+     * L'email récapitulatif, lui, part toujours.
      */
     private void notifySyndicForCommonFacilityRequest(InterventionRequest request, Residence residence, User owner) {
         // Vérifier que la résidence a un syndic assigné
@@ -929,22 +931,22 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
         User syndic = residence.getSyndic();
         String ownerName = owner.getFirstName() + " " + owner.getLastName();
 
-        // Envoyer notification push et email si le syndic a activé les notifications
-        if (syndic.isNotificationsEnabled()) {
-            notificationService.sendPush(
+        // Push uniquement si urgent — gouverné uniquement par sa préférence "Incidents urgents"
+        if (request.getUrgencyLevel() == UrgencyLevel.URGENT) {
+            notificationService.sendUrgentIncidentNotification(
                     syndic.getId(),
-                    "Nouvelle demande de travaux - Partie commune",
-                    "Un copropriétaire a signalé un problème : " + request.getTitle()
-            );
-
-            emailService.sendSyndicInterventionNotification(
-                    syndic.getEmail(),
-                    syndic.getFirstName(),
-                    request.getTitle(),
-                    residence.getName(),
-                    ownerName
+                    "Incident urgent signalé",
+                    ownerName + " a signalé un problème urgent : " + request.getTitle()
             );
         }
+
+        emailService.sendSyndicInterventionNotification(
+                syndic.getEmail(),
+                syndic.getFirstName(),
+                request.getTitle(),
+                residence.getName(),
+                ownerName
+        );
     }
 
     /**

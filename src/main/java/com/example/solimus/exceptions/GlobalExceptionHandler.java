@@ -5,6 +5,7 @@ import com.example.solimus.dtos.syndic.owner.CoOwnerConflictResponseDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -55,6 +56,17 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponseDTO> handleForbidden(ForbiddenException ex) {
         ErrorResponseDTO error = new ErrorResponseDTO(
                 ex.getMessage(),
+                null,
+                LocalDateTime.now(),
+                HttpStatus.FORBIDDEN.value()
+        );
+        return new ResponseEntity<>(error, HttpStatus.FORBIDDEN);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponseDTO> handleAccessDenied(AccessDeniedException ex) {
+        ErrorResponseDTO error = new ErrorResponseDTO(
+                "Cette fonctionnalité n'est pas incluse dans votre formule d'abonnement actuelle. Passez à une formule supérieure pour y accéder.",
                 null,
                 LocalDateTime.now(),
                 HttpStatus.FORBIDDEN.value()

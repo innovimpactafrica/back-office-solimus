@@ -1,19 +1,7 @@
 package com.example.solimus.services.syndic.settings;
 
-import com.example.solimus.dtos.syndic.settings.ChangePasswordDTO;
-import com.example.solimus.dtos.syndic.settings.CreateFacilityTypeDTO;
-import com.example.solimus.dtos.syndic.settings.CreatePropertyTypeDTO;
-import com.example.solimus.dtos.syndic.settings.CreateSecurityFeatureDTO;
-import com.example.solimus.dtos.syndic.settings.CreateSpecialtyDTO;
-import com.example.solimus.dtos.syndic.settings.FacilityTypeDTO;
-import com.example.solimus.dtos.syndic.settings.PropertyTypeDTO;
-import com.example.solimus.dtos.syndic.settings.SecurityFeatureDTO;
-import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
-import com.example.solimus.dtos.syndic.settings.SyndicFinancialSettingsDTO;
-import com.example.solimus.dtos.syndic.settings.SyndicProfileDTO;
-import com.example.solimus.dtos.syndic.settings.UpdateSecurityFeatureDTO;
-import com.example.solimus.dtos.syndic.settings.UpdateSyndicFinancialSettingsDTO;
-import com.example.solimus.dtos.syndic.settings.UpdateSyndicProfileDTO;
+import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
+import com.example.solimus.dtos.syndic.settings.*;
 import com.example.solimus.enums.FacilityCategory;
 import org.springframework.data.domain.Page;
 import org.springframework.web.multipart.MultipartFile;
@@ -109,4 +97,24 @@ public interface SyndicSettingsService {
      */
     void changePassword(ChangePasswordDTO dto);
 
+
+    //--------------------------------------------------
+    // ===== Préférences Notifications =====
+    //--------------------------------------------------
+    SyndicNotificationPreferencesDTO getNotificationPreferences();
+    SyndicNotificationPreferencesDTO updateNotificationPreferences(SyndicNotificationPreferencesDTO dto);
+
+    //--------------------------------------------------
+    // ===== NOTIFICATIONS (liste paginée) =====
+    //--------------------------------------------------
+
+    /**
+     * Retourne l'historique paginé des notifications du syndic connecté, du plus récent au plus ancien.
+     */
+    NotificationListResponseDTO getMyNotifications(int page, int size);
+
+    /**
+     * Marque toutes les notifications du syndic connecté comme lues.
+     */
+    void markAllNotificationsAsRead();
 }

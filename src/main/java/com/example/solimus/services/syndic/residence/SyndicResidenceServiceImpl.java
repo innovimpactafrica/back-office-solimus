@@ -14,6 +14,7 @@ import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
+import com.example.solimus.security.PlanLimitGuard;
 import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -57,6 +58,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     private final InterventionStatusHistoryRepository interventionStatusHistoryRepository;
     private final ActivityLogRepository activityLogRepository;
     private final BudgetItemRepository budgetItemRepository;
+    private final PlanLimitGuard planLimitGuard;
 
     // =========================================================================
     // ÉTAPE 1 — CRÉER LA RÉSIDENCE COMPLÈTE (avec photo et contacts)
@@ -67,6 +69,9 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
         // 1. Récupérer le syndic connecté
         User currentSyndic = getCurrentUser();
+
+        // Bloque la création si la limite de résidences de sa formule est déjà atteinte
+        planLimitGuard.assertCanAddResidence(currentSyndic);
 
         // 2. Construire l'adresse complète
         String adresseComplete = dto.getFullAddress()

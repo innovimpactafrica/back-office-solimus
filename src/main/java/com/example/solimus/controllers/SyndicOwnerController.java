@@ -30,6 +30,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('COOWNER_MANAGEMENT')")
 @Tag(name = "Syndic - Copropriétaires", description = "Gestion des copropriétaires par le syndic")
 public class SyndicOwnerController {
 
@@ -39,7 +40,6 @@ public class SyndicOwnerController {
 
     @Operation(summary = "Ajouter un copropriétaire (Workflow OTP) avec photo", tags = {"Syndic - Copropriétaires"},
             description = "propertiesJson filtre par résidence pour les lots")
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping(value = "/co-owners", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<String> addCoOwner(
             @RequestParam String firstName,
@@ -88,7 +88,6 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Lister les biens disponibles (VACANT) d'une résidence", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/{residenceId}/properties/available")
     public ResponseEntity<Page<PropertySummaryDTO>> getAvailableProperties(
             @PathVariable Long residenceId,
@@ -98,7 +97,6 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Lister les résidences qui ont au moins un bien vacant", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/residences/with-vacant-properties")
     public ResponseEntity<Page<ResidenceSummaryDTO>> getResidencesWithVacantProperties(
             @RequestParam(defaultValue = "0") Integer page,
@@ -107,7 +105,6 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Lister les copropriétaires (recherche + filtre résidence + statut + pagination)", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners")
     public ResponseEntity<Page<CoOwnerListDTO>> getCoOwners(
             @RequestParam(required = false) String search,
@@ -119,14 +116,12 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Détail d'un copropriétaire (en-tête + KPIs)", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/{coOwnerId}")
     public ResponseEntity<CoOwnerDetailDTO> getCoOwnerDetail(@PathVariable Long coOwnerId) {
         return ResponseEntity.ok(syndicOwnerService.getCoOwnerDetail(coOwnerId));
     }
 
     @Operation(summary = "Lister les résidences d'un copropriétaire (pour le filtre finances)", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/{coOwnerId}/residences")
     public ResponseEntity<Page<CoOwnerResidenceDTO>> getCoOwnerResidences(
             @PathVariable Long coOwnerId,
@@ -136,7 +131,6 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Lister les lots d'un copropriétaire (onglet Appartements du détail)", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/{coOwnerId}/properties")
     public ResponseEntity<Page<CoOwnerPropertyItemDTO>> getCoOwnerProperties(
             @PathVariable Long coOwnerId,
@@ -146,7 +140,6 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Finances d'un copropriétaire pour une résidence (onglet Finances du détail)", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/{coOwnerId}/finances")
     public ResponseEntity<CoOwnerFinancesDTO> getCoOwnerFinances(
             @PathVariable Long coOwnerId,
@@ -155,7 +148,6 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Historique des paiements d'un copropriétaire (onglet Paiements du détail)", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/{coOwnerId}/payments")
     public ResponseEntity<Page<CoOwnerPaymentItemDTO>> getCoOwnerPayments(
             @PathVariable Long coOwnerId,
@@ -166,7 +158,6 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Assemblées Générales d'un copropriétaire (onglet AG du détail)", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/{coOwnerId}/meetings")
     public ResponseEntity<CoOwnerMeetingsDTO> getCoOwnerMeetings(
             @PathVariable Long coOwnerId,
@@ -179,14 +170,12 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Travaux d'un copropriétaire (onglet Travaux du détail)", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/{coOwnerId}/interventions")
     public ResponseEntity<CoOwnerInterventionsResponseDTO> getCoOwnerInterventions(@PathVariable Long coOwnerId) {
         return ResponseEntity.ok(syndicOwnerService.getCoOwnerInterventions(coOwnerId));
     }
 
     @Operation(summary = "Documents d'un copropriétaire (manuel + AG + charges exceptionnelles, fusionnés)", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/{coOwnerId}/documents")
     public ResponseEntity<CoOwnerDocumentUnifiedListResponseDTO> getCoOwnerDocuments(
             @PathVariable Long coOwnerId,
@@ -203,7 +192,6 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Activité récente d'un copropriétaire (panneau Activité Récente du détail)", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/{coOwnerId}/activity-log")
     public ResponseEntity<Page<ActivityLogItemDTO>> getCoOwnerActivityLog(
             @PathVariable Long coOwnerId,
@@ -213,7 +201,6 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Autocomplete — rechercher un copropriétaire par nom, email ou téléphone", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @GetMapping("/co-owners/search")
     public ResponseEntity<Page<CoOwnerSearchResultDTO>> searchCoOwners(
             @RequestParam String q,
@@ -223,7 +210,6 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Lier un copropriétaire existant au syndic connecté", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PostMapping("/co-owners/{id}/link")
     public ResponseEntity<String> linkCoOwner(@PathVariable Long id) {
         syndicOwnerService.linkCoOwner(id);
@@ -231,7 +217,6 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Mettre à jour partiellement un copropriétaire", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @PatchMapping("/co-owners/{id}")
     public ResponseEntity<Void> updateCoOwner(
             @PathVariable Long id,
@@ -253,7 +238,6 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Supprimer un copropriétaire et libérer ses lots", tags = {"Syndic - Copropriétaires"})
-    @PreAuthorize("hasRole('ROLE_SYNDIC')")
     @DeleteMapping("/co-owners/{id}")
     public ResponseEntity<Void> deleteCoOwner(@PathVariable Long id) {
         syndicOwnerService.deleteCoOwner(id);
