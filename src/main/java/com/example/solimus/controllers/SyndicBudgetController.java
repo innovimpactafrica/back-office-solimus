@@ -24,7 +24,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic/budget")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('CHARGE_MANAGEMENT')")
+@PreAuthorize("hasAuthority('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('CHARGE_MANAGEMENT')")
 @Tag(name = "Syndic - Charges", description = "Gestion des charges par le syndic")
 public class SyndicBudgetController {
 

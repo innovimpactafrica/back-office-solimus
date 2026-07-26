@@ -30,7 +30,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('COOWNER_MANAGEMENT')")
+@PreAuthorize("hasAuthority('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('COOWNER_MANAGEMENT')")
 @Tag(name = "Syndic - Copropriétaires", description = "Gestion des copropriétaires par le syndic")
 public class SyndicOwnerController {
 

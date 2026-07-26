@@ -15,17 +15,20 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic/wallet")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('WALLET_MANAGEMENT')")
+@PreAuthorize("hasAuthority('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('WALLET_MANAGEMENT')")
 @Tag(name = "Syndic - Wallet", description = "Gestion du portefeuille syndic")
 public class SyndicWalletController {
 
     private final WalletService walletService;
 
-    @Operation(summary = "Lister les résidences du syndic", description = "Récupère toutes les résidences gérées par le syndic connecté (id, nom)", tags = {"Syndic - Wallet"})
-    @GetMapping("/residences")
-    public ResponseEntity<List<ResidenceSimpleDTO>> getSyndicResidences() {
-        return ResponseEntity.ok(walletService.getSyndicResidences());
+
+    @Operation(summary = "Créer une demande de retrait", description = "Crée une nouvelle demande de retrait de fonds par le syndic", tags = {"Syndic - Wallet"})
+    @PostMapping("/withdrawal-requests")
+    public ResponseEntity<Void> createWithdrawalRequest(@Valid @RequestBody CreateWithdrawalRequestDTO dto) {
+        walletService.createWithdrawalRequest(dto);
+        return ResponseEntity.ok().build();
     }
+
 
     @Operation(summary = "Lister les postes budgétaires sans biens communs", description = "Récupère les postes budgétaires sans bien commun pour une résidence et l'année courante (id, libellé)", tags = {"Syndic - Wallet"})
     @GetMapping("/budget-items")
@@ -34,12 +37,13 @@ public class SyndicWalletController {
         return ResponseEntity.ok(walletService.getBudgetItemsWithoutCommonFacility(residenceId));
     }
 
-    @Operation(summary = "Créer une demande de retrait", description = "Crée une nouvelle demande de retrait de fonds par le syndic", tags = {"Syndic - Wallet"})
-    @PostMapping("/withdrawal-requests")
-    public ResponseEntity<Void> createWithdrawalRequest(@Valid @RequestBody CreateWithdrawalRequestDTO dto) {
-        walletService.createWithdrawalRequest(dto);
-        return ResponseEntity.ok().build();
+
+    @Operation(summary = "Lister les résidences du syndic", description = "Récupère toutes les résidences gérées par le syndic connecté (id, nom)", tags = {"Syndic - Wallet"})
+    @GetMapping("/residences")
+    public ResponseEntity<List<ResidenceSimpleDTO>> getSyndicResidences() {
+        return ResponseEntity.ok(walletService.getSyndicResidences());
     }
+
 
     @Operation(summary = "Solde disponible du wallet syndic", description = "Retourne uniquement le solde disponible du wallet syndic", tags = {"Syndic - Wallet"})
     @GetMapping("/balance")

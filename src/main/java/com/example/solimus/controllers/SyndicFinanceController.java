@@ -17,7 +17,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic/finances")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('CHARGE_MANAGEMENT')")
+@PreAuthorize("hasAuthority('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('CHARGE_MANAGEMENT')")
 public class SyndicFinanceController {
 
     private final FinanceService financeService;

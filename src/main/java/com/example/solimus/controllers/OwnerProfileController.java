@@ -32,6 +32,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/coowner/profile")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('ROLE_COPROPRIETAIRE')")
 @Tag(name = "Copropriétaire - Profil", description = "Consultation et mise à jour du profil du copropriétaire.")
 public class OwnerProfileController {
 
@@ -47,14 +48,12 @@ public class OwnerProfileController {
 
     @Operation(summary = "Voir mon profil")
     @GetMapping
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     public ResponseEntity<CoOwnerProfileDTO> getProfile() {
         return ResponseEntity.ok(profileService.getProfile());
     }
 
     @Operation(summary = "Modifier mon profil", description = "Permet de modifier : prénom, nom, téléphone et photo de profil. L'email et le bien sont non modifiables.")
     @PutMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     public ResponseEntity<CoOwnerProfileDTO> updateProfile(
             @RequestParam(required = false) String firstName,
             @RequestParam(required = false) String lastName,
@@ -75,7 +74,6 @@ public class OwnerProfileController {
 
     @Operation(summary = "Activer/Désactiver les notifications")
     @PutMapping("/notifications")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     public ResponseEntity<Void> toggleNotifications() {
         providerProfileService.toggleNotifications();
         return ResponseEntity.noContent().build();
@@ -87,7 +85,6 @@ public class OwnerProfileController {
 
     @Operation(summary = "Créer un signalement", description = "Permet au copropriétaire de signaler un incident, avec photos optionnelles")
     @PostMapping(value = "/signalements", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     public ResponseEntity<Void> createSignalement(
             @RequestParam String title,
             @RequestParam String description,
@@ -129,7 +126,6 @@ public class OwnerProfileController {
 
     @Operation(summary = "Lister mes signalements", description = "Retourne la liste paginée des signalements du copropriétaire connecté, avec recherche et filtres")
     @GetMapping("/signalements")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     public ResponseEntity<Page<SignalementCardDTO>> getMySignalements(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Long residenceId,
@@ -146,7 +142,6 @@ public class OwnerProfileController {
 
     @Operation(summary = "Détail d'un signalement", description = "Retourne le détail complet d'un signalement du copropriétaire connecté, avec historique")
     @GetMapping("/signalements/{id}")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     public ResponseEntity<SignalementDetailDTO> getSignalementDetail(@PathVariable Long id) {
         return ResponseEntity.ok(signalementService.getSignalementDetail(id));
     }
@@ -156,7 +151,6 @@ public class OwnerProfileController {
     // =========================================================================
 
     @Operation(summary = "Mes documents (AG + charges exceptionnelles fusionnés, avec recherche et filtre)")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/documents")
     public ResponseEntity<CoOwnerDocumentListResponseDTO> getMyDocuments(
             @RequestParam(required = false) String search,

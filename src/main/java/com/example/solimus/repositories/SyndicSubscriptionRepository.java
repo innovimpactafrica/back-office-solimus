@@ -29,8 +29,21 @@ public interface SyndicSubscriptionRepository extends JpaRepository<SyndicSubscr
     @Query("SELECT s FROM SyndicSubscription s WHERE s.status = 'FAILED' AND s.syndic.status = 'PENDING'")
     List<SyndicSubscription> findFailedWithNeverActivatedSyndic();
 
-    // Abonnement le plus récent d'un syndic (par date de fin) — utilisé pour la page "Mon abonnement"
+    // Abonnement le plus récent d'un syndic (par date de fin), TOUS statuts confondus — utilisé
+    // uniquement en repli sur la page "Mon abonnement" quand aucun abonnement ACTIVE n'existe
+    // (ex: tout est expiré/annulé). Ne JAMAIS utiliser ceci pour vérifier un accès : la date de fin
+    // la plus lointaine peut appartenir à un abonnement annulé (ex: un ancien abonnement annuel
+    // remplacé par un nouveau mensuel finit "plus tard" alors qu'il n'est plus actif).
     Optional<SyndicSubscription> findFirstBySyndicIdOrderByEndDateDesc(Long syndicId);
+
+    // L'abonnement réellement actif d'un syndic — au plus un seul à la fois (l'ancien est annulé
+    // dès qu'un nouveau devient actif). C'est la SEULE requête à utiliser pour vérifier un accès
+    // (features, limites) ou afficher l'abonnement en cours.
+    Optional<SyndicSubscription> findFirstBySyndicIdAndStatus(Long syndicId, SubscriptionStatus status);
+
+    // Vérifie si le syndic a déjà une tentative de paiement PENDING en cours — utilisé pour bloquer
+    // l'initiation d'un nouveau paiement tant que l'ancien n'a pas expiré (5 min) ou été confirmé
+    boolean existsBySyndicIdAndStatus(Long syndicId, SubscriptionStatus status);
 
     // Historique paginé des abonnements d'un syndic (paiements passés), du plus récent au plus ancien
     Page<SyndicSubscription> findBySyndicIdOrderByCreatedAtDesc(Long syndicId, Pageable pageable);

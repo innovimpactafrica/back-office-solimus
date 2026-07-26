@@ -30,7 +30,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic/travaux")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('INCIDENT_MANAGEMENT')")
+@PreAuthorize("hasAuthority('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('INCIDENT_MANAGEMENT')")
 @Tag(name = "Syndic - Travaux", description = "Gestion des travaux par le syndic")
 public class SyndicTravauxController {
 

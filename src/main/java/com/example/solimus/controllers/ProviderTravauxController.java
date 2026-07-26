@@ -21,13 +21,13 @@ import java.util.List;
 @RequestMapping("/api/provider/travaux")
 @RequiredArgsConstructor
 @Validated
+@PreAuthorize("hasAuthority('ROLE_PRESTATAIRE')")
 @Tag(name = "Prestataire - Travaux", description = "Travaux du prestataire (demandes dont le devis a été accepté)")
 public class ProviderTravauxController {
 
     private final ProviderTravauxService providerTravauxService;
 
     @Operation(summary = "Lister mes travaux (devis accepté, en cours, terminés, clôturés)")
-    @PreAuthorize("hasRole('ROLE_PRESTATAIRE')")
     @GetMapping
     public ResponseEntity<ProviderTravauxPageDTO> getMyWorks(
             @RequestParam(required = false) String search,
@@ -38,14 +38,12 @@ public class ProviderTravauxController {
     }
 
     @Operation(summary = "Voir le détail d'une intervention assignée")
-    @PreAuthorize("hasRole('ROLE_PRESTATAIRE')")
     @GetMapping("/{id}")
     public ResponseEntity<ProviderTravauxDetailDTO> getWorkDetails(@PathVariable Long id) {
         return ResponseEntity.ok(providerTravauxService.getWorkDetails(id));
     }
 
     @Operation(summary = "Démarrer une intervention (passer de QUOTE_VALIDATED à STARTED)")
-    @PreAuthorize("hasRole('ROLE_PRESTATAIRE')")
     @PostMapping("/{id}/start")
     public ResponseEntity<String> startIntervention(@PathVariable Long id) {
         providerTravauxService.startIntervention(id);
@@ -53,7 +51,6 @@ public class ProviderTravauxController {
     }
 
     @Operation(summary = "Terminer une intervention (passer de STARTED à FINISHED)")
-    @PreAuthorize("hasRole('ROLE_PRESTATAIRE')")
     @PostMapping(value = "/{id}/finish", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<String> finishIntervention(
             @PathVariable Long id,

@@ -3,6 +3,7 @@ package com.example.solimus.security;
 import com.example.solimus.entities.SyndicPlan;
 import com.example.solimus.entities.SyndicSubscription;
 import com.example.solimus.entities.User;
+import com.example.solimus.enums.SubscriptionStatus;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.repositories.ResidenceRepository;
 import com.example.solimus.repositories.SyndicCoOwnerRelationRepository;
@@ -71,11 +72,12 @@ public class PlanLimitGuard {
     // Si aucun abonnement actif n'est trouvé, une exception est levée.
     private SyndicPlan getActivePlan(User syndic) {
 
-        // Recherche le dernier abonnement du syndic, vérifie qu'il est actif
-        // puis retourne la formule associée
-        return syndicSubscriptionRepository.findFirstBySyndicIdOrderByEndDateDesc(syndic.getId())
+        // Cherche directement l'abonnement au statut ACTIVE — jamais "le plus récent par date de
+        // fin", qui peut ramener un abonnement annulé dont la date de fin est simplement plus lointaine
+        return syndicSubscriptionRepository.findFirstBySyndicIdAndStatus(syndic.getId(), SubscriptionStatus.ACTIVE)
 
-                // Vérifie que l'abonnement est toujours actif
+                // Sécurité supplémentaire : le job d'expiration horaire n'a peut-être pas encore
+                // basculé un abonnement dont la date de fin est déjà dépassée
                 .filter(SyndicSubscription::isCurrentlyActive)
 
                 // Retourne la formule liée à cet abonnement

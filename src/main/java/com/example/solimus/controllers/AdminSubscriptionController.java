@@ -20,7 +20,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin/subscriptions")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ROLE_ADMIN')")
+@PreAuthorize("hasAuthority('ROLE_ADMIN')")
 @Tag(name = "Administration - Abonnements")
 public class AdminSubscriptionController {
 

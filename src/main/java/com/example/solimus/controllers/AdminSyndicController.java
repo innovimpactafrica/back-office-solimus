@@ -22,7 +22,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin/syndics")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ROLE_ADMIN')")
+@PreAuthorize("hasAuthority('ROLE_ADMIN')")
 @Tag(name = "Administration - Syndics")
 public class AdminSyndicController {
 

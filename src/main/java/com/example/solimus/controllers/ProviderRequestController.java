@@ -23,13 +23,13 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/provider/requests")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('ROLE_PRESTATAIRE')")
 @Tag(name = "Prestataire - Demandes", description = "Demandes de travaux notifiées au prestataire")
 public class ProviderRequestController {
 
     private final ProviderRequestService providerRequestService;
 
     @Operation(summary = "Lister mes demandes de travaux (notifiées, non assignées)")
-    @PreAuthorize("hasRole('ROLE_PROVIDER')")
     @GetMapping
     public ResponseEntity<ProviderRequestsDTO> getAvailableRequests(
 
@@ -52,7 +52,6 @@ public class ProviderRequestController {
     }
 
     @Operation(summary = "Voir les détails d'une demande de travaux")
-    @PreAuthorize("hasRole('ROLE_PROVIDER')")
     @GetMapping("/{id}")
     public ResponseEntity<ProviderRequestDetailDTO> getRequestDetails(@PathVariable Long id) {
         return ResponseEntity.ok(providerRequestService.getRequestDetails(id));
@@ -60,7 +59,6 @@ public class ProviderRequestController {
 
     @Operation(summary = "Créer un devis (Brouillon ou Envoi)")
     @PostMapping("/quote")
-    @PreAuthorize("hasRole('ROLE_PRESTATAIRE')")
     public ResponseEntity<String> createQuote(@RequestBody @Valid CreateQuoteDTO dto) {
         providerRequestService.createQuote(dto);
         return ResponseEntity.status(HttpStatus.CREATED).body("Devis enregistré avec succès.");
@@ -68,13 +66,11 @@ public class ProviderRequestController {
 
     @Operation(summary = "Lister les délais d'estimation disponibles")
     @GetMapping("quote/estimated-delays")
-    @PreAuthorize("hasRole('ROLE_PRESTATAIRE')")
     public ResponseEntity<List<EstimatedDelayDTO>> getEstimatedDelays() {
         return ResponseEntity.ok(providerRequestService.getEstimatedDelays());
     }
 
     @Operation(summary = "Mettre à jour partiellement un devis (uniquement si pas encore accepté)")
-    @PreAuthorize("hasRole('ROLE_PRESTATAIRE')")
     @PatchMapping("/quote/{id}")
     public ResponseEntity<Void> updateQuote(
             @PathVariable Long id,
@@ -84,7 +80,6 @@ public class ProviderRequestController {
     }
 
     @Operation(summary = "Supprimer un devis (uniquement si pas encore accepté)")
-    @PreAuthorize("hasRole('ROLE_PRESTATAIRE')")
     @DeleteMapping("/quote/{id}")
     public ResponseEntity<Void> deleteQuote(@PathVariable Long id) {
         providerRequestService.deleteQuote(id);

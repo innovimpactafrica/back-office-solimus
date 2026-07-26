@@ -42,6 +42,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/owner/travaux")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('ROLE_COPROPRIETAIRE')")
 @Tag(name = "Copropriétaire - Travaux", description = "Gestion des demandes de travaux du copropriétaire")
 public class OwnerTravauxController {
 
@@ -51,35 +52,30 @@ public class OwnerTravauxController {
     private final OwnerChargeService ownerChargeService;
 
     @Operation(summary = "Lister toutes les spécialités disponibles")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/specialties")
     public ResponseEntity<List<SpecialtyDTO>> getAllSpecialties() {
         return ResponseEntity.ok(syndicParametreService.getAllSpecialties(0, 100).getContent());
     }
 
     @Operation(summary = "Lister mes résidences")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/residences")
     public ResponseEntity<List<OwnerResidenceDTO>> getMyResidences() {
         return ResponseEntity.ok(ownerChargeService.getMyResidences());
     }
 
     @Operation(summary = "Lister les parties communes d'une résidence")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/residences/{residenceId}/common-facilities")
     public ResponseEntity<List<CommonFacilityDTO>> getCommonFacilitiesByResidence(@PathVariable Long residenceId) {
         return ResponseEntity.ok(ownerTraveauxService.getCommonFacilitiesByResidence(residenceId));
     }
 
     @Operation(summary = "Lister mes biens dans une résidence")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/residences/{residenceId}/properties")
     public ResponseEntity<List<PropertyDTO>> getMyPropertiesByResidence(@PathVariable Long residenceId) {
         return ResponseEntity.ok(ownerTraveauxService.getMyPropertiesByResidence(residenceId));
     }
 
     @Operation(summary = "Créer une demande d'intervention (copropriétaire)")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @PostMapping(value = "/interventions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Void> createIntervention(
             @RequestParam String title,
@@ -120,7 +116,6 @@ public class OwnerTravauxController {
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
     @Operation(summary = "Lister mes demandes de travaux (recherche + filtres + pagination)")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/interventions")
     public ResponseEntity<OwnerInterventionDTO> getMyInterventions(
             @RequestParam(required = false) String search,
@@ -132,7 +127,6 @@ public class OwnerTravauxController {
     }
 
     @Operation(summary = "Détail d'une intervention")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/interventions/{interventionId}")
     public ResponseEntity<OwnerInterventionDetailDTO> getInterventionDetail(
             @Parameter(description = "ID de l'intervention")
@@ -141,7 +135,6 @@ public class OwnerTravauxController {
     }
 
     @Operation(summary = "Lister les devis d'une intervention")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/interventions/{interventionId}/quotes")
     public ResponseEntity<Page<CoOwnerQuoteCardDTO>> getQuotesByIntervention(
             @Parameter(description = "ID de l'intervention")
@@ -152,7 +145,6 @@ public class OwnerTravauxController {
     }
 
     @Operation(summary = "Détail d'un devis")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/interventions/{interventionId}/quotes/{quoteId}")
     public ResponseEntity<CoOwnerQuoteDetailDTO> getQuoteDetail(
             @Parameter(description = "ID de l'intervention")
@@ -163,7 +155,6 @@ public class OwnerTravauxController {
     }
 
     @Operation(summary = "Accepter un devis")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @PostMapping("/interventions/{interventionId}/quotes/{quoteId}/accept")
     public ResponseEntity<String> acceptQuote(
             @Parameter(description = "ID de l'intervention")
@@ -175,7 +166,6 @@ public class OwnerTravauxController {
     }
 
     @Operation(summary = "Payer un acompte")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @PostMapping("/interventions/{interventionId}/deposit")
     public ResponseEntity<PaymentResponseDTO> payDeposit(
             @Parameter(description = "ID de l'intervention")
@@ -185,7 +175,6 @@ public class OwnerTravauxController {
     }
 
     @Operation(summary = "Récapitulatif financier avant paiement du solde (montant devis, acompte versé, solde restant)")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/interventions/{interventionId}/balance-summary")
     public ResponseEntity<BalanceSummaryDTO> getBalanceSummary(
             @Parameter(description = "ID de l'intervention")
@@ -194,7 +183,6 @@ public class OwnerTravauxController {
     }
 
     @Operation(summary = "Valider les travaux et payer le solde")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @PostMapping("/interventions/{interventionId}/balance")
     public ResponseEntity<PaymentResponseDTO> validateAndPayBalance(
             @Parameter(description = "ID de l'intervention")
@@ -204,7 +192,6 @@ public class OwnerTravauxController {
     }
 
     @Operation(summary = "Créer un avis pour une intervention terminée")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @PostMapping("/interventions/{interventionId}/review")
     public ResponseEntity<String> createReview(
             @PathVariable Long interventionId,

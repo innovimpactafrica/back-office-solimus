@@ -52,10 +52,15 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
         // Le syndic connecté ne peut consulter que son propre abonnement
         User currentSyndic = getCurrentUser();
 
-        // On prend son abonnement le plus récent (le dernier à expirer) — c'est celui à afficher,
-        // qu'il soit encore actif ou déjà expiré/échoué
+        // On affiche en priorité l'abonnement réellement ACTIVE — jamais "le plus récent par date
+        // de fin", qui peut ramener un abonnement annulé (ex: un ancien abonnement annuel remplacé
+        // par un nouveau mensuel finit "plus tard" alors qu'il n'est plus actif). On ne retombe sur
+        // le plus récent, tous statuts confondus, que si aucun abonnement n'est actif du tout —
+        // pour quand même afficher quelque chose (ex: "Expiré", "Annulé").
         SyndicSubscription subscription = syndicSubscriptionRepository
-                .findFirstBySyndicIdOrderByEndDateDesc(currentSyndic.getId())
+                .findFirstBySyndicIdAndStatus(currentSyndic.getId(), SubscriptionStatus.ACTIVE)
+                .filter(SyndicSubscription::isCurrentlyActive)
+                .or(() -> syndicSubscriptionRepository.findFirstBySyndicIdOrderByEndDateDesc(currentSyndic.getId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Aucun abonnement trouvé pour ce compte"));
 
         SyndicPlan plan = subscription.getSyndicPlan();
@@ -127,6 +132,14 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
 
         // 1. Le syndic connecté est celui qui paie ici, en self-service — pas l'admin
         User currentSyndic = getCurrentUser();
+
+        // Bloque une nouvelle tentative tant qu'une autre est déjà en attente de confirmation —
+        // évite d'empiler des paiements PENDING en boucle. Il faut attendre soit la confirmation
+        // TouchPay, soit l'expiration automatique (5 min, failStalePendingSyndicSubscriptions)
+        if (syndicSubscriptionRepository.existsBySyndicIdAndStatus(currentSyndic.getId(), SubscriptionStatus.PENDING)) {
+            throw new BadRequestException(
+                    "Un paiement est déjà en attente de confirmation. Veuillez patienter quelques minutes avant de réessayer.");
+        }
 
         // 2. Récupère la formule choisie et vérifie qu'elle est toujours proposée
         SyndicPlan plan = syndicPlanRepository.findById(dto.getSyndicPlanId())

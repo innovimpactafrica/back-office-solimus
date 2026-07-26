@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/syndic/signalements")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('REPORT_MANAGEMENT')")
+@PreAuthorize("hasAuthority('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('REPORT_MANAGEMENT')")
 @Tag(name = "Syndic - Signalements", description = "Gestion des signalements par le syndic")
 public class SyndicSignalementController {
 

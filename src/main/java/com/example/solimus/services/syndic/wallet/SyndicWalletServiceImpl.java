@@ -43,32 +43,6 @@ public class SyndicWalletServiceImpl implements WalletService {
     private final BudgetRepository budgetRepository;
 
     @Override
-    @Transactional(readOnly = true)
-    public List<ResidenceSimpleDTO> getSyndicResidences() {
-        User currentSyndic = getCurrentUser();
-        List<Residence> residences = residenceRepository.findBySyndicId(currentSyndic.getId());
-        return residences.stream()
-                .map(r -> ResidenceSimpleDTO.builder()
-                        .id(r.getId())
-                        .name(r.getName())
-                        .build())
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<BudgetItemSimpleDTO> getBudgetItemsWithoutCommonFacility(Long residenceId) {
-        int currentYear = LocalDate.now().getYear();
-        List<BudgetItem> budgetItems = budgetItemRepository.findByResidenceIdAndYearAndCommonFacilityIsNull(residenceId, currentYear);
-        return budgetItems.stream()
-                .map(item -> BudgetItemSimpleDTO.builder()
-                        .id(item.getId())
-                        .libelle(item.getLibelle())
-                        .build())
-                .collect(Collectors.toList());
-    }
-
-    @Override
     @Transactional
     public void createWithdrawalRequest(CreateWithdrawalRequestDTO dto) {
         User currentSyndic = getCurrentUser();
@@ -124,6 +98,34 @@ public class SyndicWalletServiceImpl implements WalletService {
 
         syndicWithdrawalRequestRepository.save(request);
     }
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ResidenceSimpleDTO> getSyndicResidences() {
+        User currentSyndic = getCurrentUser();
+        List<Residence> residences = residenceRepository.findBySyndicId(currentSyndic.getId());
+        return residences.stream()
+                .map(r -> ResidenceSimpleDTO.builder()
+                        .id(r.getId())
+                        .name(r.getName())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<BudgetItemSimpleDTO> getBudgetItemsWithoutCommonFacility(Long residenceId) {
+        int currentYear = LocalDate.now().getYear();
+        List<BudgetItem> budgetItems = budgetItemRepository.findByResidenceIdAndYearAndCommonFacilityIsNull(residenceId, currentYear);
+        return budgetItems.stream()
+                .map(item -> BudgetItemSimpleDTO.builder()
+                        .id(item.getId())
+                        .libelle(item.getLibelle())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
 
     @Override
     @Transactional(readOnly = true)

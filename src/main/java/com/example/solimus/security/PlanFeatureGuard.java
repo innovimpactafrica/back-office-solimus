@@ -2,6 +2,7 @@ package com.example.solimus.security;
 
 import com.example.solimus.entities.SyndicSubscription;
 import com.example.solimus.entities.User;
+import com.example.solimus.enums.SubscriptionStatus;
 import com.example.solimus.enums.SyndicPlanFeature;
 import com.example.solimus.repositories.SyndicSubscriptionRepository;
 import com.example.solimus.repositories.UserRepository;
@@ -33,10 +34,14 @@ public class PlanFeatureGuard {
         //Transformer le String en Enum
         SyndicPlanFeature feature = SyndicPlanFeature.valueOf(featureName);
 
-        // Vérifie que le syndic possède un abonnement actif incluant la fonctionnalité demandée
-        return syndicSubscriptionRepository.findFirstBySyndicIdOrderByEndDateDesc(currentUser.getId())
+        // Vérifie que le syndic possède un abonnement actif incluant la fonctionnalité demandée.
+        // On cherche directement le statut ACTIVE — jamais "le plus récent par date de fin", qui
+        // peut ramener un abonnement annulé dont la date de fin est simplement plus lointaine
+        // (ex: ancien abonnement annuel remplacé par un nouveau mensuel).
+        return syndicSubscriptionRepository.findFirstBySyndicIdAndStatus(currentUser.getId(), SubscriptionStatus.ACTIVE)
 
-                // Vérifie que l'abonnement trouvé est actuellement actif
+                // Sécurité supplémentaire : le job d'expiration horaire n'a peut-être pas encore
+                // basculé un abonnement dont la date de fin est déjà dépassée
                 .filter(SyndicSubscription::isCurrentlyActive)
 
                 // Si l'abonnement est actif, vérifie que son plan contient bien la fonctionnalité demandée (feature)

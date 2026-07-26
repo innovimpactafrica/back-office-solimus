@@ -17,20 +17,19 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/provider/subscription")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('ROLE_PRESTATAIRE')")
 @Tag(name = "Prestataire - Abonnement", description = "Gestion de l'abonnement du prestataire")
 public class ProviderSubscriptionController {
 
     private final SubscriptionPaymentService subscriptionPaymentService;
 
     @Operation(summary = "Obtenir les formules d'abonnement actives, au choix du prestataire")
-    @PreAuthorize("hasRole('ROLE_PROVIDER')")
     @GetMapping("/plan")
     public ResponseEntity<List<ProviderPlanDTO>> getProviderPlans() {
         return ResponseEntity.ok(subscriptionPaymentService.getProviderPlans());
     }
 
     @Operation(summary = "Initier le paiement d'un abonnement (mensuel ou annuel)")
-    @PreAuthorize("hasRole('ROLE_PROVIDER')")
     @PostMapping("/initiate")
     public ResponseEntity<SubscriptionPaymentResponseDTO> initiatePayment(
             @Valid @RequestBody InitiateSubscriptionPaymentDTO dto) {

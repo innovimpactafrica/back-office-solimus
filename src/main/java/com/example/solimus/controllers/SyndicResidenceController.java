@@ -28,7 +28,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/syndic")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('RESIDENCE_MANAGEMENT')")
+@PreAuthorize("hasAuthority('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('RESIDENCE_MANAGEMENT')")
 @Tag(name = "Syndic - Résidences", description = "Gestion des résidences par le syndic")
 public class SyndicResidenceController {
 

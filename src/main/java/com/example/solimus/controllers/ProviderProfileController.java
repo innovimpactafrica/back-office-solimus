@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/provider/profile")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('ROLE_PRESTATAIRE')")
 @Tag(name = "Prestataire - Profil", description = "Gestion du profil du prestataire")
 public class ProviderProfileController {
 
@@ -86,7 +87,6 @@ public class ProviderProfileController {
     // ============================================================
     @Operation(summary = "Lister mes devis (avec filtres et pagination)")
     @GetMapping("/quotes")
-    @PreAuthorize("hasRole('ROLE_PRESTATAIRE')")
     public ResponseEntity<ProviderQuoteListDTO> getMyQuotes(
             @RequestParam(required = false) QuoteStatus statut,
             @RequestParam(required = false) String search,
@@ -97,7 +97,6 @@ public class ProviderProfileController {
 
     @Operation(summary = "Voir le détail d'un devis")
     @GetMapping("/quotes/{id}")
-    @PreAuthorize("hasRole('ROLE_PRESTATAIRE')")
     public ResponseEntity<QuoteDetailDTO> getQuoteDetails(@PathVariable Long id) {
         return ResponseEntity.ok(providerProfileService.getQuoteDetails(id));
     }

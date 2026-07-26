@@ -212,7 +212,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     @Query("SELECT MAX(DATEDIFF(CURRENT_DATE, i.chargeCall.dueDate)) FROM ChargeCallItem i " +
             "WHERE i.coOwner.id = :coOwnerId " +
             "AND i.chargeCall.budget.syndic.id = :syndicId " +
-            "AND i.paidAmount < i.quotePart " +
+            "AND i.status IN ('PENDING', 'PARTIALLY_PAID') " +
             "AND i.chargeCall.dueDate < CURRENT_DATE")
     Integer findMaxDaysLateByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
 
@@ -228,12 +228,13 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     Page<ChargeCallItem> findByChargeCallBudgetSyndicIdAndCoOwnerNameContaining(
             @Param("syndicId") Long syndicId, @Param("search") String search, Pageable pageable);
 
-    // Items non soldés d'un syndic, paginés (pour l'onglet Impayés)
-    @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId AND i.paidAmount < i.quotePart")
+    // Items non soldés d'un syndic, paginés (pour l'onglet Impayés) — basé sur le statut posé
+    // explicitement au paiement (PENDING/PARTIALLY_PAID), jamais recalculé par comparaison de montants
+    @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId AND i.status IN ('PENDING', 'PARTIALLY_PAID')")
     Page<ChargeCallItem> findUnpaidByBudgetSyndicId(@Param("syndicId") Long syndicId, Pageable pageable);
 
     // Tous les items non soldés, sans pagination (pour calculer les KPI globaux : total, count)
-    @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId AND i.paidAmount < i.quotePart")
+    @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId AND i.status IN ('PENDING', 'PARTIALLY_PAID')")
     List<ChargeCallItem> findAllUnpaidByBudgetSyndicId(@Param("syndicId") Long syndicId);
 
     // Tous les items d'un syndic (non paginé), toutes résidences confondues (pour KPI dashboard global)
@@ -252,25 +253,27 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     // Compte les lignes en retard (date d'échéance dépassée) et non soldées pour un syndic (toutes résidences)
     @Query("SELECT COUNT(i) FROM ChargeCallItem i " +
            "WHERE i.chargeCall.budget.syndic.id = :syndicId " +
-           "AND i.paidAmount < i.quotePart " +
+           "AND i.status IN ('PENDING', 'PARTIALLY_PAID') " +
            "AND i.chargeCall.dueDate < CURRENT_DATE")
     long countLateUnpaidBySyndicId(@Param("syndicId") Long syndicId);
 
     // Additionne tout ce qui reste à payer pour ce copropriétaire, dans cette résidence,
-    // toutes périodes de charge confondues (peu importe le statut de chaque ChargeCall)
+    // toutes périodes de charge confondues (peu importe le statut de chaque ChargeCall) — le montant
+    // restant se calcule (quotePart - paidAmount), mais seuls les items encore PENDING/PARTIALLY_PAID
+    // sont inclus, jamais déduit d'une comparaison de montants
     @Query("SELECT COALESCE(SUM(item.quotePart - item.paidAmount), 0) FROM ChargeCallItem item " +
            "WHERE item.coOwner.id = :coOwnerId " +
            "AND item.chargeCall.budget.residence.id = :residenceId " +
-           "AND (item.quotePart - item.paidAmount) > 0")
+           "AND item.status IN ('PENDING', 'PARTIALLY_PAID')")
     BigDecimal sumRemainingAmountByCoOwnerAndResidence(@Param("coOwnerId") Long coOwnerId,
                                                       @Param("residenceId") Long residenceId);
 
-    // Charges en attente (quotePart - paidAmount > 0) de ce copropriétaire pour une résidence précise,
+    // Charges en attente de ce copropriétaire pour une résidence précise,
     // triées par échéance la plus proche en premier
     @Query("SELECT item FROM ChargeCallItem item " +
            "WHERE item.coOwner.id = :coOwnerId " +
            "AND item.chargeCall.budget.residence.id = :residenceId " +
-           "AND (item.quotePart - item.paidAmount) > 0 " +
+           "AND item.status IN ('PENDING', 'PARTIALLY_PAID') " +
            "ORDER BY item.chargeCall.dueDate ASC")
     List<ChargeCallItem> findPendingItemsByCoOwnerAndResidence(@Param("coOwnerId") Long coOwnerId,
                                                               @Param("residenceId") Long residenceId,

@@ -3,7 +3,7 @@ package com.example.solimus.config;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -17,10 +17,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
 
-import static org.springframework.security.config.Customizer.withDefaults;
-
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -36,22 +35,18 @@ public class SecurityConfig {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
-                .httpBasic(withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/auth/me/**").authenticated()
                         .requestMatchers("/api/payments/bridge/**", "/api/payments/intouch/**").permitAll()
                         .requestMatchers("/touchpay-bridge.html", "/payment-success.html", "/payment-failed.html").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/admin/specialties", "/api/admin/intervention-zones").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/coowner/residences").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/coowner/residences/*/properties").permitAll()
                         .requestMatchers("/api/files/**", "/uploads/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN")
                         .requestMatchers("/api/syndic/**").hasAnyAuthority("ROLE_SYNDIC")
-                        .requestMatchers("/api/coOwner/**").hasAnyAuthority("ROLE_COPROPRIETAIRE")
+                        .requestMatchers("/api/coowner/**").hasAnyAuthority("ROLE_COPROPRIETAIRE")
+                        .requestMatchers("/api/provider/**").hasAnyAuthority("ROLE_PRESTATAIRE")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

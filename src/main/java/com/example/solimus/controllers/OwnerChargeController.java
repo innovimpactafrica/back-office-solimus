@@ -15,6 +15,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/coowner/charges")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('ROLE_COPROPRIETAIRE')")
 @Tag(name = "Copropriétaire - Charges", description = "Consultation et suivi des charges du copropriétaire")
 public class OwnerChargeController {
 
@@ -25,7 +26,6 @@ public class OwnerChargeController {
     // =========================================================================
 
     @Operation(summary = "Lister mes charges", description = "Liste paginée des charges courantes et exceptionnelles, avec recherche et filtres")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping
     public ResponseEntity<MyChargeListResponse> getMyCharges(
             @RequestParam(required = false) String search,
@@ -38,7 +38,6 @@ public class OwnerChargeController {
     }
 
     @Operation(summary = "Lister mes résidences", description = "Liste des résidences où le copropriétaire a au moins un lot")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/residences")
     public ResponseEntity<List<OwnerResidenceDTO>> getMyResidences() {
         return ResponseEntity.ok(chargeService.getMyResidences());
@@ -49,7 +48,6 @@ public class OwnerChargeController {
     // =========================================================================
 
     @Operation(summary = "Détail d'une charge", description = "Retourne le détail complet d'une charge (type = REGULAR ou EXCEPTIONAL)")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/{type}/{id}")
     public ResponseEntity<MyChargeDetailDTO> getChargeDetail(
             @PathVariable ChargeType type,
@@ -62,7 +60,6 @@ public class OwnerChargeController {
     // =========================================================================
 
     @Operation(summary = "Initier un paiement de charge", description = "Initie le paiement d'une charge via TouchPay")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @PostMapping("/{type}/{id}/payment")
     public ResponseEntity<ChargePaymentResponseDTO> initierPaiement(
             @PathVariable ChargeType type,
@@ -72,7 +69,6 @@ public class OwnerChargeController {
     }
 
     @Operation(summary = "Récupérer le reçu d'un paiement", description = "Retourne le reçu d'un paiement à partir de sa référence")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/receipt/{transactionRef}")
     public ResponseEntity<ChargePaymentReceiptDTO> getReceipt(
             @PathVariable String transactionRef) {
@@ -80,7 +76,6 @@ public class OwnerChargeController {
     }
 
     @Operation(summary = "Vérifie le statut réel d'un paiement de charge (appelé par l'app mobile au retour de la WebView)")
-    @PreAuthorize("hasRole('ROLE_COPROPRIETAIRE')")
     @GetMapping("/payment-status")
     public ResponseEntity<ChargePaymentStatusDTO> getPaymentStatus(
             @RequestParam String reference) {
