@@ -16,14 +16,15 @@ import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.security.PlanLimitGuard;
 
-import com.example.solimus.services.auth.ActivationCodeService;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.minio.MinioService;
+import com.example.solimus.utils.PasswordGeneratorUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -54,9 +55,9 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
     private final PropertyRepository propertyRepository;
     private final SyndicCoOwnerRelationRepository syndicCoOwnerRelationRepository;
     private final PlanLimitGuard planLimitGuard;
-    private final ActivationCodeService activationCodeService;
     private final EmailService emailService;
     private final MinioService minioService;
+    private final PasswordEncoder passwordEncoder;
     private final ChargeCallItemRepository chargeCallItemRepository;
     private final ChargeCallRepository chargeCallRepository;
     private final ChargeCallPaymentRepository chargeCallPaymentRepository;
@@ -636,13 +637,18 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         Role role = roleRepository.findByName(ERole.ROLE_COPROPRIETAIRE)
                 .orElseThrow(() -> new ResourceNotFoundException("Rôle introuvable"));
 
+        // Comme pour le syndic créé par l'admin : le compte est directement actif, avec un mot de
+        // passe temporaire envoyé par email — pas de code d'activation à saisir dans l'app
+        String temporaryPassword = PasswordGeneratorUtil.generateTemporaryPassword();
+
         User user = new User();
         user.setFirstName(dto.getFirstName());
         user.setLastName(dto.getLastName());
         user.setEmail(dto.getEmail());
         user.setPhone(dto.getPhone());
         user.setRole(role);
-        user.setStatus(UserStatus.PENDING);
+        user.setStatus(UserStatus.ACTIVE);
+        user.setPassword(passwordEncoder.encode(temporaryPassword));
         user.setProfilePhotoUrl(photoUrl);
 
         User saved = userRepository.save(user);
@@ -715,9 +721,8 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             }
         }
                                
-        // Envoi du code d'activation par email
-        String code = activationCodeService.generateAndStoreCodeMobile(saved);
-        emailService.sendActivationCode(saved.getEmail(), code, saved.getFirstName());
+        // Envoi des identifiants de connexion par email (mot de passe temporaire, comme pour le syndic)
+        emailService.sendCoOwnerAccountCreated(saved.getEmail(), temporaryPassword, saved.getFirstName());
         
         //Retourne l'email et le nombre de biens affectés en parcourant les assignements  et pour chaque assignement on retourne le nombre de biens affectés puis on somme sinon on met 0
         log.info("Copropriétaire créé : {} — {} bien(s) affecté(s)",
