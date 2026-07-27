@@ -376,6 +376,16 @@ public class SolimusCallbackController {
                     subscription.setStatus(SubscriptionStatus.ACTIVE);
                     providerSubscriptionRepository.save(subscription);
 
+                    // Un seul abonnement ACTIVE à la fois pour ce prestataire — on annule l'éventuel
+                    // ancien abonnement encore actif (ex: deux paiements initiés en parallèle avant
+                    // que le premier n'ait eu le temps d'être confirmé)
+                    List<ProviderSubscription> previousActive = providerSubscriptionRepository
+                            .findActiveByProviderIdExcluding(subscription.getProvider().getId(), subscription.getId());
+                    for (ProviderSubscription old : previousActive) {
+                        old.setStatus(SubscriptionStatus.CANCELLED);
+                    }
+                    providerSubscriptionRepository.saveAll(previousActive);
+
                     // On trace l'activation réussie, avec la date d'expiration pour suivi
                     log.info("Abonnement {} activé pour prestataire {} — expire le {}",
                             ref,

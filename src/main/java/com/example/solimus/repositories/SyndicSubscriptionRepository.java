@@ -66,8 +66,12 @@ public interface SyndicSubscriptionRepository extends JpaRepository<SyndicSubscr
     @Query("SELECT s FROM SyndicSubscription s WHERE s.syndic.id = :syndicId AND s.status = 'ACTIVE' AND s.id <> :excludeId")
     List<SyndicSubscription> findActiveBySyndicIdExcluding(@Param("syndicId") Long syndicId, @Param("excludeId") Long excludeId);
 
-    // Compte les abonnés actuels sur une formule précise
-    long countBySyndicPlanId(Long syndicPlanId);
+    // Compte les syndics DISTINCTS ayant actuellement (statut ACTIVE et date de fin non dépassée)
+    // cette formule — jamais un simple COUNT(*) des lignes, qui compterait aussi les tentatives
+    // passées/échouées et les renouvellements d'un même syndic plusieurs fois
+    @Query("SELECT COUNT(DISTINCT s.syndic.id) FROM SyndicSubscription s " +
+           "WHERE s.syndicPlan.id = :syndicPlanId AND s.status = 'ACTIVE' AND s.endDate > CURRENT_TIMESTAMP")
+    long countBySyndicPlanId(@Param("syndicPlanId") Long syndicPlanId);
 
     // Nombre d'abonnements actifs
     @Query("SELECT COUNT(s) FROM SyndicSubscription s WHERE s.status = 'ACTIVE' AND s.endDate > :now")

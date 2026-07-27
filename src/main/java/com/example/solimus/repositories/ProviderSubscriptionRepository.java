@@ -20,8 +20,12 @@ public interface ProviderSubscriptionRepository extends JpaRepository<ProviderSu
     // → utilisé avant de créer un nouveau paiement, pour vérifier qu'il n'a pas déjà un abonnement actif
     Optional<ProviderSubscription> findFirstByProviderIdOrderByEndDateDesc(Long providerId);
 
-    // Compte les abonnés sur une formule prestataire précise
-    long countByProviderPlanId(Long providerPlanId);
+    // Compte les prestataires DISTINCTS ayant actuellement (statut ACTIVE et date de fin non dépassée)
+    // cette formule — jamais un simple COUNT(*) des lignes, qui compterait aussi les tentatives
+    // passées/échouées et les renouvellements d'un même prestataire plusieurs fois
+    @Query("SELECT COUNT(DISTINCT s.provider.id) FROM ProviderSubscription s " +
+           "WHERE s.providerPlan.id = :providerPlanId AND s.status = 'ACTIVE' AND s.endDate > CURRENT_TIMESTAMP")
+    long countByProviderPlanId(@Param("providerPlanId") Long providerPlanId);
 
     // Récupère tous les abonnements d'un prestataire, du plus récent au plus ancien
     // → utilisé pour l'écran "Mon abonnement" (carte actuelle + historique des paiements)
@@ -30,6 +34,16 @@ public interface ProviderSubscriptionRepository extends JpaRepository<ProviderSu
     // Récupère l'abonnement correspondant à une référence de transaction TouchPay (SUB-xxx)
     // → utilisé par le bridge et le callback pour retrouver la bonne ligne
     Optional<ProviderSubscription> findByTransactionRef(String transactionRef);
+
+    // Vérifie si le prestataire a déjà une tentative de paiement PENDING en cours — utilisé pour
+    // bloquer l'initiation d'un nouveau paiement tant que l'ancien n'a pas expiré (5 min) ou été confirmé
+    boolean existsByProviderIdAndStatus(Long providerId, SubscriptionStatus status);
+
+    // Abonnement(s) encore ACTIVE d'un prestataire, autre que celui-ci — utilisé à la confirmation
+    // d'un nouveau paiement pour annuler l'ancien abonnement remplacé par le nouveau (jamais deux
+    // abonnements ACTIVE en même temps pour le même prestataire)
+    @Query("SELECT s FROM ProviderSubscription s WHERE s.provider.id = :providerId AND s.status = 'ACTIVE' AND s.id <> :excludeId")
+    List<ProviderSubscription> findActiveByProviderIdExcluding(@Param("providerId") Long providerId, @Param("excludeId") Long excludeId);
 
     // Récupère tous les abonnements ACTIVE dont la date de fin est dépassée
     // → utilisé par le scheduler horaire pour les faire passer en EXPIRED

@@ -18,11 +18,14 @@ public interface SubscriberRepository extends JpaRepository<SyndicSubscription, 
     @Query(
         value =
                 "WITH syndic_latest AS (" +
-                "  SELECT 'SYNDIC' AS subscriber_type, ss.id AS subscription_id, " +
-                "         COALESCE(spr.company_name, CONCAT(u.first_name, ' ', u.last_name)) AS client_name, " +
-                "         u.email AS client_email, u.city AS city, u.country AS country, " +
-                "         sp.name AS plan_name, ss.amount_paid AS amount, " +
-                "         ss.start_date AS start_date, ss.end_date AS end_date, ss.status AS status, " +
+                "  SELECT CONVERT('SYNDIC' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS subscriber_type, ss.id AS subscription_id, " +
+                "         CONVERT(COALESCE(spr.company_name, CONCAT(u.first_name, ' ', u.last_name)) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_name, " +
+                "         CONVERT(u.email USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_email, " +
+                "         CONVERT(u.city USING utf8mb4) COLLATE utf8mb4_unicode_ci AS city, " +
+                "         CONVERT(u.country USING utf8mb4) COLLATE utf8mb4_unicode_ci AS country, " +
+                "         CONVERT(sp.name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS plan_name, ss.amount_paid AS amount, " +
+                "         ss.start_date AS start_date, ss.end_date AS end_date, " +
+                "         CONVERT(ss.status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
                 "         ROW_NUMBER() OVER (" +
                 "             PARTITION BY ss.syndic_id " +
                 "             ORDER BY CASE WHEN ss.status = 'ACTIVE' THEN 0 ELSE 1 END, ss.created_at DESC" +
@@ -33,11 +36,14 @@ public interface SubscriberRepository extends JpaRepository<SyndicSubscription, 
                 "  LEFT JOIN syndic_profiles spr ON spr.user_id = u.id " +
                 "), " +
                 "provider_latest AS (" +
-                "  SELECT 'PRESTATAIRE' AS subscriber_type, s.id AS subscription_id, " +
-                "         COALESCE(ppr.company_name, CONCAT(u.first_name, ' ', u.last_name)) AS client_name, " +
-                "         u.email AS client_email, u.city AS city, u.country AS country, " +
-                "         pp.name AS plan_name, s.amount_paid AS amount, " +
-                "         s.start_date AS start_date, s.end_date AS end_date, s.status AS status, " +
+                "  SELECT CONVERT('PRESTATAIRE' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS subscriber_type, s.id AS subscription_id, " +
+                "         CONVERT(COALESCE(ppr.company_name, CONCAT(u.first_name, ' ', u.last_name)) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_name, " +
+                "         CONVERT(u.email USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_email, " +
+                "         CONVERT(u.city USING utf8mb4) COLLATE utf8mb4_unicode_ci AS city, " +
+                "         CONVERT(u.country USING utf8mb4) COLLATE utf8mb4_unicode_ci AS country, " +
+                "         CONVERT(pp.name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS plan_name, s.amount_paid AS amount, " +
+                "         s.start_date AS start_date, s.end_date AS end_date, " +
+                "         CONVERT(s.status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
                 "         ROW_NUMBER() OVER (" +
                 "             PARTITION BY s.provider_id " +
                 "             ORDER BY CASE WHEN s.status = 'ACTIVE' THEN 0 ELSE 1 END, s.created_at DESC" +
@@ -64,9 +70,10 @@ public interface SubscriberRepository extends JpaRepository<SyndicSubscription, 
         // avec exactement les mêmes filtres et le même dédoublonnage que la requête principale
         countQuery =
                 "WITH syndic_latest AS (" +
-                "  SELECT 'SYNDIC' AS subscriber_type, " +
-                "         COALESCE(spr.company_name, CONCAT(u.first_name, ' ', u.last_name)) AS client_name, " +
-                "         u.email AS client_email, ss.status AS status, " +
+                "  SELECT CONVERT('SYNDIC' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS subscriber_type, " +
+                "         CONVERT(COALESCE(spr.company_name, CONCAT(u.first_name, ' ', u.last_name)) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_name, " +
+                "         CONVERT(u.email USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_email, " +
+                "         CONVERT(ss.status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
                 "         ROW_NUMBER() OVER (" +
                 "             PARTITION BY ss.syndic_id " +
                 "             ORDER BY CASE WHEN ss.status = 'ACTIVE' THEN 0 ELSE 1 END, ss.created_at DESC" +
@@ -76,9 +83,10 @@ public interface SubscriberRepository extends JpaRepository<SyndicSubscription, 
                 "  LEFT JOIN syndic_profiles spr ON spr.user_id = u.id " +
                 "), " +
                 "provider_latest AS (" +
-                "  SELECT 'PRESTATAIRE' AS subscriber_type, " +
-                "         COALESCE(ppr.company_name, CONCAT(u.first_name, ' ', u.last_name)) AS client_name, " +
-                "         u.email AS client_email, s.status AS status, " +
+                "  SELECT CONVERT('PRESTATAIRE' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS subscriber_type, " +
+                "         CONVERT(COALESCE(ppr.company_name, CONCAT(u.first_name, ' ', u.last_name)) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_name, " +
+                "         CONVERT(u.email USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_email, " +
+                "         CONVERT(s.status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
                 "         ROW_NUMBER() OVER (" +
                 "             PARTITION BY s.provider_id " +
                 "             ORDER BY CASE WHEN s.status = 'ACTIVE' THEN 0 ELSE 1 END, s.created_at DESC" +

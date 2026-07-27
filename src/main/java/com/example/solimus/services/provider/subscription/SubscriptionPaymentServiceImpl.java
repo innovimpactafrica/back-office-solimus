@@ -47,6 +47,14 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
         // On identifie le prestataire connecté grâce à son JWT
         User currentProvider = getCurrentUser();
 
+        // Bloque une nouvelle tentative tant qu'une autre est déjà en attente de confirmation —
+        // évite d'empiler des paiements PENDING en parallèle (c'est ce qui a permis à deux paiements
+        // d'être confirmés l'un après l'autre et de créer deux abonnements ACTIVE simultanés)
+        if (providerSubscriptionRepository.existsByProviderIdAndStatus(currentProvider.getId(), SubscriptionStatus.PENDING)) {
+            throw new BadRequestException(
+                    "Un paiement est déjà en attente de confirmation. Veuillez patienter quelques minutes avant de réessayer.");
+        }
+
         // On va chercher son abonnement le plus récent (s'il en a déjà eu un)
         providerSubscriptionRepository.findFirstByProviderIdOrderByEndDateDesc(currentProvider.getId())
 
@@ -239,12 +247,18 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
     }
 
     private ProviderPlanDTO toDTO(ProviderPlan plan) {
+        List<String> featureLabels = plan.getFeatures().stream()
+                .map(feature -> feature.getLabel())
+                .toList();
+
         return ProviderPlanDTO.builder()
                 .id(plan.getId())
                 .name(plan.getName())
                 .description(plan.getDescription())
                 .monthlyPrice(plan.getMonthlyPrice())
                 .yearlyPrice(plan.getYearlyPrice())
+                .active(plan.getActive())
+                .featureLabels(featureLabels)
                 .updatedAt(plan.getUpdatedAt())
                 .build();
     }
