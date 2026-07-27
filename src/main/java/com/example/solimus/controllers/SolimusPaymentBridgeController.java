@@ -166,22 +166,21 @@ public class SolimusPaymentBridgeController {
     }
 
     // ================================================
-    // BRIDGE — Abonnement syndic : création par l'admin (SYN-) ET changement de formule
-    // self-service par le syndic lui-même (SYR-) — même endpoint pour les deux
+    // BRIDGE — Abonnement syndic : création par l'admin (SYN-), changement de formule self-service
+    // par le syndic lui-même (SYR-), ou renouvellement manuel par l'admin (SYA-) — même endpoint pour les 3
     // ================================================
     @GetMapping("/syndic-subscription/{transactionRef}")
     @Transactional(readOnly = true)
     public PaymentBridgeDTO getBridgeSyndicSubscription(@PathVariable String transactionRef) {
 
-        // On recherche l'abonnement créé en PENDING par SyndicServiceImpl.createSyndic (SYN-)
-        // ou par SyndicSubscriptionServiceImpl.initiateChangePlan (SYR-)
+        // On recherche l'abonnement créé en PENDING par SyndicServiceImpl.createSyndic (SYN-),
+        // SyndicSubscriptionServiceImpl.initiateChangePlan (SYR-), ou PlanServiceImpl.renewSyndicSubscription (SYA-)
         SyndicSubscription subscription = syndicSubscriptionRepository
                 .findByTransactionRef(transactionRef)
                 .orElseThrow(() -> new ResourceNotFoundException("Abonnement syndic introuvable"));
 
         // On préremplit TouchPay avec les infos du vrai payeur (initiatedBy), pas forcément le syndic :
-        // pour SYN- c'est l'admin qui crée le compte (le syndic n'existe pas encore fonctionnellement) ;
-        // pour SYR- c'est le syndic lui-même, déjà actif, qui paie son propre changement de formule
+        // pour SYN- et SYA- c'est l'admin qui paie ; pour SYR- c'est le syndic lui-même
         User payer = subscription.getInitiatedBy();
 
         return PaymentBridgeDTO.builder()

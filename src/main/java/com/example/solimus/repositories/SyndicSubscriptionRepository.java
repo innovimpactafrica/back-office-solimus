@@ -48,8 +48,18 @@ public interface SyndicSubscriptionRepository extends JpaRepository<SyndicSubscr
     // Historique paginé des abonnements d'un syndic (paiements passés), du plus récent au plus ancien
     Page<SyndicSubscription> findBySyndicIdOrderByCreatedAtDesc(Long syndicId, Pageable pageable);
 
+    // Tout l'historique d'un syndic, du plus ancien au plus récent — utilisé pour reconstituer le
+    // cycle de vie (souscription initiale, renouvellements, changements de formule) sur la page détail admin
+    List<SyndicSubscription> findBySyndicIdOrderByCreatedAtAsc(Long syndicId);
+
     // Abonnements ACTIVE dont la date de fin est déjà dépassée — utilisé par le scheduler d'expiration
     List<SyndicSubscription> findByStatusAndEndDateBefore(SubscriptionStatus status, LocalDateTime dateTime);
+
+    // Abonnements ACTIVE dont la date de fin tombe dans la journée ciblée — utilisé par le rappel
+    // d'expiration (J-10), peu importe qu'il soit mensuel ou annuel
+    @Query("SELECT s FROM SyndicSubscription s WHERE s.status = 'ACTIVE' AND s.endDate BETWEEN :startOfDay AND :endOfDay")
+    List<SyndicSubscription> findActiveExpiringBetween(@Param("startOfDay") LocalDateTime startOfDay,
+                                                         @Param("endOfDay") LocalDateTime endOfDay);
 
     // Abonnement(s) encore ACTIVE d'un syndic, autre que celui-ci — utilisé au changement de formule
     // (SYR-) pour annuler l'ancien abonnement remplacé par le nouveau

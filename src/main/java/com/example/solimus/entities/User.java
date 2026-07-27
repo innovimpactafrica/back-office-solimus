@@ -105,6 +105,14 @@ public class User {
     @Column(nullable = false)
     private UserStatus status = UserStatus.PENDING;
 
+    // Motif renseigné par l'admin lors de la suspension (DISABLED) — conservé même après
+    // réactivation, pour garder une trace de la dernière raison de blocage
+    @Column(name = "suspension_reason", columnDefinition = "TEXT")
+    private String suspensionReason;
+
+    @Column(name = "suspended_at")
+    private LocalDateTime suspendedAt;
+
     // =========================================================================
     // PHOTO DE PROFIL
     // =========================================================================

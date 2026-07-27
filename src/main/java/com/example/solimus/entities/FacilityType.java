@@ -11,12 +11,12 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 
 /**
- * Type d'équipement commun prédéfini.
+ * Type d'équipement commun — propre à chaque syndic, jamais partagé entre syndics.
  * Utilisé comme table de référence pour les équipements des résidences.
  * Le syndic peut configurer les valeurs (capacité, superficie, etc.) pour chaque résidence.
  */
 @Entity
-@Table(name = "facility_types")
+@Table(name = "facility_types", uniqueConstraints = @UniqueConstraint(columnNames = {"syndic_id", "name"}))
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -26,7 +26,11 @@ public class FacilityType {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "name", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "syndic_id", nullable = false)
+    private User syndic;
+
+    @Column(name = "name", nullable = false)
     private String name;
 
     /**

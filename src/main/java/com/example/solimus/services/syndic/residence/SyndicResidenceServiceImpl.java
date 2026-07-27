@@ -208,6 +208,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
         // Vérifie que la résidence appartient au syndic connecté
         verifyResidenceOwnership(residence);
+        User currentSyndic = getCurrentUser();
 
         // Récupère la somme actuelle des tantièmes déjà présents pour cette résidence
         BigDecimal currentSum = propertyRepository.sumTantiemesByResidenceId(residenceId);
@@ -243,8 +244,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             property.setTantieme(dto.getTantieme());
             property.setResidence(residence);
 
-            // Récupérer le type de bien
-            PropertyType propertyType = propertyTypeRepository.findById(dto.getPropertyTypeId())
+            // Récupérer le type de bien — uniquement s'il appartient au syndic connecté
+            PropertyType propertyType = propertyTypeRepository.findByIdAndSyndicId(dto.getPropertyTypeId(), currentSyndic.getId())
                     .orElseThrow(() -> new ResourceNotFoundException("Type de bien introuvable"));
             property.setTypeBien(propertyType);
 
@@ -331,9 +332,10 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             property.setTantieme(dto.getTantieme());
         }
 
-        // Mettre à jour le type de bien si fourni
+        // Mettre à jour le type de bien si fourni — uniquement s'il appartient au syndic connecté
         if (dto.getPropertyTypeId() != null) {
-            PropertyType propertyType = propertyTypeRepository.findById(dto.getPropertyTypeId())
+            User currentSyndic = getCurrentUser();
+            PropertyType propertyType = propertyTypeRepository.findByIdAndSyndicId(dto.getPropertyTypeId(), currentSyndic.getId())
                     .orElseThrow(() -> new ResourceNotFoundException("Type de bien introuvable"));
             property.setTypeBien(propertyType);
         }
@@ -431,8 +433,9 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     @Override
     @Transactional(readOnly = true)
     public Page<PropertyTypeDTO> getAllPropertyTypes(int page, int size) {
+        User currentSyndic = getCurrentUser();
         Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
-        return propertyTypeRepository.findAll(pageable)
+        return propertyTypeRepository.findBySyndicId(currentSyndic.getId(), pageable)
                 .map(type -> PropertyTypeDTO.builder()
                         .id(type.getId())
                         .name(type.getName())
@@ -480,8 +483,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             throw new ForbiddenException("Vous n'êtes pas autorisé à modifier cette résidence");
         }
 
-        // Récupérer le type d'équipement
-        FacilityType facilityType = facilityTypeRepository.findById(dto.getFacilityTypeId())
+        // Récupérer le type d'équipement — uniquement s'il appartient au syndic connecté
+        FacilityType facilityType = facilityTypeRepository.findByIdAndSyndicId(dto.getFacilityTypeId(), currentSyndic.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Type d'équipement introuvable"));
 
         // Vérifier si un équipement de ce type existe déjà pour cette résidence
@@ -549,8 +552,9 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     @Override
     @Transactional(readOnly = true)
     public Page<FacilityTypeDTO> getFacilityTypes(int page, int size) {
+        User currentSyndic = getCurrentUser();
         Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
-        return facilityTypeRepository.findByIsActiveTrue(pageable)
+        return facilityTypeRepository.findBySyndicIdAndIsActiveTrue(currentSyndic.getId(), pageable)
                 .map(type -> FacilityTypeDTO.builder()
                         .id(type.getId())
                         .name(type.getName())

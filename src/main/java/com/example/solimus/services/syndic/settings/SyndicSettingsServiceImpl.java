@@ -49,12 +49,13 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     // ===== TYPES D'ÉQUIPEMENTS =====
     //--------------------------------------------------------
 
-    //Listing
+    //Listing — uniquement le catalogue du syndic connecté
     @Override
     @Transactional(readOnly = true)
     public Page<FacilityTypeDTO> getAllFacilityTypes(int page, int size) {
+        User currentSyndic = getCurrentUser();
         Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
-        return facilityTypeRepository.findAll(pageable)
+        return facilityTypeRepository.findBySyndicId(currentSyndic.getId(), pageable)
                 .map(this::toDTO);
     }
 
@@ -62,13 +63,16 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     @Transactional
     public void createFacilityType(String name, String category, String description, Boolean isActive, MultipartFile icon) {
 
-        if (facilityTypeRepository.existsByNameIgnoreCase(name)) {
+        User currentSyndic = getCurrentUser();
+
+        if (facilityTypeRepository.existsByNameIgnoreCaseAndSyndicId(name, currentSyndic.getId())) {
             throw new BadRequestException("Un type d'équipement avec ce nom existe déjà");
         }
 
         FacilityCategory facilityCategory = FacilityCategory.valueOf(category.toUpperCase());
 
         FacilityType facilityType = new FacilityType();
+        facilityType.setSyndic(currentSyndic);
         facilityType.setName(name);
         facilityType.setCategory(facilityCategory);
         facilityType.setDescription(description);
@@ -84,19 +88,20 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     }
 
     //Modification
-    //Modification
     @Override
     @Transactional
     public void updateFacilityType(Long id, String name, String category, String description, Boolean isActive, MultipartFile icon) {
 
-        //Récupérer le type d'équipement
-        FacilityType facilityType = facilityTypeRepository.findById(id)
+        User currentSyndic = getCurrentUser();
+
+        // Récupérer le type d'équipement — uniquement s'il appartient au syndic connecté
+        FacilityType facilityType = facilityTypeRepository.findByIdAndSyndicId(id, currentSyndic.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Type d'équipement introuvable"));
 
-        // Vérifier l'unicité du nom si modifié
+        // Vérifier l'unicité du nom si modifié (dans le catalogue de ce syndic uniquement)
         if (name != null
                 && !facilityType.getName().equalsIgnoreCase(name)
-                && facilityTypeRepository.existsByNameIgnoreCase(name)) {
+                && facilityTypeRepository.existsByNameIgnoreCaseAndSyndicId(name, currentSyndic.getId())) {
             throw new BadRequestException("Un type d'équipement avec ce nom existe déjà");
         }
 
@@ -121,8 +126,10 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     @Transactional
     public void deleteFacilityType(Long id) {
 
-        //Récupérer le type d'équipement
-        FacilityType facilityType = facilityTypeRepository.findById(id)
+        User currentSyndic = getCurrentUser();
+
+        //Récupérer le type d'équipement — uniquement s'il appartient au syndic connecté
+        FacilityType facilityType = facilityTypeRepository.findByIdAndSyndicId(id, currentSyndic.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Type d'équipement introuvable"));
 
         // Empêcher la suppression si des résidences utilisent encore ce type
@@ -208,12 +215,13 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     // ===== TYPES D'APPARTEMENT =====
     //--------------------------------------------------------
 
-    //Listing
+    //Listing — uniquement le catalogue du syndic connecté
     @Override
     @Transactional(readOnly = true)
     public Page<PropertyTypeDTO> getAllPropertyTypes(int page, int size) {
+        User currentSyndic = getCurrentUser();
         Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
-        return propertyTypeRepository.findAll(pageable)
+        return propertyTypeRepository.findBySyndicId(currentSyndic.getId(), pageable)
                 .map(pt -> PropertyTypeDTO.builder()
                         .id(pt.getId())
                         .name(pt.getName())
@@ -225,10 +233,12 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     @Override
     @Transactional
     public void createPropertyType(CreatePropertyTypeDTO dto) {
-        if (propertyTypeRepository.existsByNameIgnoreCase(dto.getName())) {
+        User currentSyndic = getCurrentUser();
+        if (propertyTypeRepository.existsByNameIgnoreCaseAndSyndicId(dto.getName(), currentSyndic.getId())) {
             throw new BadRequestException("Un type d'appartement avec ce nom existe déjà");
         }
         PropertyType propertyType = new PropertyType();
+        propertyType.setSyndic(currentSyndic);
         propertyType.setName(dto.getName());
         propertyType.setDescription(dto.getDescription());
         propertyTypeRepository.save(propertyType);
@@ -239,11 +249,13 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     @Override
     @Transactional
     public void updatePropertyType(Long id, CreatePropertyTypeDTO dto) {
-        PropertyType propertyType = propertyTypeRepository.findById(id)
+        User currentSyndic = getCurrentUser();
+        // Uniquement s'il appartient au syndic connecté
+        PropertyType propertyType = propertyTypeRepository.findByIdAndSyndicId(id, currentSyndic.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Type d'appartement introuvable"));
         if (dto.getName() != null
                 && !propertyType.getName().equalsIgnoreCase(dto.getName())
-                && propertyTypeRepository.existsByNameIgnoreCase(dto.getName())) {
+                && propertyTypeRepository.existsByNameIgnoreCaseAndSyndicId(dto.getName(), currentSyndic.getId())) {
             throw new BadRequestException("Un type d'appartement avec ce nom existe déjà");
         }
         if (dto.getName() != null) propertyType.setName(dto.getName());
@@ -256,10 +268,11 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     @Override
     @Transactional
     public void deletePropertyType(Long id) {
-        if (!propertyTypeRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Type d'appartement introuvable");
-        }
-        propertyTypeRepository.deleteById(id);
+        User currentSyndic = getCurrentUser();
+        // Uniquement s'il appartient au syndic connecté
+        PropertyType propertyType = propertyTypeRepository.findByIdAndSyndicId(id, currentSyndic.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Type d'appartement introuvable"));
+        propertyTypeRepository.delete(propertyType);
         log.info("Type d'appartement supprimé : id={}", id);
     }
 

@@ -1,6 +1,8 @@
 package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.admin.subscription.*;
+import com.example.solimus.dtos.syndic.subscription.SyndicPlanChangeResponseDTO;
+import com.example.solimus.dtos.syndic.subscription.SyndicSubscriptionHistoryDTO;
 import com.example.solimus.enums.ProviderPlanFeature;
 import com.example.solimus.enums.SubscriberType;
 import com.example.solimus.enums.SubscriptionStatus;
@@ -8,7 +10,9 @@ import com.example.solimus.enums.SyndicPlanFeature;
 import com.example.solimus.services.admin.subscription.PlanService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -143,5 +147,52 @@ public class AdminSubscriptionController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return ResponseEntity.ok(planService.getAllSubscribers(search, status, subscriberType, page, size));
+    }
+
+    @Operation(summary = "Détail d'un abonné précis (page ouverte via l'icône œil de la liste)")
+    @GetMapping("/subscribers/{subscriptionId}")
+    public ResponseEntity<SubscriberDetailDTO> getSubscriberDetail(
+            @PathVariable Long subscriptionId,
+            @RequestParam SubscriberType subscriberType) {
+        return ResponseEntity.ok(planService.getSubscriberDetail(subscriptionId, subscriberType));
+    }
+
+    @Operation(summary = "Historique paginé des paiements d'un abonné précis (vu par l'admin)")
+    @GetMapping("/subscribers/{subscriptionId}/payment-history")
+    public ResponseEntity<Page<SyndicSubscriptionHistoryDTO>> getSubscriberPaymentHistory(
+            @PathVariable Long subscriptionId,
+            @RequestParam SubscriberType subscriberType,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(planService.getSubscriberPaymentHistory(subscriptionId, subscriberType, page, size));
+    }
+
+    @Operation(summary = "Suspendre le compte d'un abonné (bloque le login + désactive l'abonnement)")
+    @PostMapping("/subscribers/{subscriptionId}/suspend")
+    public ResponseEntity<String> suspendSubscriber(
+            @PathVariable Long subscriptionId,
+            @RequestParam SubscriberType subscriberType,
+            @Valid @RequestBody SuspendSubscriberDTO dto) {
+        planService.suspendSubscriber(subscriptionId, subscriberType, dto);
+        return ResponseEntity.ok("Compte suspendu avec succès");
+    }
+
+    @Operation(summary = "Réactiver le compte d'un abonné précédemment suspendu")
+    @PostMapping("/subscribers/{subscriptionId}/reactivate")
+    public ResponseEntity<String> reactivateSubscriber(
+            @PathVariable Long subscriptionId,
+            @RequestParam SubscriberType subscriberType,
+            @RequestParam(defaultValue = "true") boolean notifyClient) {
+        planService.reactivateSubscriber(subscriptionId, subscriberType, notifyClient);
+        return ResponseEntity.ok("Compte réactivé avec succès");
+    }
+
+    @Operation(summary = "Renouveler manuellement l'abonnement d'un syndic (lien de paiement TouchPay à ouvrir)")
+    @PostMapping("/subscribers/{subscriptionId}/renew")
+    public ResponseEntity<SyndicPlanChangeResponseDTO> renewSyndicSubscription(
+            @PathVariable Long subscriptionId,
+            @RequestParam SubscriberType subscriberType,
+            @Valid @RequestBody AdminRenewSyndicSubscriptionDTO dto) {
+        return ResponseEntity.ok(planService.renewSyndicSubscription(subscriptionId, subscriberType, dto));
     }
 }

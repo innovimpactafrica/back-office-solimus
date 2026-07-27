@@ -17,6 +17,7 @@ import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.SyndicPlanRepository;
 import com.example.solimus.repositories.SyndicSubscriptionRepository;
 import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,6 +30,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -41,6 +43,7 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
     private final SyndicSubscriptionRepository syndicSubscriptionRepository;
     private final SyndicPlanRepository syndicPlanRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     @Value("${app.touchpay.bridge-url}")
     private String touchPayBridgeUrlTemplate;
@@ -79,7 +82,9 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
                 .expirationDate(subscription.getEndDate())
                 .monthlyAmount(plan.getMonthlyPrice())
                 .yearlyAmount(plan.getYearlyPrice())
-                .nextRenewal("Automatique")
+                .nextRenewal(subscription.getDuration() == SubscriptionDuration.MONTHLY
+                        ? "Manuel — tous les mois"
+                        : "Manuel — tous les 12 mois")
                 .build();
     }
 
@@ -202,6 +207,7 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
         subscription.setPaymentStatus(PaymentStatus.PENDING);
         subscription.setAmountPaid(amount);
         subscription.setMethod(dto.getMethod());
+        subscription.setDuration(dto.getDuration());
         subscription.setTransactionRef(transactionRef);
         subscription.setStartDate(startDate);
         subscription.setEndDate(endDate);
@@ -248,6 +254,34 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
         syndicSubscriptionRepository.saveAll(expired);
 
         log.info("{} abonnement(s) syndic passé(s) en EXPIRED", expired.size());
+    }
+
+    /**
+     * Prévient le syndic 10 jours avant l'expiration de son abonnement — pour mensuel comme
+     * annuel, sans distinction (60 jours n'aurait aucun sens sur un cycle mensuel de 30 jours).
+     * Non filtré par une préférence syndic : c'est une info de facturation, pas optionnelle.
+     */
+    @Scheduled(cron = "0 0 8 * * *") // tous les jours à 8h
+    @Transactional(readOnly = true)
+    public void remindSyndicsOfUpcomingExpiration() {
+
+        LocalDate targetDate = LocalDate.now().plusDays(10);
+        List<SyndicSubscription> expiringSoon = syndicSubscriptionRepository.findActiveExpiringBetween(
+                targetDate.atStartOfDay(),
+                targetDate.atTime(23, 59, 59));
+
+        for (SyndicSubscription subscription : expiringSoon) {
+            notificationService.sendPush(
+                    subscription.getSyndic().getId(),
+                    "Abonnement bientôt expiré",
+                    "Votre abonnement \"" + subscription.getSyndicPlan().getName() +
+                            "\" expire le " + subscription.getEndDate().toLocalDate() +
+                            ". Pensez à le renouveler.");
+        }
+
+        if (!expiringSoon.isEmpty()) {
+            log.info("{} rappel(s) d'expiration d'abonnement syndic envoyé(s)", expiringSoon.size());
+        }
     }
 
     // ============================================================

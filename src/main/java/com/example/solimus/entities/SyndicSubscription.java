@@ -2,6 +2,7 @@ package com.example.solimus.entities;
 
 import com.example.solimus.enums.PaymentMethod;
 import com.example.solimus.enums.PaymentStatus;
+import com.example.solimus.enums.SubscriptionDuration;
 import com.example.solimus.enums.SubscriptionStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -63,6 +64,19 @@ public class SyndicSubscription {
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_method")
     private PaymentMethod method;
+
+    // Durée choisie au moment du paiement (MONTHLY/YEARLY) — posée une seule fois ici, jamais
+    // redéduite depuis start_date/end_date pour affichage
+    @Enumerated(EnumType.STRING)
+    @Column(name = "duration", nullable = false)
+    private SubscriptionDuration duration;
+
+    // Choix faits par l'admin au moment d'un renouvellement manuel (SYA-) 
+    @Column(name = "notify_client")
+    private Boolean notifyClient = false;
+
+    @Column(name = "send_invoice_email")
+    private Boolean sendInvoiceEmail = false;
 
     @Column(name = "start_date", nullable = false)
     private LocalDateTime startDate;

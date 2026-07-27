@@ -10,6 +10,7 @@ import com.example.solimus.services.provider.wallet.WalletService;
 import com.example.solimus.utils.PasswordGeneratorUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
@@ -79,6 +80,12 @@ public class SolimusCallbackController {
     // Service de notifications push, pour alerter le syndic des nouveaux paiements
     private final NotificationService notificationService;
 
+    // URL de la page "Paramètres" de l'app web Angular (espace syndic uniquement pour l'instant) —
+    // destination des paiements self-service (SYR-). Les autres références (mobile, ou web admin
+    // type SYN-/SYA- en attendant leur propre URL) continuent de rouvrir l'app via solimus://...
+    @Value("${app.syndic-web-app-redirect-url}")
+    private String syndicWebAppRedirectUrl;
+
     // Formateur de date pour l'email de confirmation Premium (ex: "01 Janvier 2026")
     private static final DateTimeFormatter DATE_FORMATTER =
             DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.FRENCH);
@@ -105,8 +112,19 @@ public class SolimusCallbackController {
             handleSyndicSubscriptionCallback(reference, true);
         } else if (reference.startsWith("SYR-")) {
             handleSyndicPlanChangeCallback(reference, true);
+        } else if (reference.startsWith("SYA-")) {
+            handleAdminSyndicRenewalCallback(reference, true);
         } else if (reference.startsWith("PAY-") || reference.startsWith("SOL-")) {
             handleOwnerInterventionPaymentCallback(reference, true);
+        }
+
+        // SYR- vient du self-service syndic sur le web : on renvoie vers l'app Angular, pas vers le
+        // lien profond mobile (qui échouerait silencieusement dans un navigateur)
+        if (reference.startsWith("SYR-")) {
+            String webRedirect = syndicWebAppRedirectUrl + "?paymentStatus=success&ref=" + reference;
+            return "<html><body>" +
+                    "<script>window.location.href = '" + webRedirect + "';</script>" +
+                    "</body></html>";
         }
 
         return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
@@ -134,8 +152,18 @@ public class SolimusCallbackController {
             handleSyndicSubscriptionCallback(reference, false);
         } else if (reference.startsWith("SYR-")) {
             handleSyndicPlanChangeCallback(reference, false);
+        } else if (reference.startsWith("SYA-")) {
+            handleAdminSyndicRenewalCallback(reference, false);
         } else if (reference.startsWith("PAY-") || reference.startsWith("SOL-")) {
             handleOwnerInterventionPaymentCallback(reference, false);
+        }
+
+        // Même logique que pour le succès : SYR- retourne vers l'app Angular
+        if (reference.startsWith("SYR-")) {
+            String webRedirect = syndicWebAppRedirectUrl + "?paymentStatus=failed&ref=" + reference;
+            return "<html><body>" +
+                    "<script>window.location.href = '" + webRedirect + "';</script>" +
+                    "</body></html>";
         }
 
         return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
@@ -194,6 +222,11 @@ public class SolimusCallbackController {
         if (ref.startsWith("SYR-")) {
             // On route vers le traitement spécifique au changement de formule syndic (self-service)
             return handleSyndicPlanChangeCallback(ref, succes);
+        }
+
+        if (ref.startsWith("SYA-")) {
+            // On route vers le traitement spécifique au renouvellement manuel par l'admin
+            return handleAdminSyndicRenewalCallback(ref, succes);
         }
 
         if (ref.startsWith("CPY-")) {
@@ -520,6 +553,97 @@ public class SolimusCallbackController {
                         Map.<String, Object>of(
                                 "success", false,
                                 "message", "Changement de formule introuvable pour la référence : " + ref
+                        )
+                ));
+    }
+
+    // =========================================================================
+    // CAS 2d — Renouvellement manuel d'un abonnement syndic par l'admin (SYA-)
+    // =========================================================================
+    private ResponseEntity<Map<String, Object>> handleAdminSyndicRenewalCallback(String ref, boolean succes) {
+
+        // On retrouve le nouvel abonnement créé en PENDING par PlanServiceImpl.renewSyndicSubscription
+        return syndicSubscriptionRepository.findByTransactionRef(ref)
+                .map(subscription -> {
+
+                    // Anti-double callback, basé sur le résultat du paiement de CETTE tentative précise
+                    if (subscription.getPaymentStatus() == PaymentStatus.COMPLETED) {
+                        return ResponseEntity.ok(Map.<String, Object>of(
+                                "success", true,
+                                "message", "Renouvellement déjà confirmé"
+                        ));
+                    }
+
+                    if (!succes) {
+                        // Le paiement a échoué → le renouvellement n'est jamais activé, l'abonnement
+                        // en cours du syndic (s'il y en a un) n'est pas touché
+                        subscription.setStatus(SubscriptionStatus.FAILED);
+                        subscription.setPaymentStatus(PaymentStatus.FAILED);
+                        syndicSubscriptionRepository.save(subscription);
+
+                        log.warn("Renouvellement syndic (admin) échoué pour ref : {}", ref);
+
+                        return ResponseEntity.ok(Map.<String, Object>of(
+                                "success", true,
+                                "message", "Renouvellement marqué comme échoué"
+                        ));
+                    }
+
+                    // Sinon -> Le paiement est confirmé → le nouvel abonnement devient actif immédiatement.
+                    // Comme SYR-, on ne touche ni au mot de passe ni au statut du compte syndic
+                    subscription.setStatus(SubscriptionStatus.ACTIVE);
+                    subscription.setPaymentStatus(PaymentStatus.COMPLETED);
+                    syndicSubscriptionRepository.save(subscription);
+
+                    User syndic = subscription.getSyndic();
+
+                    // Même règle que SYR- : un seul abonnement ACTIVE à la fois pour ce syndic
+                    List<SyndicSubscription> previousActive = syndicSubscriptionRepository
+                            .findActiveBySyndicIdExcluding(syndic.getId(), subscription.getId());
+                    for (SyndicSubscription old : previousActive) {
+                        old.setStatus(SubscriptionStatus.CANCELLED);
+                    }
+                    syndicSubscriptionRepository.saveAll(previousActive);
+
+                    // On respecte exactement les 2 cases cochées par l'admin au moment de l'initiation
+                    // (pas de comportement forcé, contrairement à SYN-/SYR- qui envoient toujours un email)
+                    if (Boolean.TRUE.equals(subscription.getNotifyClient())) {
+                        notificationService.sendNewPaymentNotification(
+                                syndic.getId(),
+                                "Abonnement renouvelé",
+                                "Votre abonnement \"" + subscription.getSyndicPlan().getName() +
+                                        "\" a été renouvelé par un administrateur.");
+                    }
+
+                    if (Boolean.TRUE.equals(subscription.getSendInvoiceEmail())) {
+                        emailService.sendEmail(
+                                syndic.getEmail(),
+                                "Facture — Renouvellement de votre abonnement Solimus",
+                                "Bonjour " + syndic.getFirstName() + ",\n\n" +
+                                        "Voici le récapitulatif de votre renouvellement :\n" +
+                                        "Référence : " + ref + "\n" +
+                                        "Formule : " + subscription.getSyndicPlan().getName() + "\n" +
+                                        "Montant : " + subscription.getAmountPaid() + " FCFA\n" +
+                                        "Période : du " + subscription.getStartDate().format(DATE_FORMATTER) +
+                                        " au " + subscription.getEndDate().format(DATE_FORMATTER) + "\n\n" +
+                                        "Cordialement,\nL'équipe Solimus");
+                    }
+
+                    log.info("Renouvellement syndic (admin) {} confirmé pour {} — formule {} — expire le {}",
+                            ref,
+                            syndic.getEmail(),
+                            subscription.getSyndicPlan().getName(),
+                            subscription.getEndDate().format(DATE_FORMATTER));
+
+                    return ResponseEntity.ok(Map.<String, Object>of(
+                            "success", true,
+                            "message", "Renouvellement confirmé avec succès"
+                    ));
+                })
+                .orElseGet(() -> ResponseEntity.badRequest().body(
+                        Map.<String, Object>of(
+                                "success", false,
+                                "message", "Abonnement introuvable pour la référence : " + ref
                         )
                 ));
     }

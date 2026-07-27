@@ -132,6 +132,7 @@ public class SyndicServiceImpl implements SyndicService {
         subscription.setPaymentStatus(PaymentStatus.PENDING);
         subscription.setAmountPaid(amountPaid);
         subscription.setMethod(dto.getMethod());
+        subscription.setDuration(dto.getDuration());
         subscription.setTransactionRef(transactionRef);
         subscription.setStartDate(startDate);
         subscription.setEndDate(endDate);
