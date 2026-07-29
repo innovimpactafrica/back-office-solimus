@@ -1,6 +1,8 @@
 package com.example.solimus.entities;
 
 import com.example.solimus.enums.PaymentMethod;
+import com.example.solimus.enums.PaymentStatus;
+import com.example.solimus.enums.SubscriptionDuration;
 import com.example.solimus.enums.SubscriptionStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -50,9 +52,25 @@ public class ProviderSubscription {
     @JoinColumn(name = "provider_plan_id", nullable = false)
     private ProviderPlan providerPlan;
 
+    // Le payeur réel — le prestataire lui-même en self-service, ou l'admin s'il renouvelle à sa place
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "initiated_by_id")
+    private User initiatedBy;
+
+    // État de vie de l'abonnement (ACTIVE/EXPIRED/CANCELLED/PENDING/FAILED/DESACTIVATED)
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private SubscriptionStatus status; // ACTIVE, EXPIRED, CANCELLED
+    private SubscriptionStatus status;
+
+    // Résultat du paiement de CETTE tentative précise — posé une seule fois au callback TouchPay
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_status", nullable = false)
+    private PaymentStatus paymentStatus;
+
+    // Durée choisie au moment du paiement (MONTHLY/YEARLY)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "duration", nullable = false)
+    private SubscriptionDuration duration;
 
     /**
      * Montant réellement payé, figé au moment du paiement TouchPay.
@@ -72,6 +90,14 @@ public class ProviderSubscription {
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_method")
     private PaymentMethod method;
+
+    // Choix de l'admin au moment d'un renouvellement manuel, à respecter au callback TouchPay
+    // (qui arrive plus tard, de façon asynchrone)
+    @Column(name = "notify_client")
+    private Boolean notifyClient = false;
+
+    @Column(name = "send_invoice_email")
+    private Boolean sendInvoiceEmail = false;
 
     @Column(name = "start_date", nullable = false)
     private LocalDateTime startDate;

@@ -26,6 +26,11 @@ public interface MeetingDocumentRepository extends JpaRepository<MeetingDocument
      */
     int countByMeetingResidenceId(Long residenceId);
 
+    /**
+     * Compte le nombre de documents de réunion, toutes résidences d'un syndic confondues.
+     */
+    long countByMeetingResidenceSyndicId(Long syndicId);
+
 
     @Query("SELECT d FROM MeetingDocument d " +
             "WHERE d.meeting.residence.syndic.id = :syndicId " +

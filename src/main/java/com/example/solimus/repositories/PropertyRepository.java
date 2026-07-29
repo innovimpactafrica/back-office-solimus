@@ -43,6 +43,14 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
     // Lister les biens d'une résidence par statut
     Page<Property> findByResidenceIdAndStatus(Long residenceId, PropertyStatus status, Pageable pageable);
 
+    // Compter les biens d'une résidence ayant un statut précis (ex: OCCUPE) — utilisé pour le taux d'occupation
+    long countByResidenceIdAndStatus(Long residenceId, PropertyStatus status);
+
+    // Répartition des biens d'une résidence par type (id du type, nom du type, nombre de biens)
+    @Query("SELECT p.typeBien.id, p.typeBien.name, COUNT(p) FROM Property p " +
+           "WHERE p.residence.id = :residenceId GROUP BY p.typeBien.id, p.typeBien.name")
+    List<Object[]> countByResidenceIdGroupByPropertyType(@Param("residenceId") Long residenceId);
+
     // Lister tous les biens d'un propriétaire donné
     List<Property> findAllByOwnerId(Long ownerId);
 

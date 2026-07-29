@@ -34,6 +34,15 @@ public interface PlanService {
     // ===== Détail d'un abonné précis, ouvert via l'icône œil de la liste =====
     SubscriberDetailDTO getSubscriberDetail(Long subscriptionId, SubscriberType subscriberType);
 
+    // ===== Bloc "Détails du client" léger, affiché en haut des modales d'action (Suspendre, Réactiver...) =====
+    SubscriberQuickInfoDTO getSubscriberQuickInfo(Long subscriptionId, SubscriberType subscriberType);
+
+    // ===== Bloc "Détails du client" léger, affiché en haut de la modale "Renouveler l'abonnement" =====
+    SubscriberRenewalInfoDTO getSubscriberRenewalInfo(Long subscriptionId, SubscriberType subscriberType);
+
+    // ===== Options du formulaire de renouvellement (formules disponibles + durées) =====
+    RenewalFormOptionsDTO getRenewalFormOptions(SubscriberType subscriberType);
+
     // ===== Historique des paiements d'un abonné précis (vu par l'admin, pas par le syndic lui-même) =====
     Page<SyndicSubscriptionHistoryDTO> getSubscriberPaymentHistory(Long subscriptionId, SubscriberType subscriberType,
                                                                      int page, int size);
@@ -44,7 +53,7 @@ public interface PlanService {
     // ===== Réactivation d'un compte abonné précédemment suspendu =====
     void reactivateSubscriber(Long subscriptionId, SubscriberType subscriberType, boolean notifyClient);
 
-    // ===== Renouvellement manuel d'un abonnement syndic par l'admin (passe quand même par TouchPay) =====
-    SyndicPlanChangeResponseDTO renewSyndicSubscription(Long subscriptionId, SubscriberType subscriberType,
-                                                          AdminRenewSyndicSubscriptionDTO dto);
+    // ===== Renouvellement manuel de l'abonnement d'un abonné par l'admin (passe quand même par TouchPay) =====
+    SyndicPlanChangeResponseDTO renewSubscriber(Long subscriptionId, SubscriberType subscriberType,
+                                                 AdminRenewSubscriptionDTO dto);
 }

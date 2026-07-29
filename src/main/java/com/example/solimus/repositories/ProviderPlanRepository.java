@@ -3,6 +3,8 @@ package com.example.solimus.repositories;
 import com.example.solimus.entities.ProviderPlan;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
+
 public interface ProviderPlanRepository extends JpaRepository<ProviderPlan, Long> {
 
     // Vérifie l'unicité du nom à la création
@@ -10,4 +12,7 @@ public interface ProviderPlanRepository extends JpaRepository<ProviderPlan, Long
 
     // Vérifie l'unicité du nom à la modification, en excluant la formule elle-même
     boolean existsByNameIgnoreCaseAndIdNot(String name, Long id);
+
+    // Formules encore proposées, pour les menus déroulants (self-service et renouvellement admin)
+    List<ProviderPlan> findByActiveTrue();
 }

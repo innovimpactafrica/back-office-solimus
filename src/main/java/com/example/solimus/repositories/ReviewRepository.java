@@ -1,6 +1,7 @@
 package com.example.solimus.repositories;
 
 import com.example.solimus.entities.Review;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -30,6 +31,12 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
      * Compte le nombre total d'évaluations reçues par un prestataire.
      */
     long countByProviderId(Long providerId);
+
+    /**
+     * Les N derniers avis reçus par un prestataire, du plus récent au plus ancien —
+     * utilisé pour assembler le flux "Historique d'activité" (Admin > Prestataires, Bloc F).
+     */
+    List<Review> findByProviderIdOrderByCreatedAtDesc(Long providerId, Pageable pageable);
 
     /**
      * Compte le nombre d'avis avec une note >= 4 pour un prestataire.

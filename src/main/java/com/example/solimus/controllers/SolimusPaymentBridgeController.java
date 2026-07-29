@@ -106,20 +106,23 @@ public class SolimusPaymentBridgeController {
     }
 
     // ================================================
-    // BRIDGE — Abonnement Premium prestataire
+    // BRIDGE — Abonnement Premium prestataire : self-service (SUB-) ET renouvellement par
+    // l'admin (PRA-) — même endpoint pour les deux
     // ================================================
     @GetMapping("/subscription/{transactionRef}")
     @Transactional(readOnly = true)
     public PaymentBridgeDTO getBridgeSubscription(@PathVariable String transactionRef) {
 
-        // On recherche la Subscription créée en PENDING par le service initiatePayment
+        // On recherche la Subscription créée en PENDING par le service initiatePayment (SUB-)
+        // ou par PlanServiceImpl.renewProviderSubscription (PRA-)
         ProviderSubscription subscription = providerSubscriptionRepository
                 .findByTransactionRef(transactionRef)
                 // Si rien n'est trouvé, la référence envoyée par le front est invalide ou expirée
                 .orElseThrow(() -> new ResourceNotFoundException("Abonnement introuvable"));
 
-        // On récupère le prestataire concerné, pour préremplir ses infos dans TouchPay
-        User provider = subscription.getProvider();
+        // On préremplit TouchPay avec les infos du vrai payeur (initiatedBy) : le prestataire
+        // lui-même en self-service, ou l'admin s'il renouvelle à sa place
+        User provider = subscription.getInitiatedBy();
 
         // On construit le même DTO — structure commune à tout le bridge
         return PaymentBridgeDTO.builder()

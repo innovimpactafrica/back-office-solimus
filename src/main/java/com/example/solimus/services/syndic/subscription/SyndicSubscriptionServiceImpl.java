@@ -8,6 +8,7 @@ import com.example.solimus.dtos.syndic.subscription.SyndicSubscriptionHistoryDTO
 import com.example.solimus.entities.SyndicPlan;
 import com.example.solimus.entities.SyndicSubscription;
 import com.example.solimus.entities.User;
+import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.SubscriptionDuration;
 import com.example.solimus.enums.SubscriptionStatus;
@@ -76,8 +77,7 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
                 .features(plan.getFeatures().stream().map(SyndicPlanFeature::getLabel).toList())
                 .featureCodes(plan.getFeatures().stream().map(feature -> feature.name()).toList())
                 .maxResidences(plan.getMaxResidences())
-                .maxCoOwners(plan.getMaxCoOwners())
-                .maxUsers(plan.getMaxUsers())
+                .maxApartments(plan.getMaxApartments())
                 .activationDate(subscription.getStartDate())
                 .expirationDate(subscription.getEndDate())
                 .monthlyAmount(plan.getMonthlyPrice())
@@ -125,8 +125,7 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
                         .yearlyPrice(plan.getYearlyPrice())
                         .features(plan.getFeatures().stream().map(SyndicPlanFeature::getLabel).toList())
                         .maxResidences(plan.getMaxResidences())
-                        .maxCoOwners(plan.getMaxCoOwners())
-                        .maxUsers(plan.getMaxUsers())
+                        .maxApartments(plan.getMaxApartments())
                         .build())
                 .toList();
     }
@@ -137,6 +136,13 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
 
         // 1. Le syndic connecté est celui qui paie ici, en self-service — pas l'admin
         User currentSyndic = getCurrentUser();
+
+        // Double sécurité : ne fait jamais confiance uniquement au @PreAuthorize du contrôleur —
+        // vérifie explicitement ici aussi, pour ne jamais recréer un abonnement syndic sur un
+        // compte qui n'a pas ce rôle, même si la sécurité au niveau des routes est un jour mal configurée
+        if (currentSyndic.getRole().getName() != ERole.ROLE_SYNDIC) {
+            throw new BadRequestException("Seul un compte syndic peut souscrire à cet abonnement");
+        }
 
         // Bloque une nouvelle tentative tant qu'une autre est déjà en attente de confirmation —
         // évite d'empiler des paiements PENDING en boucle. Il faut attendre soit la confirmation
@@ -261,28 +267,35 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
      * annuel, sans distinction (60 jours n'aurait aucun sens sur un cycle mensuel de 30 jours).
      * Non filtré par une préférence syndic : c'est une info de facturation, pas optionnelle.
      */
-    @Scheduled(cron = "0 0 8 * * *") // tous les jours à 8h
-    @Transactional(readOnly = true)
-    public void remindSyndicsOfUpcomingExpiration() {
+     @Scheduled(cron = "0 0 8 * * *") // Exécute cette tâche automatiquement tous les jours à 8h
+     @Transactional(readOnly = true)
+     public void remindSyndicsOfUpcomingExpiration() {
 
-        LocalDate targetDate = LocalDate.now().plusDays(10);
+       // Calcule la date située 10 jours après aujourd'hui
+       LocalDate targetDate = LocalDate.now().plusDays(10);
+
+       // Récupère les abonnements actifs qui expirent exactement dans 10 jours
         List<SyndicSubscription> expiringSoon = syndicSubscriptionRepository.findActiveExpiringBetween(
-                targetDate.atStartOfDay(),
-                targetDate.atTime(23, 59, 59));
+            targetDate.atStartOfDay(), // Inclusif : début de la journée
+            targetDate.atTime(23, 59, 59)); // Exclusif : fin de la journée
 
+        // Envoie une notification à chaque syndic concerné
         for (SyndicSubscription subscription : expiringSoon) {
             notificationService.sendPush(
-                    subscription.getSyndic().getId(),
-                    "Abonnement bientôt expiré",
-                    "Votre abonnement \"" + subscription.getSyndicPlan().getName() +
-                            "\" expire le " + subscription.getEndDate().toLocalDate() +
-                            ". Pensez à le renouveler.");
+                subscription.getSyndic().getId(),
+                "Abonnement bientôt expiré",
+                "Votre abonnement \"" + subscription.getSyndicPlan().getName() +
+                        "\" expire le " + subscription.getEndDate().toLocalDate() +
+                        ". Pensez à le renouveler.");
         }
 
-        if (!expiringSoon.isEmpty()) {
-            log.info("{} rappel(s) d'expiration d'abonnement syndic envoyé(s)", expiringSoon.size());
+       // Trace le nombre de rappels envoyés dans les logs
+       if (!expiringSoon.isEmpty()) {
+          log.info("{} rappel(s) d'expiration d'abonnement syndic envoyé(s)", expiringSoon.size());
         }
     }
+
+    
 
     // ============================================================
     // Méthodes Utilitaires

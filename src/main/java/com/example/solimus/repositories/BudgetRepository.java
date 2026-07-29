@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -57,4 +58,9 @@ BudgetRepository extends JpaRepository<Budget, Long> {
 
     // Compte le nombre de budgets d'un syndic ayant un statut précis (ex: ACTIVE)
     Integer countBySyndicIdAndStatus(Long syndicId, BudgetStatus status);
+
+    // Somme du budget annuel de toutes les résidences d'un syndic, pour un statut donné (ACTIVE) —
+    // utilisé pour le KPI "Budget total géré" de la fiche détail syndic (admin)
+    @Query("SELECT COALESCE(SUM(b.budgetTotal), 0) FROM Budget b WHERE b.syndic.id = :syndicId AND b.status = :status")
+    BigDecimal sumBudgetTotalBySyndicIdAndStatus(@Param("syndicId") Long syndicId, @Param("status") BudgetStatus status);
 }

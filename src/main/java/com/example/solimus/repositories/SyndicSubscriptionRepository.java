@@ -1,6 +1,7 @@
 package com.example.solimus.repositories;
 
 import com.example.solimus.entities.SyndicSubscription;
+import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.SubscriptionStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -129,4 +130,12 @@ public interface SyndicSubscriptionRepository extends JpaRepository<SyndicSubscr
            "  AND s2.endDate > :asOfDate" +
            ")")
     long countExpiredWithoutRenewalAsOf(@Param("asOfDate") LocalDateTime asOfDate);
+
+    // Les N derniers abonnements ayant ce statut de paiement précis (COMPLETED ou FAILED), toutes
+    // syndics confondus — utilisé pour assembler le flux "Activité récente" du dashboard admin
+    List<SyndicSubscription> findByPaymentStatusOrderByCreatedAtDesc(PaymentStatus paymentStatus, Pageable pageable);
+
+    // Vérifie si ce syndic avait déjà un abonnement avant celui-ci — permet de distinguer une
+    // souscription initiale ("Nouveau syndic enregistré") d'un renouvellement ("Abonnement renouvelé")
+    boolean existsBySyndicIdAndCreatedAtBefore(Long syndicId, LocalDateTime before);
 }

@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
+
 public interface SignalementRepository extends JpaRepository<Signalement, Long> {
 
     // =========================================================================
@@ -33,6 +35,10 @@ public interface SignalementRepository extends JpaRepository<Signalement, Long> 
 
     // Compte tous les signalements des résidences d'un syndic
     long countByResidenceSyndicId(Long syndicId);
+
+    // Les N derniers signalements d'une résidence précise, du plus récent au plus ancien —
+    // utilisé par le bloc "Derniers incidents" de la fiche détail résidence (admin)
+    List<Signalement> findByResidenceIdOrderByCreatedAtDesc(Long residenceId, Pageable pageable);
 
     // Compte les signalements des résidences d'un syndic ayant un statut précis
     long countByResidenceSyndicIdAndStatus(Long syndicId, SignalementStatus status);

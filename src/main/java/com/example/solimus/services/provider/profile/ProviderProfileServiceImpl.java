@@ -176,9 +176,14 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
         // 1. Récupérer le prestataire connecté via son JWT
         User currentProvider = getCurrentUser();
 
-        // 2. Récupérer l'abonnement le plus récent (pour la carte actuelle)
+        // 2. Récupérer en priorité l'abonnement réellement ACTIVE — jamais "le plus récent par date
+        // de fin", qui peut ramener un abonnement annulé dont la date de fin est simplement plus
+        // lointaine. On ne retombe sur le plus récent, tous statuts confondus, que si aucun
+        // abonnement n'est actif du tout — pour quand même afficher quelque chose (ex: "Expiré").
         Optional<ProviderSubscription> latestSubscription = providerSubscriptionRepository
-                .findFirstByProviderIdOrderByEndDateDesc(currentProvider.getId());
+                .findFirstByProviderIdAndStatus(currentProvider.getId(), SubscriptionStatus.ACTIVE)
+                .filter(ProviderSubscription::isCurrentlyActive)
+                .or(() -> providerSubscriptionRepository.findFirstByProviderIdOrderByEndDateDesc(currentProvider.getId()));
 
         // 3. Si aucun abonnement, retourner un DTO vide (pas d'abonnement)
         if (latestSubscription.isEmpty()) {
@@ -220,7 +225,9 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
         Page<SubscriptionHistoryItemDTO> historyPage = subscriptionsPage.map(sub ->
                 SubscriptionHistoryItemDTO.builder()
                         .planName(sub.getProviderPlan() != null ? sub.getProviderPlan().getName() : "Inconnu")
-                        .status(sub.getStatus().getLabel())
+                        // Le résultat du PAIEMENT de cette ligne précise, jamais le statut de
+                        // l'abonnement (qui peut changer plus tard pour d'autres raisons)
+                        .status(mapPaymentStatusToLabel(sub.getPaymentStatus()))
                         .reference(sub.getTransactionRef())
                         .amount(sub.getAmountPaid())
                         .paymentMethod(sub.getMethod() != null ? sub.getMethod().getLabel() : null)
@@ -370,6 +377,16 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
+    }
+
+    
+    // Même mapping que côté syndic — le statut du paiement, jamais celui de l'abonnement
+    private String mapPaymentStatusToLabel(PaymentStatus paymentStatus) {
+        return switch (paymentStatus) {
+            case PENDING -> "En attente";
+            case COMPLETED -> "Payé";
+            case FAILED -> "Échoué";
+        };
     }
 
 

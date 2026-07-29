@@ -341,6 +341,17 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
            "AND ir.status NOT IN ('FINAL_VALIDATION', 'CANCELLED')")
     long countOpenByResidenceId(@Param("residenceId") Long residenceId);
 
+    // Compte les missions terminées d'un prestataire (FINISHED + FINAL_VALIDATION, même définition
+    // de "terminée" que côté résidence) — utilisé pour le KPI "Missions terminées" (Admin > Prestataires)
+    @Query("SELECT COUNT(ir) FROM InterventionRequest ir WHERE ir.selectedProvider.id = :providerId " +
+           "AND ir.status IN (com.example.solimus.enums.InterventionStatus.FINISHED, com.example.solimus.enums.InterventionStatus.FINAL_VALIDATION)")
+    long countCompletedByProviderId(@Param("providerId") Long providerId);
+
+    // Les N dernières interventions terminées d'un prestataire, du plus récent au plus ancien —
+    // utilisé pour assembler le flux "Historique d'activité" (Admin > Prestataires, Bloc F)
+    List<InterventionRequest> findBySelectedProviderIdAndStatusInOrderByFinishedAtDesc(
+            Long providerId, List<InterventionStatus> statuses, Pageable pageable);
+
     // Lister toutes les interventions liées aux équipements communs d'une résidence
     // (pour calculer le statut et la date de dernière maintenance des équipements)
     @Query("SELECT ir FROM InterventionRequest ir WHERE ir.commonFacility.residence.id = :residenceId")

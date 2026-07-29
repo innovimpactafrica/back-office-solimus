@@ -14,7 +14,6 @@ import com.example.solimus.exceptions.CoOwnerAlreadyExistsException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
-import com.example.solimus.security.PlanLimitGuard;
 
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.minio.MinioService;
@@ -54,7 +53,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
     private final ResidenceRepository residenceRepository;
     private final PropertyRepository propertyRepository;
     private final SyndicCoOwnerRelationRepository syndicCoOwnerRelationRepository;
-    private final PlanLimitGuard planLimitGuard;
     private final EmailService emailService;
     private final MinioService minioService;
     private final PasswordEncoder passwordEncoder;
@@ -563,9 +561,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
 
         User currentSyndic = getCurrentUser();
 
-        // Bloque le lien si la limite de copropriétaires de sa formule est déjà atteinte
-        planLimitGuard.assertCanAddCoOwner(currentSyndic);
-
         // on vérifie que le copropriétaire existe bien en base
         User coOwner = userRepository.findById(coOwnerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
@@ -606,9 +601,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         }
 
         User currentSyndic = getCurrentUser();
-
-        // Bloque la création si la limite de copropriétaires de sa formule est déjà atteinte
-        planLimitGuard.assertCanAddCoOwner(currentSyndic);
 
         // Vérifications préliminaires
         // on vérifie si l'email existe déjà — si oui on retourne l'ID du copropriétaire existant

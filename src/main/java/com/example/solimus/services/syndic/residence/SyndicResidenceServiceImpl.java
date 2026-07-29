@@ -210,6 +210,10 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         verifyResidenceOwnership(residence);
         User currentSyndic = getCurrentUser();
 
+        // Bloque l'ajout si la limite d'appartements de sa formule serait dépassée (tous
+        // les lots de la liste comptent d'un coup, pas un par un)
+        planLimitGuard.assertCanAddApartments(currentSyndic, dtos.size());
+
         // Récupère la somme actuelle des tantièmes déjà présents pour cette résidence
         BigDecimal currentSum = propertyRepository.sumTantiemesByResidenceId(residenceId);
 

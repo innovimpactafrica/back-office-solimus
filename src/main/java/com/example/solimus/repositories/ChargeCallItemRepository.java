@@ -257,6 +257,15 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
            "AND i.chargeCall.dueDate < CURRENT_DATE")
     long countLateUnpaidBySyndicId(@Param("syndicId") Long syndicId);
 
+    // Compte les lignes en retard (date d'échéance dépassée) et non soldées pour une résidence précise —
+    // utilisé pour l'alerte "Paiements en retard" sur la carte résidence (admin)
+    @Query("SELECT COUNT(i) FROM ChargeCallItem i " +
+           "JOIN i.chargeCall cc JOIN cc.budget b " +
+           "WHERE b.residence.id = :residenceId " +
+           "AND i.status IN ('PENDING', 'PARTIALLY_PAID') " +
+           "AND cc.dueDate < CURRENT_DATE")
+    long countLateUnpaidByResidenceId(@Param("residenceId") Long residenceId);
+
     // Additionne tout ce qui reste à payer pour ce copropriétaire, dans cette résidence,
     // toutes périodes de charge confondues (peu importe le statut de chaque ChargeCall) — le montant
     // restant se calcule (quotePart - paidAmount), mais seuls les items encore PENDING/PARTIALLY_PAID

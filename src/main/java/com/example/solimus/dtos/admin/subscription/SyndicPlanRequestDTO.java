@@ -21,8 +21,7 @@ public class SyndicPlanRequestDTO {
     private BigDecimal yearlyPrice;
 
     private Integer maxResidences;
-    private Integer maxCoOwners;
-    private Integer maxUsers;
+    private Integer maxApartments;
 
     private Set<SyndicPlanFeature> features;
 

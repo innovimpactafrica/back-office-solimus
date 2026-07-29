@@ -1,5 +1,6 @@
 package com.example.solimus.dtos.auth;
 
+import com.example.solimus.enums.Country;
 import com.example.solimus.enums.ERole;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -78,6 +79,12 @@ public class RegisterRequestDTO {
     private String companyName;
 
     /**
+     * Ville et pays du prestataire.
+     */
+    private String city;
+    private Country country;
+
+    /**
      * ID de la spécialité :
      * Plomberie, Électricité, Climatisation, etc.
      */
@@ -87,6 +94,11 @@ public class RegisterRequestDTO {
      * Nom de la zone d'intervention
      */
     private String interventionZone;
+
+    /**
+     * Adresse complète du siège, remplie via l'autocomplétion d'adresse (comme city/country).
+     */
+    private String address;
 
     /**
      * Coordonnées GPS utilisées pour calculer

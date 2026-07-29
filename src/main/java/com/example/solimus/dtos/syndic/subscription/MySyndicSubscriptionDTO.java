@@ -31,8 +31,7 @@ public class MySyndicSubscriptionDTO {
 
     // Limites de la formule — null signifie illimité pour ce critère précis
     private Integer maxResidences;
-    private Integer maxCoOwners;
-    private Integer maxUsers;
+    private Integer maxApartments;
 
     private LocalDateTime activationDate;
     private LocalDateTime expirationDate;

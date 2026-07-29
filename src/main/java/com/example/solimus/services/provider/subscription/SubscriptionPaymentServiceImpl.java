@@ -6,6 +6,9 @@ import com.example.solimus.dtos.provider.subscription.SubscriptionPaymentRespons
 import com.example.solimus.entities.ProviderPlan;
 import com.example.solimus.entities.ProviderSubscription;
 import com.example.solimus.entities.User;
+import com.example.solimus.enums.ERole;
+import com.example.solimus.enums.PaymentStatus;
+import com.example.solimus.enums.SubscriptionDuration;
 import com.example.solimus.enums.SubscriptionStatus;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
@@ -46,6 +49,13 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
 
         // On identifie le prestataire connecté grâce à son JWT
         User currentProvider = getCurrentUser();
+
+        // Double sécurité : ne fait jamais confiance uniquement au @PreAuthorize du contrôleur —
+        // vérifie explicitement ici aussi, pour ne jamais recréer un abonnement prestataire sur un
+        // compte qui n'a pas ce rôle, même si la sécurité au niveau des routes est un jour mal configurée
+        if (currentProvider.getRole().getName() != ERole.ROLE_PRESTATAIRE) {
+            throw new BadRequestException("Seul un compte prestataire peut souscrire à cet abonnement");
+        }
 
         // Bloque une nouvelle tentative tant qu'une autre est déjà en attente de confirmation —
         // évite d'empiler des paiements PENDING en parallèle (c'est ce qui a permis à deux paiements
@@ -100,11 +110,16 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
         // On rattache cette souscription au prestataire connecté
         subscription.setProvider(currentProvider);
 
+        // En self-service, le payeur est le prestataire lui-même
+        subscription.setInitiatedBy(currentProvider);
+
         // On garde la trace de quelle formule était active au moment du paiement
         subscription.setProviderPlan(plan);
 
         // Statut initial : en attente, car TouchPay n'a pas encore confirmé le paiement
         subscription.setStatus(SubscriptionStatus.PENDING);
+        subscription.setPaymentStatus(PaymentStatus.PENDING);
+        subscription.setDuration(isAnnual ? SubscriptionDuration.YEARLY : SubscriptionDuration.MONTHLY);
 
         // On fige le montant exact demandé maintenant, même si l'admin change le prix plus tard
         subscription.setAmountPaid(amount);

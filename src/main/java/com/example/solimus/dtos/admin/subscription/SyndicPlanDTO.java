@@ -22,8 +22,7 @@ public class SyndicPlanDTO {
     private BigDecimal yearlyPrice;
 
     private Integer maxResidences;
-    private Integer maxCoOwners;
-    private Integer maxUsers;
+    private Integer maxApartments;
 
     // Chaque fonctionnalité avec sa valeur technique ET son libellé affichable
     private List<SyndicPlanFeatureDTO> features;

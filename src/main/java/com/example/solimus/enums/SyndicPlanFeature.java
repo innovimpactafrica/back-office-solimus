@@ -9,11 +9,7 @@ public enum SyndicPlanFeature {
     AG_MANAGEMENT("Gestion des AG"),
     REPORT_MANAGEMENT("Gestion des signalements"),
     CHARGE_MANAGEMENT("Gestion des charges"),
-    WALLET_MANAGEMENT("Portefeuille financier"),
-    DOCUMENT_MANAGEMENT("Gestion documentaire"),
-    PRIORITY_SUPPORT("Support prioritaire"),
-    ADVANCED_STATS("Statistiques avancées"),
-    UNLIMITED_USERS("Utilisateurs illimités");
+    WALLET_MANAGEMENT("Portefeuille financier");
 
     private final String label;
 

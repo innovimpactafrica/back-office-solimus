@@ -1,6 +1,7 @@
 package com.example.solimus.repositories;
 
 import com.example.solimus.entities.ProviderSubscription;
+import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.SubscriptionStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -16,9 +17,15 @@ import java.util.Optional;
 @Repository
 public interface ProviderSubscriptionRepository extends JpaRepository<ProviderSubscription, Long> {
 
-    // Récupère le dernier abonnement d'un prestataire (le plus récent selon endDate)
-    // → utilisé avant de créer un nouveau paiement, pour vérifier qu'il n'a pas déjà un abonnement actif
+    // Abonnement le plus récent d'un prestataire (par date de fin), TOUS statuts confondus — à
+    // utiliser uniquement en repli d'affichage quand aucun abonnement ACTIVE n'existe. Ne JAMAIS
+    // utiliser ceci pour vérifier un accès : la date de fin la plus lointaine peut appartenir à un
+    // abonnement annulé (même piège que côté syndic, déjà corrigé).
     Optional<ProviderSubscription> findFirstByProviderIdOrderByEndDateDesc(Long providerId);
+
+    // L'abonnement réellement actif d'un prestataire — au plus un seul à la fois. C'est la SEULE
+    // requête à utiliser pour vérifier un accès (SubscriptionFilter) ou afficher l'abonnement en cours.
+    Optional<ProviderSubscription> findFirstByProviderIdAndStatus(Long providerId, SubscriptionStatus status);
 
     // Compte les prestataires DISTINCTS ayant actuellement (statut ACTIVE et date de fin non dépassée)
     // cette formule — jamais un simple COUNT(*) des lignes, qui compterait aussi les tentatives
@@ -30,6 +37,14 @@ public interface ProviderSubscriptionRepository extends JpaRepository<ProviderSu
     // Récupère tous les abonnements d'un prestataire, du plus récent au plus ancien
     // → utilisé pour l'écran "Mon abonnement" (carte actuelle + historique des paiements)
     Page<ProviderSubscription> findByProviderIdOrderByStartDateDesc(Long providerId, Pageable pageable);
+
+    // Historique paginé des abonnements d'un prestataire (paiements passés), vu par l'admin —
+    // trié par date de création, comme côté syndic
+    Page<ProviderSubscription> findByProviderIdOrderByCreatedAtDesc(Long providerId, Pageable pageable);
+
+    // Tout l'historique d'un prestataire, du plus ancien au plus récent — utilisé pour reconstituer
+    // le cycle de vie sur la page détail admin
+    List<ProviderSubscription> findByProviderIdOrderByCreatedAtAsc(Long providerId);
 
     // Récupère l'abonnement correspondant à une référence de transaction TouchPay (SUB-xxx)
     // → utilisé par le bridge et le callback pour retrouver la bonne ligne
@@ -79,6 +94,10 @@ public interface ProviderSubscriptionRepository extends JpaRepository<ProviderSu
            "WHERE s.createdAt BETWEEN :start AND :end")
     java.math.BigDecimal sumAmountPaidInPeriod(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
+    // Somme de tous les montants payés, sans limite de période — "Revenus" du dashboard Admin > Prestataires
+    @Query("SELECT COALESCE(SUM(s.amountPaid), 0) FROM ProviderSubscription s")
+    java.math.BigDecimal sumAmountPaidTotal();
+
     // Nombre d'abonnements arrivés à échéance sur une période
     @Query("SELECT COUNT(s) FROM ProviderSubscription s WHERE s.endDate BETWEEN :start AND :end")
     long countExpiredInPeriod(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
@@ -110,4 +129,12 @@ public interface ProviderSubscriptionRepository extends JpaRepository<ProviderSu
            "  AND s2.endDate > :asOfDate" +
            ")")
     long countExpiredWithoutRenewalAsOf(@Param("asOfDate") LocalDateTime asOfDate);
+
+    // Les N derniers abonnements ayant ce statut de paiement précis (COMPLETED ou FAILED), tous
+    // prestataires confondus — utilisé pour assembler le flux "Activité récente" du dashboard admin
+    List<ProviderSubscription> findByPaymentStatusOrderByCreatedAtDesc(PaymentStatus paymentStatus, Pageable pageable);
+
+    // Vérifie si ce prestataire avait déjà un abonnement avant celui-ci — permet de distinguer une
+    // souscription initiale d'un renouvellement
+    boolean existsByProviderIdAndCreatedAtBefore(Long providerId, LocalDateTime before);
 }

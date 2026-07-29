@@ -49,6 +49,9 @@ public class ProviderProfile {
     @Column(name = "intervention_zone")
     private String interventionZone; // Zone d'intervention (ex: Paris, Lyon)
 
+    @Column(name = "address", columnDefinition = "TEXT")
+    private String address; // Adresse complète du siège, saisie via autocomplétion à l'inscription
+
     // Position GPS temps réel — distincte de latitude/longitude qui restent la zone de référence fixe saisie à l'inscription
     @Column(name = "gps_latitude", precision = 10, scale = 7)
     private BigDecimal gpsLatitude; // Latitude de la position actuelle du prestataire

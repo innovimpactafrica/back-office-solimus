@@ -49,11 +49,11 @@ public class SyndicPlan {
     @Column(name = "max_residences")
     private Integer maxResidences;
 
-    @Column(name = "max_co_owners")
-    private Integer maxCoOwners;
-
-    @Column(name = "max_users")
-    private Integer maxUsers;
+    // Nombre maximum de lots/appartements (tous confondus, toutes résidences du syndic) — reflète
+    // mieux la taille réelle du portefeuille qu'un nombre de copropriétaires (un même copropriétaire
+    // peut posséder plusieurs lots)
+    @Column(name = "max_apartments")
+    private Integer maxApartments;
 
     // Fonctionnalités activées pour cette formule précise
     @ElementCollection(targetClass = SyndicPlanFeature.class, fetch = FetchType.EAGER)

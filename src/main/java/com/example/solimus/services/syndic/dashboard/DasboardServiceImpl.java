@@ -5,6 +5,7 @@ import com.example.solimus.dtos.syndic.travaux.SyndicResidenceDTO;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.*;
 import com.example.solimus.repositories.*;
+import com.example.solimus.services.shared.ActivityLogPresenter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -13,7 +14,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -36,6 +36,7 @@ public class DasboardServiceImpl implements DashboardService {
     private final MeetingRepository meetingRepository;
     private final ActivityLogRepository activityLogRepository;
     private final ExceptionalCallRepository exceptionalCallRepository;
+    private final ActivityLogPresenter activityLogPresenter;
 
     // =========================================================================
     // TABLEAU DE BORD PRINCIPAL (KPIs, résidence optionnelle avec repli automatique)
@@ -227,12 +228,12 @@ public class DasboardServiceImpl implements DashboardService {
             alerts.add(alert);
         }
 
-        // --- Paiements en retard (alerte si plus de 10) ---
+        // --- Paiements en retard (alerte dès qu'il y en a au moins 1) ---
 
         // Compte les lignes en retard (échéance dépassée) et non soldées, toutes résidences
         long latePaymentsCount = chargeCallItemRepository.countLateUnpaidBySyndicId(currentSyndic.getId());
 
-        if (latePaymentsCount > 10) {
+        if (latePaymentsCount > 0) {
             AlertDTO alert = new AlertDTO();
             alert.setType("UNPAID");
             alert.setTitle("Paiements en retard");
@@ -262,7 +263,7 @@ public class DasboardServiceImpl implements DashboardService {
 
         // Calcule le texte "il y a Xh" pour chaque alerte, une fois l'ordre final déterminé
         for (AlertDTO alert : alerts) {
-            alert.setRelativeTime(buildRelativeTime(alert.getOccurredAt()));
+            alert.setRelativeTime(activityLogPresenter.buildRelativeTime(alert.getOccurredAt()));
         }
 
         // Retourne la liste complète des alertes triées
@@ -286,7 +287,7 @@ public class DasboardServiceImpl implements DashboardService {
 
         // Transforme chaque activité en ligne de tableau
         return logs.stream()
-                .map(this::buildActivityRow)
+                .map(activityLogPresenter::buildActivityRow)
                 .toList();
     }
 
@@ -463,95 +464,6 @@ public class DasboardServiceImpl implements DashboardService {
         return items.stream().map(item -> item.getQuotePart().subtract(item.getPaidAmount())).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    // Construit une ligne du tableau "Activités Récentes"
-    private ActivityRowDTO buildActivityRow(ActivityLog log) {
-
-        ActivityRowDTO dto = new ActivityRowDTO();
-        // Traduit le type technique en libellé affiché (ex: PAYMENT_RECEIVED → "Paiement")
-        dto.setType(mapActivityTypeToLabel(log.getType()));
-        dto.setDescription(log.getMessage());
-        dto.setResidenceName(log.getResidence().getName());
-        dto.setOccurredAt(log.getCreatedAt());
-        // Calcule le texte relatif ("Il y a 2h")
-        dto.setRelativeTime(buildRelativeTime(log.getCreatedAt()));
-        // Va chercher le vrai statut de l'entité liée (intervention, appel de charges...)
-        dto.setStatus(resolveActivityStatus(log));
-
-        return dto;
-    }
-
-    // Traduit l'ActivityType en libellé de colonne "Type" affiché
-    private String mapActivityTypeToLabel(ActivityType type) {
-        return switch (type) {
-            case PAYMENT_RECEIVED, CHARGE_CALL_GENERATED -> "Paiement";
-            case INTERVENTION_REPORTED, INTERVENTION_RESOLVED -> "Incident";
-            case PROVIDER_ASSIGNED -> "Prestataire";
-            case MEETING_CREATED, MEETING_PUBLISHED, MEETING_DELETED -> "Réunion";
-            case MEETING_DOCUMENT_ADDED, MEETING_DOCUMENT_DOWNLOADED, MEETING_DOCUMENT_VIEWED, MEETING_DOCUMENT_UPDATED, MEETING_DOCUMENT_DELETED -> "Document";
-            case COMMENT_ADDED -> "Commentaire";
-            case BUDGET_CREATED, BUDGET_CLOSED, BUDGET_DELETED -> "Budget";
-            case EXCEPTIONAL_CALL_CREATED, EXCEPTIONAL_CALL_ACTIVATED, EXCEPTIONAL_CALL_CLOSED -> "Appel exceptionnel";
-        };
-    }
-
-    // Résout le statut d'une activité en interrogeant l'entité liée (relatedEntityType + relatedEntityId)
-    private String resolveActivityStatus(ActivityLog log) {
-
-        // Si aucune entité n'est liée à cette activité, pas de statut à afficher
-        if (log.getRelatedEntityType() == null || log.getRelatedEntityId() == null) {
-            return null;
-        }
-
-        // Selon le type d'entité liée, va chercher le vrai statut à la bonne source
-        switch (log.getRelatedEntityType()) {
-            case "CHARGE_CALL":
-                // Récupère l'appel de charges concerné, calcule son statut, retourne son label
-                return chargeCallRepository.findById(log.getRelatedEntityId())
-                        .map(cc -> calculateChargeCallStatus(cc).getLabel())
-                        .orElse(null);
-
-            case "EXCEPTIONAL_CALL":
-                // Récupère l'appel exceptionnel concerné, retourne son statut brut sans transformation
-                return exceptionalCallRepository.findById(log.getRelatedEntityId())
-                        .map(ec -> ec.getStatus().getLabel())
-                        .orElse(null);
-
-            case "INTERVENTION":
-                // Récupère l'intervention concernée, retourne son statut brut sans transformation
-                return interventionRequestRepository.findById(log.getRelatedEntityId())
-                        .map(i -> i.getStatus().getLabel())
-                        .orElse(null);
-
-            default:
-                // Type pas encore géré — retourne null en attendant
-                return null;
-        }
-    }
-
-    // Calcule le statut de l'appel de charges à la volée : SETTLED, PARTIAL ou SENT (jamais stocké en base)
-    private ChargeCallStatus calculateChargeCallStatus(ChargeCall chargeCall) {
-
-        // Vérifie si TOUS les items ont payé au moins leur quote-part complète
-        boolean allSettled = chargeCall.getItems().stream()
-                .allMatch(item -> item.getPaidAmount().compareTo(item.getQuotePart()) >= 0);
-
-        if (allSettled) {
-            return ChargeCallStatus.SETTLED;
-        }
-
-        // Vérifie si AU MOINS UN item a reçu un paiement, même partiel
-        boolean hasAtLeastOnePayment = chargeCall.getItems().stream()
-                .anyMatch(item -> item.getPaidAmount().compareTo(BigDecimal.ZERO) > 0);
-
-        if (hasAtLeastOnePayment) {
-            return ChargeCallStatus.PARTIAL;
-        }
-
-        // Sinon, personne n'a encore payé
-        return ChargeCallStatus.SENT;
-    }
-
-
     // Construit une ligne du tableau "Incidents Récents"
     private RecentIncidentDTO buildRecentIncidentDto(InterventionRequest intervention) {
 
@@ -565,18 +477,5 @@ public class DasboardServiceImpl implements DashboardService {
         dto.setCreatedAt(intervention.getCreatedAt());
 
         return dto;
-    }
-
-    // Convertit une date en texte relatif ("Il y a 2h", "Hier", "Il y a 3 jours"...)
-    private String buildRelativeTime(LocalDateTime date) {
-        // Calcule la durée écoulée depuis cette date jusqu'à maintenant
-        Duration duration = Duration.between(date, LocalDateTime.now());
-        long hours = duration.toHours();
-
-        // Choisit le format le plus adapté selon la durée écoulée
-        if (hours < 1) return "Il y a " + duration.toMinutes() + " min";
-        if (hours < 24) return "Il y a " + hours + "h";
-        if (hours < 48) return "Hier";
-        return "Il y a " + (hours / 24) + " jours";
     }
 }

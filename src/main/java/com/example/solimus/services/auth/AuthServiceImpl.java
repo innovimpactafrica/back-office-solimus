@@ -696,6 +696,18 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException(
                     "Les coordonnées GPS sont obligatoires pour localiser vos interventions.");
         }
+        if (dto.getCity() == null || dto.getCity().isBlank()) {
+            throw new BadRequestException("La ville est obligatoire pour un prestataire.");
+        }
+        if (dto.getCountry() == null) {
+            throw new BadRequestException("Le pays est obligatoire pour un prestataire.");
+        }
+        if (dto.getAddress() == null || dto.getAddress().isBlank()) {
+            throw new BadRequestException("L'adresse complète est obligatoire pour un prestataire.");
+        }
+
+        user.setCity(dto.getCity());
+        user.setCountry(dto.getCountry().getLabel());
     }
 
     /**
@@ -708,6 +720,7 @@ public class AuthServiceImpl implements AuthService {
         profile.setSpecialty(specialtyRepository.findById(dto.getSpecialtyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Spécialité non trouvée")));
         profile.setInterventionZone(dto.getInterventionZone());
+        profile.setAddress(dto.getAddress());
         profile.setLatitude(dto.getLatitude());
         profile.setLongitude(dto.getLongitude());
         profile.setInterventionCount(0);

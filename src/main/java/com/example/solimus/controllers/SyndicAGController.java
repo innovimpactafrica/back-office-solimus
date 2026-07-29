@@ -194,7 +194,6 @@ public class SyndicAGController {
     }
 
     @GetMapping("/{meetingId}/documents")
-    @PreAuthorize("hasAuthority('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('DOCUMENT_MANAGEMENT')")
     @Operation(summary = "Liste des documents d'une assemblée générale (Onglet 5)")
     public ResponseEntity<MeetingDocumentsTabResponseDTO> getMeetingDocuments(@PathVariable Long meetingId,
                                                                               @RequestParam(defaultValue = "0") Integer page,
@@ -203,7 +202,6 @@ public class SyndicAGController {
     }
 
     @PostMapping("/{meetingId}/documents")
-    @PreAuthorize("hasAuthority('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('DOCUMENT_MANAGEMENT')")
     @Operation(summary = "Ajouter des documents à une assemblée générale (Onglet 5)")
     public ResponseEntity<List<MeetingDocumentRowDTO>> addMeetingDocuments(
             @PathVariable Long meetingId,
@@ -234,7 +232,6 @@ public class SyndicAGController {
     }
 
     @Operation(summary = "Créer un nouveau document AG complet (page Documents générale)")
-    @PreAuthorize("hasAuthority('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('DOCUMENT_MANAGEMENT')")
     @PostMapping(value = "/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<MeetingDocumentRowDTO> createMeetingDocument(
             @RequestParam Long meetingId,
@@ -259,7 +256,6 @@ public class SyndicAGController {
     }
 
     @Operation(summary = "Mettre à jour les métadonnées d'un document AG existant (page Documents générale)")
-    @PreAuthorize("hasAuthority('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('DOCUMENT_MANAGEMENT')")
     @PatchMapping("/documents/{documentId}")
     public ResponseEntity<MeetingDocumentRowDTO> updateMeetingDocument(
             @PathVariable Long documentId,
@@ -282,7 +278,6 @@ public class SyndicAGController {
     }
 
     @Operation(summary = "Supprimer un document AG (page Documents générale)")
-    @PreAuthorize("hasAuthority('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('DOCUMENT_MANAGEMENT')")
     @DeleteMapping("/documents/{documentId}")
     public ResponseEntity<Void> deleteMeetingDocument(@PathVariable Long documentId) {
         syndicMeetingService.deleteMeetingDocument(documentId);
@@ -290,7 +285,6 @@ public class SyndicAGController {
     }
 
     @Operation(summary = "Listing général des documents AG (recherche + filtres) (page Documents générale)")
-    @PreAuthorize("hasAuthority('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('DOCUMENT_MANAGEMENT')")
     @GetMapping("/documents")
     public ResponseEntity<MeetingDocumentListResponseDTO> getMeetingDocumentsList(
             @RequestParam(required = false) String search,
@@ -305,7 +299,6 @@ public class SyndicAGController {
 
     // ===== Détail d'un document (quorum, documents liés, résolutions, historique) =====
     @Operation(summary = "Détail d'un document AG (quorum, documents liés, historique)(page Documents générale)")
-    @PreAuthorize("hasAuthority('ROLE_SYNDIC') and @planFeatureGuard.hasFeature('DOCUMENT_MANAGEMENT')")
     @GetMapping("/documents/{documentId}")
     public ResponseEntity<MeetingDocumentDetailDTO> getMeetingDocumentDetail(@PathVariable Long documentId) {
         return ResponseEntity.ok(syndicMeetingService.getMeetingDocumentDetail(documentId));

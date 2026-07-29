@@ -1,6 +1,7 @@
 package com.example.solimus.config;
 
 import com.example.solimus.entities.User;
+import com.example.solimus.enums.SubscriptionStatus;
 import com.example.solimus.repositories.ProviderSubscriptionRepository;
 import com.example.solimus.repositories.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,6 +10,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -21,6 +23,7 @@ import java.util.Map;
 //Classe qui permet de bloquer l'accès aux routes /api/provider/** si l'utilisateur n'a pas d'abonnement actif
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class SubscriptionFilter extends OncePerRequestFilter {
 
     private final UserRepository userRepository;
@@ -30,7 +33,10 @@ public class SubscriptionFilter extends OncePerRequestFilter {
     // routes /api/provider/** accessibles sans abonnement actif
     private static final List<String> EXCLUDED_PATHS = List.of(
             "/api/provider/subscription/plan",
-            "/api/provider/subscription/initiate"
+            "/api/provider/subscription/initiate",
+            // Lecture seule de son propre statut d'abonnement — doit rester consultable même
+            // quand il est inactif/expiré, sinon le prestataire ne peut jamais voir pourquoi il est bloqué
+            "/api/provider/profile/subscription"
     );
 
     //Méthode implémentée de OncePerRequestFilter pour filtrer les requêtes et vérifier si l'utilisateur a un abonnement actif
@@ -78,18 +84,15 @@ public class SubscriptionFilter extends OncePerRequestFilter {
             return;
         }
 
-        // on cherche le dernier abonnement de cet utilisateur via son ID
+        // on cherche directement l'abonnement au statut ACTIVE — jamais "le plus récent par date de
+        // fin", qui peut ramener un abonnement annulé dont la date de fin est simplement plus lointaine
         boolean isActive = providerSubscriptionRepository
-                .findFirstByProviderIdOrderByEndDateDesc(user.getId()) // on utilise l'ID du provider
-                .map(sub -> {
-                    System.out.println("DEBUG: Subscription found - Status: " + sub.getStatus() + ", EndDate: " + sub.getEndDate() + ", CurrentlyActive: " + sub.isCurrentlyActive());
-                    return sub.isCurrentlyActive(); // on vérifie s'il est encore valide
-                })
-                .orElse(false); // pas d'abonnement = inactif
-
-        System.out.println("DEBUG: User ID: " + user.getId() + ", Email: " + user.getEmail() + ", isActive: " + isActive);
+                .findFirstByProviderIdAndStatus(user.getId(), SubscriptionStatus.ACTIVE)
+                .map(sub -> sub.isCurrentlyActive()) // sécurité supplémentaire si le job d'expiration n'est pas encore passé
+                .orElse(false); // pas d'abonnement actif = inactif
 
         if (!isActive) {
+            log.warn("Accès refusé (abonnement inactif) : prestataire {} sur {}", user.getEmail(), path);
             // on bloque et on retourne une erreur 403 avec un message JSON clair
             response.setStatus(HttpServletResponse.SC_FORBIDDEN); // 403
             response.setContentType("application/json");

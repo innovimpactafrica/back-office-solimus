@@ -114,6 +114,8 @@ public class SolimusCallbackController {
             handleSyndicPlanChangeCallback(reference, true);
         } else if (reference.startsWith("SYA-")) {
             handleAdminSyndicRenewalCallback(reference, true);
+        } else if (reference.startsWith("PRA-")) {
+            handleAdminProviderRenewalCallback(reference, true);
         } else if (reference.startsWith("PAY-") || reference.startsWith("SOL-")) {
             handleOwnerInterventionPaymentCallback(reference, true);
         }
@@ -154,6 +156,8 @@ public class SolimusCallbackController {
             handleSyndicPlanChangeCallback(reference, false);
         } else if (reference.startsWith("SYA-")) {
             handleAdminSyndicRenewalCallback(reference, false);
+        } else if (reference.startsWith("PRA-")) {
+            handleAdminProviderRenewalCallback(reference, false);
         } else if (reference.startsWith("PAY-") || reference.startsWith("SOL-")) {
             handleOwnerInterventionPaymentCallback(reference, false);
         }
@@ -225,8 +229,13 @@ public class SolimusCallbackController {
         }
 
         if (ref.startsWith("SYA-")) {
-            // On route vers le traitement spécifique au renouvellement manuel par l'admin
+            // On route vers le traitement spécifique au renouvellement manuel par l'admin (syndic)
             return handleAdminSyndicRenewalCallback(ref, succes);
+        }
+
+        if (ref.startsWith("PRA-")) {
+            // On route vers le traitement spécifique au renouvellement manuel par l'admin (prestataire)
+            return handleAdminProviderRenewalCallback(ref, succes);
         }
 
         if (ref.startsWith("CPY-")) {
@@ -350,8 +359,9 @@ public class SolimusCallbackController {
         return providerSubscriptionRepository.findByTransactionRef(ref)
                 .map(subscription -> {
 
-                    // Anti-double callback : si TouchPay rappelle deux fois, on ne réagit pas la 2e fois
-                    if (subscription.getStatus() == SubscriptionStatus.ACTIVE) {
+                    // Anti-double callback : basé sur le résultat du PAIEMENT (jamais retouché ensuite),
+                    // pas sur le statut de l'abonnement qui, lui, peut évoluer plus tard pour d'autres raisons
+                    if (subscription.getPaymentStatus() == PaymentStatus.COMPLETED) {
                         return ResponseEntity.ok(Map.<String, Object>of(
                                 "success", true,
                                 "message", "Abonnement déjà activé"
@@ -361,6 +371,7 @@ public class SolimusCallbackController {
                     if (!succes) {
                         // Le paiement a échoué côté TouchPay → on met à échec cette tentative
                         subscription.setStatus(SubscriptionStatus.FAILED);
+                        subscription.setPaymentStatus(PaymentStatus.FAILED);
                         providerSubscriptionRepository.save(subscription);
 
                         // On trace l'échec dans les logs pour debug
@@ -374,6 +385,7 @@ public class SolimusCallbackController {
 
                     // Le paiement est confirmé par TouchPay → on débloque réellement l'accès
                     subscription.setStatus(SubscriptionStatus.ACTIVE);
+                    subscription.setPaymentStatus(PaymentStatus.COMPLETED);
                     providerSubscriptionRepository.save(subscription);
 
                     // Un seul abonnement ACTIVE à la fois pour ce prestataire — on annule l'éventuel
@@ -643,6 +655,92 @@ public class SolimusCallbackController {
                             ref,
                             syndic.getEmail(),
                             subscription.getSyndicPlan().getName(),
+                            subscription.getEndDate().format(DATE_FORMATTER));
+
+                    return ResponseEntity.ok(Map.<String, Object>of(
+                            "success", true,
+                            "message", "Renouvellement confirmé avec succès"
+                    ));
+                })
+                .orElseGet(() -> ResponseEntity.badRequest().body(
+                        Map.<String, Object>of(
+                                "success", false,
+                                "message", "Abonnement introuvable pour la référence : " + ref
+                        )
+                ));
+    }
+
+    // =========================================================================
+    // CAS 2e — Renouvellement manuel d'un abonnement prestataire par l'admin (PRA-)
+    // =========================================================================
+    private ResponseEntity<Map<String, Object>> handleAdminProviderRenewalCallback(String ref, boolean succes) {
+
+        // On retrouve le nouvel abonnement créé en PENDING par PlanServiceImpl.renewProviderSubscription
+        return providerSubscriptionRepository.findByTransactionRef(ref)
+                .map(subscription -> {
+
+                    // Anti-double callback, basé sur le résultat du paiement de CETTE tentative précise
+                    if (subscription.getPaymentStatus() == PaymentStatus.COMPLETED) {
+                        return ResponseEntity.ok(Map.<String, Object>of(
+                                "success", true,
+                                "message", "Renouvellement déjà confirmé"
+                        ));
+                    }
+                    if (!succes) {
+                        subscription.setStatus(SubscriptionStatus.FAILED);
+                        subscription.setPaymentStatus(PaymentStatus.FAILED);
+                        providerSubscriptionRepository.save(subscription);
+
+                        log.warn("Renouvellement prestataire (admin) échoué pour ref : {}", ref);
+
+                        return ResponseEntity.ok(Map.<String, Object>of(
+                                "success", true,
+                                "message", "Renouvellement marqué comme échoué"
+                        ));
+                    }
+
+                    // Le paiement est confirmé → le nouvel abonnement devient actif immédiatement
+                    subscription.setStatus(SubscriptionStatus.ACTIVE);
+                    subscription.setPaymentStatus(PaymentStatus.COMPLETED);
+                    providerSubscriptionRepository.save(subscription);
+
+                    User provider = subscription.getProvider();
+
+                    // Un seul abonnement ACTIVE à la fois pour ce prestataire
+                    List<ProviderSubscription> previousActive = providerSubscriptionRepository
+                            .findActiveByProviderIdExcluding(provider.getId(), subscription.getId());
+                    for (ProviderSubscription old : previousActive) {
+                        old.setStatus(SubscriptionStatus.CANCELLED);
+                    }
+                    providerSubscriptionRepository.saveAll(previousActive);
+
+                    // On respecte exactement les 2 cases cochées par l'admin au moment de l'initiation.
+                    if (Boolean.TRUE.equals(subscription.getNotifyClient())) {
+                        notificationService.sendPush(
+                                provider.getId(),
+                                "Abonnement renouvelé",
+                                "Votre abonnement \"" + subscription.getProviderPlan().getName() +
+                                        "\" a été renouvelé par un administrateur.");
+                    }
+
+                    if (Boolean.TRUE.equals(subscription.getSendInvoiceEmail())) {
+                        emailService.sendEmail(
+                                provider.getEmail(),
+                                "Facture — Renouvellement de votre abonnement Solimus",
+                                "Bonjour " + provider.getFirstName() + ",\n\n" +
+                                        "Voici le récapitulatif de votre renouvellement :\n" +
+                                        "Référence : " + ref + "\n" +
+                                        "Formule : " + subscription.getProviderPlan().getName() + "\n" +
+                                        "Montant : " + subscription.getAmountPaid() + " FCFA\n" +
+                                        "Période : du " + subscription.getStartDate().format(DATE_FORMATTER) +
+                                        " au " + subscription.getEndDate().format(DATE_FORMATTER) + "\n\n" +
+                                        "Cordialement,\nL'équipe Solimus");
+                    }
+
+                    log.info("Renouvellement prestataire (admin) {} confirmé pour {} — formule {} — expire le {}",
+                            ref,
+                            provider.getEmail(),
+                            subscription.getProviderPlan().getName(),
                             subscription.getEndDate().format(DATE_FORMATTER));
 
                     return ResponseEntity.ok(Map.<String, Object>of(

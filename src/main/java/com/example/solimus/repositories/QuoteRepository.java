@@ -52,5 +52,8 @@ public interface QuoteRepository extends JpaRepository<Quote, Long> {
     @Query("SELECT SUM(q.totalAmount) FROM Quote q WHERE q.provider.id = :providerId AND q.status = :status")
     BigDecimal sumTotalAmountByProviderAndStatus(@Param("providerId") Long providerId, @Param("status") QuoteStatus status);
 
+    // Compte tous les devis envoyés par un prestataire, tous statuts confondus — KPI "Devis envoyés" (Admin > Prestataires)
+    long countByProviderId(Long providerId);
+
 
 }

@@ -1,6 +1,7 @@
 package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.admin.subscription.*;
+import com.example.solimus.dtos.auth.ErrorResponseDTO;
 import com.example.solimus.dtos.syndic.subscription.SyndicPlanChangeResponseDTO;
 import com.example.solimus.dtos.syndic.subscription.SyndicSubscriptionHistoryDTO;
 import com.example.solimus.enums.ProviderPlanFeature;
@@ -9,6 +10,10 @@ import com.example.solimus.enums.SubscriptionStatus;
 import com.example.solimus.enums.SyndicPlanFeature;
 import com.example.solimus.services.admin.subscription.PlanService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -150,6 +155,13 @@ public class AdminSubscriptionController {
     }
 
     @Operation(summary = "Détail d'un abonné précis (page ouverte via l'icône œil de la liste)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Détail renvoyé avec succès"),
+            @ApiResponse(responseCode = "400", description = "Requête invalide",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Aucun abonnement avec cet id",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/subscribers/{subscriptionId}")
     public ResponseEntity<SubscriberDetailDTO> getSubscriberDetail(
             @PathVariable Long subscriptionId,
@@ -158,6 +170,13 @@ public class AdminSubscriptionController {
     }
 
     @Operation(summary = "Historique paginé des paiements d'un abonné précis (vu par l'admin)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Page d'historique renvoyée avec succès"),
+            @ApiResponse(responseCode = "400", description = "Requête invalide",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Aucun abonnement avec cet id",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/subscribers/{subscriptionId}/payment-history")
     public ResponseEntity<Page<SyndicSubscriptionHistoryDTO>> getSubscriberPaymentHistory(
             @PathVariable Long subscriptionId,
@@ -167,7 +186,29 @@ public class AdminSubscriptionController {
         return ResponseEntity.ok(planService.getSubscriberPaymentHistory(subscriptionId, subscriberType, page, size));
     }
 
+    @Operation(summary = "Bloc \"Détails du client\" léger — pour l'en-tête des modales Suspendre/Réactiver")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Infos renvoyées avec succès"),
+            @ApiResponse(responseCode = "400", description = "Requête invalide",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Aucun abonnement avec cet id",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @GetMapping("/subscribers/{subscriptionId}/quick-info")
+    public ResponseEntity<SubscriberQuickInfoDTO> getSubscriberQuickInfo(
+            @PathVariable Long subscriptionId,
+            @RequestParam SubscriberType subscriberType) {
+        return ResponseEntity.ok(planService.getSubscriberQuickInfo(subscriptionId, subscriberType));
+    }
+
     @Operation(summary = "Suspendre le compte d'un abonné (bloque le login + désactive l'abonnement)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Compte suspendu avec succès"),
+            @ApiResponse(responseCode = "400", description = "\"reason\" manquant/vide (validation)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Aucun abonnement avec cet id",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PostMapping("/subscribers/{subscriptionId}/suspend")
     public ResponseEntity<String> suspendSubscriber(
             @PathVariable Long subscriptionId,
@@ -178,6 +219,13 @@ public class AdminSubscriptionController {
     }
 
     @Operation(summary = "Réactiver le compte d'un abonné précédemment suspendu")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Compte réactivé avec succès"),
+            @ApiResponse(responseCode = "400", description = "Ce compte n'est pas suspendu",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Aucun abonnement avec cet id",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PostMapping("/subscribers/{subscriptionId}/reactivate")
     public ResponseEntity<String> reactivateSubscriber(
             @PathVariable Long subscriptionId,
@@ -187,12 +235,43 @@ public class AdminSubscriptionController {
         return ResponseEntity.ok("Compte réactivé avec succès");
     }
 
-    @Operation(summary = "Renouveler manuellement l'abonnement d'un syndic (lien de paiement TouchPay à ouvrir)")
+    @Operation(summary = "Bloc \"Détails du client\" léger — pour l'en-tête de la modale Renouveler")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Infos renvoyées avec succès"),
+            @ApiResponse(responseCode = "400", description = "Requête invalide",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Aucun abonnement avec cet id",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @GetMapping("/subscribers/{subscriptionId}/renewal-info")
+    public ResponseEntity<SubscriberRenewalInfoDTO> getSubscriberRenewalInfo(
+            @PathVariable Long subscriptionId,
+            @RequestParam SubscriberType subscriberType) {
+        return ResponseEntity.ok(planService.getSubscriberRenewalInfo(subscriptionId, subscriberType));
+    }
+
+    @Operation(summary = "Options du formulaire de renouvellement (formules actives + durées disponibles, syndic ou prestataire)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Options renvoyées avec succès")
+    })
+    @GetMapping("/syndic-plans/renewal-options")
+    public ResponseEntity<RenewalFormOptionsDTO> getRenewalFormOptions(@RequestParam SubscriberType subscriberType) {
+        return ResponseEntity.ok(planService.getRenewalFormOptions(subscriberType));
+    }
+
+    @Operation(summary = "Renouveler manuellement l'abonnement d'un abonné, syndic ou prestataire (lien de paiement TouchPay à ouvrir)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Renouvellement initié — utiliser paymentUrl pour ouvrir TouchPay"),
+            @ApiResponse(responseCode = "400", description = "Un paiement est déjà en attente, ou formule indisponible/sans tarif configuré",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Abonnement ou formule introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PostMapping("/subscribers/{subscriptionId}/renew")
-    public ResponseEntity<SyndicPlanChangeResponseDTO> renewSyndicSubscription(
+    public ResponseEntity<SyndicPlanChangeResponseDTO> renewSubscriber(
             @PathVariable Long subscriptionId,
             @RequestParam SubscriberType subscriberType,
-            @Valid @RequestBody AdminRenewSyndicSubscriptionDTO dto) {
-        return ResponseEntity.ok(planService.renewSyndicSubscription(subscriptionId, subscriberType, dto));
+            @Valid @RequestBody AdminRenewSubscriptionDTO dto) {
+        return ResponseEntity.ok(planService.renewSubscriber(subscriptionId, subscriberType, dto));
     }
 }

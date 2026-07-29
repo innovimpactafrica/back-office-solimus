@@ -5,15 +5,15 @@ import com.example.solimus.entities.SyndicSubscription;
 import com.example.solimus.entities.User;
 import com.example.solimus.enums.SubscriptionStatus;
 import com.example.solimus.exceptions.BadRequestException;
+import com.example.solimus.repositories.PropertyRepository;
 import com.example.solimus.repositories.ResidenceRepository;
-import com.example.solimus.repositories.SyndicCoOwnerRelationRepository;
 import com.example.solimus.repositories.SyndicSubscriptionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Bloque la création de nouvelles ressources (résidences, copropriétaires) une fois la limite
- * numérique de la formule active du syndic atteinte (maxResidences / maxCoOwners — null = illimité).
+ * Bloque la création de nouvelles ressources (résidences, lots/appartements) une fois la limite
+ * numérique de la formule active du syndic atteinte (maxResidences / maxApartments — null = illimité).
  * Ne supprime ni ne bloque jamais ce qui existe déjà : en cas de rétrogradation, les ressources déjà
  * créées restent intactes, seule la création de NOUVELLES ressources est interdite tant que le
  * syndic reste au-dessus de la limite de sa nouvelle formule.
@@ -24,7 +24,7 @@ public class PlanLimitGuard {
 
     private final SyndicSubscriptionRepository syndicSubscriptionRepository;
     private final ResidenceRepository residenceRepository;
-    private final SyndicCoOwnerRelationRepository syndicCoOwnerRelationRepository;
+    private final PropertyRepository propertyRepository;
 
     public void assertCanAddResidence(User syndic) {
 
@@ -47,23 +47,26 @@ public class PlanLimitGuard {
         }
     }
 
-    public void assertCanAddCoOwner(User syndic) {
+    // Vérifie AVANT d'ajouter un ou plusieurs lots à une résidence — appeler avec le nombre de
+    // lots sur le point d'être ajoutés (pas un par un), pour bloquer d'un coup un ajout groupé
+    // qui dépasserait la limite, plutôt que d'en laisser passer une partie
+    public void assertCanAddApartments(User syndic, int countToAdd) {
 
         // Récupère la formule d'abonnement actuellement active du syndic
         SyndicPlan plan = getActivePlan(syndic);
 
-        // Si aucune limite n'est définie, le syndic peut ajouter autant de copropriétaires qu'il le souhaite
-        if (plan.getMaxCoOwners() == null) {
+        // Si aucune limite n'est définie, le syndic peut ajouter autant de lots qu'il le souhaite
+        if (plan.getMaxApartments() == null) {
             return;
         }
 
-        // Sinon , Compte le nombre de copropriétaires déjà rattachés à ce syndic
-        long current = syndicCoOwnerRelationRepository.countBySyndicId(syndic.getId());
+        // Sinon, compte le nombre de lots déjà créés, toutes résidences confondues
+        long current = propertyRepository.countByResidenceSyndicId(syndic.getId());
 
-        // Si la limite de la formule est atteinte, on bloque l'ajout
-        if (current >= plan.getMaxCoOwners()) {
+        // Si l'ajout dépasserait la limite de la formule, on bloque
+        if (current + countToAdd > plan.getMaxApartments()) {
             throw new BadRequestException(
-                    "Limite de copropriétaires de votre formule atteinte (" + plan.getMaxCoOwners() +
+                    "Limite d'appartements de votre formule atteinte (" + plan.getMaxApartments() +
                             "). Passez à une formule supérieure pour en ajouter davantage.");
         }
     }

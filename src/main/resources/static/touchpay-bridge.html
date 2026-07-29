@@ -94,7 +94,8 @@
         // 🧭 Construire l’URL API selon le type de paiement
         // =========================================
         // PAY- / SOL- → paiement normal
-        // SUB- → abonnement prestataire
+        // SUB- → abonnement prestataire (self-service)
+        // PRA- → renouvellement d'un abonnement prestataire par l'admin
         // SYN- → abonnement syndic (création de compte)
         // SYR- → changement de formule syndic (self-service)
         // SYA- → renouvellement d'un abonnement syndic par l'admin
@@ -104,7 +105,8 @@
         function getApiUrl(ref, apiBaseUrl) {
             if (ref.startsWith('PAY-') || ref.startsWith('SOL-')) {
                 return `${apiBaseUrl}/api/payments/bridge/payment/${ref}`;
-            } else if (ref.startsWith('SUB-')) {
+            } else if (ref.startsWith('SUB-') || ref.startsWith('PRA-')) {
+                // Même endpoint bridge pour les deux : il lit toujours le payeur réel (initiatedBy)
                 return `${apiBaseUrl}/api/payments/bridge/subscription/${ref}`;
             } else if (ref.startsWith('SYN-') || ref.startsWith('SYR-') || ref.startsWith('SYA-')) {
                 // Même endpoint bridge pour les 3 : il lit toujours le payeur réel (initiatedBy)
