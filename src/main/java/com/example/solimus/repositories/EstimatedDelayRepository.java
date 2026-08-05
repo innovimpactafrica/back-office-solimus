@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface EstimatedDelayRepository extends JpaRepository<EstimatedDelay, Long> {
+    boolean existsByLabelIgnoreCase(String label);
 }

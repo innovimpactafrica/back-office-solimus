@@ -1,9 +1,8 @@
 package com.example.solimus.services.provider.request;
 
-import com.example.solimus.dtos.admin.EstimatedDelayDTO;
+import com.example.solimus.dtos.syndic.settings.EstimatedDelayDTO;
 import com.example.solimus.dtos.provider.request.*;
 import com.example.solimus.enums.ProviderRequestDisplayStatus;
-import com.example.solimus.enums.QuoteStatus;
 import org.springframework.data.domain.Pageable;
 
 import java.util.List;

@@ -136,15 +136,15 @@ public class User {
     // =========================================================================
     // PRÉFÉRENCES DE NOTIFICATION
     // =========================================================================
-
     /**
-     * Indique si l'utilisateur souhaite recevoir les notifications par email.
-     * Par défaut : true (activé).
-     * Si false, seuls les emails critiques (sécurité, activation, reset password) sont envoyés.
+     * Indique si l'utilisateur souhaite recevoir les notifications
+     * par email et par push. Par défaut : true (activé).
+     * Si false, seuls les emails critiques (sécurité, activation, reset password)
+     * sont envoyés. L'historique in-app (table `notifications`, cloche) est
+     * toujours alimenté, indépendamment de ce réglage.
      */
     @Column(name = "notifications_enabled", nullable = false)
     private boolean notificationsEnabled = true;
-
 
     // =========================================================================
     // AUDIT (DATES AUTOMATIQUES)

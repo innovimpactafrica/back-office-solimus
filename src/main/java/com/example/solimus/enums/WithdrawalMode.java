@@ -5,7 +5,16 @@ package com.example.solimus.enums;
  * Détermine comment le syndic souhaite recevoir ses fonds
  */
 public enum WithdrawalMode {
-    VIREMENT,      // Virement bancaire
-    WAVE,          // Paiement mobile Wave
-    ORANGE_MONEY   // Paiement mobile Orange Money
+    WAVE("Wave"),
+    ORANGE_MONEY("Orange Money"),
+    VIREMENT("Virement bancaire");
+    private final String label;
+
+    WithdrawalMode (String label) {
+        this.label = label;
+    }
+
+    public String getLabel() {
+        return label;
+    }
 }

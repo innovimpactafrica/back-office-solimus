@@ -9,6 +9,11 @@ public interface NotificationService {
     //Envoie une notification push à un utilisateur précis via son id
     void sendPush(Long userId, String title, String body);
 
+    // Envoie uniquement le push Firebase (le message arrive sur le téléphone).
+    // N'enregistre rien en base (contrairement à "sendPush"): la ligne Notification doit être créée séparément par l'appelant
+    // pour éviter de créer deux fois la même notification.
+    void sendPushOnly(Long userId, String title, String body);
+
     // Envoie un push "Nouveau paiement" au syndic, si sa préférence est activée
     void sendNewPaymentNotification(Long syndicUserId, String title, String body);
 

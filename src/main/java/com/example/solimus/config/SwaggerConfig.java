@@ -31,8 +31,6 @@ public class SwaggerConfig {
                 // Ordre d'affichage des tags dans Swagger UI
                 .addTagsItem(new Tag().name("Authentification"))
                 .addTagsItem(new Tag().name("Administration"))
-                .addTagsItem(new Tag().name("Administration - Utilisateurs"))
-                .addTagsItem(new Tag().name("Administration - Délais"))
                 .addTagsItem(new Tag().name("Copropriétaire"))
                 .addTagsItem(new Tag().name("Copropriétaire - Dashboard"))
                 .addTagsItem(new Tag().name("Copropriétaire - Charges"))

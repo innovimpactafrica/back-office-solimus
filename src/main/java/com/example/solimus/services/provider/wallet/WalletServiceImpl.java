@@ -7,13 +7,15 @@ import com.example.solimus.dtos.provider.wallet.WalletTransactionDTO;
 import com.example.solimus.entities.PaymentProvider;
 import com.example.solimus.entities.User;
 import com.example.solimus.entities.ProviderWallet;
+import com.example.solimus.entities.ProviderWalletTransaction;
 import com.example.solimus.entities.ProviderWithdrawalRequest;
 import com.example.solimus.enums.PaymentStatus;
+import com.example.solimus.enums.ProviderWalletTransactionCategory;
 import com.example.solimus.enums.TransactionType;
 import com.example.solimus.enums.WithdrawalStatus;
 import com.example.solimus.exceptions.BadRequestException;
-import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.PaymentRepository;
+import com.example.solimus.repositories.ProviderWalletTransactionRepository;
 import com.example.solimus.repositories.UserRepository;
 import com.example.solimus.repositories.ProviderWalletRepository;
 import com.example.solimus.repositories.WithdrawalRequestRepository;
@@ -29,7 +31,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -39,6 +41,8 @@ import java.util.List;
 public class WalletServiceImpl implements WalletService {
 
     private final ProviderWalletRepository walletRepository;
+    private final ProviderWalletTransactionRepository walletTransactionRepository;
+    private final WalletBalanceService walletBalanceService;
     private final UserRepository userRepository;
     private final PaymentRepository paymentRepository;
     private final WithdrawalRequestRepository withdrawalRequestRepository;
@@ -55,26 +59,20 @@ public class WalletServiceImpl implements WalletService {
         // 1. Récupérer l'utilisateur connecté (prestataire)
         User currentProvider = getCurrentUser();
 
-        // 2. Récupérer le wallet ou en créer un si inexistant
-        ProviderWallet wallet = walletRepository.findByProviderId(currentProvider.getId())
-                .orElseGet(() -> {
-                    ProviderWallet newWallet = ProviderWallet.builder()
-                            .provider(currentProvider) // Prestataire propriétaire du wallet
-                            .availableBalance(BigDecimal.ZERO) // Solde disponible initialisé à 0
-                            .pendingBalance(BigDecimal.ZERO) // Solde en attente initialisé à 0
-                            .totalThisMonth(BigDecimal.ZERO) // Total reçu ce mois initialisé à 0
-                            .build();
-                    return walletRepository.save(newWallet);
-                });
+        // 2. Récupérer le wallet ou en créer un si inexistant (plus de soldes à initialiser : ils
+        // sont désormais toujours recalculés à la volée, jamais stockés)
+        walletRepository.findByProviderId(currentProvider.getId())
+                .orElseGet(() -> walletRepository.save(
+                        ProviderWallet.builder().provider(currentProvider).build()));
 
         // 3. Récupérer les transactions avec pagination
         Page<WalletTransactionDTO> transactions = getTransactions(currentProvider.getId(), page, size);
 
-        // 4. Construire et retourner le DTO
+        // 4. Construire et retourner le DTO — soldes recalculés à la volée (jamais stockés)
         return WalletDTO.builder()
-                .availableBalance(wallet.getAvailableBalance()) // Solde disponible du prestataire
-                .pendingBalance(wallet.getPendingBalance()) // Solde en attente de validation
-                .totalThisMonth(wallet.getTotalThisMonth()) // Total reçu ce mois
+                .availableBalance(walletBalanceService.getCurrentBalance(currentProvider.getId()))
+                .pendingBalance(walletBalanceService.getPendingBalance(currentProvider.getId()))
+                .totalThisMonth(walletBalanceService.getTotalThisMonth(currentProvider.getId()))
                 .transactions(transactions)
                 .build();
     }
@@ -91,27 +89,16 @@ public class WalletServiceImpl implements WalletService {
         ProviderWallet wallet = walletRepository.findByProviderId(providerId)
                 .orElseGet(() -> walletRepository.save(createWallet(providerId)));
 
-        // Créditer le solde disponible
-        wallet.setAvailableBalance(wallet.getAvailableBalance().add(amount));
-
-        // Mettre à jour le total reçu ce mois (vérifier si on est dans le même mois que la dernière mise à jour)
-        LocalDate today = LocalDate.now(); // Date actuelle
-        LocalDate walletUpdatedAt = wallet.getUpdatedAt() != null // Récupérer la date de dernière mise à jour du wallet
-                ? wallet.getUpdatedAt().toLocalDate()
-                : null;
-
-        // Vérifier si le wallet n'a jamais été mis à jour ou si on a changé de mois/année
-        if (walletUpdatedAt == null ||
-            walletUpdatedAt.getMonth() != today.getMonth() || // Mois différent
-            walletUpdatedAt.getYear() != today.getYear()) { // Année différente
-            // Nouveau mois : réinitialiser avec le montant actuel
-            wallet.setTotalThisMonth(amount);
-        } else {
-            // Même mois : ajouter au cumul existant
-            wallet.setTotalThisMonth(wallet.getTotalThisMonth().add(amount));
-        }
-
-        walletRepository.save(wallet);
+        // Enregistre le crédit dans le grand livre — le solde disponible et le "total ce mois" sont
+        // désormais toujours recalculés à la volée à partir de ces lignes, plus besoin de gérer
+        // manuellement un changement de mois ici
+        ProviderWalletTransaction transaction = new ProviderWalletTransaction();
+        transaction.setWallet(wallet);
+        transaction.setCategory(ProviderWalletTransactionCategory.INTERVENTION_PAYMENT);
+        transaction.setAmount(amount);
+        transaction.setLabel("Paiement intervention");
+        transaction.setTransactionDate(LocalDateTime.now());
+        walletTransactionRepository.save(transaction);
     }
 
     // =========================================================================
@@ -123,14 +110,16 @@ public class WalletServiceImpl implements WalletService {
     public WithdrawalRequestDTO requestWithdrawal(RequestWithdrawalDTO dto) {
         User currentProvider = getCurrentUser();
 
-        // Récupérer le wallet du prestataire
-        ProviderWallet wallet = walletRepository.findByProviderId(currentProvider.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Wallet introuvable"));
+        // Récupérer le wallet du prestataire, ou le créer s'il n'existe pas encore (même logique
+        // que getMyWallet/creditWallet)
+        walletRepository.findByProviderId(currentProvider.getId())
+                .orElseGet(() -> walletRepository.save(createWallet(currentProvider.getId())));
 
-        // 1. Vérifier que le solde est suffisant
-        if (dto.getAmount().compareTo(wallet.getAvailableBalance()) > 0) {
+        // 1. Vérifier que le solde disponible (recalculé à la volée) est suffisant
+        BigDecimal availableBalance = walletBalanceService.getCurrentBalance(currentProvider.getId());
+        if (dto.getAmount().compareTo(availableBalance) > 0) {
             throw new BadRequestException(
-                    "Solde insuffisant. Disponible : " + wallet.getAvailableBalance() + " FCFA");
+                    "Solde insuffisant. Disponible : " + availableBalance + " FCFA");
         }
 
         // 2. Créer la demande de versement (retrait)
@@ -145,12 +134,7 @@ public class WalletServiceImpl implements WalletService {
 
         withdrawalRequestRepository.save(retrait);
 
-        // 3. Déduire immédiatement du solde disponible (Son wallet) et mettre le montant en attente
-        wallet.setAvailableBalance(wallet.getAvailableBalance().subtract(dto.getAmount()));
-        wallet.setPendingBalance(wallet.getPendingBalance().add(dto.getAmount()));
-        walletRepository.save(wallet);
-
-        // 4. Notifier le prestataire (push + email) si notifications activées
+        // 3. Notifier le prestataire (push + email) si notifications activées
         if (currentProvider.isNotificationsEnabled()) {
             // Notification push
             notificationService.sendPush(
@@ -188,9 +172,6 @@ public class WalletServiceImpl implements WalletService {
                 .orElseThrow(() -> new RuntimeException("Prestataire introuvable"));
         return ProviderWallet.builder()
                 .provider(provider)
-                .availableBalance(BigDecimal.ZERO)
-                .pendingBalance(BigDecimal.ZERO)
-                .totalThisMonth(BigDecimal.ZERO)
                 .build();
     }
 

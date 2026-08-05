@@ -1,5 +1,6 @@
 package com.example.solimus.services.syndic.settings;
 
+import com.example.solimus.dtos.syndic.settings.EstimatedDelayDTO;
 import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
 import com.example.solimus.dtos.owner.dashboard.NotificationRowDTO;
 import com.example.solimus.dtos.syndic.settings.*;
@@ -37,6 +38,7 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     private final SpecialtyRepository specialtyRepository;
     private final PropertyTypeRepository propertyTypeRepository;
     private final SecurityFeatureRepository securityFeatureRepository;
+    private final EstimatedDelayRepository estimatedDelayRepository;
     private final ResidenceRepository residenceRepository;
     private final SyndicFinancialSettingsRepository syndicFinancialSettingsRepository;
     private final UserRepository userRepository;
@@ -365,6 +367,43 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
 
         securityFeatureRepository.delete(securityFeature);
         log.info("Option de sécurité supprimée : id={}", id);
+    }
+
+    // =========================================================================
+    // DÉLAIS ESTIMÉS
+    // =========================================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<EstimatedDelayDTO> getAllEstimatedDelays() {
+        return estimatedDelayRepository.findAll().stream()
+                .map(d -> new EstimatedDelayDTO(d.getId(), d.getLabel(), d.getDays()))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public EstimatedDelayDTO createEstimatedDelay(String label, Integer days) {
+        if (estimatedDelayRepository.existsByLabelIgnoreCase(label)) {
+            throw new BadRequestException("Un délai estimé avec ce label existe déjà");
+        }
+
+        EstimatedDelay delay = EstimatedDelay.builder()
+                .label(label)
+                .days(days)
+                .build();
+        EstimatedDelay saved = estimatedDelayRepository.save(delay);
+        log.info("Délai estimé créé : {}", saved.getLabel());
+        return new EstimatedDelayDTO(saved.getId(), saved.getLabel(), saved.getDays());
+    }
+
+    @Override
+    @Transactional
+    public void deleteEstimatedDelay(Long id) {
+        EstimatedDelay delay = estimatedDelayRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Délai estimé introuvable"));
+        estimatedDelayRepository.delete(delay);
+        log.info("Délai estimé supprimé : id={}", id);
     }
 
     // =========================================================================

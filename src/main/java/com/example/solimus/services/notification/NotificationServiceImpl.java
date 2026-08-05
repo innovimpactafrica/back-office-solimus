@@ -74,6 +74,35 @@ public class NotificationServiceImpl implements NotificationService{
         }
     }
 
+    @Override
+    public void sendPushOnly(Long userId, String title, String body) {
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
+
+        // Pas de token FCM enregistré : rien à envoyer, et surtout aucune écriture en base ici
+        if (user.getFcmToken() == null) {
+            return;
+        }
+
+        //Sinon,  Construit et envoie le push Firebase (classe Notification de Firebase, différente de la nôtre)
+        com.google.firebase.messaging.Notification firebaseNotification = com.google.firebase.messaging.Notification.builder()
+                .setTitle(title)
+                .setBody(body)
+                .build();
+
+        Message message = Message.builder()
+                .setToken(user.getFcmToken())
+                .setNotification(firebaseNotification)
+                .build();
+
+        try {
+            FirebaseMessaging.getInstance().send(message);
+        } catch (Exception e) {
+            System.err.println("Erreur envoi push (sendPushOnly) userId=" + userId + " : " + e.getMessage());
+        }
+    }
+
     // =========================================================================
     // Envoie un push "Nouveau paiement" au syndic, si sa préférence est activée
     // =========================================================================

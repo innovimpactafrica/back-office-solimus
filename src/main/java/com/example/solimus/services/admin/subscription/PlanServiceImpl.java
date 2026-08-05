@@ -548,8 +548,13 @@ public class PlanServiceImpl implements PlanService {
         long toRenewSubscriptions = providerSubscriptionRepository.countToRenewSoon(now, in7Days)
                 + syndicSubscriptionRepository.countToRenewSoon(now, in7Days);
 
-        BigDecimal monthlyRevenue = providerSubscriptionRepository.sumAmountPaidInPeriod(startOfMonth, now)
-                .add(syndicSubscriptionRepository.sumAmountPaidInPeriod(startOfMonth, now));
+        // Seuls les paiements réellement validés comptent comme revenu (amountPaid est déjà renseigné
+        // dès l'initiation, avant confirmation — sans ce filtre les tentatives PENDING/FAILED seraient
+        // comptées à tort)
+        BigDecimal monthlyRevenue = providerSubscriptionRepository
+                .sumAmountPaidByPaymentStatusAndCreatedAtBetween(PaymentStatus.COMPLETED, startOfMonth, now)
+                .add(syndicSubscriptionRepository
+                        .sumAmountPaidByPaymentStatusAndCreatedAtBetween(PaymentStatus.COMPLETED, startOfMonth, now));
 
         long renewedTotal = providerSubscriptionRepository.countRenewedInPeriod(last30Days, now)
                 + syndicSubscriptionRepository.countRenewedInPeriod(last30Days, now);

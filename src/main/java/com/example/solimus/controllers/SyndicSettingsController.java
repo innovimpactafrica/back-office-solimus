@@ -1,5 +1,6 @@
 package com.example.solimus.controllers;
 
+import com.example.solimus.dtos.syndic.settings.EstimatedDelayDTO;
 import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
 import com.example.solimus.dtos.syndic.settings.*;
 import com.example.solimus.dtos.syndic.subscription.InitiateSyndicPlanChangeDTO;
@@ -7,16 +8,15 @@ import com.example.solimus.dtos.syndic.subscription.MySyndicSubscriptionDTO;
 import com.example.solimus.dtos.syndic.subscription.SyndicPlanChangeResponseDTO;
 import com.example.solimus.dtos.syndic.subscription.SyndicPlanOptionDTO;
 import com.example.solimus.dtos.syndic.subscription.SyndicSubscriptionHistoryDTO;
-import com.example.solimus.enums.FacilityCategory;
 import com.example.solimus.services.syndic.settings.SyndicSettingsService;
 import com.example.solimus.services.syndic.subscription.SyndicSubscriptionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -185,6 +185,29 @@ public class SyndicSettingsController {
     @DeleteMapping("/security-features/{id}")
     public ResponseEntity<Void> deleteSecurityFeature(@PathVariable Long id) {
         syndicSettingsService.deleteSecurityFeature(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ===== DÉLAIS ESTIMÉS =====
+
+    @Operation(summary = "Lister tous les délais estimés")
+    @GetMapping("/estimated-delays")
+    public ResponseEntity<List<EstimatedDelayDTO>> getAllEstimatedDelays() {
+        return ResponseEntity.ok(syndicSettingsService.getAllEstimatedDelays());
+    }
+
+    @Operation(summary = "Ajouter un nouveau délai estimé")
+    @PostMapping("/estimated-delays")
+    public ResponseEntity<EstimatedDelayDTO> createEstimatedDelay(
+            @RequestParam String label,
+            @RequestParam Integer days) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(syndicSettingsService.createEstimatedDelay(label, days));
+    }
+
+    @Operation(summary = "Supprimer un délai estimé")
+    @DeleteMapping("/estimated-delays/{id}")
+    public ResponseEntity<Void> deleteEstimatedDelay(@PathVariable Long id) {
+        syndicSettingsService.deleteEstimatedDelay(id);
         return ResponseEntity.noContent().build();
     }
 

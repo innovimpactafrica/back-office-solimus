@@ -78,4 +78,21 @@ public class SyndicWithdrawalRequest {
     // Date de traitement (rempli quand le statut change)
     @Column(name = "processed_at")
     private LocalDateTime processedAt;
+
+    // Admin qui a traité la demande
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "processed_by_id")
+    private User processedBy;
+
+    // Commentaire ajouté par l'admin lors de la validation
+    @Column(name = "admin_comment", columnDefinition = "TEXT")
+    private String adminComment;
+
+    // Reçu de paiement uploadé par l'admin
+    @Column(name = "receipt_url", length = 500)
+    private String receiptUrl;
+
+    // Motif de refus en cas de refus
+    @Column(name = "motif_refus", length = 500)
+    private String motifRefus;
 }

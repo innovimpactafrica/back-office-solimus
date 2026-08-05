@@ -113,4 +113,83 @@ public interface SubscriberRepository extends JpaRepository<SyndicSubscription, 
                                        @Param("status") String status,
                                        @Param("subscriberType") String subscriberType,
                                        Pageable pageable);
+
+    // =========================================================================
+    // ADMIN — FINANCES : Transactions Récentes
+    // =========================================================================
+    // Fusionne TOUTES les tentatives de paiement (Syndic + Prestataire), pas seulement la plus
+    // récente par abonné (contrairement à searchSubscribers) — chaque ligne est une transaction
+    // distincte, triée de la plus récente à la plus ancienne.
+    @Query(
+        value =
+                "WITH syndic_tx AS (" +
+                "  SELECT ss.transaction_ref AS reference, " +
+                "         CONVERT(COALESCE(spr.company_name, CONCAT(u.first_name, ' ', u.last_name)) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_name, " +
+                "         CONVERT('SYNDIC' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS type, " +
+                "         CONVERT(sp.name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS plan_name, " +
+                "         ss.amount_paid AS amount, " +
+                "         CONVERT(ss.payment_method USING utf8mb4) COLLATE utf8mb4_unicode_ci AS payment_method, " +
+                "         CONVERT(ss.payment_status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
+                "         ss.created_at AS created_at " +
+                "  FROM syndic_subscriptions ss " +
+                "  JOIN users u ON u.id = ss.syndic_id " +
+                "  JOIN syndic_plan sp ON sp.id = ss.syndic_plan_id " +
+                "  LEFT JOIN syndic_profiles spr ON spr.user_id = u.id " +
+                "), " +
+                "provider_tx AS (" +
+                "  SELECT s.transaction_ref AS reference, " +
+                "         CONVERT(COALESCE(ppr.company_name, CONCAT(u.first_name, ' ', u.last_name)) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_name, " +
+                "         CONVERT('PRESTATAIRE' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS type, " +
+                "         CONVERT(pp.name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS plan_name, " +
+                "         s.amount_paid AS amount, " +
+                "         CONVERT(s.payment_method USING utf8mb4) COLLATE utf8mb4_unicode_ci AS payment_method, " +
+                "         CONVERT(s.payment_status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
+                "         s.created_at AS created_at " +
+                "  FROM subscriptions s " +
+                "  JOIN users u ON u.id = s.provider_id " +
+                "  JOIN provider_plan pp ON pp.id = s.provider_plan_id " +
+                "  LEFT JOIN provider_profiles ppr ON ppr.user_id = u.id " +
+                ") " +
+                "SELECT reference, client_name, type, plan_name, amount, payment_method, status, created_at " +
+                "FROM (" +
+                "  SELECT * FROM syndic_tx" +
+                "  UNION ALL " +
+                "  SELECT * FROM provider_tx" +
+                ") combined " +
+                "WHERE (:type IS NULL OR type = :type) " +
+                "AND (:planName IS NULL OR plan_name = :planName) " +
+                "AND (:status IS NULL OR status = :status) " +
+                "ORDER BY created_at DESC",
+
+        countQuery =
+                "WITH syndic_tx AS (" +
+                "  SELECT CONVERT('SYNDIC' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS type, " +
+                "         CONVERT(sp.name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS plan_name, " +
+                "         CONVERT(ss.payment_status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status " +
+                "  FROM syndic_subscriptions ss " +
+                "  JOIN syndic_plan sp ON sp.id = ss.syndic_plan_id " +
+                "), " +
+                "provider_tx AS (" +
+                "  SELECT CONVERT('PRESTATAIRE' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS type, " +
+                "         CONVERT(pp.name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS plan_name, " +
+                "         CONVERT(s.payment_status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status " +
+                "  FROM subscriptions s " +
+                "  JOIN provider_plan pp ON pp.id = s.provider_plan_id " +
+                ") " +
+                "SELECT COUNT(*) FROM (" +
+                "  SELECT * FROM syndic_tx" +
+                "  UNION ALL " +
+                "  SELECT * FROM provider_tx" +
+                ") combined " +
+                "WHERE (:type IS NULL OR type = :type) " +
+                "AND (:planName IS NULL OR plan_name = :planName) " +
+                "AND (:status IS NULL OR status = :status)",
+
+        // Requête SQL brute (pas du JPQL) car UNION n'est pas supporté par Hibernate
+        nativeQuery = true
+    )
+    Page<Object[]> searchTransactions(@Param("type") String type,
+                                       @Param("planName") String planName,
+                                       @Param("status") String status,
+                                       Pageable pageable);
 }

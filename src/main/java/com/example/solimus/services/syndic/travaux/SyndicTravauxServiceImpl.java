@@ -17,6 +17,7 @@ import com.example.solimus.enums.IncidentLocationType;
 import com.example.solimus.enums.InitiatedBy;
 import com.example.solimus.enums.InterventionManagementMode;
 import com.example.solimus.enums.InterventionStatus;
+import com.example.solimus.enums.ProviderWalletTransactionCategory;
 import com.example.solimus.enums.QuoteStatus;
 import com.example.solimus.enums.WalletTransactionCategory;
 import com.example.solimus.exceptions.BadRequestException;
@@ -66,6 +67,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     private final SyndicWalletRepository syndicWalletRepository;
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
     private final ProviderWalletRepository providerWalletRepository;
+    private final ProviderWalletTransactionRepository providerWalletTransactionRepository;
     private final PaymentRepository paymentRepository;
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
 
@@ -525,13 +527,19 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         transaction.setTransactionDate(LocalDateTime.now());
         syndicWalletTransactionRepository.save(transaction);
 
-        // Crédite le wallet du prestataire avec ce même montant
+        // Crédite le wallet du prestataire avec ce même montant — enregistré dans son grand livre,
+        // le solde n'est plus jamais stocké directement sur ProviderWallet
         ProviderWallet providerWallet = providerWalletRepository.findByProviderId(request.getSelectedProvider().getId())
                 .orElseThrow(() -> new BadRequestException("Le prestataire n'a pas de wallet"));
 
-        providerWallet.setAvailableBalance(providerWallet.getAvailableBalance().add(dto.getMontant()));
-        providerWallet.setTotalThisMonth(providerWallet.getTotalThisMonth().add(dto.getMontant()));
-        providerWalletRepository.save(providerWallet);
+        ProviderWalletTransaction providerTransaction = new ProviderWalletTransaction();
+        providerTransaction.setWallet(providerWallet);
+        providerTransaction.setCategory(ProviderWalletTransactionCategory.TRAVAUX);
+        providerTransaction.setAmount(dto.getMontant());
+        providerTransaction.setLabel("Acompte — " + request.getTitle());
+        providerTransaction.setInterventionRequest(request);
+        providerTransaction.setTransactionDate(LocalDateTime.now());
+        providerWalletTransactionRepository.save(providerTransaction);
 
         // Met à jour l'intervention (depositAmount, remainingAmount recalculé automatiquement via @PrePersist/@PreUpdate)
         request.setDepositAmount(dto.getMontant());
@@ -651,14 +659,18 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         transaction.setTransactionDate(LocalDateTime.now());
         syndicWalletTransactionRepository.save(transaction);
 
-        // ⬇️ AJOUT — Crédite le wallet du prestataire avec le solde final
+        // Crédite le wallet du prestataire avec le solde final — enregistré dans son grand livre
         ProviderWallet providerWallet = providerWalletRepository.findByProviderId(request.getSelectedProvider().getId())
                 .orElseThrow(() -> new BadRequestException("Le prestataire n'a pas de wallet"));
 
-        providerWallet.setAvailableBalance(providerWallet.getAvailableBalance().add(solde));
-        providerWallet.setTotalThisMonth(providerWallet.getTotalThisMonth().add(solde));
-        providerWalletRepository.save(providerWallet);
-        // ⬆️ FIN DE L'AJOUT
+        ProviderWalletTransaction providerTransaction = new ProviderWalletTransaction();
+        providerTransaction.setWallet(providerWallet);
+        providerTransaction.setCategory(ProviderWalletTransactionCategory.TRAVAUX);
+        providerTransaction.setAmount(solde);
+        providerTransaction.setLabel("Solde final — " + request.getTitle());
+        providerTransaction.setInterventionRequest(request);
+        providerTransaction.setTransactionDate(LocalDateTime.now());
+        providerWalletTransactionRepository.save(providerTransaction);
 
         // Met à jour le montant payé et clôture l'intervention
         request.setDepositAmount(request.getTotalAmount()); // tout est désormais payé

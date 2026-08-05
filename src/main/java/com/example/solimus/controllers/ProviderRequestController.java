@@ -1,6 +1,6 @@
 package com.example.solimus.controllers;
 
-import com.example.solimus.dtos.admin.EstimatedDelayDTO;
+import com.example.solimus.dtos.syndic.settings.EstimatedDelayDTO;
 import com.example.solimus.dtos.provider.request.CreateQuoteDTO;
 import com.example.solimus.dtos.provider.request.ProviderRequestDetailDTO;
 import com.example.solimus.dtos.provider.request.ProviderRequestsDTO;

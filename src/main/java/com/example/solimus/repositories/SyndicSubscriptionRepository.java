@@ -94,10 +94,14 @@ public interface SyndicSubscriptionRepository extends JpaRepository<SyndicSubscr
            "AND s.endDate BETWEEN :now AND :limit")
     long countToRenewSoon(@Param("now") LocalDateTime now, @Param("limit") LocalDateTime limit);
 
-    // Somme des montants payés sur une période donnée
+    // Somme des montants des paiements réellement validés (COMPLETED) sur une période donnée —
+    // amountPaid est renseigné dès l'initiation du paiement (avant confirmation), donc ce filtre sur
+    // paymentStatus est indispensable pour ne pas compter les tentatives PENDING/FAILED comme du revenu
     @Query("SELECT COALESCE(SUM(s.amountPaid), 0) FROM SyndicSubscription s " +
-           "WHERE s.createdAt BETWEEN :start AND :end")
-    BigDecimal sumAmountPaidInPeriod(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+           "WHERE s.paymentStatus = :status AND s.createdAt BETWEEN :start AND :end")
+    BigDecimal sumAmountPaidByPaymentStatusAndCreatedAtBetween(@Param("status") PaymentStatus status,
+                                                                @Param("start") LocalDateTime start,
+                                                                @Param("end") LocalDateTime end);
 
     // Nombre d'abonnements arrivés à échéance sur une période
     @Query("SELECT COUNT(s) FROM SyndicSubscription s WHERE s.endDate BETWEEN :start AND :end")
@@ -138,4 +142,24 @@ public interface SyndicSubscriptionRepository extends JpaRepository<SyndicSubscr
     // Vérifie si ce syndic avait déjà un abonnement avant celui-ci — permet de distinguer une
     // souscription initiale ("Nouveau syndic enregistré") d'un renouvellement ("Abonnement renouvelé")
     boolean existsBySyndicIdAndCreatedAtBefore(Long syndicId, LocalDateTime before);
+
+    // ============================================================
+    // ADMIN — FINANCES
+    // ============================================================
+
+    // Compte les paiements ayant ce statut, créés dans une période donnée — "Paiements reçus" du mois
+    long countByPaymentStatusAndCreatedAtBetween(PaymentStatus paymentStatus, LocalDateTime start, LocalDateTime end);
+
+    // Compte tous les paiements ayant ce statut, sans limite de période — "Paiements en attente"
+    long countByPaymentStatus(PaymentStatus paymentStatus);
+
+    // Somme des montants des paiements ayant ce statut, sans limite de période
+    @Query("SELECT COALESCE(SUM(s.amountPaid), 0) FROM SyndicSubscription s WHERE s.paymentStatus = :status")
+    BigDecimal sumAmountPaidByPaymentStatus(@Param("status") PaymentStatus status);
+
+    // Somme de tous les paiements validés (COMPLETED) d'une formule précise, depuis toujours —
+    // "Répartition des revenus par formule" (cumul total, jamais restreint à une période)
+    @Query("SELECT COALESCE(SUM(s.amountPaid), 0) FROM SyndicSubscription s " +
+           "WHERE s.syndicPlan.id = :planId AND s.paymentStatus = 'COMPLETED'")
+    BigDecimal sumAmountPaidByPlanId(@Param("planId") Long planId);
 }

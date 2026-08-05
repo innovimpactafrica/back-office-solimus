@@ -1,8 +1,8 @@
 package com.example.solimus.services.syndic.settings;
 
+import com.example.solimus.dtos.syndic.settings.EstimatedDelayDTO;
 import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
 import com.example.solimus.dtos.syndic.settings.*;
-import com.example.solimus.enums.FacilityCategory;
 import org.springframework.data.domain.Page;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -53,6 +53,15 @@ public interface SyndicSettingsService {
     void updateSecurityFeature(Long id, String label, String description, Boolean isActive, MultipartFile icon);
 
     void deleteSecurityFeature(Long id);
+
+    //--------------------------------------------------
+    // ===== DÉLAIS ESTIMÉS =====
+    //--------------------------------------------------
+    List<EstimatedDelayDTO> getAllEstimatedDelays();
+
+    EstimatedDelayDTO createEstimatedDelay(String label, Integer days);
+
+    void deleteEstimatedDelay(Long id);
 
     //--------------------------------------------------
     // ===== Paramètres financiers =====

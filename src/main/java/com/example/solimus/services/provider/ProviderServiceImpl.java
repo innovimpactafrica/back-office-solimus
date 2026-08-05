@@ -11,19 +11,12 @@ import com.example.solimus.entities.*;
 import com.example.solimus.enums.InterventionStatus;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
-import com.example.solimus.repositories.EstimatedDelayRepository;
-import com.example.solimus.repositories.InterventionCommentRepository;
-import com.example.solimus.repositories.InterventionRequestRepository;
-import com.example.solimus.repositories.NotificationRepository;
-import com.example.solimus.repositories.QuoteRepository;
-import com.example.solimus.repositories.UserRepository;
-import com.example.solimus.repositories.ProviderWalletRepository;
-import com.example.solimus.repositories.WithdrawalRequestRepository;
-import com.example.solimus.repositories.PaymentRepository;
+import com.example.solimus.repositories.*;
 import com.example.solimus.enums.TransactionType;
 import com.example.solimus.enums.WithdrawalStatus;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.services.minio.MinioService;
+import com.example.solimus.services.provider.wallet.WalletBalanceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -57,11 +50,11 @@ public class ProviderServiceImpl implements ProviderService {
     private final EstimatedDelayRepository estimatedDelayRepository;
     private final InterventionCommentRepository commentRepository;
     private final MinioService minioService;
-    private final ProviderWalletRepository walletRepository;
+    private final WalletBalanceService walletBalanceService;
     private final WithdrawalRequestRepository withdrawalRequestRepository;
     private final PaymentRepository paymentRepository;
     private final PasswordEncoder passwordEncoder;
-    private final com.example.solimus.repositories.ProviderProfileRepository providerProfileRepository;
+    private final ProviderProfileRepository providerProfileRepository;
     private final NotificationRepository notificationRepository;
 
 
@@ -140,12 +133,9 @@ public class ProviderServiceImpl implements ProviderService {
         // Étape 6 : Calculer la performance hebdomadaire (7 jours glissants)
         List<DailyRevenueDTO> performanceHebdo = buildPerformanceHebdo(providerId);
 
-        // Étape 7 : Calculer les statistiques globales du portefeuille (Wallet)
-        ProviderWallet wallet = walletRepository.findByProviderId(providerId)
-                .orElse(null);
-
-        // Solde disponible actuel du prestataire
-        BigDecimal totalRevenu = wallet != null ? wallet.getAvailableBalance() : BigDecimal.ZERO;
+        // Étape 7 : Calculer les statistiques globales du portefeuille (Wallet) — solde recalculé à
+        // la volée à partir du grand livre (ProviderWalletTransaction), jamais stocké
+        BigDecimal totalRevenu = walletBalanceService.getCurrentBalance(providerId);
 
         // Somme de tous les revenus journaliers récoltés de la liste des 7 derniers jours glissants
         BigDecimal totalSemaine = performanceHebdo.stream()

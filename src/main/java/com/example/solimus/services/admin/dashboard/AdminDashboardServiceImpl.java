@@ -75,16 +75,14 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
         long expiredSubscriptions = syndicSubscriptionRepository.countCurrentlyExpiredWithoutRenewal()
                 + providerSubscriptionRepository.countCurrentlyExpiredWithoutRenewal();
 
-        // Revenus du mois + évolution vs le mois précédent complet
-        BigDecimal monthlyRevenue = syndicSubscriptionRepository.sumAmountPaidInPeriod(startOfMonth, now)
-                .add(providerSubscriptionRepository.sumAmountPaidInPeriod(startOfMonth, now));
-        BigDecimal previousMonthRevenue = syndicSubscriptionRepository.sumAmountPaidInPeriod(startOfPreviousMonth, startOfMonth)
-                .add(providerSubscriptionRepository.sumAmountPaidInPeriod(startOfPreviousMonth, startOfMonth));
+        // Revenus du mois + évolution vs le mois précédent complet — seuls les paiements réellement
+        // validés comptent (amountPaid est renseigné dès l'initiation, avant confirmation)
+        BigDecimal monthlyRevenue = sumValidatedRevenueInPeriod(startOfMonth, now);
+        BigDecimal previousMonthRevenue = sumValidatedRevenueInPeriod(startOfPreviousMonth, startOfMonth);
         Double monthlyRevenueVariation = calculateRevenueVariation(monthlyRevenue, previousMonthRevenue);
 
         // Revenus annuels + prévision de fin d'année au rythme actuel
-        BigDecimal annualRevenue = syndicSubscriptionRepository.sumAmountPaidInPeriod(startOfYear, now)
-                .add(providerSubscriptionRepository.sumAmountPaidInPeriod(startOfYear, now));
+        BigDecimal annualRevenue = sumValidatedRevenueInPeriod(startOfYear, now);
         int monthsElapsed = now.getMonthValue();
         BigDecimal annualForecast = annualRevenue.compareTo(BigDecimal.ZERO) > 0
                 ? annualRevenue.divide(BigDecimal.valueOf(monthsElapsed), 2, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(12))
@@ -122,8 +120,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
             LocalDateTime start = LocalDateTime.of(targetYear, month, 1, 0, 0);
             LocalDateTime end = start.plusMonths(1);
 
-            BigDecimal amount = syndicSubscriptionRepository.sumAmountPaidInPeriod(start, end)
-                    .add(providerSubscriptionRepository.sumAmountPaidInPeriod(start, end));
+            BigDecimal amount = sumValidatedRevenueInPeriod(start, end);
 
             result.add(MonthlyRevenueDTO.builder()
                     .month(month)
@@ -300,6 +297,13 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     // ============================================================================
     // BLOC — MÉTHODES UTILITAIRES
     // ============================================================================
+
+    // Somme des paiements réellement validés (Syndic + Prestataire) sur une période — jamais les
+    // tentatives PENDING/FAILED, qui ne sont pas du revenu réel
+    private BigDecimal sumValidatedRevenueInPeriod(LocalDateTime start, LocalDateTime end) {
+        return syndicSubscriptionRepository.sumAmountPaidByPaymentStatusAndCreatedAtBetween(PaymentStatus.COMPLETED, start, end)
+                .add(providerSubscriptionRepository.sumAmountPaidByPaymentStatusAndCreatedAtBetween(PaymentStatus.COMPLETED, start, end));
+    }
 
     // Calcule une variation en pourcentage, 0% si la valeur précédente est nulle (jamais de division par zéro)
     private Double calculateRevenueVariation(BigDecimal current, BigDecimal previous) {

@@ -89,10 +89,14 @@ public interface ProviderSubscriptionRepository extends JpaRepository<ProviderSu
            "AND s.endDate BETWEEN :now AND :limit")
     long countToRenewSoon(@Param("now") LocalDateTime now, @Param("limit") LocalDateTime limit);
 
-    // Somme des montants payés sur une période donnée
+    // Somme des montants des paiements réellement validés (COMPLETED) sur une période donnée —
+    // amountPaid est renseigné dès l'initiation du paiement (avant confirmation), donc ce filtre sur
+    // paymentStatus est indispensable pour ne pas compter les tentatives PENDING/FAILED comme du revenu
     @Query("SELECT COALESCE(SUM(s.amountPaid), 0) FROM ProviderSubscription s " +
-           "WHERE s.createdAt BETWEEN :start AND :end")
-    java.math.BigDecimal sumAmountPaidInPeriod(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+           "WHERE s.paymentStatus = :status AND s.createdAt BETWEEN :start AND :end")
+    java.math.BigDecimal sumAmountPaidByPaymentStatusAndCreatedAtBetween(@Param("status") PaymentStatus status,
+                                                                          @Param("start") LocalDateTime start,
+                                                                          @Param("end") LocalDateTime end);
 
     // Somme de tous les montants payés, sans limite de période — "Revenus" du dashboard Admin > Prestataires
     @Query("SELECT COALESCE(SUM(s.amountPaid), 0) FROM ProviderSubscription s")
@@ -137,4 +141,24 @@ public interface ProviderSubscriptionRepository extends JpaRepository<ProviderSu
     // Vérifie si ce prestataire avait déjà un abonnement avant celui-ci — permet de distinguer une
     // souscription initiale d'un renouvellement
     boolean existsByProviderIdAndCreatedAtBefore(Long providerId, LocalDateTime before);
+
+    // ============================================================
+    // ADMIN — FINANCES
+    // ============================================================
+
+    // Compte les paiements ayant ce statut, créés dans une période donnée — "Paiements reçus" du mois
+    long countByPaymentStatusAndCreatedAtBetween(PaymentStatus paymentStatus, LocalDateTime start, LocalDateTime end);
+
+    // Compte tous les paiements ayant ce statut, sans limite de période — "Paiements en attente"
+    long countByPaymentStatus(PaymentStatus paymentStatus);
+
+    // Somme des montants des paiements ayant ce statut, sans limite de période
+    @Query("SELECT COALESCE(SUM(s.amountPaid), 0) FROM ProviderSubscription s WHERE s.paymentStatus = :status")
+    java.math.BigDecimal sumAmountPaidByPaymentStatus(@Param("status") PaymentStatus status);
+
+    // Somme de tous les paiements validés (COMPLETED) d'une formule précise, depuis toujours —
+    // "Répartition des revenus par formule" (cumul total, jamais restreint à une période)
+    @Query("SELECT COALESCE(SUM(s.amountPaid), 0) FROM ProviderSubscription s " +
+           "WHERE s.providerPlan.id = :planId AND s.paymentStatus = 'COMPLETED'")
+    java.math.BigDecimal sumAmountPaidByPlanId(@Param("planId") Long planId);
 }

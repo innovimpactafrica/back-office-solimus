@@ -1,4 +1,4 @@
-package com.example.solimus.dtos.admin;
+package com.example.solimus.dtos.syndic.settings;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
