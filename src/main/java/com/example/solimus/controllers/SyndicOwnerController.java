@@ -84,7 +84,7 @@ public class SyndicOwnerController {
                 .build();
 
         syndicOwnerService.addCoOwner(dto, photo);
-        return ResponseEntity.ok("Copropriétaire ajouté avec succès. Un code d'activation lui a été envoyé par email.");
+        return ResponseEntity.ok("Copropriétaire ajouté avec succès. Ses identifiants lui sont envoyés par mail.");
     }
 
     @Operation(summary = "Lister les biens disponibles (VACANT) d'une résidence", tags = {"Syndic - Copropriétaires"})

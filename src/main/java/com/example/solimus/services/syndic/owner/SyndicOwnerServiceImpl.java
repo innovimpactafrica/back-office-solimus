@@ -17,6 +17,7 @@ import com.example.solimus.repositories.*;
 
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.minio.MinioService;
+import com.example.solimus.services.shared.StatusRecalculationService;
 import com.example.solimus.utils.PasswordGeneratorUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -67,6 +68,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
     private final MeetingDocumentRepository meetingDocumentRepository;
     private final ActivityLogRepository activityLogRepository;
     private final CoOwnerDocumentUnifiedRepository coOwnerDocumentUnifiedRepository;
+    private final StatusRecalculationService statusRecalculationService;
 
 
     //----------------------------------------------------------------------
@@ -708,7 +710,8 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                     property.setOwner(saved);
                     property.setStatus(PropertyStatus.OCCUPIED);
                     property.setAssignedAt(LocalDateTime.now());
-                    propertyRepository.save(property);
+                    // Recalcule et persiste displayStatus (champ réellement lu par le listing des lots)
+                    statusRecalculationService.recalculatePropertyDisplayStatus(property);
                 }
             }
         }
@@ -1310,7 +1313,8 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         for (Property property : properties) {
             property.setOwner(null);
             property.setStatus(PropertyStatus.VACANT);
-            propertyRepository.save(property);
+            // Recalcule et persiste displayStatus (champ réellement lu par le listing des lots)
+            statusRecalculationService.recalculatePropertyDisplayStatus(property);
         }
 
         // Supprimer le profil du copropriétaire
