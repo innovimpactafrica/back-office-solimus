@@ -71,6 +71,9 @@ public class TenantSignalementServiceImpl implements TenantSignalementService {
 
         // Associe l'entité correspondante selon le type de localisation choisi
         if (dto.getLocationType() == IncidentLocationType.APPARTEMENT) {
+            if (dto.getCommonFacilityId() != null) {
+                throw new BadRequestException("commonFacilityId ne doit pas être fourni lorsque locationType est APPARTEMENT");
+            }
             signalement.setProperty(property);
         } else if (dto.getLocationType() == IncidentLocationType.PARTIE_COMMUNE) {
             if (dto.getCommonFacilityId() == null) {

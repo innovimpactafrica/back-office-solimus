@@ -42,6 +42,70 @@ public class SyndicResidenceController {
     private final ObjectMapper objectMapper;
 
     // =========================================================================
+    // ÉTAPE 1 — CRÉER UNE RÉSIDENCE (infos générales uniquement)
+    // =========================================================================
+
+    @Operation(summary = "Créer une résidence (Étape 1 — infos générales uniquement, sans lots ni équipements)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Résidence créée avec succès",
+                    content = @Content(schema = @Schema(implementation = ResidenceDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Données invalides (ex: superficie totale de la résidence manquante)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Limite de résidences de la formule d'abonnement atteinte",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @PostMapping(value = "/residences", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ResidenceDTO> createResidence(
+            @RequestParam String name,
+            @RequestParam(required = false) String description,
+            @RequestParam String fullAddress,
+            @RequestParam String city,
+            @RequestParam String country,
+            @RequestParam BigDecimal latitude,
+            @RequestParam BigDecimal longitude,
+            @RequestParam(required = false) String constructionDate,
+            @RequestParam(required = false) String renovationDate,
+            @RequestParam BigDecimal totalArea,
+            @Parameter(
+                description = "Liste des contacts clés au format JSON (optionnel)",
+                schema = @Schema(type = "string", example = "[{\"fullName\":\"Seydina Fall\",\"phone\":\"+221774569909\"}]")
+            )
+            @RequestPart(value = "contactsJson", required = false) String contactsJson,
+            @RequestPart(value = "photo", required = true) MultipartFile photo) throws JsonProcessingException {
+
+        // Parse les contacts si fournis, sinon liste vide
+        List<ContactInputDTO> contacts = new ArrayList<>();
+        if (contactsJson != null && !contactsJson.trim().isEmpty()) {
+            contacts = objectMapper.readValue(contactsJson,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, ContactInputDTO.class));
+        }
+
+        // Parse les dates si fournies
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        LocalDate parsedConstructionDate = (constructionDate != null && !constructionDate.trim().isEmpty())
+                ? LocalDate.parse(constructionDate, formatter) : null;
+        LocalDate parsedRenovationDate = (renovationDate != null && !renovationDate.trim().isEmpty())
+                ? LocalDate.parse(renovationDate, formatter) : null;
+
+        CreateResidenceDTO dto = CreateResidenceDTO.builder()
+                .name(name)
+                .description(description)
+                .fullAddress(fullAddress)
+                .city(city)
+                .country(country)
+                .latitude(latitude)
+                .longitude(longitude)
+                .constructionDate(parsedConstructionDate)
+                .renovationDate(parsedRenovationDate)
+                .totalArea(totalArea)
+                .contacts(contacts)
+                .build();
+
+        ResidenceDTO result = residenceService.createResidence(dto, photo);
+        return ResponseEntity.status(HttpStatus.CREATED).body(result);
+    }
+
+    // =========================================================================
     // CRÉATION EN UN SEUL APPEL — infos générales + lots + équipements + sécurité
     // =========================================================================
 
@@ -288,6 +352,20 @@ public class SyndicResidenceController {
         return ResponseEntity.ok(residenceService.getSecurityFeatures());
     }
 
+
+    @Operation(summary = "Équipements communs + options de sécurité d'une résidence déjà créée (Étape 3)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Étape 3 enregistrée avec succès",
+                    content = @Content(schema = @Schema(implementation = ResidenceDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence ou type d'équipement introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @PostMapping("/residences/{id}/step3")
+    public ResponseEntity<ResidenceDTO> saveStep3(
+            @PathVariable Long id,
+            @RequestBody Step3DTO dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(residenceService.saveStep3(id, dto));
+    }
 
     @Operation(summary = "Mettre à jour les options de sécurité d'une résidence (Étape 3)", tags = {"Syndic - Résidences"})
     @PutMapping("/residences/{id}/security-features")

@@ -12,6 +12,9 @@ import java.util.List;
 
 public interface SyndicResidenceService {
 
+    // Étape 1 — Créer une résidence (infos générales uniquement, sans lots ni équipements)
+    ResidenceDTO createResidence(CreateResidenceDTO dto, MultipartFile photo);
+
     // Création en un seul appel : infos générales + lots + équipements + sécurité, en une transaction
     ResidenceDTO createResidenceFull(CreateResidenceFullDTO dto, MultipartFile photo);
 
@@ -71,6 +74,9 @@ public interface SyndicResidenceService {
 
     //  Étape 3 — Lister les types d'équipement avec leurs champs
     Page<FacilityTypeDTO> getFacilityTypes(int page, int size);
+
+    // Étape 3 — Ajouter des équipements communs + définir les options de sécurité (résidence déjà créée)
+    ResidenceDTO saveStep3(Long residenceId, Step3DTO dto);
 
     //  Étape 3 — Mettre à jour les options de sécurité d'une résidence
     void updateSecurityFeatures(Long residenceId, UpdateSecurityFeaturesDTO dto);

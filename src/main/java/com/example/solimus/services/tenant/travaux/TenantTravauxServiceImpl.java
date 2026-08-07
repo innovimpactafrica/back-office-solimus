@@ -131,6 +131,9 @@ public class TenantTravauxServiceImpl implements TenantTravauxService {
             }
             request.setCommonFacility(commonFacility);
         } else {
+            if (dto.getCommonFacilityId() != null) {
+                throw new BadRequestException("commonFacilityId ne doit pas être fourni lorsque locationType est APPARTEMENT");
+            }
             request.setProperty(property);
         }
 

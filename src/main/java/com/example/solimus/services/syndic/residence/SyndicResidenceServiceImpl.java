@@ -69,6 +69,66 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     private final NotificationService notificationService;
 
     // =========================================================================
+    // ÉTAPE 1 — CRÉER UNE RÉSIDENCE (infos générales uniquement)
+    // =========================================================================
+    @Override
+    @Transactional
+    public ResidenceDTO createResidence(CreateResidenceDTO dto, MultipartFile photo) {
+
+        // Récupère le syndic connecté
+        User currentSyndic = getCurrentUser();
+
+        // Vérifie que la superficie totale de la résidence est fournie
+        if (dto.getTotalArea() == null) {
+            throw new BadRequestException("La superficie totale de la résidence est obligatoire");
+        }
+
+        // Bloque la création si la limite de résidences de sa formule est déjà atteinte
+        planLimitGuard.assertCanAddResidence(currentSyndic);
+
+        // Construit l'adresse complète
+        String adresseComplete = dto.getFullAddress() + ", " + dto.getCity() + ", " + dto.getCountry();
+
+        // Crée et sauvegarde l'entité Residence
+        Residence residence = new Residence();
+        residence.setName(dto.getName());
+        residence.setDescription(dto.getDescription());
+        residence.setFullAddress(adresseComplete);
+        residence.setCity(dto.getCity());
+        residence.setCountry(dto.getCountry());
+        residence.setLatitude(dto.getLatitude());
+        residence.setLongitude(dto.getLongitude());
+        residence.setConstructionDate(dto.getConstructionDate());
+        residence.setRenovationDate(dto.getRenovationDate());
+        residence.setTotalArea(dto.getTotalArea());
+        residence.setHealthStatus(ResidenceHealthStatus.EXCELLENT);
+        residence.setSyndic(currentSyndic);
+
+        Residence saved = residenceRepository.save(residence);
+
+        // Uploade la photo vers MinIO et l'associe à la résidence
+        String photoUrl = minioService.uploadFile(photo, "residences");
+        saved.setPhotoUrl(photoUrl);
+        saved = residenceRepository.save(saved);
+
+        // Crée les contacts liés à cette résidence, si fournis
+        if (dto.getContacts() != null) {
+            for (ContactInputDTO contactDto : dto.getContacts()) {
+                ResidenceContact contact = new ResidenceContact();
+                contact.setFullName(contactDto.getFullName());
+                contact.setPhone(contactDto.getPhone());
+                contact.setResidence(saved);
+                contactRepository.save(contact);
+            }
+        }
+
+        log.info("Résidence '{}' créée (Étape 1 — infos générales) par le syndic {}", saved.getName(), currentSyndic.getEmail());
+
+        // Retourne la résidence créée — lots/équipements/sécurité ajoutés séparément (Étapes 2 et 3)
+        return mapToResidenceDTO(saved);
+    }
+
+    // =========================================================================
     // CRÉATION EN UN SEUL APPEL — infos générales + lots + équipements + sécurité
     // =========================================================================
     @Override
@@ -516,6 +576,62 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                     .build();
             result.add(dto);
         }
+        return result;
+    }
+
+    // =========================================================================
+    // ÉTAPE 3 — ÉQUIPEMENTS COMMUNS + OPTIONS DE SÉCURITÉ (résidence déjà créée)
+    // =========================================================================
+    @Override
+    @Transactional
+    public ResidenceDTO saveStep3(Long residenceId, Step3DTO dto) {
+
+        // Vérifie l'appartenance de la résidence au syndic connecté
+        Residence residence = getResidenceOrThrow(residenceId);
+        verifyResidenceOwnership(residence);
+        User currentSyndic = getCurrentUser();
+
+        // Crée ou met à jour chaque équipement fourni (un seul par type de facility pour la résidence)
+        if (dto.getFacilities() != null) {
+            for (AddFacilityDTO facilityDto : dto.getFacilities()) {
+                upsertFacility(residence, currentSyndic, facilityDto);
+            }
+        }
+
+        // Remplace la liste complète des options de sécurité, si fournie (même comportement
+        // que updateSecurityFeatures — pas de fusion, remplacement intégral)
+        if (dto.getSecurityFeatureIds() != null) {
+            List<SecurityFeature> securityFeatures = securityFeatureRepository.findAllById(dto.getSecurityFeatureIds());
+            residence.setSecurityFeatures(securityFeatures);
+            residence = residenceRepository.save(residence);
+        }
+
+        log.info("Étape 3 enregistrée pour la résidence '{}' par le syndic {} ({} équipement(s), {} option(s) de sécurité)",
+                residence.getName(), currentSyndic.getEmail(),
+                dto.getFacilities() != null ? dto.getFacilities().size() : 0,
+                residence.getSecurityFeatures() != null ? residence.getSecurityFeatures().size() : 0);
+
+        // Construit la réponse : résidence + ensemble à jour des équipements + options de sécurité
+        List<CommonFacility> allFacilities = facilityRepository.findByResidenceId(residenceId);
+        ResidenceDTO result = mapToResidenceDTO(residence);
+        result.setFacilities(allFacilities.stream()
+                .map(facility -> CommonFacilityListItemDTO.builder()
+                        .id(facility.getId())
+                        .name(facility.getFacilityType() != null ? facility.getFacilityType().getName() : null)
+                        .icon(facility.getFacilityType() != null ? facility.getFacilityType().getIcon() : null)
+                        .status(calculateFacilityStatus(List.of()))
+                        .build())
+                .toList());
+        result.setSecurityFeatures(residence.getSecurityFeatures() != null
+                ? residence.getSecurityFeatures().stream()
+                        .map(feature -> SecurityFeatureLabelDTO.builder()
+                                .id(feature.getId())
+                                .label(feature.getLabel())
+                                .icon(feature.getIcon())
+                                .build())
+                        .toList()
+                : List.of());
+
         return result;
     }
 
