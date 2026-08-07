@@ -15,6 +15,9 @@ public interface SyndicResidenceService {
     // Création en un seul appel : infos générales + lots + équipements + sécurité, en une transaction
     ResidenceDTO createResidenceFull(CreateResidenceFullDTO dto, MultipartFile photo);
 
+    // Étape 2 — Ajouter un ou plusieurs lots à une résidence déjà créée
+    List<PropertyDTO> addProperties(Long residenceId, List<AddPropertyDTO> properties);
+
     // Étape 2 — Modifier un lot/appartement
     PropertyDTO updateProperty(Long residenceId, Long propertyId, UpdatePropertyDTO dto);
 

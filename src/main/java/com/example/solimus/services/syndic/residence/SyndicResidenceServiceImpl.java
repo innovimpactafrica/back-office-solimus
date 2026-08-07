@@ -316,6 +316,60 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     }
 
     // =========================================================================
+    // AJOUTER UN OU PLUSIEURS LOTS À UNE RÉSIDENCE DÉJÀ CRÉÉE
+    // =========================================================================
+    @Override
+    @Transactional
+    public List<PropertyDTO> addProperties(Long residenceId, List<AddPropertyDTO> properties) {
+
+        if (properties == null || properties.isEmpty()) {
+            throw new BadRequestException("Au moins un lot doit être fourni");
+        }
+
+        // Vérifie l'appartenance de la résidence au syndic connecté
+        Residence residence = getResidenceOrThrow(residenceId);
+        verifyResidenceOwnership(residence);
+        User currentSyndic = getCurrentUser();
+
+        // Bloque si la limite d'appartements de sa formule serait dépassée par cet ajout
+        planLimitGuard.assertCanAddApartments(currentSyndic, properties.size());
+
+        // Vérifie qu'aucune référence n'est fournie deux fois dans cette même requête
+        Set<String> referencesInBatch = new HashSet<>();
+        for (AddPropertyDTO dto : properties) {
+            if (!referencesInBatch.add(dto.getReference())) {
+                throw new BadRequestException(
+                        "La référence '" + dto.getReference() + "' est fournie plusieurs fois dans cette requête");
+            }
+        }
+
+        // Vérifie que la superficie totale des lots (existants + nouveaux) ne dépasse pas celle de la résidence
+        BigDecimal existingArea = propertyRepository.sumAreaByResidenceId(residenceId);
+        BigDecimal newArea = properties.stream()
+                .map(AddPropertyDTO::getArea)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalArea = existingArea.add(newArea);
+        if (totalArea.compareTo(residence.getTotalArea()) > 0) {
+            throw new BadRequestException(
+                    "La superficie totale des lots dépasse la superficie de la résidence. "
+                            + "Actuel : " + existingArea + " m², nouveaux : " + newArea
+                            + " m², résidence : " + residence.getTotalArea() + " m²");
+        }
+
+        // Construit chaque lot (référence unique, tantième calculé, type de bien, propriétaire optionnel)
+        List<Property> propertiesToSave = properties.stream()
+                .map(dto -> buildProperty(residence, currentSyndic, dto))
+                .toList();
+
+        List<Property> saved = propertyRepository.saveAll(propertiesToSave);
+
+        log.info("{} lot(s) ajouté(s) à la résidence '{}' par le syndic {}",
+                saved.size(), residence.getName(), currentSyndic.getEmail());
+
+        return saved.stream().map(this::mapToPropertyDTO).toList();
+    }
+
+    // =========================================================================
     // MODIFIER UN LOT / APPARTEMENT
     // =========================================================================
     @Override
@@ -1673,7 +1727,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
             // Vérifie que c'est bien un copropriétaire
             if (!owner.getRole().getName().equals(ERole.ROLE_COPROPRIETAIRE)) {
-                throw new BadRequestException("Seul un copropriétaire peut être propriétaire d'un lot");
+                throw new BadRequestException(
+                        "Seul un copropriétaire peut être propriétaire d'un lot — l'utilisateur choisi n'est pas un copropriétaire");
             }
 
             property.setOwner(owner);

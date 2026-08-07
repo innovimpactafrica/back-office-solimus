@@ -201,6 +201,25 @@ public class SyndicResidenceController {
     // LOTS
     // =========================================================================
 
+    @Operation(summary = "Ajouter un ou plusieurs lots à une résidence déjà créée (Étape 2)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Lot(s) ajouté(s) avec succès",
+                    content = @Content(schema = @Schema(implementation = PropertyDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Données invalides (ex: aucun lot fourni, référence en doublon dans la "
+                    + "requête ou déjà utilisée, superficie totale dépassant celle de la résidence)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Limite de lots de la formule d'abonnement atteinte",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence ou type de bien introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @PostMapping("/residences/{id}/properties")
+    public ResponseEntity<List<PropertyDTO>> addProperties(
+            @PathVariable Long id,
+            @RequestBody @Valid List<AddPropertyDTO> properties) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(residenceService.addProperties(id, properties));
+    }
+
     @Operation(summary = "Modifier un lot/appartement (Étape 2)", tags = {"Syndic - Résidences"})
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Lot modifié avec succès",
