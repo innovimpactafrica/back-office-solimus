@@ -5,6 +5,7 @@ import com.example.solimus.entities.ProviderProfile;
 import com.example.solimus.entities.Role;
 import com.example.solimus.entities.User;
 import com.example.solimus.entities.ActivationCode;
+import com.example.solimus.enums.AdminNotificationEventType;
 import com.example.solimus.enums.CodeType;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.UserStatus;
@@ -13,6 +14,7 @@ import com.example.solimus.exceptions.EmailAlreadyExistsException;
 import com.example.solimus.exceptions.PhoneAlreadyExistsException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
+import com.example.solimus.services.admin.notification.AdminNotificationPreferenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -56,6 +58,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtService jwtService;
     private final TokenBlacklistService tokenBlacklistService;
     private final com.example.solimus.repositories.ProviderProfileRepository providerProfileRepository;
+    private final AdminNotificationPreferenceService adminNotificationPreferenceService;
 
 
     // =========================================================================
@@ -249,6 +252,19 @@ public class AuthServiceImpl implements AuthService {
         user.setPassword(passwordEncoder.encode(dto.getPassword()));
         user.setStatus(UserStatus.ACTIVE);
         userRepository.save(user);
+
+        // Ce endpoint n'est atteint que par le flux d'auto-inscription (register() est réservé
+        // aux prestataires) — c'est donc le seul moment légitime pour déclencher NEW_PROVIDER_REGISTERED
+        if (user.getRole().getName() == ERole.ROLE_PRESTATAIRE) {
+            String companyName = providerProfileRepository.findByUser(user)
+                    .map(ProviderProfile::getCompanyName)
+                    .orElse(null);
+            adminNotificationPreferenceService.notifyAdmins(
+                    AdminNotificationEventType.NEW_PROVIDER_REGISTERED,
+                    "Nouveau prestataire inscrit",
+                    (companyName != null ? companyName : user.getFirstName() + " " + user.getLastName())
+                            + " vient de s'inscrire sur la plateforme.");
+        }
 
         log.info("Mot de passe défini et compte activé pour : {}", user.getEmail());
     }

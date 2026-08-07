@@ -59,4 +59,10 @@ public interface EmailService {
      * Précise qu'il peut changer ce mot de passe depuis "Mon profil" après sa première connexion.
      */
     void sendCoOwnerAccountCreated(String email, String temporaryPassword, String firstName);
+
+    /**
+     * Envoie les identifiants (email + mot de passe temporaire) à un locataire créé par le syndic.
+     * Précise qu'il peut changer ce mot de passe depuis "Mon profil" après sa première connexion.
+     */
+    void sendTenantAccountCreated(String email, String temporaryPassword, String firstName);
 }

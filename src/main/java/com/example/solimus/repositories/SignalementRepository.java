@@ -30,6 +30,24 @@ public interface SignalementRepository extends JpaRepository<Signalement, Long> 
             Pageable pageable);
 
     // =========================================================================
+    // CÔTÉ LOCATAIRE
+    // =========================================================================
+
+    // Recherche paginée des signalements créés par un locataire, avec filtres optionnels
+    // (search sur le titre, statut) — pas de filtre résidence, un locataire n'a qu'un seul bien
+    @Query("SELECT s FROM Signalement s WHERE s.tenant.id = :tenantId " +
+            "AND (:search IS NULL OR LOWER(s.title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+            "AND (:status IS NULL OR s.status = :status)")
+    Page<Signalement> searchMyTenantSignalements(
+            @Param("tenantId") Long tenantId,
+            @Param("search") String search,
+            @Param("status") SignalementStatus status,
+            Pageable pageable);
+
+    // Compte les signalements créés par un locataire, avec un statut précis — utilisé par le dashboard d'accueil
+    int countByTenantIdAndStatus(Long tenantId, SignalementStatus status);
+
+    // =========================================================================
     // CÔTÉ SYNDIC
     // =========================================================================
 

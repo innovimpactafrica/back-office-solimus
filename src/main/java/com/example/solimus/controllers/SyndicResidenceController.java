@@ -1,13 +1,19 @@
 package com.example.solimus.controllers;
 
+import com.example.solimus.dtos.auth.ErrorResponseDTO;
 import com.example.solimus.dtos.syndic.residence.*;
 import com.example.solimus.dtos.syndic.settings.FacilityTypeDTO;
+import com.example.solimus.enums.PropertyDisplayStatus;
+import com.example.solimus.enums.ResidenceHealthStatus;
 import com.example.solimus.services.syndic.residence.SyndicResidenceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -35,15 +41,24 @@ public class SyndicResidenceController {
     private final SyndicResidenceService residenceService;
     private final ObjectMapper objectMapper;
 
-
-
     // =========================================================================
-    // ÉTAPE 1 — RÉSIDENCE
+    // CRÉATION EN UN SEUL APPEL — infos générales + lots + équipements + sécurité
     // =========================================================================
 
-    @Operation(summary = "Créer une nouvelle résidence (Étape 1)", tags = {"Syndic - Résidences"})
-    @PostMapping(value = "/residences", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ResidenceDTO> createResidence(
+    @Operation(summary = "Créer une résidence complète (infos + lots + équipements) en un seul appel", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Résidence créée avec succès",
+                    content = @Content(schema = @Schema(implementation = ResidenceDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Données invalides (ex: superficie totale de la résidence manquante, "
+                    + "superficie des lots dépassant totalSuperficie, référence de lot déjà utilisée)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Limite de résidences ou de lots de la formule d'abonnement atteinte",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Type de bien, type d'équipement ou copropriétaire introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @PostMapping(value = "/residences/complete", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ResidenceDTO> createResidenceFull(
             @RequestParam String name,
             @RequestParam(required = false) String description,
             @RequestParam String fullAddress,
@@ -53,15 +68,101 @@ public class SyndicResidenceController {
             @RequestParam BigDecimal longitude,
             @RequestParam(required = false) String constructionDate,
             @RequestParam(required = false) String renovationDate,
+            @RequestParam BigDecimal totalArea,
             @Parameter(
                 description = "Liste des contacts clés au format JSON (optionnel)",
-                schema = @Schema(
-                    type = "string",
-                    example = "[{\"fullName\":\"Seydina Fall\",\"phone\":\"+221774569909\"}]"
-                )
+                schema = @Schema(type = "string", example = "[{\"fullName\":\"Seydina Fall\",\"phone\":\"+221774569909\"}]")
             )
             @RequestPart(value = "contactsJson", required = false) String contactsJson,
+            @Parameter(
+                description = "Liste des lots au format JSON (optionnel)",
+                schema = @Schema(type = "string", example = "[{\"reference\":\"A101\",\"propertyTypeId\":1,\"area\":85.0}]")
+            )
+            @RequestPart(value = "propertiesJson", required = false) String propertiesJson,
+            @Parameter(
+                description = "Liste des équipements communs au format JSON (optionnel)",
+                schema = @Schema(type = "string", example = "[{\"facilityTypeId\":3,\"description\":\"2 piscines chauffées\"}]")
+            )
+            @RequestPart(value = "facilitiesJson", required = false) String facilitiesJson,
+            @RequestParam(required = false) List<Long> securityFeatureIds,
             @RequestPart(value = "photo", required = true) MultipartFile photo) throws JsonProcessingException {
+
+        // Parse les contacts si fournis, sinon liste vide
+        List<ContactInputDTO> contacts = new ArrayList<>();
+        if (contactsJson != null && !contactsJson.trim().isEmpty()) {
+            contacts = objectMapper.readValue(contactsJson,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, ContactInputDTO.class));
+        }
+
+        // Parse les lots si fournis, sinon liste vide
+        List<AddPropertyDTO> properties = new ArrayList<>();
+        if (propertiesJson != null && !propertiesJson.trim().isEmpty()) {
+            properties = objectMapper.readValue(propertiesJson,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, AddPropertyDTO.class));
+        }
+
+        // Parse les équipements communs si fournis, sinon liste vide
+        List<AddFacilityDTO> facilities = new ArrayList<>();
+        if (facilitiesJson != null && !facilitiesJson.trim().isEmpty()) {
+            facilities = objectMapper.readValue(facilitiesJson,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, AddFacilityDTO.class));
+        }
+
+        // Parse les dates si fournies
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        LocalDate parsedConstructionDate = (constructionDate != null && !constructionDate.trim().isEmpty())
+                ? LocalDate.parse(constructionDate, formatter) : null;
+        LocalDate parsedRenovationDate = (renovationDate != null && !renovationDate.trim().isEmpty())
+                ? LocalDate.parse(renovationDate, formatter) : null;
+
+        // Construit le DTO
+        CreateResidenceFullDTO dto = CreateResidenceFullDTO.builder()
+                .name(name)
+                .description(description)
+                .fullAddress(fullAddress)
+                .city(city)
+                .country(country)
+                .latitude(latitude)
+                .longitude(longitude)
+                .constructionDate(parsedConstructionDate)
+                .renovationDate(parsedRenovationDate)
+                .totalArea(totalArea)
+                .contacts(contacts)
+                .properties(properties)
+                .facilities(facilities)
+                .securityFeatureIds(securityFeatureIds)
+                .build();
+
+        ResidenceDTO result = residenceService.createResidenceFull(dto, photo);
+        return ResponseEntity.status(HttpStatus.CREATED).body(result);
+    }
+
+    // =========================================================================
+    // Modification d'une Résidence
+    // =========================================================================
+
+    @Operation(summary = "Modifier les informations générales d'une résidence (mise à jour partielle)", tags = {"Syndic - Résidences"})
+    @PatchMapping(value = "/residences/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Void> updateResidence(
+            @PathVariable Long id,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String description,
+            @RequestParam(required = false) String fullAddress,
+            @RequestParam(required = false) String city,
+            @RequestParam(required = false) String country,
+            @RequestParam(required = false) BigDecimal latitude,
+            @RequestParam(required = false) BigDecimal longitude,
+            @RequestParam(required = false) String constructionDate,
+            @RequestParam(required = false) String renovationDate,
+            @Parameter(
+                    description = "Liste des contacts clés au format JSON (optionnel)",
+                    schema = @Schema(
+                            type = "string",
+                            example = "[{\"fullName\":\"Seydina Fall\",\"role\":\"Gardien\",\"phone\":\"+221774569909\"}]"
+                    )
+            )
+            @RequestPart(value = "contactsJson", required = false) String contactsJson,
+            @RequestPart(value = "photo", required = false) MultipartFile photo) throws JsonProcessingException {
 
         // Parser les contacts si fournis, sinon liste vide
         List<ContactInputDTO> contacts = new ArrayList<>();
@@ -91,23 +192,25 @@ public class SyndicResidenceController {
                 .contacts(contacts)
                 .build();
 
-        ResidenceDTO result = residenceService.createResidenceComplete(dto, photo);
-        return ResponseEntity.status(HttpStatus.CREATED).body(result);
+        residenceService.updateResidence(id, dto, photo);
+        return ResponseEntity.noContent().build();
     }
 
-    // =========================================================================
-    // ÉTAPE 2 — LOTS
-    // =========================================================================
 
-    @Operation(summary = "Ajouter un ou plusieurs lots/appartements (Étape 2)", tags = {"Syndic - Résidences"})
-    @PostMapping("/residences/{id}/properties")
-    public ResponseEntity<List<PropertyDTO>> addProperties(
-            @PathVariable Long id,
-            @RequestBody @Valid List<AddPropertyDTO> properties) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(residenceService.addProperties(id, properties));
-    }
+    // =========================================================================
+    // LOTS
+    // =========================================================================
 
     @Operation(summary = "Modifier un lot/appartement (Étape 2)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lot modifié avec succès",
+                    content = @Content(schema = @Schema(implementation = PropertyDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Données invalides (ex: nouvelle superficie dépassant la superficie de la "
+                    + "résidence, référence déjà utilisée, lot n'appartenant pas à cette résidence)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence, lot ou type de bien introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PutMapping("/residences/{id}/properties/{propertyId}")
     public ResponseEntity<PropertyDTO> updateProperty(
             @PathVariable Long id,
@@ -150,15 +253,22 @@ public class SyndicResidenceController {
     }
 
     // =========================================================================
-    // ÉTAPE 3 — BIENS COMMUNS
+    // BIENS COMMUNS /OPTION Sécurité
     // =========================================================================
-    @Operation(summary = "Lister les types d'équipements avec leurs champs (Étape 3)", tags = {"Syndic - Résidences"})
+    @Operation(summary = "Lister les types d'équipements  (Étape 3)", tags = {"Syndic - Résidences"})
     @GetMapping("/facility-types")
     public ResponseEntity<Page<FacilityTypeDTO>> getFacilityTypes(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(residenceService.getFacilityTypes(page, size));
     }
+
+    @Operation(summary = "Lister les options de sécurité disponibles (Étape 3)", tags = {"Syndic - Résidences"})
+    @GetMapping("/security-features")
+    public ResponseEntity<List<SecurityFeatureLabelDTO>> getSecurityFeatures() {
+        return ResponseEntity.ok(residenceService.getSecurityFeatures());
+    }
+
 
     @Operation(summary = "Mettre à jour les options de sécurité d'une résidence (Étape 3)", tags = {"Syndic - Résidences"})
     @PutMapping("/residences/{id}/security-features")
@@ -169,69 +279,6 @@ public class SyndicResidenceController {
         return ResponseEntity.ok().build();
     }
 
-    @Operation(summary = "Sauvegarder l'étape 3 complète (équipements + sécurité) (Étape 3)", tags = {"Syndic - Résidences"})
-    @PostMapping("/residences/{id}/step3")
-    public ResponseEntity<Void> saveStep3(
-            @PathVariable Long id,
-            @RequestBody Step3DTO dto) {
-        residenceService.saveStep3(id, dto);
-        return ResponseEntity.noContent().build();
-    }
-
-    @Operation(summary = "Modifier les informations générales d'une résidence (mise à jour partielle)", tags = {"Syndic - Résidences"})
-    @PatchMapping(value = "/residences/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<Void> updateResidence(
-            @PathVariable Long id,
-            @RequestParam(required = false) String name,
-            @RequestParam(required = false) String description,
-            @RequestParam(required = false) String fullAddress,
-            @RequestParam(required = false) String city,
-            @RequestParam(required = false) String country,
-            @RequestParam(required = false) BigDecimal latitude,
-            @RequestParam(required = false) BigDecimal longitude,
-            @RequestParam(required = false) String constructionDate,
-            @RequestParam(required = false) String renovationDate,
-            @Parameter(
-                description = "Liste des contacts clés au format JSON (optionnel)",
-                schema = @Schema(
-                    type = "string",
-                    example = "[{\"fullName\":\"Seydina Fall\",\"role\":\"Gardien\",\"phone\":\"+221774569909\"}]"
-                )
-            )
-            @RequestPart(value = "contactsJson", required = false) String contactsJson,
-            @RequestPart(value = "photo", required = false) MultipartFile photo) throws JsonProcessingException {
-
-        // Parser les contacts si fournis, sinon liste vide
-        List<ContactInputDTO> contacts = new ArrayList<>();
-        if (contactsJson != null && !contactsJson.trim().isEmpty()) {
-            contacts = objectMapper.readValue(contactsJson,
-                    objectMapper.getTypeFactory().constructCollectionType(List.class, ContactInputDTO.class));
-        }
-
-        // Parser les dates si fournies
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-        LocalDate parsedConstructionDate = (constructionDate != null && !constructionDate.trim().isEmpty())
-                ? LocalDate.parse(constructionDate, formatter) : null;
-        LocalDate parsedRenovationDate = (renovationDate != null && !renovationDate.trim().isEmpty())
-                ? LocalDate.parse(renovationDate, formatter) : null;
-
-        // Construire le DTO
-        CreateResidenceDTO dto = CreateResidenceDTO.builder()
-                .name(name)
-                .description(description)
-                .fullAddress(fullAddress)
-                .city(city)
-                .country(country)
-                .latitude(latitude)
-                .longitude(longitude)
-                .constructionDate(parsedConstructionDate)
-                .renovationDate(parsedRenovationDate)
-                .contacts(contacts)
-                .build();
-
-        residenceService.updateResidence(id, dto, photo);
-        return ResponseEntity.noContent().build();
-    }
 
     // =========================================================================
     // DASHBOARD RÉSIDENCES
@@ -243,21 +290,22 @@ public class SyndicResidenceController {
         return ResponseEntity.ok(residenceService.getDashboardStats());
     }
 
-    @Operation(summary = "Liste paginée et filtrée des résidences (cartes)", tags = {"Syndic - Résidences"})
+    @Operation(summary = "Liste paginée et filtrée des résidences (cartes)", tags = {"Syndic - Résidences"},
+            description = "status filtre directement sur Residence.healthStatus (déjà persisté) : EXCELLENT, ATTENTION ou CRITIQUE")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Page de résidences renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = ResidenceCardDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Valeur de status invalide (doit être EXCELLENT, ATTENTION ou CRITIQUE)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/residences/list")
     public ResponseEntity<Page<ResidenceCardDTO>> getResidencesPaginated(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String city,
-            @RequestParam(required = false) String status,
+            @RequestParam(required = false) ResidenceHealthStatus status,
             @RequestParam(defaultValue = "0") Integer page,
             @RequestParam(defaultValue = "12") Integer size) {
         return ResponseEntity.ok(residenceService.getResidencesPaginated(search, city, status, page, size));
-    }
-
-    @Operation(summary = "Lister les options de sécurité disponibles (Étape 3)", tags = {"Syndic - Résidences"})
-    @GetMapping("/security-features")
-    public ResponseEntity<List<SecurityFeatureLabelDTO>> getSecurityFeatures() {
-        return ResponseEntity.ok(residenceService.getSecurityFeatures());
     }
 
     // =========================================================================
@@ -278,17 +326,54 @@ public class SyndicResidenceController {
     // =========================================================================
     // ONGLET 2
     // =========================================================================
-    @Operation(summary = "Lister les lots d'une résidence avec filtres (onglet Appartements)", tags = {"Syndic - Résidences"})
+    @Operation(summary = "Lister les lots d'une résidence avec filtres (onglet Appartements)", tags = {"Syndic - Résidences"},
+            description = "status filtre directement sur Property.displayStatus (déjà persisté) : " +
+                    "MAINTENANCE, UNPAID, LATE, OCCUPIED ou VACANT")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Page de lots renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = PropertyListItemDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Valeur de status invalide (doit être MAINTENANCE, UNPAID, LATE, OCCUPIED ou VACANT)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/residences/{residenceId}/properties/list")
     public ResponseEntity<Page<PropertyListItemDTO>> getPropertiesPaginatedWithFilters(
             @PathVariable Long residenceId,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Integer floor,
-            @RequestParam(required = false) String status,
+            @RequestParam(required = false) PropertyDisplayStatus status,
             @RequestParam(defaultValue = "0") Integer page,
             @RequestParam(defaultValue = "12") Integer size) {
         return ResponseEntity.ok(residenceService.getPropertiesPaginatedWithFilters(
                 residenceId, search, floor, status, page, size));
+    }
+
+    // =========================================================================
+    // AJOUTER UN LOCATAIRE À UN LOT (ONGLET APPARTEMENTS)
+    // =========================================================================
+    @Operation(summary = "Ajouter un locataire à un lot", tags = {"Syndic - Résidences"},
+            description = "Le lot doit déjà avoir un propriétaire — impossible de louer un bien sans propriétaire")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Locataire créé et rattaché au lot",
+                    content = @Content(schema = @Schema(implementation = PropertyDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Ce lot a déjà un locataire actif, n'a pas de propriétaire, "
+                    + "ou l'email/téléphone est déjà utilisé",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence ou lot introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @PostMapping(value = "/residences/{residenceId}/properties/{propertyId}/tenant", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<PropertyDTO> addTenant(
+            @PathVariable Long residenceId,
+            @PathVariable Long propertyId,
+            @RequestParam String firstName,
+            @RequestParam String lastName,
+            @RequestParam String email,
+            @RequestParam String phone,
+            @RequestPart(value = "photo", required = false) MultipartFile photo) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(residenceService.addTenant(residenceId, propertyId, firstName, lastName, email, phone, photo));
     }
 
     // =========================================================================

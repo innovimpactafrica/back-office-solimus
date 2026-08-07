@@ -10,6 +10,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -23,6 +24,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponseDTO> handleBadRequest(BadRequestException ex) {
         ErrorResponseDTO error = new ErrorResponseDTO(
                 ex.getMessage(),
+                null,
+                LocalDateTime.now(),
+                HttpStatus.BAD_REQUEST.value()
+        );
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponseDTO> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        String message = "Valeur invalide pour le paramètre '" + ex.getName() + "' : " + ex.getValue();
+        ErrorResponseDTO error = new ErrorResponseDTO(
+                message,
                 null,
                 LocalDateTime.now(),
                 HttpStatus.BAD_REQUEST.value()

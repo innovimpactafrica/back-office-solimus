@@ -4,6 +4,7 @@ import com.example.solimus.dtos.admin.profile.AdminChangePasswordDTO;
 import com.example.solimus.dtos.admin.profile.AdminProfileDTO;
 import com.example.solimus.dtos.admin.profile.ChangePasswordResultDTO;
 import com.example.solimus.dtos.admin.profile.UpdateAdminProfileDTO;
+import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
 import org.springframework.web.multipart.MultipartFile;
 
 public interface AdminProfileService {
@@ -28,4 +29,15 @@ public interface AdminProfileService {
      * Change le mot de passe de l'admin connecté.
      */
     ChangePasswordResultDTO changePassword(AdminChangePasswordDTO dto);
+
+    /**
+     * Retourne l'historique paginé des notifications (cloche) de l'admin connecté,
+     * du plus récent au plus ancien.
+     */
+    NotificationListResponseDTO getMyNotifications(int page, int size);
+
+    /**
+     * Marque toutes les notifications de l'admin connecté comme lues.
+     */
+    void markAllNotificationsAsRead();
 }

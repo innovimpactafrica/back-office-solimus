@@ -3,9 +3,11 @@ package com.example.solimus.services.syndic.finance;
 import com.example.solimus.dtos.syndic.dashboard.TreasuryEvolutionPointDTO;
 import com.example.solimus.dtos.syndic.finance.*;
 import com.example.solimus.entities.*;
+import com.example.solimus.enums.PaymentDelayStatus;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.WalletTransactionCategory;
 import com.example.solimus.repositories.*;
+import com.example.solimus.utils.PaymentStatusUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -360,18 +362,18 @@ public class FinanceServiceImpl implements FinanceService {
     // UTILITAIRES PARTAGÉS
     // ============================================================
 
-    // Calcule le statut d'une ligne de charge selon le nombre de jours de retard
-    // (RETARD 1-30j, CRITIQUE 31j+, PARTIEL si paiement partiel dans les délais, PAYE si soldée)
+    // Calcule le statut d'une ligne de charge — PAYE si soldée, sinon délègue le seuil de retard
+    // à PaymentStatusUtils (seule source de vérité), PARTIEL si un acompte a déjà été versé
     private String calculateItemStatus(ChargeCallItem item) {
 
         boolean isFullyPaid = item.getPaidAmount().compareTo(item.getQuotePart()) >= 0;
         if (isFullyPaid) return "PAYE";
 
         LocalDate dueDate = item.getChargeCall().getDueDate();
-        long daysLate = ChronoUnit.DAYS.between(dueDate, LocalDate.now());
+        PaymentDelayStatus delayStatus = PaymentStatusUtils.computeDelayStatus(dueDate, false, LocalDate.now());
 
-        if (daysLate > 30) return "CRITIQUE";
-        if (daysLate > 0) return "RETARD";
+        if (delayStatus == PaymentDelayStatus.UNPAID) return "CRITIQUE";
+        if (delayStatus == PaymentDelayStatus.LATE) return "RETARD";
 
         boolean hasPartialPayment = item.getPaidAmount().compareTo(BigDecimal.ZERO) > 0;
         if (hasPartialPayment) return "PARTIEL";

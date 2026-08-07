@@ -17,4 +17,10 @@ public class SignalementCardDTO {
     private String urgencyLevel;
     private String status;
     private List<String> photoUrls;
+
+    // true si ce signalement a été créé par le locataire plutôt que le copropriétaire
+    private boolean fromTenant;
+
+    // Nom du locataire — rempli uniquement si fromTenant = true
+    private String tenantName;
 }

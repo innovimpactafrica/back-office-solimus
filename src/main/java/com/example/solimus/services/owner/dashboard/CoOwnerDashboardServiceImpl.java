@@ -178,7 +178,7 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
                     if (p.getOwner() == null) continue;
                     tantiemeByOwnerId.merge(
                             p.getOwner().getId(),
-                            p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO,
+                            p.getShare() != null ? p.getShare() : BigDecimal.ZERO,
                             BigDecimal::add);
                 }
 

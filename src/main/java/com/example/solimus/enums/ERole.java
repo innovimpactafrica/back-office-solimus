@@ -7,7 +7,8 @@ public enum ERole {
     ROLE_ADMIN("Administrateur"),
     ROLE_SYNDIC("Syndic"),
     ROLE_PRESTATAIRE("Prestataire"),
-    ROLE_COPROPRIETAIRE("Copropriétaire");
+    ROLE_COPROPRIETAIRE("Copropriétaire"),
+    ROLE_LOCATAIRE("Locataire");
 
     private final String label;
 

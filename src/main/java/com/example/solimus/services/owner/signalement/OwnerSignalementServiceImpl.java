@@ -188,6 +188,9 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
                 .urgencyLevel(signalement.getUrgencyLevel().name())
                 .status(signalement.getStatus().getLabel())
                 .photoUrls(photoUrls)
+                .fromTenant(signalement.getTenant() != null)
+                .tenantName(signalement.getTenant() != null
+                        ? signalement.getTenant().getFirstName() + " " + signalement.getTenant().getLastName() : null)
                 .build();
     }
 
@@ -224,6 +227,9 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
                 .declaredByName(signalement.getOwner().getFirstName() + " " + signalement.getOwner().getLastName())
                 .closingNote(signalement.getClosingNote())
                 .history(historyDtos)
+                .fromTenant(signalement.getTenant() != null)
+                .tenantName(signalement.getTenant() != null
+                        ? signalement.getTenant().getFirstName() + " " + signalement.getTenant().getLastName() : null)
                 .build();
     }
 

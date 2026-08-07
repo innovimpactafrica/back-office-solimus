@@ -122,6 +122,13 @@ public class Residence {
     private Integer lotsCount;
 
     /**
+     * Superficie totale de la résidence en mètres carrés.
+     * Sert de dénominateur au calcul automatique du tantième (share) de chaque lot.
+     */
+    @Column(name = "total_area", nullable = false)
+    private BigDecimal totalArea;
+
+    /**
      * Date de construction du bâtiment.
      */
     @Column(name = "construction_date")

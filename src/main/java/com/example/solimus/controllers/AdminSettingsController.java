@@ -1,9 +1,12 @@
 package com.example.solimus.controllers;
 
+import com.example.solimus.dtos.admin.notification.AdminNotificationPreferenceDTO;
+import com.example.solimus.dtos.admin.notification.UpdateAdminNotificationPreferenceDTO;
 import com.example.solimus.dtos.admin.settings.PlatformSettingsDTO;
 import com.example.solimus.dtos.admin.settings.UpdatePlatformSettingsDTO;
 import com.example.solimus.dtos.admin.settings.UpdateWithdrawalSettingsDTO;
 import com.example.solimus.dtos.admin.settings.WithdrawalSettingsDTO;
+import com.example.solimus.services.admin.notification.AdminNotificationPreferenceService;
 import com.example.solimus.services.admin.settings.PlatformSettingsService;
 import com.example.solimus.services.admin.settings.WithdrawalSettingsService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -14,7 +17,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-// Réglages globaux de l'admin 
+import java.util.List;
+
+// Réglages globaux de l'admin
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
@@ -24,6 +29,7 @@ public class AdminSettingsController {
 
     private final WithdrawalSettingsService withdrawalSettingsService;
     private final PlatformSettingsService platformSettingsService;
+    private final AdminNotificationPreferenceService adminNotificationPreferenceService;
 
     @Operation(summary = "Limite mensuelle de retrait actuellement configurée")
     @GetMapping("/withdrawal-settings")
@@ -51,5 +57,20 @@ public class AdminSettingsController {
     public ResponseEntity<PlatformSettingsDTO> updatePlatformSettings(
             @Valid @RequestBody UpdatePlatformSettingsDTO dto) {
         return ResponseEntity.ok(platformSettingsService.updatePlatformSettings(dto));
+    }
+
+    // ===== BLOC — PRÉFÉRENCES DE NOTIFICATIONS ADMIN =====
+
+    @Operation(summary = "Matrice complète des préférences de notification de l'admin connecté")
+    @GetMapping("/notification-preferences")
+    public ResponseEntity<List<AdminNotificationPreferenceDTO>> getNotificationPreferences() {
+        return ResponseEntity.ok(adminNotificationPreferenceService.getMyPreferences());
+    }
+
+    @Operation(summary = "Mettre à jour la matrice des préférences de notification de l'admin connecté")
+    @PutMapping("/notification-preferences")
+    public ResponseEntity<List<AdminNotificationPreferenceDTO>> updateNotificationPreferences(
+            @Valid @RequestBody List<UpdateAdminNotificationPreferenceDTO> updates) {
+        return ResponseEntity.ok(adminNotificationPreferenceService.updateMyPreferences(updates));
     }
 }

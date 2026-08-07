@@ -27,6 +27,7 @@ import com.example.solimus.repositories.*;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.geolocation.GeolocationService;
 import com.example.solimus.services.notification.NotificationService;
+import com.example.solimus.services.shared.StatusRecalculationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -56,6 +57,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     private final SpecialtyRepository specialtyRepository;
     private final CommonFacilityRepository commonFacilityRepository;
     private final InterventionRequestRepository interventionRepository;
+    private final StatusRecalculationService statusRecalculationService;
     private final ProviderProfileRepository providerProfileRepository;
 
     private final GeolocationService geolocationService;
@@ -269,6 +271,9 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
         // Sauvegarder la demande pour obtenir un ID valide avant le log d'activité
         interventionRepository.save(request);
+
+        // Une intervention URGENT active peut faire passer la résidence en CRITIQUE
+        statusRecalculationService.recalculateResidenceHealthStatus(residence);
 
         // Diffusion automatique aux prestataires proches
         notifyNearbyProviders(request, residence, specialty);
@@ -678,6 +683,9 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         request.setValidatedAt(LocalDateTime.now());
         interventionRepository.save(request);
 
+        // La clôture (FINAL_VALIDATION) peut faire redescendre la résidence hors CRITIQUE
+        statusRecalculationService.recalculateResidenceHealthStatus(request.getResidence());
+
         // Tracer l'activité de paiement wallet
         ActivityLog activityLog = new ActivityLog();
         activityLog.setResidence(request.getResidence());
@@ -955,7 +963,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         return PropertyDTO.builder()
                 .id(property.getId())
                 .reference(property.getReference())
-                .superficie(property.getSuperficie())
+                .area(property.getArea())
                 .typeName(property.getTypeBien() != null ? property.getTypeBien().getName() : null)
                 .residenceId(property.getResidence().getId())
                 .residenceName(property.getResidence().getName())

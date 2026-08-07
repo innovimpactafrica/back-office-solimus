@@ -5,7 +5,17 @@ package com.example.solimus.enums;
 // =============================================================================
 public enum PropertyStatus {
 
-    OCCUPE,
-    VACANT,
-    MAINTENANCE
+    OCCUPIED("Occupé"),
+    VACANT("Vacant"),
+    MAINTENANCE("En maintenance");
+
+    private final String label;
+
+    PropertyStatus(String label) {
+        this.label = label;
+    }
+
+    public String getLabel() {
+        return label;
+    }
 }

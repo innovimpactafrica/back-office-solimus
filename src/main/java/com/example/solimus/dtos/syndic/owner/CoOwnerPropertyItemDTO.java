@@ -20,9 +20,9 @@ public class CoOwnerPropertyItemDTO {
 
     private Integer floor;
 
-    private BigDecimal superficie;
+    private BigDecimal area;
 
-    private BigDecimal tantieme;
+    private BigDecimal share;
 
     private String residenceName;
 

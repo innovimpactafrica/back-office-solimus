@@ -66,7 +66,11 @@ public class InterventionRequest {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "owner_id")
-    private User owner; // Copropriétaire qui a créé la demande (si initiatedBy = OWNER)
+    private User owner; // Copropriétaire qui a créé la demande (si initiatedBy = OWNER), ou titulaire du bien concerné (si initiatedBy = TENANT)
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "tenant_id")
+    private User tenant; // Locataire qui a créé la demande (si initiatedBy = TENANT)
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "residence_id", nullable = false)

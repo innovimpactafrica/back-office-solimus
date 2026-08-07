@@ -11,6 +11,7 @@ import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
 import com.example.solimus.utils.ChargeAllocationUtil;
+import com.example.solimus.utils.PaymentStatusUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
@@ -80,7 +81,7 @@ public class ChargeServiceImpl implements ChargeService {
         for (Property property : properties) {
             if (property.getOwner() != null) {
                 // 1.3.1 Calculer total tantième du propriétaire
-                BigDecimal tantieme = property.getTantieme() != null ? property.getTantieme() : BigDecimal.ZERO;
+                BigDecimal tantieme = property.getShare() != null ? property.getShare() : BigDecimal.ZERO;
                 totalTantieme = totalTantieme.add(tantieme); //ici, on calcule le total des tantièmes de toute la résidence.
 
                 // 1.3.2 Vérifier si le copropriétaire est déjà dans la liste
@@ -480,7 +481,7 @@ public class ChargeServiceImpl implements ChargeService {
         for (Map.Entry<Long, List<Property>> entry : propertiesByOwner.entrySet()) {
             BigDecimal totalTantieme = BigDecimal.ZERO;
             for (Property p : entry.getValue()) {
-                totalTantieme = totalTantieme.add(p.getTantieme());
+                totalTantieme = totalTantieme.add(p.getShare());
             }
             tantiemeByOwnerId.put(entry.getKey(), totalTantieme);
         }
@@ -769,7 +770,7 @@ public class ChargeServiceImpl implements ChargeService {
             ownerById.putIfAbsent(ownerId, property.getOwner());
             tantiemeByOwnerId.merge(
                     ownerId,
-                    property.getTantieme() != null ? property.getTantieme() : BigDecimal.ZERO,
+                    property.getShare() != null ? property.getShare() : BigDecimal.ZERO,
                     BigDecimal::add);
         }
 
@@ -899,7 +900,7 @@ public class ChargeServiceImpl implements ChargeService {
                 BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
                 for (Property p : properties) {
                     if (p.getOwner() != null && p.getOwner().getId().equals(customAmount.getCoOwnerId())) {
-                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO);
+                        tantiemeCoOwner = tantiemeCoOwner.add(p.getShare() != null ? p.getShare() : BigDecimal.ZERO);
                     }
                 }
 
@@ -928,7 +929,7 @@ public class ChargeServiceImpl implements ChargeService {
                 ownerById.putIfAbsent(ownerId, property.getOwner());
                 tantiemeByOwnerId.merge(
                         ownerId,
-                        property.getTantieme() != null ? property.getTantieme() : BigDecimal.ZERO,
+                        property.getShare() != null ? property.getShare() : BigDecimal.ZERO,
                         BigDecimal::add);
             }
 
@@ -1317,7 +1318,7 @@ public class ChargeServiceImpl implements ChargeService {
                 BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
                 for (Property p : properties) {
                     if (p.getOwner() != null && p.getOwner().getId().equals(customAmount.getCoOwnerId())) {
-                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme() != null ? p.getTantieme() : BigDecimal.ZERO);
+                        tantiemeCoOwner = tantiemeCoOwner.add(p.getShare() != null ? p.getShare() : BigDecimal.ZERO);
                     }
                 }
 
@@ -1342,7 +1343,7 @@ public class ChargeServiceImpl implements ChargeService {
                 ownerById.putIfAbsent(ownerId, property.getOwner());
                 tantiemeByOwnerId.merge(
                         ownerId,
-                        property.getTantieme() != null ? property.getTantieme() : BigDecimal.ZERO,
+                        property.getShare() != null ? property.getShare() : BigDecimal.ZERO,
                         BigDecimal::add);
             }
 
@@ -2177,8 +2178,9 @@ public class ChargeServiceImpl implements ChargeService {
     // UTILITAIRES PARTAGÉS
     // ============================================================
 
-    // Calcule le statut d'une ligne de charge selon le nombre de jours de retard
-    // (RETARD 1-30j, CRITIQUE 31j+, PARTIEL si paiement partiel dans les délais, PAYE si soldée)
+    // Calcule le statut d'une ligne de charge — lit le statut déjà posé au moment du paiement
+    // confirmé (jamais recalculé), sinon délègue le seuil de retard à PaymentStatusUtils
+    // (seule source de vérité), PARTIEL si un acompte a déjà été versé
     private String calculateItemStatus(ChargeCallItem item) {
 
         // Lit le statut déjà posé au moment du paiement confirmé — ne recalcule jamais
@@ -2186,10 +2188,10 @@ public class ChargeServiceImpl implements ChargeService {
         if (item.getStatus() == ChargeItemPaymentStatus.NO_AMOUNT_DUE) return "NON_APPLICABLE";
 
         LocalDate dueDate = item.getChargeCall().getDueDate();
-        long daysLate = ChronoUnit.DAYS.between(dueDate, LocalDate.now());
+        PaymentDelayStatus delayStatus = PaymentStatusUtils.computeDelayStatus(dueDate, false, LocalDate.now());
 
-        if (daysLate > 30) return "CRITIQUE";
-        if (daysLate > 0) return "RETARD";
+        if (delayStatus == PaymentDelayStatus.UNPAID) return "CRITIQUE";
+        if (delayStatus == PaymentDelayStatus.LATE) return "RETARD";
 
         boolean hasPartialPayment = item.getPaidAmount().compareTo(BigDecimal.ZERO) > 0;
         if (hasPartialPayment) return "PARTIEL";
@@ -2685,7 +2687,7 @@ public class ChargeServiceImpl implements ChargeService {
             BigDecimal totalTantieme = lots.stream()
 
                     // On récupère les tantièmes de chaque lot.
-                    .map(Property::getTantieme)
+                    .map(Property::getShare)
 
                     // On additionne tous les tantièmes.
                     .reduce(BigDecimal.ZERO, BigDecimal::add);

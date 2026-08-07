@@ -36,5 +36,5 @@ COPY --from=build /app/target/back-office-solimus-0.0.1-SNAPSHOT.jar /app/app.ja
 # 5. Port d'écoute
 EXPOSE 8082
 
-# 6. Lancement avec le profil docker
+# 6. Lancement avec le profil "docker"
 ENTRYPOINT ["java", "-jar", "/app/app.jar", "--spring.profiles.active=docker"]

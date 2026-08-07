@@ -20,7 +20,7 @@ public class PropertyListDTO {
     private String bloc;
     private Integer floor;
     private String typeName;
-    private BigDecimal superficie;
-    private BigDecimal tantieme;
-    
+    private BigDecimal area;
+    private BigDecimal share;
+
 }

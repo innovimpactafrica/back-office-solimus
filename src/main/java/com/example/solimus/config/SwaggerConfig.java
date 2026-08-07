@@ -35,7 +35,6 @@ public class SwaggerConfig {
                 .addTagsItem(new Tag().name("Copropriétaire - Dashboard"))
                 .addTagsItem(new Tag().name("Copropriétaire - Charges"))
                 .addTagsItem(new Tag().name("Copropriétaire - Réunions"))
-                .addTagsItem(new Tag().name("Copropriétaire - Documents"))
                 .addTagsItem(new Tag().name("Copropriétaire - Profil"))
                 .addTagsItem(new Tag().name("Syndic"))
                 .addTagsItem(new Tag().name("Syndic - Résidences"))

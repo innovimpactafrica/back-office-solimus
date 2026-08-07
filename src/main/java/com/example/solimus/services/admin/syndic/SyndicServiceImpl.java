@@ -440,7 +440,7 @@ public class SyndicServiceImpl implements SyndicService {
 
         // Taux d'occupation = lots occupés / total des lots
         long totalLots = propertyRepository.countByResidenceId(residenceId);
-        long occupiedLots = propertyRepository.countByResidenceIdAndStatus(residenceId, PropertyStatus.OCCUPE);
+        long occupiedLots = propertyRepository.countByResidenceIdAndStatus(residenceId, PropertyStatus.OCCUPIED);
         Double occupancyRate = totalLots > 0 ? (double) occupiedLots / totalLots * 100 : null;
 
         // Taux d'encaissement = montant encaissé / montant facturé

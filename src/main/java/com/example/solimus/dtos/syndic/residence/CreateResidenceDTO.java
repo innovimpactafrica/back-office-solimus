@@ -37,5 +37,7 @@ public class CreateResidenceDTO {
     private LocalDate constructionDate; // Date de construction complète
     private LocalDate renovationDate;   // Date de rénovation complète, optionnel
 
+    private BigDecimal totalArea;       // Superficie totale de la résidence (m²), dénominateur du calcul du tantième
+
     private List<ContactInputDTO> contacts; // "Contact clé" — un ou plusieurs (bouton "+ Contact")
 }

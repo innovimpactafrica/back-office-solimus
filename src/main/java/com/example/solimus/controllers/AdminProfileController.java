@@ -4,6 +4,7 @@ import com.example.solimus.dtos.admin.profile.AdminChangePasswordDTO;
 import com.example.solimus.dtos.admin.profile.AdminProfileDTO;
 import com.example.solimus.dtos.admin.profile.ChangePasswordResultDTO;
 import com.example.solimus.dtos.admin.profile.UpdateAdminProfileDTO;
+import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
 import com.example.solimus.services.admin.profile.AdminProfileService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -49,5 +50,22 @@ public class AdminProfileController {
     @PostMapping("/change-password")
     public ResponseEntity<ChangePasswordResultDTO> changePassword(@Valid @RequestBody AdminChangePasswordDTO dto) {
         return ResponseEntity.ok(adminProfileService.changePassword(dto));
+    }
+
+    // ===== NOTIFICATIONS (cloche) =====
+
+    @Operation(summary = "Lister mes notifications (paginé)")
+    @GetMapping("/notifications")
+    public ResponseEntity<NotificationListResponseDTO> getMyNotifications(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(adminProfileService.getMyNotifications(page, size));
+    }
+
+    @Operation(summary = "Marquer toutes mes notifications comme lues")
+    @PatchMapping("/notifications/mark-all-read")
+    public ResponseEntity<Void> markAllNotificationsAsRead() {
+        adminProfileService.markAllNotificationsAsRead();
+        return ResponseEntity.noContent().build();
     }
 }

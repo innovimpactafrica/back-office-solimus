@@ -19,6 +19,9 @@ import java.math.BigDecimal;
 //  Le copropriétaire peut être assigné immédiatement (ownerId)
 //  ou laissé vacant (ownerId = null).
 //
+//  Pas de champ "share" (tantième) : toujours calculé côté serveur
+//  à partir de area / Residence.totalArea, jamais transmis par le Front.
+//
 // =============================================================================
 @Data
 @AllArgsConstructor
@@ -64,14 +67,8 @@ public class AddPropertyDTO {
     /**
      * Superficie en m².
      */
-    private BigDecimal superficie;
-
-    /**
-     * Tantième du lot.
-     * Quote-part dans les charges communes.
-     * Exemple : 1.25 → ce lot paie 1.25% des charges totales.
-     */
-    private BigDecimal tantieme;
+    @NotNull(message = "La superficie est obligatoire")
+    private BigDecimal area;
 
 
     // -------------------------------------------------------------------------

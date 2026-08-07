@@ -6,8 +6,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
 // DTO pour le listing / affichage des types d'équipement
 @Data
 @Builder
@@ -24,7 +22,4 @@ public class FacilityTypeDTO {
 
     // Nombre de résidences utilisant ce type d'équipement (calculé)
     private int residenceCount;
-
-    // Liste des champs applicables pour ce type (pour le frontend)
-    private List<String> fields;
 }

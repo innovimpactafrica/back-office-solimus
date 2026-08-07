@@ -6,8 +6,10 @@ import com.example.solimus.dtos.syndic.subscription.SyndicPlanChangeResponseDTO;
 import com.example.solimus.dtos.syndic.subscription.SyndicPlanOptionDTO;
 import com.example.solimus.dtos.syndic.subscription.SyndicSubscriptionHistoryDTO;
 import com.example.solimus.entities.SyndicPlan;
+import com.example.solimus.entities.SyndicProfile;
 import com.example.solimus.entities.SyndicSubscription;
 import com.example.solimus.entities.User;
+import com.example.solimus.enums.AdminNotificationEventType;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.SubscriptionDuration;
@@ -16,8 +18,10 @@ import com.example.solimus.enums.SyndicPlanFeature;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.SyndicPlanRepository;
+import com.example.solimus.repositories.SyndicProfileRepository;
 import com.example.solimus.repositories.SyndicSubscriptionRepository;
 import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.services.admin.notification.AdminNotificationPreferenceService;
 import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +49,8 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
     private final SyndicPlanRepository syndicPlanRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final SyndicProfileRepository syndicProfileRepository;
+    private final AdminNotificationPreferenceService adminNotificationPreferenceService;
 
     @Value("${app.touchpay.bridge-url}")
     private String touchPayBridgeUrlTemplate;
@@ -258,6 +264,20 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
         }
 
         syndicSubscriptionRepository.saveAll(expired);
+
+        // Notifie les admins pour chaque abonnement syndic qui vient d'expirer
+        for (SyndicSubscription subscription : expired) {
+            User syndic = subscription.getSyndic();
+            String companyName = syndicProfileRepository.findByUserId(syndic.getId())
+                    .map(SyndicProfile::getCompanyName)
+                    .orElse(null);
+            adminNotificationPreferenceService.notifyAdmins(
+                    AdminNotificationEventType.SUBSCRIPTION_EXPIRED,
+                    "Abonnement expiré",
+                    "L'abonnement du syndic " +
+                            (companyName != null ? companyName : syndic.getFirstName() + " " + syndic.getLastName()) +
+                            " a expiré.");
+        }
 
         log.info("{} abonnement(s) syndic passé(s) en EXPIRED", expired.size());
     }

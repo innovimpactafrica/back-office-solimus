@@ -1,5 +1,6 @@
 package com.example.solimus.entities;
 
+import com.example.solimus.enums.PropertyDisplayStatus;
 import com.example.solimus.enums.PropertyStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -87,17 +88,18 @@ public class Property {
      * Superficie du lot en mètres carrés.
      * Exemple : 85.0 → affiché "85 m²"
      */
-    @Column(name = "superficie")
-    private BigDecimal superficie;
+    @Column(name = "area")
+    private BigDecimal area;
 
     /**
      * Tantième du lot.
      * Représente la quote-part de ce lot dans les charges communes.
      * Exemple : 1.25 → ce lot paie 1.25% des charges totales de la résidence.
-     * Utilisé pour le calcul automatique des allocations de charges.
+     * Calculé automatiquement côté serveur, jamais saisi manuellement :
+     * area / Residence.totalArea × 100.
      */
-    @Column(name = "tantieme", precision = 5, scale = 2)
-    private BigDecimal tantieme;
+    @Column(name = "share", precision = 5, scale = 2)
+    private BigDecimal share;
 
 
     // =========================================================================
@@ -108,7 +110,7 @@ public class Property {
      * Statut actuel du lot.
      *
      * Valeurs :
-     * → OCCUPE      : un résident habite le lot (badge vert)
+     * → OCCUPIED    : un résident habite le lot (badge vert)
      * → VACANT      : le lot est inoccupé (badge gris)
      * → MAINTENANCE : le lot est en travaux (badge orange)
      *
@@ -117,6 +119,15 @@ public class Property {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private PropertyStatus status;
+
+    /**
+     * Statut d'affichage calculé du lot (MAINTENANCE > statut de paiement > OCCUPIED/VACANT).
+     * Recalculé et stocké à chaque événement pertinent (paiement, changement de statut du lot),
+     * et rattrapé quotidiennement par un job planifié pour les cas de simple écoulement du temps.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "display_status")
+    private PropertyDisplayStatus displayStatus;
 
 
     // =========================================================================
@@ -140,6 +151,31 @@ public class Property {
      */
     @Column(name = "assigned_at")
     private LocalDateTime assignedAt;
+
+
+    // =========================================================================
+    // LOCATAIRE DU LOT
+    // =========================================================================
+
+    /**
+     * Locataire occupant ce lot, le cas échéant.
+     * Le propriétaire (owner) reste le titulaire légal du bien — le locataire n'est que
+     * l'occupant réel au quotidien. Un lot loué a donc owner ET tenant remplis en même temps.
+     * Peut être null si le lot n'est pas loué.
+     *
+     * Affiché dans la colonne "RÉSIDENT" du tableau Appartements.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "tenant_id", nullable = true)
+    private User tenant;
+
+    /**
+     * Date à laquelle ce lot a été affecté à son locataire actuel.
+     * Renseigné automatiquement au moment de l'affectation (jamais saisi manuellement).
+     * Reste null tant que le lot n'a pas de locataire.
+     */
+    @Column(name = "tenant_assigned_at")
+    private LocalDateTime tenantAssignedAt;
 
 
     // =========================================================================

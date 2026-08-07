@@ -4,8 +4,10 @@ import com.example.solimus.dtos.admin.subscription.ProviderPlanDTO;
 import com.example.solimus.dtos.provider.subscription.InitiateSubscriptionPaymentDTO;
 import com.example.solimus.dtos.provider.subscription.SubscriptionPaymentResponseDTO;
 import com.example.solimus.entities.ProviderPlan;
+import com.example.solimus.entities.ProviderProfile;
 import com.example.solimus.entities.ProviderSubscription;
 import com.example.solimus.entities.User;
+import com.example.solimus.enums.AdminNotificationEventType;
 import com.example.solimus.enums.ERole;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.SubscriptionDuration;
@@ -13,8 +15,10 @@ import com.example.solimus.enums.SubscriptionStatus;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.ProviderPlanRepository;
+import com.example.solimus.repositories.ProviderProfileRepository;
 import com.example.solimus.repositories.ProviderSubscriptionRepository;
 import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.services.admin.notification.AdminNotificationPreferenceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,6 +40,8 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
     private final ProviderPlanRepository providerPlanRepository;
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
     private final UserRepository userRepository;
+    private final ProviderProfileRepository providerProfileRepository;
+    private final AdminNotificationPreferenceService adminNotificationPreferenceService;
 
     @Value("${app.touchpay.bridge-url}")
     private String touchPayBridgeUrlTemplate;
@@ -198,6 +204,20 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
 
         // On sauvegarde tous les changements en une seule fois
         providerSubscriptionRepository.saveAll(expired);
+
+        // Notifie les admins pour chaque abonnement prestataire qui vient d'expirer
+        for (ProviderSubscription subscription : expired) {
+            User provider = subscription.getProvider();
+            String companyName = providerProfileRepository.findByUser(provider)
+                    .map(ProviderProfile::getCompanyName)
+                    .orElse(null);
+            adminNotificationPreferenceService.notifyAdmins(
+                    AdminNotificationEventType.SUBSCRIPTION_EXPIRED,
+                    "Abonnement expiré",
+                    "L'abonnement du prestataire " +
+                            (companyName != null ? companyName : provider.getFirstName() + " " + provider.getLastName()) +
+                            " a expiré.");
+        }
 
         log.info("{} abonnement(s) passé(s) en EXPIRED", expired.size());
     }

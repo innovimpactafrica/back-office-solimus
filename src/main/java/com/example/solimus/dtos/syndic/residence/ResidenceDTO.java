@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * DTO pour la réponse de la résidence
@@ -29,6 +30,7 @@ public class ResidenceDTO {
     private BigDecimal longitude;
     private String photoUrl;
     private Integer lotsCount;
+    private BigDecimal totalArea;
     private LocalDate constructionDate;
     private LocalDate renovationDate;
     private BigDecimal annualBudget;
@@ -43,4 +45,9 @@ public class ResidenceDTO {
     private LocalDateTime createdAt;
     @JsonFormat(pattern = "dd/MM/yyyy HH:mm")
     private LocalDateTime updatedAt;
+
+    // Renseignés uniquement par la création complète (POST /residences/complete) — null sinon
+    private List<PropertyDTO> properties;
+    private List<CommonFacilityListItemDTO> facilities;
+    private List<SecurityFeatureLabelDTO> securityFeatures;
 }

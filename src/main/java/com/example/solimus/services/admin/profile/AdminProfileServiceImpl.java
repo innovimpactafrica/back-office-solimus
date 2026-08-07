@@ -4,15 +4,22 @@ import com.example.solimus.dtos.admin.profile.AdminChangePasswordDTO;
 import com.example.solimus.dtos.admin.profile.AdminProfileDTO;
 import com.example.solimus.dtos.admin.profile.ChangePasswordResultDTO;
 import com.example.solimus.dtos.admin.profile.UpdateAdminProfileDTO;
+import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
+import com.example.solimus.dtos.owner.dashboard.NotificationRowDTO;
+import com.example.solimus.entities.Notification;
 import com.example.solimus.entities.User;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.EmailAlreadyExistsException;
 import com.example.solimus.exceptions.PhoneAlreadyExistsException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
+import com.example.solimus.repositories.NotificationRepository;
 import com.example.solimus.repositories.UserRepository;
 import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -29,6 +36,7 @@ public class AdminProfileServiceImpl implements AdminProfileService {
     private final UserRepository userRepository;
     private final MinioService minioService;
     private final PasswordEncoder passwordEncoder;
+    private final NotificationRepository notificationRepository;
 
     // Même règle de robustesse que ChangePasswordDTO (syndic) — on la réutilise, pas de nouvelle règle
     private static final int MIN_PASSWORD_LENGTH = 6;
@@ -138,6 +146,42 @@ public class AdminProfileServiceImpl implements AdminProfileService {
                 .success(true)
                 .message("Mot de passe modifié avec succès")
                 .build();
+    }
+
+    // =========================================================================
+    // NOTIFICATIONS (cloche)
+    // =========================================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public NotificationListResponseDTO getMyNotifications(int page, int size) {
+        User currentAdmin = getCurrentAdmin();
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Notification> notificationPage = notificationRepository.findByUserOrderByCreatedAtDesc(currentAdmin, pageable);
+
+        List<NotificationRowDTO> rows = notificationPage.getContent().stream()
+                .map(notification -> NotificationRowDTO.builder()
+                        .id(notification.getId())
+                        .title(notification.getTitle())
+                        .body(notification.getBody())
+                        .read(notification.getRead())
+                        .createdAt(notification.getCreatedAt())
+                        .build())
+                .toList();
+
+        return NotificationListResponseDTO.builder()
+                .totalCount(notificationPage.getTotalElements())
+                .notifications(rows)
+                .currentPage(notificationPage.getNumber())
+                .totalPages(notificationPage.getTotalPages())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public void markAllNotificationsAsRead() {
+        notificationRepository.markAllAsReadByUser(getCurrentAdmin());
     }
 
     // =========================================================================

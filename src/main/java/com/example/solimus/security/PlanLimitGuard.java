@@ -5,6 +5,7 @@ import com.example.solimus.entities.SyndicSubscription;
 import com.example.solimus.entities.User;
 import com.example.solimus.enums.SubscriptionStatus;
 import com.example.solimus.exceptions.BadRequestException;
+import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.repositories.PropertyRepository;
 import com.example.solimus.repositories.ResidenceRepository;
 import com.example.solimus.repositories.SyndicSubscriptionRepository;
@@ -41,7 +42,7 @@ public class PlanLimitGuard {
 
         // Si la limite de la formule est atteinte, on bloque l'ajout
         if (current >= plan.getMaxResidences()) {
-            throw new BadRequestException(
+            throw new ForbiddenException(
                     "Limite de résidences de votre formule atteinte (" + plan.getMaxResidences() +
                             "). Passez à une formule supérieure pour en ajouter davantage.");
         }
@@ -65,7 +66,7 @@ public class PlanLimitGuard {
 
         // Si l'ajout dépasserait la limite de la formule, on bloque
         if (current + countToAdd > plan.getMaxApartments()) {
-            throw new BadRequestException(
+            throw new ForbiddenException(
                     "Limite d'appartements de votre formule atteinte (" + plan.getMaxApartments() +
                             "). Passez à une formule supérieure pour en ajouter davantage.");
         }

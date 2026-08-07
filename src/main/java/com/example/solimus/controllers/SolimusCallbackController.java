@@ -3,10 +3,12 @@ package com.example.solimus.controllers;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.*;
 import com.example.solimus.repositories.*;
+import com.example.solimus.services.admin.notification.AdminNotificationPreferenceService;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.notification.NotificationService;
 import com.example.solimus.services.provider.ProviderService;
 import com.example.solimus.services.provider.wallet.WalletService;
+import com.example.solimus.services.shared.StatusRecalculationService;
 import com.example.solimus.utils.PasswordGeneratorUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -68,6 +70,9 @@ public class SolimusCallbackController {
     // Repository des profils société syndic, pour récupérer le nom de société à l'activation
     private final SyndicProfileRepository syndicProfileRepository;
 
+    // Repository des profils société prestataire, pour récupérer le nom de société dans les notifications admin
+    private final ProviderProfileRepository providerProfileRepository;
+
     // Encodeur utilisé pour chiffrer le mot de passe temporaire généré au moment de l'activation du syndic
     private final PasswordEncoder passwordEncoder;
 
@@ -79,6 +84,15 @@ public class SolimusCallbackController {
 
     // Service de notifications push, pour alerter le syndic des nouveaux paiements
     private final NotificationService notificationService;
+
+    // Diffuse les événements admin (ex: "Nouveau syndic créé") aux admins, selon leurs préférences
+    private final AdminNotificationPreferenceService adminNotificationPreferenceService;
+
+    // Repository des lots, pour recalculer leur displayStatus après un paiement de charge
+    private final PropertyRepository propertyRepository;
+
+    // Recalcule et persiste displayStatus (lot) / healthStatus (résidence) sur événement
+    private final StatusRecalculationService statusRecalculationService;
 
     // URL de la page "Paramètres" de l'app web Angular (espace syndic uniquement pour l'instant) —
     // destination des paiements self-service (SYR-). Les autres références (mobile, ou web admin
@@ -324,6 +338,11 @@ public class SolimusCallbackController {
                     // Sauvegarde finale
                     interventionRepository.save(req);
 
+                    // Le solde clôture l'intervention (FINAL_VALIDATION) : recalcule la santé de la résidence
+                    if (payment.getType() == PaymentType.SOLDE && req.getResidence() != null) {
+                        statusRecalculationService.recalculateResidenceHealthStatus(req.getResidence());
+                    }
+
                     // Tracer l'activité de paiement
                     ActivityLog activityLog = new ActivityLog();
                     activityLog.setResidence(req.getResidence());
@@ -374,6 +393,9 @@ public class SolimusCallbackController {
                         subscription.setPaymentStatus(PaymentStatus.FAILED);
                         providerSubscriptionRepository.save(subscription);
 
+                        notifyAdminsPaymentFailed(
+                                resolveProviderLabel(subscription.getProvider()), subscription.getAmountPaid());
+
                         // On trace l'échec dans les logs pour debug
                         log.warn("Paiement abonnement échoué pour ref : {}", ref);
 
@@ -397,6 +419,10 @@ public class SolimusCallbackController {
                         old.setStatus(SubscriptionStatus.CANCELLED);
                     }
                     providerSubscriptionRepository.saveAll(previousActive);
+
+                    // Notifie les admins : ce paiement d'abonnement constitue du revenu plateforme
+                    notifyAdminsPaymentReceived(
+                            resolveProviderLabel(subscription.getProvider()), subscription.getAmountPaid());
 
                     // On trace l'activation réussie, avec la date d'expiration pour suivi
                     log.info("Abonnement {} activé pour prestataire {} — expire le {}",
@@ -444,6 +470,9 @@ public class SolimusCallbackController {
                         subscription.setPaymentStatus(PaymentStatus.FAILED);
                         syndicSubscriptionRepository.save(subscription);
 
+                        notifyAdminsPaymentFailed(
+                                resolveSyndicLabel(subscription.getSyndic()), subscription.getAmountPaid());
+
                         log.warn("Paiement abonnement syndic échoué pour ref : {}", ref);
 
                         return ResponseEntity.ok(Map.<String, Object>of(
@@ -476,6 +505,19 @@ public class SolimusCallbackController {
                             temporaryPassword,
                             syndic.getFirstName(),
                             companyName);
+
+                    // Le compte syndic n'est réellement "créé" qu'à partir d'ici (paiement confirmé) —
+                    // c'est donc le seul moment légitime pour déclencher l'événement NEW_SYNDIC_CREATED
+                    adminNotificationPreferenceService.notifyAdmins(
+                            AdminNotificationEventType.NEW_SYNDIC_CREATED,
+                            "Nouveau syndic créé",
+                            (companyName != null ? companyName : syndic.getFirstName() + " " + syndic.getLastName())
+                                    + " a rejoint la plateforme.");
+
+                    // Ce paiement d'abonnement constitue également du revenu plateforme
+                    notifyAdminsPaymentReceived(
+                            companyName != null ? companyName : syndic.getFirstName() + " " + syndic.getLastName(),
+                            subscription.getAmountPaid());
 
                     log.info("Abonnement syndic {} activé pour {} — expire le {} — identifiants envoyés par email",
                             ref,
@@ -519,6 +561,9 @@ public class SolimusCallbackController {
                         subscription.setPaymentStatus(PaymentStatus.FAILED);
                         syndicSubscriptionRepository.save(subscription);
 
+                        notifyAdminsPaymentFailed(
+                                resolveSyndicLabel(subscription.getSyndic()), subscription.getAmountPaid());
+
                         log.warn("Changement de formule syndic échoué pour ref : {}", ref);
 
                         return ResponseEntity.ok(Map.<String, Object>of(
@@ -559,6 +604,9 @@ public class SolimusCallbackController {
                                     "\" a bien été confirmé. Votre nouvel abonnement est actif jusqu'au " +
                                     subscription.getEndDate().format(DATE_FORMATTER) + ".\n\n" +
                                     "L'équipe SOLIMUS");
+
+                    // Ce paiement de changement de formule constitue également du revenu plateforme
+                    notifyAdminsPaymentReceived(resolveSyndicLabel(syndic), subscription.getAmountPaid());
 
                     log.info("Changement de formule {} confirmé pour {} — nouvelle formule {} — expire le {}",
                             ref,
@@ -602,6 +650,9 @@ public class SolimusCallbackController {
                         subscription.setStatus(SubscriptionStatus.FAILED);
                         subscription.setPaymentStatus(PaymentStatus.FAILED);
                         syndicSubscriptionRepository.save(subscription);
+
+                        notifyAdminsPaymentFailed(
+                                resolveSyndicLabel(subscription.getSyndic()), subscription.getAmountPaid());
 
                         log.warn("Renouvellement syndic (admin) échoué pour ref : {}", ref);
 
@@ -651,6 +702,9 @@ public class SolimusCallbackController {
                                         "Cordialement,\nL'équipe Solimus");
                     }
 
+                    // Ce paiement de renouvellement constitue également du revenu plateforme
+                    notifyAdminsPaymentReceived(resolveSyndicLabel(syndic), subscription.getAmountPaid());
+
                     log.info("Renouvellement syndic (admin) {} confirmé pour {} — formule {} — expire le {}",
                             ref,
                             syndic.getEmail(),
@@ -690,6 +744,9 @@ public class SolimusCallbackController {
                         subscription.setStatus(SubscriptionStatus.FAILED);
                         subscription.setPaymentStatus(PaymentStatus.FAILED);
                         providerSubscriptionRepository.save(subscription);
+
+                        notifyAdminsPaymentFailed(
+                                resolveProviderLabel(subscription.getProvider()), subscription.getAmountPaid());
 
                         log.warn("Renouvellement prestataire (admin) échoué pour ref : {}", ref);
 
@@ -736,6 +793,9 @@ public class SolimusCallbackController {
                                         " au " + subscription.getEndDate().format(DATE_FORMATTER) + "\n\n" +
                                         "Cordialement,\nL'équipe Solimus");
                     }
+
+                    // Ce paiement de renouvellement constitue également du revenu plateforme
+                    notifyAdminsPaymentReceived(resolveProviderLabel(provider), subscription.getAmountPaid());
 
                     log.info("Renouvellement prestataire (admin) {} confirmé pour {} — formule {} — expire le {}",
                             ref,
@@ -802,8 +862,14 @@ public class SolimusCallbackController {
 
                     chargeCallItemRepository.save(item);
 
-                    // Crédite le wallet du syndic (catégorie CHARGES)
+                    // Recalcule les statuts affichés impactés par ce paiement : le(s) lot(s) du
+                    // copropriétaire (displayStatus) et la santé de la résidence (healthStatus)
                     Residence residence = item.getChargeCall().getBudget().getResidence();
+                    propertyRepository.findByOwnerIdAndResidenceId(paiement.getOwner().getId(), residence.getId())
+                            .forEach(statusRecalculationService::recalculatePropertyDisplayStatus);
+                    statusRecalculationService.recalculateResidenceHealthStatus(residence);
+
+                    // Crédite le wallet du syndic (catégorie CHARGES)
                     SyndicWallet syndicWallet = syndicWalletRepository
                             .findBySyndicId(residence.getSyndic().getId())
                             .orElseThrow(() -> new RuntimeException("Wallet syndic introuvable"));
@@ -951,5 +1017,42 @@ public class SolimusCallbackController {
                                 "message", "Paiement charge exceptionnelle introuvable : " + ref
                         )
                 ));
+    }
+
+    // =========================================================================
+    // Diffuse l'événement admin PAYMENT_RECEIVED — réutilisé par tous les paiements
+    // d'abonnement (SUB-, SYN-, SYR-, SYA-, PRA-), qui seuls constituent du revenu
+    // pour la plateforme (contrairement aux paiements de charges CPY-/ECP-, qui ne
+    // font que transiter vers le wallet du syndic)
+    // =========================================================================
+    private void notifyAdminsPaymentReceived(String payerLabel, BigDecimal amount) {
+        adminNotificationPreferenceService.notifyAdmins(
+                AdminNotificationEventType.PAYMENT_RECEIVED,
+                "Paiement reçu",
+                payerLabel + " a payé " + amount + " FCFA.");
+    }
+
+    // Même périmètre que notifyAdminsPaymentReceived (uniquement les paiements d'abonnement,
+    // seuls à constituer du revenu plateforme) — déclenché sur chaque branche "!succes" des mêmes
+    // 5 callbacks (SUB-, SYN-, SYR-, SYA-, PRA-)
+    private void notifyAdminsPaymentFailed(String payerLabel, BigDecimal amount) {
+        adminNotificationPreferenceService.notifyAdmins(
+                AdminNotificationEventType.PAYMENT_FAILED,
+                "Paiement échoué",
+                "Le paiement de " + amount + " FCFA initié par " + payerLabel + " a échoué.");
+    }
+
+    // Nom de société du syndic si son profil en a un, sinon prénom + nom
+    private String resolveSyndicLabel(User syndic) {
+        return syndicProfileRepository.findByUserId(syndic.getId())
+                .map(SyndicProfile::getCompanyName)
+                .orElse(syndic.getFirstName() + " " + syndic.getLastName());
+    }
+
+    // Nom de société du prestataire si son profil en a un, sinon prénom + nom
+    private String resolveProviderLabel(User provider) {
+        return providerProfileRepository.findByUser(provider)
+                .map(ProviderProfile::getCompanyName)
+                .orElse(provider.getFirstName() + " " + provider.getLastName());
     }
 }

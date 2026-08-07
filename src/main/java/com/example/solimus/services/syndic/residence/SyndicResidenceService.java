@@ -2,6 +2,8 @@ package com.example.solimus.services.syndic.residence;
 
 import com.example.solimus.dtos.syndic.residence.*;
 import com.example.solimus.dtos.syndic.settings.FacilityTypeDTO;
+import com.example.solimus.enums.PropertyDisplayStatus;
+import com.example.solimus.enums.ResidenceHealthStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.multipart.MultipartFile;
@@ -10,12 +12,8 @@ import java.util.List;
 
 public interface SyndicResidenceService {
 
-    // Étape 1 — Créer la résidence avec les infos générales et photo
-    // Retourne l'ID de la résidence créée pour les étapes suivantes
-    ResidenceDTO createResidenceComplete(CreateResidenceDTO dto, MultipartFile photo);
-
-    // Étape 2 — Ajouter plusieurs lots/appartements à la résidence
-    List<PropertyDTO> addProperties(Long residenceId, List<AddPropertyDTO> dtos);
+    // Création en un seul appel : infos générales + lots + équipements + sécurité, en une transaction
+    ResidenceDTO createResidenceFull(CreateResidenceFullDTO dto, MultipartFile photo);
 
     // Étape 2 — Modifier un lot/appartement
     PropertyDTO updateProperty(Long residenceId, Long propertyId, UpdatePropertyDTO dto);
@@ -28,7 +26,11 @@ public interface SyndicResidenceService {
 
     // Étape 2 — Lister les lots d'une résidence avec filtres (paginé, pour onglet Appartements)
     Page<PropertyListItemDTO> getPropertiesPaginatedWithFilters(
-            Long residenceId, String search, Integer floor, String status, Integer page, Integer size);
+            Long residenceId, String search, Integer floor, PropertyDisplayStatus status, Integer page, Integer size);
+
+    // Étape 2 — Ajouter un locataire à un lot déjà attribué à un propriétaire
+    PropertyDTO addTenant(Long residenceId, Long propertyId, String firstName, String lastName,
+                          String email, String phone, MultipartFile photo);
 
     // Lister les équipements communs d'une résidence avec filtres (onglet Biens communs)
     List<CommonFacilityListItemDTO> getCommonFacilitiesWithFilters(
@@ -67,17 +69,11 @@ public interface SyndicResidenceService {
     //  Étape 3 — Lister les types d'équipement avec leurs champs
     Page<FacilityTypeDTO> getFacilityTypes(int page, int size);
 
-    //  Étape 3 — Ajouter un équipement commun à une résidence
-    void addFacility(Long residenceId, AddFacilityDTO dto);
-
     //  Étape 3 — Mettre à jour les options de sécurité d'une résidence
     void updateSecurityFeatures(Long residenceId, UpdateSecurityFeaturesDTO dto);
 
     // Étape 3 — Lister les options de sécurité disponibles (labels)
     List<SecurityFeatureLabelDTO> getSecurityFeatures();
-
-    //  Étape 3 — Sauvegarder l'étape 3 complète (équipements + sécurité)
-    void saveStep3(Long residenceId, Step3DTO dto);
 
     // Lister les résidences du syndic connecté (pour dropdowns)
     List<ResidenceDTO> getMesResidences();
@@ -94,5 +90,5 @@ public interface SyndicResidenceService {
     ResidenceDashboardStatsDTO getDashboardStats();
 
     // Liste paginée et filtrée des résidences (cartes)
-    Page<ResidenceCardDTO> getResidencesPaginated(String search, String city, String status, Integer page, Integer size);
+    Page<ResidenceCardDTO> getResidencesPaginated(String search, String city, ResidenceHealthStatus status, Integer page, Integer size);
 }

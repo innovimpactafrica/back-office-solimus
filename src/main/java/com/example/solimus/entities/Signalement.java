@@ -64,7 +64,12 @@ public class Signalement {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "owner_id", nullable = false)
-    private User owner; // Copropriétaire qui a créé le signalement
+    private User owner; // Copropriétaire titulaire du bien concerné (toujours renseigné, même si initié par le locataire)
+
+    // Locataire à l'origine du signalement, si c'est lui qui l'a créé (null si créé par le copropriétaire)
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "tenant_id")
+    private User tenant;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "signalement_photos", joinColumns = @JoinColumn(name = "signalement_id"))

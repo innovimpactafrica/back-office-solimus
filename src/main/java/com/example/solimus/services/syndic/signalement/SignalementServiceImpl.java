@@ -9,6 +9,7 @@ import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.notification.NotificationService;
+import com.example.solimus.services.shared.StatusRecalculationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -29,6 +30,7 @@ public class SignalementServiceImpl implements SignalementService {
     private final UserRepository userRepository;
     private final SpecialtyRepository specialtyRepository;
     private final InterventionRequestRepository interventionRequestRepository;
+    private final StatusRecalculationService statusRecalculationService;
     private final NotificationService notificationService;
 
     // =========================================================================
@@ -217,6 +219,9 @@ public class SignalementServiceImpl implements SignalementService {
         }
 
         InterventionRequest savedIntervention = interventionRequestRepository.save(request);
+
+        // Une intervention URGENT active peut faire passer la résidence en CRITIQUE
+        statusRecalculationService.recalculateResidenceHealthStatus(signalement.getResidence());
 
         // Lie le signalement à cette nouvelle intervention et met à jour son statut
         signalement.setLinkedIntervention(savedIntervention);

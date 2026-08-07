@@ -37,15 +37,18 @@ public interface ResidenceRepository extends JpaRepository<Residence, Long> {
 
     /**
      * Recherche paginée des résidences d'un syndic avec filtres
+     * status : filtre sur le healthStatus déjà persisté (calculé et recalculé côté service, jamais ici)
      */
     @Query("SELECT r FROM Residence r WHERE r.syndic.id = :syndicId " +
            "AND (:search IS NULL OR LOWER(r.name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
            "AND (:city IS NULL OR r.city = :city) " +
+           "AND (:status IS NULL OR r.healthStatus = :status) " +
            "ORDER BY r.name ASC")
     Page<Residence> findBySyndicIdWithFilters(
             @Param("syndicId") Long syndicId,
             @Param("search") String search,
             @Param("city") String city,
+            @Param("status") ResidenceHealthStatus status,
             Pageable pageable);
 
     /**

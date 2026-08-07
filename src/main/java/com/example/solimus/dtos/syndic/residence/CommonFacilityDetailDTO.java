@@ -33,6 +33,9 @@ public class CommonFacilityDetailDTO {
     // Description du bien (vient de FacilityType)
     private String description;
 
+    // Détails saisis librement par le syndic pour cette instance précise (CommonFacility.description)
+    private String details;
+
     // Nom de la résidence
     private String residenceName;
 

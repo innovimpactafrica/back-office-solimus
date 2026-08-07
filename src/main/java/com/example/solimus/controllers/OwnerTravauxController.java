@@ -13,7 +13,6 @@ import com.example.solimus.dtos.owner.travaux.OwnerInterventionDetailDTO;
 import com.example.solimus.dtos.owner.travaux.OwnerInterventionDTO;
 import com.example.solimus.dtos.syndic.residence.CommonFacilityDTO;
 import com.example.solimus.dtos.syndic.residence.PropertyDTO;
-import com.example.solimus.dtos.syndic.residence.ResidenceDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.enums.IncidentLocationType;
 import com.example.solimus.enums.InterventionManagementMode;
@@ -21,7 +20,7 @@ import com.example.solimus.enums.InterventionStatus;
 import com.example.solimus.enums.UrgencyLevel;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.owner.charge.OwnerChargeService;
-import com.example.solimus.services.owner.travaux.ownerTraveauxService;
+import com.example.solimus.services.owner.travaux.ownerTravauxService;
 import com.example.solimus.services.syndic.settings.SyndicSettingsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -47,7 +46,7 @@ import java.util.List;
 public class OwnerTravauxController {
 
     private final SyndicSettingsService syndicParametreService;
-    private final ownerTraveauxService ownerTraveauxService;
+    private final ownerTravauxService ownerTraveauxService;
     private final MinioService minioService;
     private final OwnerChargeService ownerChargeService;
 

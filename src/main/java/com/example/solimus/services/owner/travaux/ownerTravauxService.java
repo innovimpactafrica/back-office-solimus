@@ -18,7 +18,7 @@ import org.springframework.data.domain.Page;
 
 import java.util.List;
 
-public interface ownerTraveauxService {
+public interface ownerTravauxService {
 
     /**
      * Lister toutes les résidences où le copropriétaire connecté possède un bien.

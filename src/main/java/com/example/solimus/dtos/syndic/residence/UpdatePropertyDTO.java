@@ -8,8 +8,9 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 
 /**
- * DTO pour modifier un bien d'une résidence
+ * DTO pour modifier les informations de base d'un bien d'une résidence
  * Tous les champs sont optionnels pour une mise à jour partielle
+ * Pas de champ "share" (tantième) : recalculé automatiquement côté serveur.
  */
 @Data
 @Builder
@@ -25,9 +26,5 @@ public class UpdatePropertyDTO {
 
     private Long propertyTypeId;
 
-    private BigDecimal superficie;
-
-    private BigDecimal tantieme;
-
-    private Long ownerId;
+    private BigDecimal area;
 }

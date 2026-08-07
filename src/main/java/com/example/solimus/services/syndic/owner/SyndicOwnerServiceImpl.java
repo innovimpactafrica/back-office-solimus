@@ -667,7 +667,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
          * Pour chaque résidence → pour chaque lot sélectionné :
          * - Vérifier que le lot existe et appartient à la résidence
          * - Vérifier que le lot est VACANT (pas de owner)
-         * - Affecter le copropriétaire + passer le statut à OCCUPE
+         * - Affecter le copropriétaire + passer le statut à OCCUPIED
          */
         if (dto.getProperties() != null && !dto.getProperties().isEmpty()) {
             //Pour chaque affectation de propriété
@@ -704,9 +704,9 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                                 + " est déjà occupé");
                     }
 
-                    // Affecter le copropriétaire → statut automatiquement OCCUPE
+                    // Affecter le copropriétaire → statut automatiquement OCCUPIED
                     property.setOwner(saved);
-                    property.setStatus(PropertyStatus.OCCUPE);
+                    property.setStatus(PropertyStatus.OCCUPIED);
                     property.setAssignedAt(LocalDateTime.now());
                     propertyRepository.save(property);
                 }
@@ -928,7 +928,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
                 for (Property p : allProperties) {
                     if (p.getResidence().getId().equals(residenceId)) {
-                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme());
+                        tantiemeCoOwner = tantiemeCoOwner.add(p.getShare());
                     }
                 }
 
@@ -1009,8 +1009,8 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                         .reference(p.getReference())
                         .bloc(p.getBloc())
                         .floor(p.getFloor())
-                        .superficie(p.getSuperficie())
-                        .tantieme(p.getTantieme())
+                        .area(p.getArea())
+                        .share(p.getShare())
                         .residenceName(p.getResidence().getName())
                         .annualCharge(annualCharge)
                         .build();
@@ -1115,7 +1115,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 List<Property> properties = propertyRepository.findAllByOwnerId(coOwnerId);
                 for (Property p : properties) {
                     if (p.getResidence().getId().equals(residenceId)) {
-                        tantiemeCoOwner = tantiemeCoOwner.add(p.getTantieme());
+                        tantiemeCoOwner = tantiemeCoOwner.add(p.getShare());
                     }
                 }
                 annualCharges = budget.getBudgetTotal()
@@ -1426,7 +1426,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         } else {
             // Mode OWNERSHIP_SHARES : calcul basé sur les tantièmes
             return budget.getBudgetTotal()
-                    .multiply(property.getTantieme())
+                    .multiply(property.getShare())
                     .divide(BigDecimal.valueOf(100));
         }
     }

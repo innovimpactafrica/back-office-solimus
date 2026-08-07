@@ -23,4 +23,10 @@ public class SignalementDetailDTO {
     private String declaredByName; // Nom du copropriétaire (utile côté syndic)
     private String closingNote;
     private List<SignalementHistoryItemDTO> history;
+
+    // true si ce signalement a été créé par le locataire plutôt que le copropriétaire
+    private boolean fromTenant;
+
+    // Nom du locataire — rempli uniquement si fromTenant = true
+    private String tenantName;
 }

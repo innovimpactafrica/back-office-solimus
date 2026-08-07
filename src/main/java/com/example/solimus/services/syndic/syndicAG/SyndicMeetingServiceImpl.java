@@ -817,13 +817,13 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
             if (aggregatesByOwnerId.containsKey(ownerId)) {
                 // Ce propriétaire a déjà un casier : on ajoute le tantième et la référence de ce lot supplémentaire
                 OwnerAggregate existing = aggregatesByOwnerId.get(ownerId);
-                existing.totalTantieme = existing.totalTantieme.add(property.getTantieme());
+                existing.totalTantieme = existing.totalTantieme.add(property.getShare());
                 existing.apartmentReferences.add(property.getReference());
             } else {
                 // Nouveau propriétaire : on crée son casier avec le tantième et la référence de son premier lot
                 OwnerAggregate newAggregate = new OwnerAggregate();
                 newAggregate.owner = property.getOwner();
-                newAggregate.totalTantieme = property.getTantieme();
+                newAggregate.totalTantieme = property.getShare();
                 newAggregate.apartmentReferences.add(property.getReference());
                 aggregatesByOwnerId.put(ownerId, newAggregate);
             }

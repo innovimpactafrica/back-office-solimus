@@ -199,6 +199,31 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
             "AND (:residenceId IS NULL OR ir.residence.id = :residenceId)")
     long countByOwnerAndStatus(@Param("owner") User owner, @Param("status") InterventionStatus status, @Param("residenceId") Long residenceId);
 
+    // ============================================================
+    // LOCATAIRE
+    // ============================================================
+    // Recherche paginée des demandes de travaux d'un locataire, avec filtres optionnels
+    // (search sur le titre, statut) — pas de filtre résidence, un locataire n'a qu'un seul bien
+    @Query("SELECT ir FROM InterventionRequest ir WHERE ir.tenant = :tenant " +
+            "AND (:search IS NULL OR LOWER(ir.title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+            "AND (:status IS NULL OR ir.status = :status) " +
+            "ORDER BY ir.createdAt DESC")
+    Page<InterventionRequest> findByTenantWithFilters(
+            @Param("tenant") User tenant,
+            @Param("search") String search,
+            @Param("status") InterventionStatus status,
+            Pageable pageable);
+
+    // Compter le total des interventions d'un locataire
+    long countByTenant(User tenant);
+
+    // Compter les interventions en cours (STARTED) d'un locataire
+    long countByTenantAndStatus(User tenant, InterventionStatus status);
+
+    // Interventions d'un locataire ayant l'un des statuts donnés, du plus récent au plus ancien
+    // (limité via Pageable) — utilisé par le dashboard d'accueil ("Travaux en cours")
+    List<InterventionRequest> findByTenantIdAndStatusIn(Long tenantId, List<InterventionStatus> statuses, Pageable pageable);
+
 
 
     // Lister les demandes créées par un syndic précis

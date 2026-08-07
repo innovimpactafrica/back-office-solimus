@@ -15,11 +15,15 @@ import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.security.PlanLimitGuard;
+import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.minio.MinioService;
+import com.example.solimus.services.notification.NotificationService;
+import com.example.solimus.utils.PasswordGeneratorUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -59,26 +63,52 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     private final ActivityLogRepository activityLogRepository;
     private final BudgetItemRepository budgetItemRepository;
     private final PlanLimitGuard planLimitGuard;
+    private final RoleRepository roleRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
+    private final NotificationService notificationService;
 
     // =========================================================================
-    // ÉTAPE 1 — CRÉER LA RÉSIDENCE COMPLÈTE (avec photo et contacts)
+    // CRÉATION EN UN SEUL APPEL — infos générales + lots + équipements + sécurité
     // =========================================================================
     @Override
     @Transactional
-    public ResidenceDTO createResidenceComplete(CreateResidenceDTO dto, MultipartFile photo) {
+    public ResidenceDTO createResidenceFull(CreateResidenceFullDTO dto, MultipartFile photo) {
 
-        // 1. Récupérer le syndic connecté
+        // Récupère le syndic connecté
         User currentSyndic = getCurrentUser();
+
+        // Vérifie que la superficie totale de la résidence est fournie
+        if (dto.getTotalArea() == null) {
+            throw new BadRequestException("La superficie totale de la résidence est obligatoire");
+        }
 
         // Bloque la création si la limite de résidences de sa formule est déjà atteinte
         planLimitGuard.assertCanAddResidence(currentSyndic);
 
-        // 2. Construire l'adresse complète
-        String adresseComplete = dto.getFullAddress()
-            + ", " + dto.getCity()
-            + ", " + dto.getCountry();
+        // Bloque si la limite d'appartements de sa formule serait dépassée par ce lot de créations
+        int propertiesCount = dto.getProperties() != null ? dto.getProperties().size() : 0;
+        planLimitGuard.assertCanAddApartments(currentSyndic, propertiesCount);
 
-        // 3. Créer et sauvegarder l'entité Residence
+        // Additionne la superficie de tous les lots demandés
+        BigDecimal totalPropertiesArea = BigDecimal.ZERO;
+        if (dto.getProperties() != null) {
+            for (AddPropertyDTO propertyDto : dto.getProperties()) {
+                totalPropertiesArea = totalPropertiesArea.add(propertyDto.getArea());
+            }
+        }
+
+        // Vérifie que la superficie totale des lots ne dépasse pas celle de la résidence, avant toute insertion
+        if (totalPropertiesArea.compareTo(dto.getTotalArea()) > 0) {
+            throw new BadRequestException(
+                    "La superficie totale des lots dépasse la superficie de la résidence. "
+                            + "Lots : " + totalPropertiesArea + " m², résidence : " + dto.getTotalArea() + " m²");
+        }
+
+        // Construit l'adresse complète
+        String adresseComplete = dto.getFullAddress() + ", " + dto.getCity() + ", " + dto.getCountry();
+
+        // Crée et sauvegarde l'entité Residence
         Residence residence = new Residence();
         residence.setName(dto.getName());
         residence.setDescription(dto.getDescription());
@@ -89,18 +119,19 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         residence.setLongitude(dto.getLongitude());
         residence.setConstructionDate(dto.getConstructionDate());
         residence.setRenovationDate(dto.getRenovationDate());
+        residence.setTotalArea(dto.getTotalArea());
         residence.setHealthStatus(ResidenceHealthStatus.EXCELLENT);
         residence.setSyndic(currentSyndic);
 
         Residence saved = residenceRepository.save(residence);
 
-        // 4. Uploader la photo vers MinIO et l'associer à la résidence
+        // Uploade la photo vers MinIO et l'associe à la résidence
         String photoUrl = minioService.uploadFile(photo, "residences");
         saved.setPhotoUrl(photoUrl);
         saved = residenceRepository.save(saved);
 
-        // 5. Créer les contacts liés à cette résidence
-        if (dto.getContacts() != null && !dto.getContacts().isEmpty()) {
+        // Crée les contacts liés à cette résidence
+        if (dto.getContacts() != null) {
             for (ContactInputDTO contactDto : dto.getContacts()) {
                 ResidenceContact contact = new ResidenceContact();
                 contact.setFullName(contactDto.getFullName());
@@ -110,12 +141,53 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             }
         }
 
-        log.info("Résidence '{}' créée par le syndic {} avec {} contacts",
-            saved.getName(), currentSyndic.getEmail(),
-            dto.getContacts() != null ? dto.getContacts().size() : 0);
+        // Crée chaque lot, avec son tantième calculé automatiquement
+        List<Property> propertiesToSave = new ArrayList<>();
+        if (dto.getProperties() != null) {
+            for (AddPropertyDTO propertyDto : dto.getProperties()) {
+                propertiesToSave.add(buildProperty(saved, currentSyndic, propertyDto));
+            }
+        }
+        List<Property> savedProperties = propertyRepository.saveAll(propertiesToSave);
 
-        // 6. Retourner le DTO de la résidence créée
-        return mapToResidenceDTO(saved);
+        // Crée les équipements communs
+        if (dto.getFacilities() != null) {
+            for (AddFacilityDTO facilityDto : dto.getFacilities()) {
+                upsertFacility(saved, currentSyndic, facilityDto);
+            }
+        }
+        List<CommonFacility> savedFacilities = facilityRepository.findByResidenceId(saved.getId());
+
+        // Associe les options de sécurité sélectionnées
+        List<SecurityFeature> securityFeatures = securityFeatureRepository.findAllById(
+                dto.getSecurityFeatureIds() != null ? dto.getSecurityFeatureIds() : List.of());
+        saved.setSecurityFeatures(securityFeatures);
+        saved = residenceRepository.save(saved);
+
+        log.info("Résidence '{}' créée en un seul appel par le syndic {} ({} lots, {} équipements, {} options de sécurité)",
+                saved.getName(), currentSyndic.getEmail(),
+                savedProperties.size(), savedFacilities.size(), securityFeatures.size());
+
+        // Construit le DTO complet de la résidence créée (résidence + lots + équipements + sécurité)
+        ResidenceDTO result = mapToResidenceDTO(saved);
+        result.setProperties(savedProperties.stream().map(this::mapToPropertyDTO).toList());
+        result.setFacilities(savedFacilities.stream()
+                .map(facility -> CommonFacilityListItemDTO.builder()
+                        .id(facility.getId())
+                        .name(facility.getFacilityType() != null ? facility.getFacilityType().getName() : null)
+                        .icon(facility.getFacilityType() != null ? facility.getFacilityType().getIcon() : null)
+                        .status(calculateFacilityStatus(List.of()))
+                        .build())
+                .toList());
+        result.setSecurityFeatures(securityFeatures.stream()
+                .map(feature -> SecurityFeatureLabelDTO.builder()
+                        .id(feature.getId())
+                        .label(feature.getLabel())
+                        .icon(feature.getIcon())
+                        .build())
+                .toList());
+
+        return result;
     }
 
     // =========================================================================
@@ -166,6 +238,16 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         if (dto.getRenovationDate() != null) {
             residence.setRenovationDate(dto.getRenovationDate());
         }
+        if (dto.getTotalArea() != null) {
+            // Vérifie que la nouvelle superficie totale reste cohérente avec les lots déjà créés
+            BigDecimal existingLotsArea = propertyRepository.sumAreaByResidenceId(residenceId);
+            if (dto.getTotalArea().compareTo(existingLotsArea) < 0) {
+                throw new BadRequestException(
+                        "La superficie totale de la résidence ne peut pas être inférieure à la superficie déjà "
+                                + "occupée par les lots existants (" + existingLotsArea + " m²)");
+            }
+            residence.setTotalArea(dto.getTotalArea());
+        }
 
         // Gestion des contacts : remplacement complet si fourni, sinon rien
         if (dto.getContacts() != null) {
@@ -195,95 +277,46 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 dto.getContacts() != null ? dto.getContacts().size() : "aucun");
     }
 
-
     // =========================================================================
-    // ÉTAPE 2 — AJOUTER PLUSIEURS LOTS / APPARTEMENTS à une résidence gérée par le syndic
-   // =========================================================================
+    //LISTER LES TYPES DE BIENS (pour dropdown lors de la création d'un lot)
+    // =========================================================================
     @Override
-    @Transactional
-    public List<PropertyDTO> addProperties(Long residenceId, List<AddPropertyDTO> dtos) {
-
-        // Récupère une résidence ou lève une exception si introuvable
-        Residence residence = getResidenceOrThrow(residenceId);
-
-        // Vérifie que la résidence appartient au syndic connecté
-        verifyResidenceOwnership(residence);
+    @Transactional(readOnly = true)
+    public Page<PropertyTypeDTO> getAllPropertyTypes(int page, int size) {
         User currentSyndic = getCurrentUser();
-
-        // Bloque l'ajout si la limite d'appartements de sa formule serait dépassée (tous
-        // les lots de la liste comptent d'un coup, pas un par un)
-        planLimitGuard.assertCanAddApartments(currentSyndic, dtos.size());
-
-        // Récupère la somme actuelle des tantièmes déjà présents pour cette résidence
-        BigDecimal currentSum = propertyRepository.sumTantiemesByResidenceId(residenceId);
-
-        // Additionne les tantièmes de tous les nouveaux lots de la liste, pour vérifier la limite globale avant d'insérer quoi que ce soit
-        BigDecimal totalNewTantiemes = BigDecimal.ZERO;
-        for (AddPropertyDTO dto : dtos) {
-            totalNewTantiemes = totalNewTantiemes.add(dto.getTantieme());
-        }
-
-        BigDecimal projectedSum = currentSum.add(totalNewTantiemes);
-        if (projectedSum.compareTo(BigDecimal.valueOf(100)) > 0) {
-            throw new BadRequestException(
-                    "La somme des tantièmes ne peut pas dépasser 100%. Actuel : " + currentSum
-                            + "%, total à ajouter : " + totalNewTantiemes + "%");
-        }
-
-        // Construit chaque Property à partir de son DTO
-        List<Property> propertiesToSave = new ArrayList<>();
-        for (AddPropertyDTO dto : dtos) {
-
-            // Vérifier si la référence existe déjà pour cette résidence
-            if (propertyRepository.existsByReferenceAndResidenceId(dto.getReference(), residenceId)) {
-                throw new BadRequestException(
-                        "La référence '" + dto.getReference() + "' existe déjà pour cette résidence");
-            }
-
-            Property property = new Property();
-            property.setReference(dto.getReference());
-            property.setBloc(dto.getBloc());
-            property.setFloor(dto.getFloor());
-            property.setSuperficie(dto.getSuperficie());
-            property.setTantieme(dto.getTantieme());
-            property.setResidence(residence);
-
-            // Récupérer le type de bien — uniquement s'il appartient au syndic connecté
-            PropertyType propertyType = propertyTypeRepository.findByIdAndSyndicId(dto.getPropertyTypeId(), currentSyndic.getId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Type de bien introuvable"));
-            property.setTypeBien(propertyType);
-
-            // Assigner un propriétaire si fourni et calculer le statut
-            if (dto.getOwnerId() != null) {
-                User owner = userRepository.findById(dto.getOwnerId())
-                        .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
-
-                // Vérifier que c'est bien un copropriétaire
-                if (!owner.getRole().getName().equals(ERole.ROLE_COPROPRIETAIRE)) {
-                    throw new BadRequestException("Seul un copropriétaire peut être propriétaire d'un lot");
-                }
-
-                property.setOwner(owner);
-                property.setStatus(PropertyStatus.OCCUPE);
-            } else {
-                property.setStatus(PropertyStatus.VACANT);
-            }
-
-            propertiesToSave.add(property);
-        }
-
-        // Sauvegarde tous les lots en une seule opération
-        List<Property> savedProperties = propertyRepository.saveAll(propertiesToSave);
-
-        log.info("{} lot(s) ajouté(s) à la résidence '{}'", savedProperties.size(), residence.getName());
-
-        // Transforme chaque Property sauvegardée en DTO de réponse
-        return savedProperties.stream()
-                .map(this::mapToPropertyDTO)
-                .toList();
+        Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
+        return propertyTypeRepository.findBySyndicId(currentSyndic.getId(), pageable)
+                .map(type -> PropertyTypeDTO.builder()
+                        .id(type.getId())
+                        .name(type.getName())
+                        .build());
     }
     // =========================================================================
-    // ÉTAPE 2 — MODIFIER UN LOT / APPARTEMENT
+    //  LISTER LES COPROPRIÉTAIRES POUR L'AFFECTATION D'UN LOT
+    // =========================================================================
+    @Override
+    @Transactional(readOnly = true)
+    public List<CoOwnerSelectionDTO> searchCoOwnersForSelection(String search) {
+
+        // Récupérer le syndic connecté
+        User currentSyndic = getCurrentUser();
+
+        // Normaliser le terme de recherche
+        String normalizedSearch = search != null && !search.isBlank()
+                ? search.trim()
+                : null;
+
+        // Récupérer les copropriétaires liés à ce syndic via SyndicCoOwnerRelation avec filtre de recherche
+        // Uniquement ceux qui ont au moins un bien (car pas de lots = pas propriétaire)
+        return syndicCoOwnerRelationRepository
+                .findCoOwnersWithPropertiesBySyndicIdWithSearch(currentSyndic.getId(), normalizedSearch)
+                .stream()
+                .map(this::mapToCoOwnerSelectionDTO)
+                .collect(Collectors.toList());
+    }
+
+    // =========================================================================
+    // MODIFIER UN LOT / APPARTEMENT
     // =========================================================================
     @Override
     @Transactional
@@ -318,22 +351,22 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         if (dto.getFloor() != null) {
             property.setFloor(dto.getFloor());
         }
-        if (dto.getSuperficie() != null) {
-            property.setSuperficie(dto.getSuperficie());
-        }
-        if (dto.getTantieme() != null) {
-            // Vérifier que la somme des tantièmes ne dépasse pas 100
-            // currentSum : somme actuelle de tous les tantièmes de la résidence (inclut l'ancien tantième de ce lot)
-            BigDecimal currentSum = propertyRepository.sumTantiemesByResidenceId(residenceId);
-            // oldTantieme : ancien tantième de ce lot avant modification (0 si jamais renseigné)
-            BigDecimal oldTantieme = property.getTantieme() != null ? property.getTantieme() : BigDecimal.ZERO;
-            // newSum : nouvelle somme = somme actuelle - ancien tantième + nouveau tantième
-            BigDecimal newSum = currentSum.subtract(oldTantieme).add(dto.getTantieme());
-            if (newSum.compareTo(BigDecimal.valueOf(100)) > 0) {
+        if (dto.getArea() != null) {
+            // Récupère la superficie actuelle de tous les lots de la résidence (inclut l'ancienne superficie de ce lot)
+            BigDecimal currentSum = propertyRepository.sumAreaByResidenceId(residenceId);
+            // Ancienne superficie de ce lot avant modification (0 si jamais renseignée)
+            BigDecimal oldArea = property.getArea() != null ? property.getArea() : BigDecimal.ZERO;
+            // Nouvelle somme = somme actuelle - ancienne superficie + nouvelle superficie
+            BigDecimal newSum = currentSum.subtract(oldArea).add(dto.getArea());
+            if (newSum.compareTo(residence.getTotalArea()) > 0) {
                 throw new BadRequestException(
-                    "La somme des tantièmes ne peut pas dépasser 100%. Actuel : " + currentSum + "%, nouveau : " + dto.getTantieme() + "%");
+                    "La superficie totale des lots dépasse la superficie de la résidence. "
+                        + "Actuel : " + currentSum + " m², résidence : " + residence.getTotalArea() + " m²");
             }
-            property.setTantieme(dto.getTantieme());
+            property.setArea(dto.getArea());
+
+            // Recalcule le tantième proportionnel à la nouvelle superficie
+            property.setShare(calculateShare(dto.getArea(), residence.getTotalArea()));
         }
 
         // Mettre à jour le type de bien si fourni — uniquement s'il appartient au syndic connecté
@@ -342,25 +375,6 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             PropertyType propertyType = propertyTypeRepository.findByIdAndSyndicId(dto.getPropertyTypeId(), currentSyndic.getId())
                     .orElseThrow(() -> new ResourceNotFoundException("Type de bien introuvable"));
             property.setTypeBien(propertyType);
-        }
-
-        // Mettre à jour le propriétaire et recalculer le statut si ownerId fourni
-        if (dto.getOwnerId() != null) {
-            User owner = userRepository.findById(dto.getOwnerId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
-
-            // Vérifier que c'est bien un copropriétaire
-            if (!owner.getRole().getName().equals(ERole.ROLE_COPROPRIETAIRE)) {
-                throw new BadRequestException("Seul un copropriétaire peut être propriétaire d'un lot");
-            }
-
-            // Vérifier que le compte est actif
-            if (owner.getStatus() != UserStatus.ACTIVE) {
-                throw new BadRequestException("Le copropriétaire doit avoir un compte actif");
-            }
-
-            property.setOwner(owner);
-            property.setStatus(PropertyStatus.OCCUPE);
         }
 
         Property saved = propertyRepository.save(property);
@@ -372,7 +386,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     }
 
     // =========================================================================
-    // ÉTAPE 2 — SUPPRIMER UN LOT / APPARTEMENT
+    //  SUPPRIMER UN LOT / APPARTEMENT
     // =========================================================================
     @Override
     @Transactional
@@ -411,7 +425,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     }
 
     // =========================================================================
-    // ÉTAPE 2 — LISTER LES LOTS D'UNE RÉSIDENCE (PAGINÉ)
+    // LISTER LES LOTS D'UNE RÉSIDENCE (PAGINÉ)
     // =========================================================================
     @Override
     @Transactional(readOnly = true)
@@ -421,7 +435,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         Residence residence = getResidenceOrThrow(residenceId);
         verifyResidenceOwnership(residence);
 
-        // Construire Pageable manuellement
+        // Construire Pageable
         Pageable pageable = PageRequest.of(page, size);
 
         // Récupérer les lots paginés
@@ -432,96 +446,27 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     }
 
     // =========================================================================
-    // ÉTAPE 2 - LISTER LES TYPES DE BIENS (pour dropdown lors de la création d'un lot)
+    // Lister les options de sécurité configurées
     // =========================================================================
+
     @Override
     @Transactional(readOnly = true)
-    public Page<PropertyTypeDTO> getAllPropertyTypes(int page, int size) {
-        User currentSyndic = getCurrentUser();
-        Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
-        return propertyTypeRepository.findBySyndicId(currentSyndic.getId(), pageable)
-                .map(type -> PropertyTypeDTO.builder()
-                        .id(type.getId())
-                        .name(type.getName())
-                        .build());
-    }
-
-    // =========================================================================
-    // ÉTAPE 2 - LISTER LES COPROPRIÉTAIRES POUR L'AFFECTATION D'UN LOT
-    // =========================================================================
-    @Override
-    @Transactional(readOnly = true)
-    public List<CoOwnerSelectionDTO> searchCoOwnersForSelection(String search) {
-
-        // Récupérer le syndic connecté
-        User currentSyndic = getCurrentUser();
-
-        // Normaliser le terme de recherche
-        String normalizedSearch = search != null && !search.isBlank()
-                ? search.trim()
-                : null;
-
-        // Récupérer les copropriétaires liés à ce syndic via SyndicCoOwnerRelation avec filtre de recherche
-        // Uniquement ceux qui ont au moins un bien (car pas de lots = pas propriétaire)
-        return syndicCoOwnerRelationRepository
-                .findCoOwnersWithPropertiesBySyndicIdWithSearch(currentSyndic.getId(), normalizedSearch)
-                .stream()
-                .map(this::mapToCoOwnerSelectionDTO)
-                .collect(Collectors.toList());
-    }
-
-    // =========================================================================
-    // ÉTAPE 3 — AJOUTER OU METTRE À JOUR UN ÉQUIPEMENT COMMUN
-    // =========================================================================
-    @Override
-    @Transactional
-    public void addFacility(Long residenceId, AddFacilityDTO dto) {
-
-        // Récupérer la résidence
-        Residence residence = residenceRepository.findById(residenceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
-
-        // Vérifier que le syndic est bien le propriétaire de la résidence
-        User currentSyndic = getCurrentUser();
-        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
-            throw new ForbiddenException("Vous n'êtes pas autorisé à modifier cette résidence");
+    public List<SecurityFeatureLabelDTO> getSecurityFeatures() {
+        List<SecurityFeature> features = securityFeatureRepository.findByActiveTrue();
+        List<SecurityFeatureLabelDTO> result = new ArrayList<>();
+        for (SecurityFeature feature : features) {
+            SecurityFeatureLabelDTO dto = SecurityFeatureLabelDTO.builder()
+                    .id(feature.getId())
+                    .label(feature.getLabel())
+                    .icon(feature.getIcon())
+                    .build();
+            result.add(dto);
         }
-
-        // Récupérer le type d'équipement — uniquement s'il appartient au syndic connecté
-        FacilityType facilityType = facilityTypeRepository.findByIdAndSyndicId(dto.getFacilityTypeId(), currentSyndic.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Type d'équipement introuvable"));
-
-        // Vérifier si un équipement de ce type existe déjà pour cette résidence
-        CommonFacility facility = facilityRepository
-                .findByResidenceIdAndFacilityTypeId(residenceId, dto.getFacilityTypeId())
-                .orElse(new CommonFacility());
-
-        // Créer ou mettre à jour l'équipement
-        facility.setFacilityType(facilityType);
-        facility.setResidence(residence);
-
-        // Copier les champs pertinents selon le type
-        facility.setCount(dto.getCount());
-        facility.setIsHeated(dto.getIsHeated());
-        facility.setCapacity(dto.getCapacity());
-        facility.setFloorsCovered(dto.getFloorsCovered());
-        facility.setSuperficie(dto.getSuperficie());
-        facility.setEtat(dto.getEtat());
-        facility.setIndoorSpots(dto.getIndoorSpots());
-        facility.setOutdoorSpots(dto.getOutdoorSpots());
-        facility.setChargingStations(dto.getChargingStations());
-        facility.setPowerKva(dto.getPowerKva());
-        facility.setFuelType(dto.getFuelType());
-        facility.setCapacityLiters(dto.getCapacityLiters());
-        facility.setPumpStatus(dto.getPumpStatus());
-
-        facilityRepository.save(facility);
-        log.info("Équipement '{}' sauvegardé pour la résidence '{}'",
-                facilityType.getName(), residence.getName());
+        return result;
     }
 
     // =========================================================================
-    // ÉTAPE 3 — METTRE À JOUR LES OPTIONS DE SÉCURITÉ D'UNE RÉSIDENCE
+    // METTRE À JOUR LES OPTIONS DE SÉCURITÉ D'UNE RÉSIDENCE
     // =========================================================================
     @Override
     @Transactional
@@ -551,7 +496,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     }
 
     // =========================================================================
-    // ÉTAPE 3 — SAUVEGARDER L'ÉTAPE 3 COMPLÈTE (ÉQUIPEMENTS + SÉCURITÉ)
+    // Lister les types d'équipements communs configurés
     // =========================================================================
     @Override
     @Transactional(readOnly = true)
@@ -563,50 +508,146 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                         .id(type.getId())
                         .name(type.getName())
                         .icon(type.getIcon())
-                        // on cherche les champs dans la map — liste vide si type inconnu
-                        .fields(FACILITY_FIELDS.getOrDefault(type.getName(), List.of()))
                         .build());
     }
 
+    // =========================================================================
+    // DASHBOARD RÉSIDENCES
+    // =========================================================================
+
     @Override
-    @Transactional
-    public void saveStep3(Long residenceId, Step3DTO dto) {
+    @Transactional(readOnly = true)
+    public ResidenceDashboardStatsDTO getDashboardStats() {
 
-        // Récupérer la résidence
-        Residence residence = residenceRepository.findById(residenceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
-
-        // Vérifier que le syndic est bien le propriétaire de la résidence
         User currentSyndic = getCurrentUser();
-        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
-            throw new ForbiddenException("Vous n'êtes pas autorisé à modifier cette résidence");
+
+        // 1. Nombre total de résidences du syndic
+        long totalResidences = residenceRepository.countBySyndicId(currentSyndic.getId());
+
+        // 2. Nombre total d'appartements (lots) du syndic
+        long totalAppartements = propertyRepository.countByResidenceSyndicId(currentSyndic.getId());
+
+        // 3. Trésorerie globale basée sur le module Wallet
+        // Récupérer le wallet du syndic
+        SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId()).orElse(null);
+        Long walletId = (wallet != null) ? wallet.getId() : null;
+
+        // Calculer le solde actuel et le solde à la fin du mois précédent
+        LocalDateTime maintenant = LocalDateTime.now();
+        LocalDateTime finMoisPrecedent = maintenant.withDayOfMonth(1).minusNanos(1);
+
+        // ===== CALCUL DE LA TRÉSORERIE DISPONIBLE (le chiffre affiché maintenant) =====
+
+        // On additionne toutes les transactions du wallet (charges reçues + travaux payés) jusqu'à aujourd'hui. C'est tout l'argent qui est
+        // passé dans la caisse, entrées et sorties confondues.
+        BigDecimal totalTransactions = calculerSoldeADate(walletId, maintenant);
+
+        // On regarde combien d'argent est déjà "réservé" pour un retrait (demandé ou déjà validé). Cet argent ne doit plus compter comme disponible, même si le virement n'est pas encore parti.
+        BigDecimal totalRetraitsEnCours = (walletId != null)
+                ? syndicWithdrawalRequestRepository.sumPendingAndValidatedByWallet(walletId)
+                : BigDecimal.ZERO;
+
+        // La vraie trésorerie disponible = ce qu'il y a dans la caisse, moins ce qui est déjà réservé pour partir.
+        BigDecimal tresorerieGlobale = totalTransactions.subtract(totalRetraitsEnCours);
+
+
+        // ===== CALCUL DE LA VARIATION (le pourcentage +...% mois précédent) =====
+
+        // Ici on ne regarde QUE les transactions, sans les retraits.on veut juste savoir si l'argent qui rentre et sort
+        // a augmenté ou diminué par rapport au mois dernier — pas combien est "réservé" en ce moment.
+        BigDecimal soldePrecedent = calculerSoldeADate(walletId, finMoisPrecedent);
+        BigDecimal variationTresoreriePourcentage = calculerVariation(totalTransactions, soldePrecedent);
+
+        // 4. Résidences avec impayés et pourcentage
+        long residencesAvecImpayes = chargeCallItemRepository.countResidencesWithUnpaidBySyndic(
+                currentSyndic, ChargeItemPaymentStatus.PAID);
+
+        double pourcentageResidencesImpayees = 0.0;
+        if (totalResidences > 0) {
+            pourcentageResidencesImpayees = (double) residencesAvecImpayes / totalResidences * 100;
         }
 
-        // 1. Traiter les équipements (boucle sur facilities)
-        if (dto.getFacilities() != null) {
-            for (AddFacilityDTO facilityDto : dto.getFacilities()) {
-                addFacility(residenceId, facilityDto);
-            }
-        }
+        // 5. Interventions ouvertes (non clôturées ni annulées)
+        long interventionsOuvertes = interventionRequestRepository.countOpenBySyndic(currentSyndic);
 
-        // 2. Remplacer la liste des options de sécurité
-        List<SecurityFeature> securityFeatures = securityFeatureRepository.findAllById(
-                dto.getSecurityFeatureIds() != null ? dto.getSecurityFeatureIds() : List.of()
-        );
-        residence.setSecurityFeatures(securityFeatures);
-        residenceRepository.save(residence);
+        // 6. Interventions en cours (STARTED)
+        long interventionsEnCours = interventionRequestRepository.countStartedBySyndic(currentSyndic);
 
-        log.info("Étape 3 sauvegardée pour la résidence '{}' ({} équipements, {} options de sécurité)",
-                residence.getName(),
-                dto.getFacilities() != null ? dto.getFacilities().size() : 0,
-                securityFeatures.size());
+        // 7. Interventions planifiées (PENDING)
+        long interventionsPlanifiees = interventionRequestRepository.countPendingBySyndic(currentSyndic);
+
+        return ResidenceDashboardStatsDTO.builder()
+                .totalResidences(totalResidences)
+                .totalApartments(totalAppartements)
+                .globalTreasury(tresorerieGlobale)
+                .variationTresoreriePourcentage(variationTresoreriePourcentage)
+                .residencesWithUnpaid(residencesAvecImpayes)
+                .percentageResidencesWithUnpaid(pourcentageResidencesImpayees)
+                .openInterventions(interventionsOuvertes)
+                .inProgressInterventions(interventionsEnCours)
+                .pendingInterventions(interventionsPlanifiees)
+                .build();
     }
 
+
     // =========================================================================
-    // LISTER LES RÉSIDENCES DU SYNDIC
+    // Listes RÉSIDENCES
     // =========================================================================
 
-    // STATISTIQUES DU BANDEAU D'INDICATEURS
+    @Override
+    @Transactional(readOnly = true)
+    public Page<ResidenceCardDTO> getResidencesPaginated(String search, String city, ResidenceHealthStatus status, Integer page, Integer size) {
+
+        User currentSyndic = getCurrentUser();
+
+        // Requête réellement paginée : recherche, ville et statut de santé filtrés directement en SQL
+        // (le statut est déjà persisté sur Residence.healthStatus, jamais recalculé ici ;
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Residence> residencePage = residenceRepository.findBySyndicIdWithFilters(
+                currentSyndic.getId(), search, city, status, pageable);
+
+        // Construit le DTO de chaque résidence de la page
+        return residencePage.map(residence -> {
+
+            // Calcule le taux d'impayés pour affichage (purement informatif, indépendant du filtre)
+            BigDecimal amountDue = chargeCallItemRepository.sumQuotePartByResidenceId(residence.getId());
+            BigDecimal amountPaid = chargeCallItemRepository.sumPaidAmountByResidenceId(residence.getId());
+
+            double tauxImpayes = 0.0;
+            if (amountDue != null && amountDue.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal unpaid = amountDue.subtract(amountPaid != null ? amountPaid : BigDecimal.ZERO);
+                tauxImpayes = unpaid.divide(amountDue, 4, RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(100))
+                        .doubleValue();
+            }
+
+            // Nombre d'appartements
+            long appartementsCount = propertyRepository.countByResidenceId(residence.getId());
+
+            // Trésorerie de la résidence
+            BigDecimal tresorerie = amountPaid != null ? amountPaid : BigDecimal.ZERO;
+
+            // Interventions ouvertes pour cette résidence
+            long openInterventions = interventionRequestRepository.countOpenByResidenceId(residence.getId());
+
+            return ResidenceCardDTO.builder()
+                    .id(residence.getId())
+                    .name(residence.getName())
+                    .city(residence.getCity())
+                    .photoUrl(residence.getPhotoUrl())
+                    .healthStatus(residence.getHealthStatus())
+                    .appartementsCount(appartementsCount)
+                    .tauxImpayes(tauxImpayes)
+                    .tresorerie(tresorerie)
+                    .openInterventions(openInterventions)
+                    .build();
+        });
+    }
+
+
+    // =========================================================================
+    // // STATISTIQUES DU BANDEAU D'INDICATEURS
+    // =========================================================================
     @Override
     @Transactional(readOnly = true)
     public ResidenceHeaderStatsDTO getResidenceStats(Long residenceId) {
@@ -643,8 +684,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         // 5. Nombre d'incidents ouverts (non clôturés ni annulés)
         long openIncidents = interventionRequestRepository.countOpenByResidenceId(residenceId);
 
-        // 6. Calcul du statut de santé
-        ResidenceHealthStatus healthStatus = calculateHealthStatus(residenceId);
+        // 6. Statut de santé — déjà persisté, recalculé sur événement et par le job quotidien
+        ResidenceHealthStatus healthStatus = residence.getHealthStatus();
 
         return ResidenceHeaderStatsDTO.builder()
                 .name(residence.getName())
@@ -705,185 +746,6 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     }
 
     // =========================================================================
-    // DASHBOARD RÉSIDENCES
-    // =========================================================================
-
-    @Override
-    @Transactional(readOnly = true)
-    public ResidenceDashboardStatsDTO getDashboardStats() {
-
-        User currentSyndic = getCurrentUser();
-
-        // 1. Nombre total de résidences du syndic
-        long totalResidences = residenceRepository.countBySyndicId(currentSyndic.getId());
-
-        // 2. Nombre total d'appartements (lots) du syndic
-        long totalAppartements = propertyRepository.countByResidenceSyndicId(currentSyndic.getId());
-
-        // 3. Trésorerie globale basée sur le module Wallet
-        // Récupérer le wallet du syndic
-        SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId()).orElse(null);
-        Long walletId = (wallet != null) ? wallet.getId() : null;
-
-        // Calculer le solde actuel et le solde à la fin du mois précédent
-        LocalDateTime maintenant = LocalDateTime.now();
-        LocalDateTime finMoisPrecedent = maintenant.withDayOfMonth(1).minusNanos(1);
-
-        // ===== CALCUL DE LA TRÉSORERIE DISPONIBLE (le chiffre affiché maintenant) =====
-
-        // On additionne toutes les transactions du wallet (charges reçues + travaux payés) jusqu'à aujourd'hui. C'est tout l'argent qui est
-        // passé dans la caisse, entrées et sorties confondues.
-        BigDecimal totalTransactions = calculerSoldeADate(walletId, maintenant);
-
-         // On regarde combien d'argent est déjà "réservé" pour un retrait (demandé ou déjà validé). Cet argent ne doit plus compter comme disponible, même si le virement n'est pas encore parti.
-        BigDecimal totalRetraitsEnCours = (walletId != null)
-                ? syndicWithdrawalRequestRepository.sumPendingAndValidatedByWallet(walletId)
-                : BigDecimal.ZERO;
-
-        // La vraie trésorerie disponible = ce qu'il y a dans la caisse, moins ce qui est déjà réservé pour partir.
-        BigDecimal tresorerieGlobale = totalTransactions.subtract(totalRetraitsEnCours);
-
-
-        // ===== CALCUL DE LA VARIATION (le pourcentage +...% mois précédent) =====
-
-       // Ici on ne regarde QUE les transactions, sans les retraits.on veut juste savoir si l'argent qui rentre et sort
-        // a augmenté ou diminué par rapport au mois dernier — pas combien est "réservé" en ce moment.
-        BigDecimal soldePrecedent = calculerSoldeADate(walletId, finMoisPrecedent);
-        BigDecimal variationTresoreriePourcentage = calculerVariation(totalTransactions, soldePrecedent);
-
-        // 4. Résidences avec impayés et pourcentage
-        long residencesAvecImpayes = chargeCallItemRepository.countResidencesWithUnpaidBySyndic(
-                currentSyndic, ChargeItemPaymentStatus.PAID);
-
-        double pourcentageResidencesImpayees = 0.0;
-        if (totalResidences > 0) {
-            pourcentageResidencesImpayees = (double) residencesAvecImpayes / totalResidences * 100;
-        }
-
-        // 5. Interventions ouvertes (non clôturées ni annulées)
-        long interventionsOuvertes = interventionRequestRepository.countOpenBySyndic(currentSyndic);
-
-        // 6. Interventions en cours (STARTED)
-        long interventionsEnCours = interventionRequestRepository.countStartedBySyndic(currentSyndic);
-
-        // 7. Interventions planifiées (PENDING)
-        long interventionsPlanifiees = interventionRequestRepository.countPendingBySyndic(currentSyndic);
-
-        return ResidenceDashboardStatsDTO.builder()
-                .totalResidences(totalResidences)
-                .totalApartments(totalAppartements)
-                .globalTreasury(tresorerieGlobale)
-                .variationTresoreriePourcentage(variationTresoreriePourcentage)
-                .residencesWithUnpaid(residencesAvecImpayes)
-                .percentageResidencesWithUnpaid(pourcentageResidencesImpayees)
-                .openInterventions(interventionsOuvertes)
-                .inProgressInterventions(interventionsEnCours)
-                .pendingInterventions(interventionsPlanifiees)
-                .build();
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Page<ResidenceCardDTO> getResidencesPaginated(String search, String city, String status, Integer page, Integer size) {
-
-        User currentSyndic = getCurrentUser();
-
-        // Pagination
-        Pageable pageable = PageRequest.of(page, size);
-
-        // Récupérer les résidences filtrées
-        Page<Residence> residencePage = residenceRepository.findBySyndicIdWithFilters(
-                currentSyndic.getId(), search, city, pageable);
-
-        // Mapper vers ResidenceCardDTO avec calculs à la volée
-        List<ResidenceCardDTO> filteredCards = residencePage.getContent().stream()
-                .map(residence -> {
-                    // Calculer le taux d'impayés pour cette résidence
-                    BigDecimal amountDue = chargeCallItemRepository.sumQuotePartByResidenceId(residence.getId());
-                    BigDecimal amountPaid = chargeCallItemRepository.sumPaidAmountByResidenceId(residence.getId());
-
-                    double tauxImpayes = 0.0;
-                    if (amountDue != null && amountDue.compareTo(BigDecimal.ZERO) > 0) {
-                        BigDecimal unpaid = amountDue.subtract(amountPaid != null ? amountPaid : BigDecimal.ZERO);
-                        tauxImpayes = unpaid.divide(amountDue, 4, java.math.RoundingMode.HALF_UP)
-                                .multiply(BigDecimal.valueOf(100))
-                                .doubleValue();
-                    }
-
-                    // Calculer le healthStatus
-                    // Vérifier s'il y a une intervention URGENT active
-                    boolean hasUrgentActiveIntervention = interventionRequestRepository
-                            .findAllByResidenceId(residence.getId())
-                            .stream()
-                            .anyMatch(ir -> ir.getUrgencyLevel() == UrgencyLevel.URGENT
-                                    && ir.getStatus() != InterventionStatus.FINAL_VALIDATION
-                                    && ir.getStatus() != InterventionStatus.CANCELLED);
-
-                    ResidenceHealthStatus healthStatus;
-                    if (tauxImpayes > 10.0 || hasUrgentActiveIntervention) {
-                        healthStatus = ResidenceHealthStatus.CRITIQUE;
-                    } else if (tauxImpayes > 5.0) {
-                        healthStatus = ResidenceHealthStatus.ATTENTION;
-                    } else {
-                        healthStatus = ResidenceHealthStatus.EXCELLENT;
-                    }
-
-                    // Filtrer par healthStatus si demandé
-                    if (status != null && !healthStatus.name().equals(status)) {
-                        return null; // sera filtré après le mapping
-                    }
-
-                    // Nombre d'appartements
-                    long appartementsCount = propertyRepository.countByResidenceId(residence.getId());
-
-                    // Trésorerie de la résidence
-                    BigDecimal tresorerie = amountPaid != null ? amountPaid : BigDecimal.ZERO;
-
-                    // Interventions ouvertes pour cette résidence
-                    long openInterventions = interventionRequestRepository.countOpenByResidenceId(residence.getId());
-
-                    // Url photo
-                    String photoUrl = residence.getPhotoUrl();
-
-                    return ResidenceCardDTO.builder()
-                            .id(residence.getId())
-                            .name(residence.getName())
-                            .city(residence.getCity())
-                            .photoUrl(photoUrl)
-                            .healthStatus(healthStatus)
-                            .appartementsCount(appartementsCount)
-                            .tauxImpayes(tauxImpayes)
-                            .tresorerie(tresorerie)
-                            .openInterventions(openInterventions)
-                            .build();
-                })
-                .filter(dto -> dto != null) // filtrer les nulls (healthStatus mismatch)
-                .toList();
-
-        // Reconstruire la page avec les résultats filtrés
-        return new PageImpl<>(
-                filteredCards,
-                pageable,
-                filteredCards.size());
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<SecurityFeatureLabelDTO> getSecurityFeatures() {
-        List<SecurityFeature> features = securityFeatureRepository.findByActiveTrue();
-        List<SecurityFeatureLabelDTO> result = new ArrayList<>();
-        for (SecurityFeature feature : features) {
-            SecurityFeatureLabelDTO dto = SecurityFeatureLabelDTO.builder()
-                    .id(feature.getId())
-                    .label(feature.getLabel())
-                    .icon(feature.getIcon())
-                    .build();
-            result.add(dto);
-        }
-        return result;
-    }
-
-    // =========================================================================
     // LISTER LES RÉSIDENCES DU SYNDIC (POUR DROPDOWNS)
     // =========================================================================
     @Override
@@ -902,92 +764,135 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     @Override
     @Transactional(readOnly = true)
     public Page<PropertyListItemDTO> getPropertiesPaginatedWithFilters(
-            Long residenceId, String search, Integer floor, String status, Integer page, Integer size) {
+            Long residenceId, String search, Integer floor, PropertyDisplayStatus status, Integer page, Integer size) {
 
-        // Vérifier l'appartenance de la résidence au syndic
+        // Vérifie l'appartenance de la résidence au syndic
         Residence residence = getResidenceOrThrow(residenceId);
         verifyResidenceOwnership(residence);
 
-        // Récupérer TOUS les lots filtrés (sans pagination)
-        // Filtres DB uniquement : search (reference/nom) et floor
-        List<Property> allProperties = propertyRepository.findByResidenceIdWithFilters(
-                residenceId, search, floor, Pageable.unpaged()).getContent();
+        // Requête réellement paginée : recherche, étage et statut filtrés directement en SQL
+        // (le statut est déjà persisté sur Property.displayStatus, jamais recalculé ici ;
+        // sa validité est garantie par la conversion automatique de Spring sur le paramètre d'URL)
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Property> propertiesPage = propertyRepository.findByResidenceIdWithFilters(
+                residenceId, search, floor, status, pageable);
 
-        // Précharger le ChargeCall le plus récent
+        // Précharge le ChargeCall le plus récent, pour calculer la charge de chaque lot de cette page
         var mostRecentChargeCall = chargeCallRepository.findMostRecentByResidenceId(residenceId);
-
-        // Construire une map pour retrouver rapidement le ChargeCallItem d'un copropriétaire.
-        //  Clé   = id du copropriétaire.
-        // Valeur = son ChargeCallItem du dernier appel de charges.
         Map<Long, ChargeCallItem> chargeCallItemByOwnerId = new HashMap<>();
-
-       // Vérifier qu'un appel de charges existe pour cette résidence.
         if (mostRecentChargeCall.isPresent()) {
-
-            // Récupérer le dernier appel de charges.
-            ChargeCall chargeCall = mostRecentChargeCall.get();
-
-            // Parcourir tous les ChargeCallItem de cet appel.
-            for (ChargeCallItem item : chargeCall.getItems()) {
-
-                // Enregistrer chaque ChargeCallItem dans la Map.
-                // Cela permettra ensuite de retrouver directement  les informations d'un copropriétaire grâce à son id
+            for (ChargeCallItem item : mostRecentChargeCall.get().getItems()) {
                 chargeCallItemByOwnerId.put(item.getCoOwner().getId(), item);
             }
         }
-        // Date du jour pour vérifier les retards
-        LocalDate today = LocalDate.now();
 
-        // Calculer le statut de chaque lot
-        List<PropertyListItemDTO> allItems = allProperties.stream()
-                .map(property -> {
-                    // 1. Calculer le statut composite
-                    String calculatedStatus = calculatePropertyStatus(
-                            property, chargeCallItemByOwnerId, today);
+        // Construit le DTO de chaque lot de la page
+        return propertiesPage.map(property -> PropertyListItemDTO.builder()
+                .id(property.getId())
+                .reference(property.getReference())
+                .propertyType(property.getTypeBien() != null ? property.getTypeBien().getName() : null)
+                .floor(property.getFloor())
+                .owner(property.getOwner() != null
+                        ? PropertyListItemDTO.OwnerInfo.builder()
+                                .fullName(property.getOwner().getFirstName() + " " + property.getOwner().getLastName())
+                                .photoUrl(property.getOwner().getProfilePhotoUrl())
+                                .build()
+                        : null)
+                // Locataire du lot — null si le bien n'est pas loué
+                .tenant(property.getTenant() != null
+                        ? PropertyListItemDTO.OwnerInfo.builder()
+                                .fullName(property.getTenant().getFirstName() + " " + property.getTenant().getLastName())
+                                .photoUrl(property.getTenant().getProfilePhotoUrl())
+                                .build()
+                        : null)
+                .status(property.getDisplayStatus() != null ? property.getDisplayStatus().name() : null)
+                .charge(calculatePropertyCharge(property, chargeCallItemByOwnerId))
+                .build());
+    }
 
-                    // 2. Calculer la charge pour ce lot
-                    BigDecimal charge = calculatePropertyCharge(
-                            property, chargeCallItemByOwnerId);
+    // =========================================================================
+    // AJOUTER UN LOCATAIRE À UN LOT (ONGLET APPARTEMENTS)
+    // =========================================================================
+    @Override
+    @Transactional
+    public PropertyDTO addTenant(Long residenceId, Long propertyId, String firstName, String lastName,
+                                  String email, String phone, MultipartFile photo) {
 
-                    // 3. Construire le DTO
-                    return PropertyListItemDTO.builder()
-                            .id(property.getId())
-                            .reference(property.getReference())
-                            .propertyType(property.getTypeBien() != null ? property.getTypeBien().getName() : null)
-                            .floor(property.getFloor())
-                            .owner(property.getOwner() != null
-                                    ? PropertyListItemDTO.OwnerInfo.builder()
-                                            .fullName(property.getOwner().getFirstName() + " " + property.getOwner().getLastName())
-                                            .photoUrl(property.getOwner().getProfilePhotoUrl())
-                                            .build()
-                                    : null)
-                            .status(calculatedStatus)
-                            .charge(charge)
-                            .build();
-                })
-                .toList();
+        // Récupère la résidence et vérifie qu'elle appartient au syndic connecté
+        Residence residence = getResidenceOrThrow(residenceId);
+        verifyResidenceOwnership(residence);
 
-        // Filtrer par statut si demandé (après calcul de tous les statuts)
-        if (status != null) {
-            allItems = allItems.stream()
-                    .filter(dto -> status.equals(dto.getStatus()))
-                    .toList();
+        // Récupère le lot
+        Property property = propertyRepository.findById(propertyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Bien introuvable"));
+
+        // Vérifie que le lot appartient à cette résidence
+        if (!property.getResidence().getId().equals(residenceId)) {
+            throw new BadRequestException("Ce bien n'appartient pas à cette résidence");
         }
 
-        // Appliquer la pagination manuellement sur la liste finale
-        int totalElements = allItems.size();
-        int startIndex = page * size;
-        int endIndex = Math.min(startIndex + size, totalElements);
+        // Impossible de louer un bien qui n'a pas encore de propriétaire
+        if (property.getOwner() == null) {
+            throw new BadRequestException("Ce lot n'a pas de propriétaire, impossible d'y ajouter un locataire");
+        }
 
-        List<PropertyListItemDTO> pageContent = startIndex < totalElements
-                ? allItems.subList(startIndex, endIndex)
-                : List.of();
+        // Un seul locataire actif à la fois par lot
+        if (property.getTenant() != null) {
+            throw new BadRequestException("Ce lot a déjà un locataire actif");
+        }
 
-        // Reconstruire la page avec les résultats paginés
-        return new PageImpl<>(
-                pageContent,
-                PageRequest.of(page, size),
-                totalElements);
+        // Vérifie que l'email et le téléphone ne sont pas déjà utilisés
+        if (userRepository.existsByEmail(email)) {
+            throw new BadRequestException("Cet email est déjà utilisé");
+        }
+        if (userRepository.existsByPhone(phone)) {
+            throw new BadRequestException("Ce numéro de téléphone est déjà utilisé");
+        }
+
+        // Récupère le rôle Locataire
+        Role tenantRole = roleRepository.findByName(ERole.ROLE_LOCATAIRE)
+                .orElseThrow(() -> new ResourceNotFoundException("Rôle Locataire introuvable"));
+
+        // Upload la photo si fournie
+        String photoUrl = null;
+        if (photo != null && !photo.isEmpty()) {
+            photoUrl = minioService.uploadFile(photo, "tenants");
+        }
+
+        // Crée le compte utilisateur du locataire — accès direct, mot de passe temporaire par email,
+        // comme pour un copropriétaire créé par le syndic
+        String temporaryPassword = PasswordGeneratorUtil.generateTemporaryPassword();
+
+        User tenant = new User();
+        tenant.setFirstName(firstName);
+        tenant.setLastName(lastName);
+        tenant.setEmail(email);
+        tenant.setPhone(phone);
+        tenant.setRole(tenantRole);
+        tenant.setStatus(UserStatus.ACTIVE);
+        tenant.setPassword(passwordEncoder.encode(temporaryPassword));
+        tenant.setProfilePhotoUrl(photoUrl);
+
+        User savedTenant = userRepository.save(tenant);
+
+        // Associe le locataire au lot
+        property.setTenant(savedTenant);
+        property.setTenantAssignedAt(LocalDateTime.now());
+        Property savedProperty = propertyRepository.save(property);
+
+        // Envoie les identifiants de connexion par email (mot de passe temporaire)
+        emailService.sendTenantAccountCreated(savedTenant.getEmail(), temporaryPassword, savedTenant.getFirstName());
+
+        // Notifie le propriétaire qu'un locataire a été ajouté à son bien
+        notificationService.sendPush(
+                property.getOwner().getId(),
+                "Nouveau locataire",
+                firstName + " " + lastName + " a été ajouté comme locataire de votre bien " + property.getReference());
+
+        log.info("Locataire '{}' créé et rattaché au lot '{}' par le syndic {}",
+                savedTenant.getEmail(), property.getReference(), getCurrentUser().getEmail());
+
+        return mapToPropertyDTO(savedProperty);
     }
 
     // =========================================================================
@@ -1116,6 +1021,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 .icon(facility.getFacilityType() != null ? facility.getFacilityType().getIcon() : null)
                 .category(facility.getFacilityType() != null ? facility.getFacilityType().getCategory() : null)
                 .description(facility.getFacilityType() != null ? facility.getFacilityType().getDescription() : null)
+                .details(facility.getDescription())
                 .residenceName(residence.getName())
                 .city(residence.getCity())
                 .status(status)
@@ -1582,6 +1488,35 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         return new PageImpl<>(dtoList, pageable, logsPage.getTotalElements());
     }
 
+
+    // =========================================================================
+    // Méthodes utilitaires
+    // =========================================================================
+
+
+    // Crée ou met à jour un équipement commun — réutilisé par createResidenceFull
+    private void upsertFacility(Residence residence, User currentSyndic, AddFacilityDTO dto) {
+
+        // Récupère le type d'équipement — uniquement s'il appartient au syndic connecté
+        FacilityType facilityType = facilityTypeRepository.findByIdAndSyndicId(dto.getFacilityTypeId(), currentSyndic.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Type d'équipement introuvable"));
+
+        // Vérifie si un équipement de ce type existe déjà pour cette résidence
+        CommonFacility facility = facilityRepository
+                .findByResidenceIdAndFacilityTypeId(residence.getId(), dto.getFacilityTypeId())
+                .orElse(new CommonFacility());
+
+        // Crée ou met à jour l'équipement
+        facility.setFacilityType(facilityType);
+        facility.setResidence(residence);
+        facility.setDescription(dto.getDescription());
+
+        facilityRepository.save(facility);
+        log.info("Équipement '{}' sauvegardé pour la résidence '{}'",
+                facilityType.getName(), residence.getName());
+    }
+
+
     /**
      * Convertit une SyndicWalletTransaction en WalletTransactionDTO
      * Le montant est stocké avec son signe (positif pour entrées, négatif pour sorties)
@@ -1627,42 +1562,12 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 .setScale(2,RoundingMode.HALF_UP);
     }
 
-    /**
-     * Calcule le statut composite d'un lot
-     * Ordre de priorité : MAINTENANCE > OVERDUE > OCCUPE/VACANT
-     */
-    private String calculatePropertyStatus(Property property, Map<Long, ChargeCallItem> chargeCallItemByOwnerId, LocalDate today) {
-
-        // 1. Priorité : MAINTENANCE
-        if (property.getStatus() == PropertyStatus.MAINTENANCE) {
-            return "MAINTENANCE";
-        }
-
-        // 2. Priorité : OVERDUE (si le lot a un propriétaire)
-        if (property.getOwner() != null) {
-            //on cherche la charge du propriétaire du bien dans le dictionnaire
-            ChargeCallItem item = chargeCallItemByOwnerId.get(property.getOwner().getId());
-
-            // Si un appel de charges existe pour ce copropriétaire et qu'une date d'échéance est définie.
-            if (item != null && item.getChargeCall().getDueDate() != null) {
-
-                // Vérifier si la date d'échéance est dépassée et que la charge n'a toujours pas été payée.
-                if (item.getChargeCall().getDueDate().isBefore(today)
-                        && item.getStatus() != ChargeItemPaymentStatus.PAID) {
-
-                    // Le lot est considéré en retard de paiement.
-                    return "OVERDUE";
-                }
-            }
-        }
-
-        // 3. Sinon : statut du lot (OCCUPE ou VACANT)
-        return property.getStatus().name();
-    }
+    // calculatePropertyStatus supprimée — remplacée par la lecture directe de
+    // Property.displayStatus (persisté, recalculé par StatusRecalculationService)
 
     /**
      * Calcule la charge pour un lot précis
-     * Formule : ChargeCallItem.quotePart × (Property.tantieme / ChargeCallItem.tantieme)
+     * Formule : ChargeCallItem.quotePart proportionnel à (Property.share / ChargeCallItem.tantieme)
      * Explication : répartir le montant total du copropriétaire au prorata du poids de ce lot
      */
     private BigDecimal calculatePropertyCharge(
@@ -1686,7 +1591,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
         // Calculer la charge au prorata du tantième de ce lot
         return item.getQuotePart()
-                .multiply(property.getTantieme())
+                .multiply(property.getShare())
                 .divide(item.getTantieme(), 2, java.math.RoundingMode.HALF_UP);
     }
 
@@ -1727,69 +1632,64 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     }
 
 
-    /**
-     * Calcule le statut de santé d'une résidence
-     * CRITIQUE si taux d'impayés > 10% OU intervention URGENT non terminée
-     * ATTENTION si taux d'impayés > 5%
-     * EXCELLENT sinon
-     */
-    private ResidenceHealthStatus calculateHealthStatus(Long residenceId) {
-        // Calculer le taux d'impayés à partir des ChargeCallItem
-        // via Budget -> ChargeCall -> ChargeCallItem
-        BigDecimal totalDue = BigDecimal.ZERO;
-        BigDecimal totalPaid = BigDecimal.ZERO;
+    // calculateHealthStatus supprimée — déplacée dans StatusRecalculationService,
+    // seule source de vérité pour ce calcul désormais
 
-        // Récupérer tous les budgets de la résidence
-        List<Budget> budgets = budgetRepository.findByResidenceId(residenceId);
-
-        for (Budget budget : budgets) {
-            for (ChargeCall chargeCall : budget.getChargeCalls()) {
-                for (ChargeCallItem item : chargeCall.getItems()) {
-                    totalDue = totalDue.add(item.getQuotePart());
-                    totalPaid = totalPaid.add(item.getPaidAmount() != null ? item.getPaidAmount() : BigDecimal.ZERO);
-                }
-            }
-        }
-
-        // Calculer le taux d'impayés
-        double unpaidRate = 0.0;
-        if (totalDue.compareTo(BigDecimal.ZERO) > 0) {
-            unpaidRate = totalDue.subtract(totalPaid)
-                    .divide(totalDue, 4, java.math.RoundingMode.HALF_UP)
-                    .multiply(BigDecimal.valueOf(100))
-                    .doubleValue();
-        }
-
-        // Vérifier s'il existe une intervention URGENT non terminée
-        boolean hasUrgentActiveIntervention = interventionRequestRepository
-                .findAllByResidenceId(residenceId)
-                .stream()
-                .anyMatch(ir -> ir.getUrgencyLevel() == UrgencyLevel.URGENT
-                        && ir.getStatus() != InterventionStatus.FINAL_VALIDATION
-                        && ir.getStatus() != InterventionStatus.CANCELLED);
-
-        // Déterminer le statut
-        if (unpaidRate > 10.0 || hasUrgentActiveIntervention) {
-            return ResidenceHealthStatus.CRITIQUE;
-        } else if (unpaidRate > 5.0) {
-            return ResidenceHealthStatus.ATTENTION;
-        } else {
-            return ResidenceHealthStatus.EXCELLENT;
-        }
+    // Calcule le tantième proportionnel à la superficie totale de la résidence
+    private BigDecimal calculateShare(BigDecimal area, BigDecimal totalArea) {
+        return area.divide(totalArea, 4, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100));
     }
 
+    // Construit une Property (non sauvegardée) à partir de son DTO — réutilisé par
+    // addProperties et createResidenceFull
+    private Property buildProperty(Residence residence, User currentSyndic, AddPropertyDTO dto) {
 
-    // ÉTAPE 3 — RÉCUPÉRER LES TYPES D'ÉQUIPEMENTS AVEC LEURS CHAMPS
-    // map qui associe chaque nom de type à ses champs — définie une seule fois
-    private static final Map<String, List<String>> FACILITY_FIELDS = Map.of(
-            "Piscine",            List.of("count", "isHeated"),
-            "Ascenseur",          List.of("count", "capacity"),
-            "Couloir",            List.of("count", "floorsCovered"),
-            "Jardin",             List.of("superficie", "etat"),
-            "Parking",            List.of("indoorSpots", "outdoorSpots", "chargingStations"),
-            "Groupe électrogène", List.of("powerKva", "fuelType"),
-            "Réservoir d'eau",    List.of("capacityLiters", "pumpStatus")
-    );
+        // Vérifie que la référence n'existe pas déjà pour cette résidence
+        if (propertyRepository.existsByReferenceAndResidenceId(dto.getReference(), residence.getId())) {
+            throw new BadRequestException(
+                    "La référence '" + dto.getReference() + "' existe déjà pour cette résidence");
+        }
+
+        Property property = new Property();
+        property.setReference(dto.getReference());
+        property.setBloc(dto.getBloc());
+        property.setFloor(dto.getFloor());
+        property.setArea(dto.getArea());
+        property.setResidence(residence);
+
+        // Calcule le tantième proportionnel à la superficie totale de la résidence
+        property.setShare(calculateShare(dto.getArea(), residence.getTotalArea()));
+
+        // Récupère le type de bien — uniquement s'il appartient au syndic connecté
+        PropertyType propertyType = propertyTypeRepository.findByIdAndSyndicId(dto.getPropertyTypeId(), currentSyndic.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Type de bien introuvable"));
+        property.setTypeBien(propertyType);
+
+        // Associe un propriétaire si fourni et calcule le statut
+        if (dto.getOwnerId() != null) {
+            User owner = userRepository.findById(dto.getOwnerId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
+
+            // Vérifie que c'est bien un copropriétaire
+            if (!owner.getRole().getName().equals(ERole.ROLE_COPROPRIETAIRE)) {
+                throw new BadRequestException("Seul un copropriétaire peut être propriétaire d'un lot");
+            }
+
+            property.setOwner(owner);
+            property.setStatus(PropertyStatus.OCCUPIED);
+        } else {
+            property.setStatus(PropertyStatus.VACANT);
+        }
+
+        // Un lot fraîchement créé n'a encore aucun historique de charges : le displayStatus
+        // correspond donc toujours au statut brut (jamais LATE/UNPAID à la création)
+        property.setDisplayStatus(property.getStatus() == PropertyStatus.OCCUPIED
+                ? PropertyDisplayStatus.OCCUPIED
+                : PropertyDisplayStatus.VACANT);
+
+        return property;
+    }
 
     // Récupère une résidence ou lève une exception si introuvable
     private Residence getResidenceOrThrow(Long residenceId) {
@@ -1836,6 +1736,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             .latitude(res.getLatitude())
             .longitude(res.getLongitude())
             .lotsCount(res.getLotsCount())
+            .totalArea(res.getTotalArea())
             .constructionDate(res.getConstructionDate())
             .renovationDate(res.getRenovationDate())
             .annualBudget(annualBudget)
@@ -1855,13 +1756,18 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             .id(p.getId())
             .reference(p.getReference())
             .floor(p.getFloor())
-            .superficie(p.getSuperficie())
+            .area(p.getArea())
+            .share(p.getShare())
             .typeName(p.getTypeBien() != null ? p.getTypeBien().getName() : null)
             .residenceId(p.getResidence().getId())
             .residenceName(p.getResidence().getName())
             .ownerId(p.getOwner() != null ? p.getOwner().getId() : null)
             .ownerName(p.getOwner() != null
                 ? p.getOwner().getFirstName() + " " + p.getOwner().getLastName()
+                : null)
+            .tenantId(p.getTenant() != null ? p.getTenant().getId() : null)
+            .tenantName(p.getTenant() != null
+                ? p.getTenant().getFirstName() + " " + p.getTenant().getLastName()
                 : null)
             .build();
     }
@@ -1873,8 +1779,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             .bloc(p.getBloc())
             .floor(p.getFloor())
             .typeName(p.getTypeBien() != null ? p.getTypeBien().getName() : null)
-            .superficie(p.getSuperficie())
-            .tantieme(p.getTantieme())
+            .area(p.getArea())
+            .share(p.getShare())
             .build();
     }
 

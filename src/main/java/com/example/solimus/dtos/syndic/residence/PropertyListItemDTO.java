@@ -31,7 +31,10 @@ public class PropertyListItemDTO {
     // Propriétaire du lot (null si vacant)
     private OwnerInfo owner;
 
-    // Statut composite calculé à la volée (MAINTENANCE, OVERDUE, OCCUPE, VACANT)
+    // Locataire du lot (null si le bien n'est pas loué) — réutilise OwnerInfo
+    private OwnerInfo tenant;
+
+    // Statut composite calculé à la volée (MAINTENANCE, OVERDUE, OCCUPIED, VACANT)
     private String status;
 
     // Charge calculée pour ce lot (répartition théorique par lot)

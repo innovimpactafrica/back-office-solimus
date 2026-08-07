@@ -12,5 +12,10 @@ public enum InitiatedBy {
     /**
      * L'intervention a été initiée par un copropriétaire.
      */
-    OWNER
+    OWNER,
+
+    /**
+     * L'intervention a été initiée par un locataire.
+     */
+    TENANT
 }

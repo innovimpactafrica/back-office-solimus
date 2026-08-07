@@ -26,6 +26,7 @@ import com.example.solimus.repositories.*;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.geolocation.GeolocationService;
 import com.example.solimus.services.notification.NotificationService;
+import com.example.solimus.services.shared.StatusRecalculationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.*;
@@ -44,7 +45,7 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
-public class ownerTravauxServiceImpl implements  ownerTraveauxService{
+public class ownerTravauxServiceImpl implements ownerTravauxService {
 
     private final PropertyRepository propertyRepository;
     private final UserRepository userRepository;
@@ -52,6 +53,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
     private final ResidenceRepository residenceRepository;
     private final SpecialtyRepository specialtyRepository;
     private final InterventionRequestRepository interventionRequestRepository;
+    private final StatusRecalculationService statusRecalculationService;
     private final ProviderProfileRepository providerProfileRepository;
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
     private final QuoteRepository quoteRepository;
@@ -228,6 +230,9 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
 
         // Sauvegarder la demande d'intervention
         interventionRequestRepository.save(request);
+
+        // Une intervention URGENT active peut faire passer la résidence en CRITIQUE
+        statusRecalculationService.recalculateResidenceHealthStatus(residence);
     }
 
     // =========================================================================
@@ -907,7 +912,7 @@ public class ownerTravauxServiceImpl implements  ownerTraveauxService{
         return PropertyDTO.builder()
                 .id(property.getId())
                 .reference(property.getReference())
-                .superficie(property.getSuperficie())
+                .area(property.getArea())
                 .typeName(property.getTypeBien() != null ? property.getTypeBien().getName() : null)
                 .residenceId(property.getResidence() != null ? property.getResidence().getId() : null)
                 .residenceName(property.getResidence() != null ? property.getResidence().getName() : null)
