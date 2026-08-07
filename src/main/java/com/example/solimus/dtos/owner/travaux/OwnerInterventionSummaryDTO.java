@@ -54,4 +54,10 @@ public class OwnerInterventionSummaryDTO {
     // Date et heure de signalement (ex: "08/05/2026 14:30")
     @JsonFormat(pattern = "dd/MM/yyyy HH:mm")
     private LocalDateTime createdAt;
+
+    // true si cette demande a été créée par le locataire plutôt que le copropriétaire
+    private boolean fromTenant;
+
+    // Nom du locataire — rempli uniquement si fromTenant = true
+    private String tenantName;
 }

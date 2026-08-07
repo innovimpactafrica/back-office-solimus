@@ -1049,6 +1049,9 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
                 .urgencyLabel(intervention.getUrgencyLevel() != null ? intervention.getUrgencyLevel().getLabel() : null)
                 .urgencyLevel(intervention.getUrgencyLevel())
                 .createdAt(intervention.getCreatedAt())
+                .fromTenant(intervention.getTenant() != null)
+                .tenantName(intervention.getTenant() != null
+                        ? intervention.getTenant().getFirstName() + " " + intervention.getTenant().getLastName() : null)
                 .build();
     }
 
@@ -1106,6 +1109,9 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
                 .timeline(buildTimeline(request))
                 .startedAt(request.getStartedAt())
                 .finishedAt(request.getFinishedAt())
+                .fromTenant(request.getTenant() != null)
+                .tenantName(request.getTenant() != null
+                        ? request.getTenant().getFirstName() + " " + request.getTenant().getLastName() : null)
                 .build();
     }
 

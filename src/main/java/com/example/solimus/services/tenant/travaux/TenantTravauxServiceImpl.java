@@ -269,6 +269,8 @@ public class TenantTravauxServiceImpl implements TenantTravauxService {
                 .urgencyLabel(intervention.getUrgencyLevel() != null ? intervention.getUrgencyLevel().getLabel() : null)
                 .urgencyLevel(intervention.getUrgencyLevel())
                 .createdAt(intervention.getCreatedAt())
+                .fromTenant(true)
+                .tenantName(intervention.getTenant().getFirstName() + " " + intervention.getTenant().getLastName())
                 .build();
     }
 
@@ -309,6 +311,8 @@ public class TenantTravauxServiceImpl implements TenantTravauxService {
                 .timeline(buildTimeline(request))
                 .startedAt(request.getStartedAt())
                 .finishedAt(request.getFinishedAt())
+                .fromTenant(true)
+                .tenantName(request.getTenant().getFirstName() + " " + request.getTenant().getLastName())
                 .build();
     }
 
