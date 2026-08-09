@@ -31,67 +31,27 @@ import java.util.Map;
 @Slf4j
 public class SolimusCallbackController {
 
-    // Repository des paiements d'intervention : acompte PAY-* et solde SOL-*
+
     private final PaymentRepository paymentRepository;
-
-    // Repository de la demande d'intervention liée au paiement
     private final InterventionRequestRepository interventionRepository;
-
-    // Repository des paiements de charges courantes : CPY-*
     private final ChargeCallPaymentRepository chargeCallPaymentRepository;
-
-    // Repository des lignes d'appels de charges courantes
     private final ChargeCallItemRepository chargeCallItemRepository;
-
-    // Repository des paiements de charges exceptionnelles : ECP-*
     private final ExceptionalCallPaymentRepository exceptionalCallPaymentRepository;
-
-    // Repository des lignes d'appels exceptionnels
     private final ExceptionalCallItemRepository exceptionalCallItemRepository;
-
-    // Repository du wallet syndic, pour créditer les charges payées
     private final SyndicWalletRepository syndicWalletRepository;
-
-    // Repository des transactions du wallet syndic
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
-
-    // Service utilisé pour créditer le wallet du prestataire après confirmation InTouch
     private final ProviderService providerService;
-
-    // Service wallet pour gérer les crédits du prestataire
     private final WalletService walletService;
-
-    // Repository des abonnements prestataires : SUB-*
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
-
-    // Repository des abonnements syndics : SYN-*
     private final SyndicSubscriptionRepository syndicSubscriptionRepository;
-
-    // Repository des profils société syndic, pour récupérer le nom de société à l'activation
     private final SyndicProfileRepository syndicProfileRepository;
-
-    // Repository des profils société prestataire, pour récupérer le nom de société dans les notifications admin
     private final ProviderProfileRepository providerProfileRepository;
-
-    // Encodeur utilisé pour chiffrer le mot de passe temporaire généré au moment de l'activation du syndic
     private final PasswordEncoder passwordEncoder;
-
-    // Service email pour notifier le prestataire après activation Premium, et le syndic après activation de son compte
     private final EmailService emailService;
-
-    // Repository des logs d'activité pour tracer les paiements
     private final ActivityLogRepository activityLogRepository;
-
-    // Service de notifications push, pour alerter le syndic des nouveaux paiements
     private final NotificationService notificationService;
-
-    // Diffuse les événements admin (ex: "Nouveau syndic créé") aux admins, selon leurs préférences
     private final AdminNotificationPreferenceService adminNotificationPreferenceService;
-
-    // Repository des lots, pour recalculer leur displayStatus après un paiement de charge
     private final PropertyRepository propertyRepository;
-
-    // Recalcule et persiste displayStatus (lot) / healthStatus (résidence) sur événement
     private final StatusRecalculationService statusRecalculationService;
 
     // URL de la page "Paramètres" de l'app web Angular (espace syndic uniquement pour l'instant) —
@@ -105,33 +65,18 @@ public class SolimusCallbackController {
             DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.FRENCH);
 
     // =========================================================================
-    // Routes de redirection TouchPay — confirment le paiement directement
-    // côté serveur, avant même d'afficher la page. Contrairement à un fichier
-    // HTML statique, ça fonctionne même si la WebView mobile ferme la page
-    // juste après le chargement.
+    // Routes de redirection TouchPay — retour navigateur/WebView.
+    // Confirmation "best-effort" UNIQUEMENT si TouchPay a lui-même mis payment_status=200
     // =========================================================================
 
     @GetMapping(value = "/redirect-success", produces = "text/html")
-    public String redirectPaymentSuccess(@RequestParam("num_command") String reference) {
+    public String redirectPaymentSuccess(
+            @RequestParam("num_command") String reference,
+            @RequestParam(value = "payment_status", required = false) String paymentStatus) {
 
-        // Identifie le type de paiement via le prefixe de la référence,
-        // car TouchPay n'utilise qu'une seule URL de redirection pour tous les types
-        if (reference.startsWith("CPY-")) {
-            handleChargePaymentCallback(reference, true);
-        } else if (reference.startsWith("ECP-")) {
-            handleExceptionalChargePaymentCallback(reference, true);
-        } else if (reference.startsWith("SUB-")) {
-            handleSubscriptionCallback(reference, true);
-        } else if (reference.startsWith("SYN-")) {
-            handleSyndicSubscriptionCallback(reference, true);
-        } else if (reference.startsWith("SYR-")) {
-            handleSyndicPlanChangeCallback(reference, true);
-        } else if (reference.startsWith("SYA-")) {
-            handleAdminSyndicRenewalCallback(reference, true);
-        } else if (reference.startsWith("PRA-")) {
-            handleAdminProviderRenewalCallback(reference, true);
-        } else if (reference.startsWith("PAY-") || reference.startsWith("SOL-")) {
-            handleOwnerInterventionPaymentCallback(reference, true);
+        // Confirmation best-effort uniquement si TouchPay confirme explicitement payment_status=200
+        if ("200".equals(paymentStatus)) {
+            routeCallbackByPrefix(reference, true);
         }
 
         // SYR- vient du self-service syndic sur le web : on renvoie vers l'app Angular, pas vers le
@@ -144,36 +89,24 @@ public class SolimusCallbackController {
         }
 
         return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
-                "<h1 style=\"color:green;\">Paiement réussi</h1>" +
-                "<p>Votre paiement a bien été confirmé.</p>" +
-                "<p><a href=\"solimus://payment/success?ref=" + reference + "\">Retourner à l'application</a></p>" +
+                "<h1 style=\"color:#2a538b;\">Paiement en cours de vérification</h1>" +
+                "<p>Nous vérifions votre paiement, cela peut prendre quelques instants.</p>" +
+                "<p><a href=\"solimus://payment/pending?ref=" + reference + "\">Retourner à l'application</a></p>" +
                 "<script>" +
-                "  window.location.href = 'solimus://payment/success?ref=" + reference + "';" +
+                "  window.location.href = 'solimus://payment/pending?ref=" + reference + "';" +
                 "</script>" +
                 "</body></html>";
     }
 
     @GetMapping(value = "/redirect-failed", produces = "text/html")
-    public String redirectPaymentFailed(@RequestParam("num_command") String reference) {
+    public String redirectPaymentFailed(
+            @RequestParam("num_command") String reference,
+            @RequestParam(value = "payment_status", required = false) String paymentStatus) {
 
-        // Identifie le type de paiement via le prefixe de la reference,
-        // car TouchPay n'utilise qu'une seule URL de redirection pour tous les types
-        if (reference.startsWith("CPY-")) {
-            handleChargePaymentCallback(reference, false);
-        } else if (reference.startsWith("ECP-")) {
-            handleExceptionalChargePaymentCallback(reference, false);
-        } else if (reference.startsWith("SUB-")) {
-            handleSubscriptionCallback(reference, false);
-        } else if (reference.startsWith("SYN-")) {
-            handleSyndicSubscriptionCallback(reference, false);
-        } else if (reference.startsWith("SYR-")) {
-            handleSyndicPlanChangeCallback(reference, false);
-        } else if (reference.startsWith("SYA-")) {
-            handleAdminSyndicRenewalCallback(reference, false);
-        } else if (reference.startsWith("PRA-")) {
-            handleAdminProviderRenewalCallback(reference, false);
-        } else if (reference.startsWith("PAY-") || reference.startsWith("SOL-")) {
-            handleOwnerInterventionPaymentCallback(reference, false);
+        // On ne marque échoué que si TouchPay le confirme explicitement (payment_status
+        // présent et différent de 200) — jamais juste parce que l'utilisateur est arrivé ici
+        if (paymentStatus != null && !"200".equals(paymentStatus)) {
+            routeCallbackByPrefix(reference, false);
         }
 
         // Même logique que pour le succès : SYR- retourne vers l'app Angular
@@ -185,11 +118,11 @@ public class SolimusCallbackController {
         }
 
         return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
-                "<h1 style=\"color:red;\">Paiement échoué</h1>" +
-                "<p>Le paiement a été marqué comme échoué.</p>" +
-                "<p><a href=\"solimus://payment/failed?ref=" + reference + "\">Retourner à l'application</a></p>" +
+                "<h1 style=\"color:#2a538b;\">Paiement en cours de vérification</h1>" +
+                "<p>Nous vérifions votre paiement, cela peut prendre quelques instants.</p>" +
+                "<p><a href=\"solimus://payment/pending?ref=" + reference + "\">Retourner à l'application</a></p>" +
                 "<script>" +
-                "  window.location.href = 'solimus://payment/failed?ref=" + reference + "';" +
+                "  window.location.href = 'solimus://payment/pending?ref=" + reference + "';" +
                 "</script>" +
                 "</body></html>";
     }
@@ -221,7 +154,14 @@ public class SolimusCallbackController {
                 ? request.getStatus().trim().toUpperCase() : "";
         boolean succes = "SUCCESSFUL".equals(status);
 
-        // Routing selon le préfixe de la référence
+        return routeCallbackByPrefix(ref, succes);
+    }
+
+    // Routing selon le préfixe de la référence — réutilisé par le webhook POST /callback
+    // (source de vérité) et, de façon best-effort, par les redirections GET quand TouchPay
+    // fournit un payment_status confirmé dans l'URL de retour.
+    private ResponseEntity<Map<String, Object>> routeCallbackByPrefix(String ref, boolean succes) {
+
         if (ref.startsWith("PAY-") || ref.startsWith("SOL-")) {
             // Paiement intervention owner : acompte ou solde
             return handleOwnerInterventionPaymentCallback(ref, succes);

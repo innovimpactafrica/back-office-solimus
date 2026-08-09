@@ -520,7 +520,6 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         }
 
         // Vérifier si le bien a un historique financier (ChargeCallItem)
-        // Remplace l'ancien système ChargeAllocation
         // On vérifie via le propriétaire actuel du lot et les appels de charges générés pour cette résidence
         // Si le propriétaire a des ChargeCallItem liés à des ChargeCall de cette résidence, on refuse la suppression
         if (property.getOwner() != null) {
@@ -549,7 +548,6 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         Residence residence = getResidenceOrThrow(residenceId);
         verifyResidenceOwnership(residence);
 
-        // Construire Pageable
         Pageable pageable = PageRequest.of(page, size);
 
         // Récupérer les lots paginés
@@ -577,6 +575,22 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             result.add(dto);
         }
         return result;
+    }
+
+    // =========================================================================
+    // Lister les types d'équipements communs configurés
+    // =========================================================================
+    @Override
+    @Transactional(readOnly = true)
+    public Page<FacilityTypeDTO> getFacilityTypes(int page, int size) {
+        User currentSyndic = getCurrentUser();
+        Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
+        return facilityTypeRepository.findBySyndicIdAndIsActiveTrue(currentSyndic.getId(), pageable)
+                .map(type -> FacilityTypeDTO.builder()
+                        .id(type.getId())
+                        .name(type.getName())
+                        .icon(type.getIcon())
+                        .build());
     }
 
     // =========================================================================
@@ -665,21 +679,6 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 residence.getName(), securityFeatures.size());
     }
 
-    // =========================================================================
-    // Lister les types d'équipements communs configurés
-    // =========================================================================
-    @Override
-    @Transactional(readOnly = true)
-    public Page<FacilityTypeDTO> getFacilityTypes(int page, int size) {
-        User currentSyndic = getCurrentUser();
-        Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
-        return facilityTypeRepository.findBySyndicIdAndIsActiveTrue(currentSyndic.getId(), pageable)
-                .map(type -> FacilityTypeDTO.builder()
-                        .id(type.getId())
-                        .name(type.getName())
-                        .icon(type.getIcon())
-                        .build());
-    }
 
     // =========================================================================
     // DASHBOARD RÉSIDENCES
@@ -1663,8 +1662,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     // Méthodes utilitaires
     // =========================================================================
 
-
-    // Crée ou met à jour un équipement commun — réutilisé par createResidenceFull
+    // Crée ou met à jour un équipement commun
     private void upsertFacility(Residence residence, User currentSyndic, AddFacilityDTO dto) {
 
         // Récupère le type d'équipement — uniquement s'il appartient au syndic connecté

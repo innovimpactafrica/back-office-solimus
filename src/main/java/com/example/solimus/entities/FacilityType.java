@@ -13,7 +13,6 @@ import java.time.LocalDateTime;
 /**
  * Type d'équipement commun — propre à chaque syndic, jamais partagé entre syndics.
  * Utilisé comme table de référence pour les équipements des résidences.
- * Le syndic peut configurer les valeurs (capacité, superficie, etc.) pour chaque résidence.
  */
 @Entity
 @Table(name = "facility_types", uniqueConstraints = @UniqueConstraint(columnNames = {"syndic_id", "name"}))
@@ -40,10 +39,6 @@ public class FacilityType {
     @Column(name = "category", nullable = false)
     private FacilityCategory category;
 
-    /**
-     * Icône affichée dans le catalogue (nom d'icône mappé côté front).
-     * Ex: "elevator", "pool", "parking", "garden", "camera"
-     */
     @Column(name = "icon")
     private String icon;
 
