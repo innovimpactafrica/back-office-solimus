@@ -72,10 +72,13 @@ public class SolimusCallbackController {
     @GetMapping(value = "/redirect-success", produces = "text/html")
     public String redirectPaymentSuccess(
             @RequestParam("num_command") String reference,
-            @RequestParam(value = "payment_status", required = false) String paymentStatus) {
+            @RequestParam(value = "payment_status", required = false) String paymentStatus,
+            @RequestParam(value = "errorCode", required = false) String errorCode) {
 
-        // Confirmation best-effort uniquement si TouchPay confirme explicitement payment_status=200
-        if ("200".equals(paymentStatus)) {
+        // Confirmation best-effort uniquement si TouchPay confirme explicitement 200 —
+        // via payment_status (doc REST /cashin) OU errorCode (confirmé par test réel sur le widget hosted)
+        boolean confirmed = "200".equals(paymentStatus) || "200".equals(errorCode);
+        if (confirmed) {
             routeCallbackByPrefix(reference, true);
         }
 
@@ -101,11 +104,14 @@ public class SolimusCallbackController {
     @GetMapping(value = "/redirect-failed", produces = "text/html")
     public String redirectPaymentFailed(
             @RequestParam("num_command") String reference,
-            @RequestParam(value = "payment_status", required = false) String paymentStatus) {
+            @RequestParam(value = "payment_status", required = false) String paymentStatus,
+            @RequestParam(value = "errorCode", required = false) String errorCode) {
 
-        // On ne marque échoué que si TouchPay le confirme explicitement (payment_status
-        // présent et différent de 200) — jamais juste parce que l'utilisateur est arrivé ici
-        if (paymentStatus != null && !"200".equals(paymentStatus)) {
+        // On ne marque échoué que si TouchPay le confirme explicitement (payment_status ou
+        // errorCode présent et différent de 200) — jamais juste parce que l'utilisateur est arrivé ici
+        boolean failureConfirmed = (paymentStatus != null && !"200".equals(paymentStatus))
+                || (errorCode != null && !"200".equals(errorCode));
+        if (failureConfirmed) {
             routeCallbackByPrefix(reference, false);
         }
 
