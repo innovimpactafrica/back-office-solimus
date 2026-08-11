@@ -1,10 +1,15 @@
 package com.example.solimus.services.notification;
 
+import com.example.solimus.enums.DeviceType;
 
 public interface NotificationService {
 
     //sauvegarde le token FCM de l'utilisateur connecté en base
     void saveFcmToken(String fcmToken);
+
+    // Enregistre le token FCM + le type de téléphone (Android/iOS) de l'utilisateur connecté —
+    // appelé par l'app mobile via POST /api/account/device-token
+    void registerDeviceToken(String deviceToken, DeviceType deviceType);
 
     //Envoie une notification push à un utilisateur précis via son id
     void sendPush(Long userId, String title, String body);

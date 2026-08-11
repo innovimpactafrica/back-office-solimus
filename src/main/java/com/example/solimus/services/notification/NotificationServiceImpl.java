@@ -3,6 +3,7 @@ package com.example.solimus.services.notification;
 import com.example.solimus.entities.Notification;
 import com.example.solimus.entities.SyndicProfile;
 import com.example.solimus.entities.User;
+import com.example.solimus.enums.DeviceType;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.NotificationRepository;
 import com.example.solimus.repositories.SyndicProfileRepository;
@@ -33,6 +34,19 @@ public class NotificationServiceImpl implements NotificationService{
         user.setFcmToken(fcmToken);
 
         // sauvegarde en base
+        userRepository.save(user);
+    }
+
+    @Override
+    public void registerDeviceToken(String deviceToken, DeviceType deviceType) {
+
+        // Récupérer l'utilisateur connecté
+        User user = getCurrentUser();
+
+        // Même logique que saveFcmToken, avec en plus le type de téléphone
+        user.setFcmToken(deviceToken);
+        user.setDeviceType(deviceType);
+
         userRepository.save(user);
     }
 

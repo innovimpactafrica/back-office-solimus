@@ -1,5 +1,6 @@
 package com.example.solimus.entities;
 
+import com.example.solimus.enums.DeviceType;
 import com.example.solimus.enums.UserStatus;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
@@ -132,6 +133,12 @@ public class User {
      */
     @Column(name = "fcm_token")
     private String fcmToken; // token unique qui identifie le téléphone de cet utilisateur auprès de Firebase
+
+    // Type de téléphone (ANDROID/IOS) associé au token FCM ci-dessus — envoyé par l'app
+    // mobile en même temps que le token, utile pour du diagnostic/du ciblage par plateforme
+    @Enumerated(EnumType.STRING)
+    @Column(name = "device_type")
+    private DeviceType deviceType;
 
     // =========================================================================
     // PRÉFÉRENCES DE NOTIFICATION
