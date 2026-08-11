@@ -1,6 +1,9 @@
 package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.account.DeviceTokenDTO;
+import com.example.solimus.entities.User;
+import com.example.solimus.exceptions.ResourceNotFoundException;
+import com.example.solimus.repositories.UserRepository;
 import com.example.solimus.services.notification.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -9,6 +12,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AccountController {
 
     private final NotificationService notificationService;
+    private final UserRepository userRepository;
 
     // Appelé par l'app mobile juste après la connexion pour enregistrer le token FCM
     // du téléphone (et son type) de l'utilisateur connecté, afin de recevoir les push système
@@ -38,5 +43,27 @@ public class AccountController {
     public ResponseEntity<String> registerDeviceToken(@Valid @RequestBody DeviceTokenDTO dto) {
         notificationService.registerDeviceToken(dto.getDeviceToken(), dto.getDeviceType());
         return ResponseEntity.ok("Device token enregistré avec succès");
+    }
+
+    // Envoie un push de test à l'utilisateur connecté — pour vérifier de bout en bout que la chaîne
+    // (device token enregistré + clé Firebase + config Firebase du mobile) fonctionne réellement,
+    // sans attendre un vrai événement métier (paiement, réunion, incident...)
+    @Operation(summary = "Envoyer un push de test à mon propre téléphone")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Push de test envoyé (voir les logs serveur si le téléphone ne reçoit rien)"),
+            @ApiResponse(responseCode = "401", description = "Non authentifié")
+    })
+    @PostMapping("/test-push")
+    public ResponseEntity<String> sendTestPush() {
+        User currentUser = getCurrentUser();
+        notificationService.sendPush(currentUser.getId(), "Test Solimus",
+                "Si vous recevez ce message, les notifications push fonctionnent correctement.");
+        return ResponseEntity.ok("Push de test envoyé");
+    }
+
+    private User getCurrentUser() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
     }
 }
