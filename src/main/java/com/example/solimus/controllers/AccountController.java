@@ -47,18 +47,19 @@ public class AccountController {
 
     // Envoie un push de test à l'utilisateur connecté — pour vérifier de bout en bout que la chaîne
     // (device token enregistré + clé Firebase + config Firebase du mobile) fonctionne réellement,
-    // sans attendre un vrai événement métier (paiement, réunion, incident...)
-    @Operation(summary = "Envoyer un push de test à mon propre téléphone")
+    // sans attendre un vrai événement métier (paiement, réunion, incident...). Contrairement au push
+    // "normal" (sendPush), le résultat réel de l'envoi Firebase est renvoyé dans la réponse — pas besoin
+    // d'aller chercher les logs serveur pour savoir si ça a marché ou pourquoi ça a échoué
+    @Operation(summary = "Envoyer un push de test à mon propre téléphone (diagnostic)")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Push de test envoyé (voir les logs serveur si le téléphone ne reçoit rien)"),
+            @ApiResponse(responseCode = "200", description = "Résultat réel de l'envoi : accepté par Firebase, ou raison précise de l'échec"),
             @ApiResponse(responseCode = "401", description = "Non authentifié")
     })
     @PostMapping("/test-push")
     public ResponseEntity<String> sendTestPush() {
         User currentUser = getCurrentUser();
-        notificationService.sendPush(currentUser.getId(), "Test Solimus",
-                "Si vous recevez ce message, les notifications push fonctionnent correctement.");
-        return ResponseEntity.ok("Push de test envoyé");
+        String result = notificationService.sendTestPushWithDiagnostic(currentUser.getId());
+        return ResponseEntity.ok(result);
     }
 
     private User getCurrentUser() {

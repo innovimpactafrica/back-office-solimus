@@ -11,6 +11,11 @@ public interface NotificationService {
     // appelé par l'app mobile via POST /api/account/device-token
     void registerDeviceToken(String deviceToken, DeviceType deviceType);
 
+    // Envoie un push de test à un utilisateur et retourne le résultat réel de l'envoi Firebase
+    // (contrairement à sendPush, qui avale toute erreur pour ne jamais faire échouer l'appelant métier) —
+    // utilisé uniquement par l'endpoint de diagnostic POST /api/account/test-push
+    String sendTestPushWithDiagnostic(Long userId);
+
     //Envoie une notification push à un utilisateur précis via son id
     void sendPush(Long userId, String title, String body);
 

@@ -70,19 +70,10 @@ public class NotificationServiceImpl implements NotificationService{
             return;
         }
 
-        // ÉTAPE 3 : construit et envoie le push Firebase (classe Notification de Firebase, différente de la nôtre)
-        com.google.firebase.messaging.Notification firebaseNotification = com.google.firebase.messaging.Notification.builder()
-                .setTitle(title)
-                .setBody(body)
-                .build();
-
-        Message message = Message.builder()
-                .setToken(user.getFcmToken())
-                .setNotification(firebaseNotification)
-                .build();
-
+        // ÉTAPE 3 : envoie le push Firebase — erreur avalée ici (juste loguée), pour ne jamais faire
+        // échouer l'appelant à cause d'un problème Firebase (token invalide, etc.)
         try {
-            FirebaseMessaging.getInstance().send(message);
+            sendFirebaseMessage(user.getFcmToken(), title, body);
         } catch (Exception e) {
             System.err.println("Erreur envoi push userId=" + userId + " : " + e.getMessage());
         }
@@ -99,22 +90,58 @@ public class NotificationServiceImpl implements NotificationService{
             return;
         }
 
-        //Sinon,  Construit et envoie le push Firebase (classe Notification de Firebase, différente de la nôtre)
+        try {
+            sendFirebaseMessage(user.getFcmToken(), title, body);
+        } catch (Exception e) {
+            System.err.println("Erreur envoi push (sendPushOnly) userId=" + userId + " : " + e.getMessage());
+        }
+    }
+
+    @Override
+    public String sendTestPushWithDiagnostic(Long userId) {
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
+
+        // Cas le plus fréquent : le mobile n'a jamais (ou pas encore) appelé /api/account/device-token
+        // avec succès pour ce compte précis — rien à tester, pas la peine d'appeler Firebase
+        if (user.getFcmToken() == null) {
+            return "ÉCHEC : aucun token FCM enregistré pour ce compte. L'app mobile n'a pas encore "
+                    + "appelé POST /api/account/device-token avec succès pour cet utilisateur "
+                    + "(userId=" + userId + ").";
+        }
+
+        try {
+            String firebaseMessageId = sendFirebaseMessage(user.getFcmToken(), "Test Solimus",
+                    "Si vous recevez ce message, les notifications push fonctionnent correctement.");
+            return "OK : Firebase a accepté le message (id=" + firebaseMessageId + "). Si le téléphone "
+                    + "ne reçoit toujours rien, le problème est côté mobile (permissions notifications "
+                    + "refusées, config Firebase du mobile différente du projet du serveur, app tuée "
+                    + "par l'optimisation batterie, etc.), pas côté serveur.";
+        } catch (Exception e) {
+            return "ÉCHEC Firebase : " + e.getClass().getSimpleName() + " — " + e.getMessage()
+                    + ". Le token FCM enregistré est probablement invalide ou n'appartient pas au "
+                    + "projet Firebase de la clé serveur actuelle (vérifier que le mobile utilise bien "
+                    + "la config du projet \"solimussyndic-app\").";
+        }
+    }
+
+    // Construit et envoie un message Firebase — centralise ce qui était dupliqué entre sendPush,
+    // sendPushOnly et le diagnostic de test, et propage l'exception (chaque appelant décide s'il
+    // l'avale ou la remonte)
+    private String sendFirebaseMessage(String fcmToken, String title, String body) throws Exception {
+
         com.google.firebase.messaging.Notification firebaseNotification = com.google.firebase.messaging.Notification.builder()
                 .setTitle(title)
                 .setBody(body)
                 .build();
 
         Message message = Message.builder()
-                .setToken(user.getFcmToken())
+                .setToken(fcmToken)
                 .setNotification(firebaseNotification)
                 .build();
 
-        try {
-            FirebaseMessaging.getInstance().send(message);
-        } catch (Exception e) {
-            System.err.println("Erreur envoi push (sendPushOnly) userId=" + userId + " : " + e.getMessage());
-        }
+        return FirebaseMessaging.getInstance().send(message);
     }
 
     // =========================================================================
