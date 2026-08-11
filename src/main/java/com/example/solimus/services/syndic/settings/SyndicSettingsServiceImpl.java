@@ -451,6 +451,9 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
         if (dto.getReminderDelayDays() != null) {
             settings.setReminderDelayDays(dto.getReminderDelayDays());
         }
+        if (dto.getPenaltyGracePeriodDays() != null) {
+            settings.setPenaltyGracePeriodDays(dto.getPenaltyGracePeriodDays());
+        }
         if (dto.getReserveFundPercentage() != null) {
             settings.setReserveFundPercentage(dto.getReserveFundPercentage());
         }
@@ -674,6 +677,7 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
                 .chargeFrequency(ChargeFrequency.TRIMESTRIEL)
                 .latePenaltyRate(BigDecimal.valueOf(1.5))
                 .reminderDelayDays(30)
+                .penaltyGracePeriodDays(15)
                 .reserveFundPercentage(BigDecimal.valueOf(5))
                 .build();
     }
@@ -684,6 +688,7 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
                 .chargeFrequency(settings.getChargeFrequency())
                 .latePenaltyRate(settings.getLatePenaltyRate())
                 .reminderDelayDays(settings.getReminderDelayDays())
+                .penaltyGracePeriodDays(settings.getPenaltyGracePeriodDays())
                 .reserveFundPercentage(settings.getReserveFundPercentage())
                 .build();
     }

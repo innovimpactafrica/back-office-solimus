@@ -16,6 +16,7 @@ public enum ActivityType {
     MEETING_DOCUMENT_ADDED, // branché — service d'ajout de document AG existant
     BUDGET_CREATED,         // branché sur ChargeServiceImpl.createBudget()
     BUDGET_CLOSED,          // branché sur ChargeServiceImpl.closeBudget()
+    BUDGET_REOPENED,        // branché sur ChargeServiceImpl.reopenBudget()
     BUDGET_DELETED,         // branché sur ChargeServiceImpl.deleteBudget()
     EXCEPTIONAL_CALL_CREATED,   // branché sur ChargeServiceImpl.createExceptionalCall()
     EXCEPTIONAL_CALL_ACTIVATED, // branché sur ChargeServiceImpl.activateExceptionalCall()

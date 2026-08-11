@@ -12,6 +12,6 @@ public class PaymentRowDTO {
     private BigDecimal amountDue;
     private BigDecimal amountPaid;
     private BigDecimal balance;
-    private String status; // PAYE, CRITIQUE, RETARD, PARTIEL, A_JOUR
+    private String status; // PAYE, IMPAYE, RETARD, PARTIEL, A_JOUR
     private LocalDate paymentDate;
 }

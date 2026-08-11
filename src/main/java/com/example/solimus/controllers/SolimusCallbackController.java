@@ -10,6 +10,11 @@ import com.example.solimus.services.provider.ProviderService;
 import com.example.solimus.services.provider.wallet.WalletService;
 import com.example.solimus.services.shared.StatusRecalculationService;
 import com.example.solimus.utils.PasswordGeneratorUtil;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,6 +34,8 @@ import java.util.Map;
 @RequestMapping("/api/payments/intouch")
 @RequiredArgsConstructor
 @Slf4j
+@Tag(name = "Paiements - Callback TouchPay", description = "Endpoints publics (sans authentification) : webhook serveur-à-serveur InTouch (source de vérité) "
+        + "et pages de redirection navigateur/WebView après paiement (confirmation best-effort uniquement)")
 public class SolimusCallbackController {
 
 
@@ -69,6 +76,14 @@ public class SolimusCallbackController {
     // Confirmation "best-effort" UNIQUEMENT si TouchPay a lui-même mis payment_status=200
     // =========================================================================
 
+    @Operation(summary = "Page de retour navigateur/WebView après un paiement réussi côté TouchPay",
+            description = "Toujours 200 (page HTML passive). Ne confirme le paiement en base (best-effort) que si "
+                    + "payment_status ou errorCode vaut explicitement 200 dans l'URL de retour — la source de vérité "
+                    + "reste le webhook POST /callback.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Page HTML de redirection renvoyée",
+                    content = @Content(mediaType = "text/html"))
+    })
     @GetMapping(value = "/redirect-success", produces = "text/html")
     public String redirectPaymentSuccess(
             @RequestParam("num_command") String reference,
@@ -101,6 +116,14 @@ public class SolimusCallbackController {
                 "</body></html>";
     }
 
+    @Operation(summary = "Page de retour navigateur/WebView après un paiement échoué côté TouchPay",
+            description = "Toujours 200 (page HTML passive). Ne marque l'échec en base (best-effort) que si "
+                    + "payment_status ou errorCode est explicitement présent et différent de 200 dans l'URL de retour "
+                    + "— la source de vérité reste le webhook POST /callback.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Page HTML de redirection renvoyée",
+                    content = @Content(mediaType = "text/html"))
+    })
     @GetMapping(value = "/redirect-failed", produces = "text/html")
     public String redirectPaymentFailed(
             @RequestParam("num_command") String reference,
@@ -136,6 +159,14 @@ public class SolimusCallbackController {
     // =========================================================================
     // ENDPOINT PRINCIPAL — Appelé automatiquement par InTouch après paiement
     // =========================================================================
+    @Operation(summary = "Webhook serveur-à-serveur InTouch — seule source de vérité pour la confirmation d'un paiement",
+            description = "Réponse toujours au format {success, message}. 400 si la référence est manquante, "
+                    + "si son préfixe n'est reconnu par aucun type de paiement, ou si l'entité correspondante est introuvable. "
+                    + "200 dans tous les autres cas (y compris paiement marqué échoué, ou callback déjà traité — idempotent).")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Callback traité avec succès (paiement confirmé, marqué échoué, ou déjà traité)"),
+            @ApiResponse(responseCode = "400", description = "Référence manquante, préfixe de référence non supporté, ou entité introuvable pour cette référence")
+    })
     @PostMapping("/callback")
     @Transactional
     public ResponseEntity<Map<String, Object>> handleCallback(@RequestBody InTouchCallbackRequest request) {
@@ -799,8 +830,9 @@ public class SolimusCallbackController {
                     item.setPaidAmount(item.getPaidAmount().add(paiement.getAmount()));
 
                     // Statut posé explicitement ICI, au moment du paiement réellement confirmé —
-                    // jamais recalculé ailleurs à l'affichage
-                    if (item.getPaidAmount().compareTo(item.getQuotePart()) >= 0) {
+                    // jamais recalculé ailleurs à l'affichage. Compare au montant total dû
+                    // (quote-part + pénalité si déjà appliquée), pas seulement la quote-part
+                    if (item.getPaidAmount().compareTo(item.getTotalDue()) >= 0) {
                         item.setStatus(ChargeItemPaymentStatus.PAID);
                     } else {
                         item.setStatus(ChargeItemPaymentStatus.PARTIALLY_PAID);
@@ -815,10 +847,13 @@ public class SolimusCallbackController {
                             .forEach(statusRecalculationService::recalculatePropertyDisplayStatus);
                     statusRecalculationService.recalculateResidenceHealthStatus(residence);
 
-                    // Crédite le wallet du syndic (catégorie CHARGES)
+                    // Crédite le wallet du syndic (catégorie CHARGES) — créé à la volée s'il n'existe
+                    // pas encore (même logique que partout ailleurs dans l'app, ex: getWalletBalance),
+                    // pour ne jamais faire échouer la confirmation d'un paiement déjà réellement reçu
                     SyndicWallet syndicWallet = syndicWalletRepository
                             .findBySyndicId(residence.getSyndic().getId())
-                            .orElseThrow(() -> new RuntimeException("Wallet syndic introuvable"));
+                            .orElseGet(() -> syndicWalletRepository.save(
+                                    SyndicWallet.builder().syndic(residence.getSyndic()).build()));
 
                     SyndicWalletTransaction transaction = new SyndicWalletTransaction();
                     transaction.setWallet(syndicWallet);
@@ -912,11 +947,14 @@ public class SolimusCallbackController {
 
                     exceptionalCallItemRepository.save(item);
 
-                    // Crédite le wallet du syndic (catégorie CHARGES)
+                    // Crédite le wallet du syndic (catégorie CHARGES) — créé à la volée s'il n'existe
+                    // pas encore (même logique que partout ailleurs dans l'app, ex: getWalletBalance),
+                    // pour ne jamais faire échouer la confirmation d'un paiement déjà réellement reçu
                     Residence residence = item.getExceptionalCall().getResidence();
                     SyndicWallet syndicWallet = syndicWalletRepository
                             .findBySyndicId(residence.getSyndic().getId())
-                            .orElseThrow(() -> new RuntimeException("Wallet syndic introuvable"));
+                            .orElseGet(() -> syndicWalletRepository.save(
+                                    SyndicWallet.builder().syndic(residence.getSyndic()).build()));
 
                     SyndicWalletTransaction transaction = new SyndicWalletTransaction();
                     transaction.setWallet(syndicWallet);

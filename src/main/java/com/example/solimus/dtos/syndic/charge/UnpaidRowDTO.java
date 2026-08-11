@@ -9,7 +9,7 @@ public class UnpaidRowDTO {
     private Long chargeCallItemId;
     private String coOwnerName;
     private String propertyLabel;
-    private String status; // CRITIQUE, RETARD, PARTIEL
+    private String status; // IMPAYE, RETARD, PARTIEL
     private BigDecimal amountDue;
     private BigDecimal unpaidBalance;
     private Integer daysLate;

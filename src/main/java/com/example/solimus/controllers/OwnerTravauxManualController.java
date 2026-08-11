@@ -42,18 +42,32 @@ public class OwnerTravauxManualController {
     private final MinioService minioService;
 
     @Operation(summary = "Lister mes résidences")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = ResidenceDTO.class)))
+    })
     @GetMapping("/residences")
     public ResponseEntity<List<ResidenceDTO>> getMyResidences() {
         return ResponseEntity.ok(ownerTravauxManualService.getMyResidences());
     }
 
     @Operation(summary = "Lister les parties communes d'une résidence")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = CommonFacilityDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'avez pas de bien dans cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/residences/{residenceId}/common-facilities")
     public ResponseEntity<List<CommonFacilityDTO>> getCommonFacilitiesByResidence(@PathVariable Long residenceId) {
         return ResponseEntity.ok(ownerTravauxManualService.getCommonFacilitiesByResidence(residenceId));
     }
 
     @Operation(summary = "Lister mes biens dans une résidence")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = PropertyDTO.class)))
+    })
     @GetMapping("/residences/{residenceId}/properties")
     public ResponseEntity<List<PropertyDTO>> getMyPropertiesByResidence(@PathVariable Long residenceId) {
         return ResponseEntity.ok(ownerTravauxManualService.getMyPropertiesByResidence(residenceId));
@@ -106,6 +120,10 @@ public class OwnerTravauxManualController {
     }
 
     @Operation(summary = "Lister mes demandes de travaux (recherche + filtres + pagination)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = OwnerInterventionDTO.class)))
+    })
     @GetMapping("/interventions")
     public ResponseEntity<OwnerInterventionDTO> getMyInterventions(
             @RequestParam(required = false) String search,

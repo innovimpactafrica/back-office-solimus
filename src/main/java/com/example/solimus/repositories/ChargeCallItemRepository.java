@@ -290,4 +290,27 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
 
     // Supprimer tous les items d'un appel de charges
     void deleteByChargeCallId(Long chargeCallId);
+
+    // ===== RELANCE AUTOMATIQUE (timeline "Option C") =====
+
+    // Tous les items non soldés, toutes résidences et tous syndics confondus —
+    // pour le job planifié quotidien (pas de "current user" dans un job planifié)
+    @Query("SELECT i FROM ChargeCallItem i WHERE i.status IN ('PENDING', 'PARTIALLY_PAID')")
+    List<ChargeCallItem> findAllUnpaidItems();
+
+    // Compte les lignes en retard (1 à 30 jours après échéance) et non soldées pour un syndic —
+    // seuil identique à PaymentStatusUtils.UNPAID_THRESHOLD_DAYS (digest quotidien du syndic)
+    @Query("SELECT COUNT(i) FROM ChargeCallItem i " +
+           "WHERE i.chargeCall.budget.syndic.id = :syndicId " +
+           "AND i.status IN ('PENDING', 'PARTIALLY_PAID') " +
+           "AND DATEDIFF(CURRENT_DATE, i.chargeCall.dueDate) BETWEEN 1 AND 30")
+    long countLateBySyndicId(@Param("syndicId") Long syndicId);
+
+    // Compte les lignes impayées (plus de 30 jours après échéance) et non soldées pour un syndic —
+    // seuil identique à PaymentStatusUtils.UNPAID_THRESHOLD_DAYS (digest quotidien du syndic)
+    @Query("SELECT COUNT(i) FROM ChargeCallItem i " +
+           "WHERE i.chargeCall.budget.syndic.id = :syndicId " +
+           "AND i.status IN ('PENDING', 'PARTIALLY_PAID') " +
+           "AND DATEDIFF(CURRENT_DATE, i.chargeCall.dueDate) > 30")
+    long countUnpaidBySyndicId(@Param("syndicId") Long syndicId);
 }

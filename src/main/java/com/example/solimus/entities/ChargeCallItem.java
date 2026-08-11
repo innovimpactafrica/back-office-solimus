@@ -92,6 +92,28 @@ public class ChargeCallItem {
     private ChargeItemPaymentStatus status = ChargeItemPaymentStatus.PENDING;
 
     // =========================================================================
+    // RELANCE / PÉNALITÉ DE RETARD (timeline "Option C" — voir PaymentStatusUtils)
+    // Chaque champ *SentAt/*AppliedAt trace qu'une notification a déjà été envoyée une
+    // fois, pour que le job planifié quotidien ne la renvoie jamais en double.
+    // =========================================================================
+
+    // Date d'envoi de l'unique relance automatique (jour reminderDelayDays après échéance)
+    @Column(name = "reminder_sent_at")
+    private LocalDateTime reminderSentAt;
+
+    // Date d'envoi de l'unique avertissement de pénalité (passage en IMPAYÉ, jour 31)
+    @Column(name = "warning_sent_at")
+    private LocalDateTime warningSentAt;
+
+    // Montant de la pénalité de retard appliquée (0 tant qu'aucune pénalité n'est appliquée)
+    @Column(name = "penalty_amount", precision = 19, scale = 2)
+    private BigDecimal penaltyAmount = BigDecimal.ZERO;
+
+    // Date d'application de l'unique pénalité (jour 31 + délai de grâce)
+    @Column(name = "penalty_applied_at")
+    private LocalDateTime penaltyAppliedAt;
+
+    // =========================================================================
     // AUDIT
     // =========================================================================
 
@@ -101,4 +123,20 @@ public class ChargeCallItem {
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    // =========================================================================
+    // MONTANTS DÉRIVÉS — centralise "quote-part + pénalité" pour ne jamais dupliquer
+    // ce calcul aux endroits qui affichent/utilisent le montant restant à payer
+    // =========================================================================
+
+    // Montant total dû pour cette ligne, pénalité de retard incluse une fois appliquée
+    public BigDecimal getTotalDue() {
+        return quotePart.add(penaltyAmount != null ? penaltyAmount : BigDecimal.ZERO);
+    }
+
+    // Montant restant à payer (quote-part + pénalité - déjà payé)
+    public BigDecimal getRemainingAmount() {
+        BigDecimal paid = paidAmount != null ? paidAmount : BigDecimal.ZERO;
+        return getTotalDue().subtract(paid);
+    }
 }

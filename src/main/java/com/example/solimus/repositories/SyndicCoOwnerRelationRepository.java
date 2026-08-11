@@ -29,6 +29,11 @@ public interface SyndicCoOwnerRelationRepository extends JpaRepository<SyndicOwn
     // se base désormais sur le nombre d'appartements, pas sur le nombre de copropriétaires)
     long countBySyndicId(Long syndicId);
 
+    // Compte à combien de syndics ce copropriétaire est lié au total (un copropriétaire peut être
+    // lié à plusieurs syndics via linkCoOwner) — utilisé par deleteCoOwner pour ne supprimer le
+    // compte User que si ce syndic est le dernier à le gérer
+    long countByCoOwnerId(Long coOwnerId);
+
     // Rechercher les copropriétaires liés à un syndic avec filtre de recherche
     @Query("SELECT r.coOwner FROM SyndicOwnerRelation r " +
            "WHERE r.syndic.id = :syndicId " +

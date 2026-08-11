@@ -1,10 +1,17 @@
 package com.example.solimus.controllers;
 
+import com.example.solimus.dtos.auth.ErrorResponseDTO;
 import com.example.solimus.dtos.syndic.PaymentBridgeDTO;
 import com.example.solimus.entities.*;
 
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,6 +27,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/payments/bridge")
 @RequiredArgsConstructor
 @Slf4j
+@Tag(name = "Paiements - Bridge TouchPay", description = "Endpoints publics (sans authentification) consommés par la WebView touchpay-bridge.html pour charger les paramètres de paiement à partir d'une référence de transaction")
 public class SolimusPaymentBridgeController {
 
     // Référentiel des paiements (syndic -> prestataire)
@@ -74,6 +82,13 @@ public class SolimusPaymentBridgeController {
      * @param transactionRef Référence unique de la transaction (ex: PAY-123456)
      * @return DTO contenant tous les paramètres requis pour initialiser l'interface TouchPay
      */
+    @Operation(summary = "Paramètres TouchPay pour le paiement d'une intervention (acompte ou solde)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Paramètres renvoyés avec succès",
+                    content = @Content(schema = @Schema(implementation = PaymentBridgeDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Paiement introuvable pour cette référence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/payment/{transactionRef}")
     @Transactional(readOnly = true)
     public PaymentBridgeDTO getBridgePayment(@PathVariable String transactionRef) {
@@ -109,6 +124,13 @@ public class SolimusPaymentBridgeController {
     // BRIDGE — Abonnement Premium prestataire : self-service (SUB-) ET renouvellement par
     // l'admin (PRA-) — même endpoint pour les deux
     // ================================================
+    @Operation(summary = "Paramètres TouchPay pour un abonnement prestataire (SUB- ou PRA-)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Paramètres renvoyés avec succès",
+                    content = @Content(schema = @Schema(implementation = PaymentBridgeDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Abonnement introuvable pour cette référence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/subscription/{transactionRef}")
     @Transactional(readOnly = true)
     public PaymentBridgeDTO getBridgeSubscription(@PathVariable String transactionRef) {
@@ -172,6 +194,13 @@ public class SolimusPaymentBridgeController {
     // BRIDGE — Abonnement syndic : création par l'admin (SYN-), changement de formule self-service
     // par le syndic lui-même (SYR-), ou renouvellement manuel par l'admin (SYA-) — même endpoint pour les 3
     // ================================================
+    @Operation(summary = "Paramètres TouchPay pour un abonnement syndic (SYN-, SYR- ou SYA-)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Paramètres renvoyés avec succès",
+                    content = @Content(schema = @Schema(implementation = PaymentBridgeDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Abonnement syndic introuvable pour cette référence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/syndic-subscription/{transactionRef}")
     @Transactional(readOnly = true)
     public PaymentBridgeDTO getBridgeSyndicSubscription(@PathVariable String transactionRef) {
@@ -206,6 +235,13 @@ public class SolimusPaymentBridgeController {
     // ================================================
     // BRIDGE — Paiement charge courante copropriétaire (CPY-)
     // ================================================
+    @Operation(summary = "Paramètres TouchPay pour le paiement d'une charge courante copropriétaire (CPY-)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Paramètres renvoyés avec succès",
+                    content = @Content(schema = @Schema(implementation = PaymentBridgeDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Paiement de charge introuvable pour cette référence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/charge/{transactionRef}")
     @Transactional(readOnly = true)
     public PaymentBridgeDTO getBridgeCharge(@PathVariable String transactionRef) {
@@ -235,6 +271,13 @@ public class SolimusPaymentBridgeController {
     // ================================================
     // BRIDGE — Paiement charge exceptionnelle copropriétaire (ECP-)
    // ================================================
+    @Operation(summary = "Paramètres TouchPay pour le paiement d'une charge exceptionnelle copropriétaire (ECP-)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Paramètres renvoyés avec succès",
+                    content = @Content(schema = @Schema(implementation = PaymentBridgeDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Paiement de charge exceptionnelle introuvable pour cette référence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/exceptional-charge/{transactionRef}")
     @Transactional(readOnly = true)
     public PaymentBridgeDTO getBridgeExceptionalCharge(@PathVariable String transactionRef) {

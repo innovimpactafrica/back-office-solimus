@@ -62,15 +62,4 @@ public interface ChargeCallRepository extends JpaRepository<ChargeCall, Long> {
 
     List<ChargeCall> findByBudgetSyndicId(Long syndicId);
     List<ChargeCall> findByBudgetSyndicIdAndCreatedAtBetween(Long syndicId, LocalDateTime start, LocalDateTime end);
-
-    /**
-     * Appels de charges dont la date limite (dueDate) correspond à la date passée en paramètre, avec au
-     * moins une ligne (copropriétaire) encore impayée (statut PENDING/PARTIALLY_PAID, posé explicitement au paiement).
-     * Le job de relance syndic appelle cette méthode une fois par jour avec la date d'hier : on ne
-     * notifie donc que les charges dont la date limite était exactement hier.
-     */
-    @Query("SELECT DISTINCT cc FROM ChargeCall cc JOIN cc.items i " +
-           "WHERE cc.dueDate = :dueDate AND i.status IN (com.example.solimus.enums.ChargeItemPaymentStatus.PENDING, " +
-           "com.example.solimus.enums.ChargeItemPaymentStatus.PARTIALLY_PAID)")
-    List<ChargeCall> findByDueDateWithUnpaidItems(@Param("dueDate") LocalDate dueDate);
 }

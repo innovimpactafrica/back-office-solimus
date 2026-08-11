@@ -206,6 +206,15 @@ public class SyndicResidenceController {
     // =========================================================================
 
     @Operation(summary = "Modifier les informations générales d'une résidence (mise à jour partielle)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Résidence modifiée avec succès"),
+            @ApiResponse(responseCode = "400", description = "Nouvelle superficie totale inférieure à la superficie déjà occupée par les lots existants",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à modifier cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PatchMapping(value = "/residences/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Void> updateResidence(
             @PathVariable Long id,
@@ -303,6 +312,15 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Supprimer un lot/appartement (Étape 2)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Lot supprimé avec succès"),
+            @ApiResponse(responseCode = "400", description = "Ce lot n'appartient pas à cette résidence, ou est lié à un historique financier (charges)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à modifier cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence ou lot introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @DeleteMapping("/residences/{id}/properties/{propertyId}")
     public ResponseEntity<Void> deleteProperty(
             @PathVariable Long id,
@@ -312,6 +330,14 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Lister les lots d'une résidence (paginé) (Étape 2)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Page de lots renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = PropertyListDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/residences/{id}/properties")
     public ResponseEntity<Page<PropertyListDTO>> getPropertiesPaginated(
             @PathVariable Long id,
@@ -321,6 +347,10 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Lister les copropriétaires pour affecter un lot (Étape 2)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = CoOwnerSelectionDTO.class)))
+    })
     @GetMapping("/residences/properties/co-owners")
     public ResponseEntity<List<CoOwnerSelectionDTO>> searchCoOwnersForSelection(
             @RequestParam(required = false) String search) {
@@ -328,6 +358,10 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Lister tous les types de biens (dropdown) (Étape 2)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = PropertyTypeDTO.class)))
+    })
     @GetMapping("/property-types")
     public ResponseEntity<Page<PropertyTypeDTO>> getAllPropertyTypes(
             @RequestParam(defaultValue = "0") int page,
@@ -339,6 +373,10 @@ public class SyndicResidenceController {
     // BIENS COMMUNS /OPTION Sécurité
     // =========================================================================
     @Operation(summary = "Lister les types d'équipements  (Étape 3)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = FacilityTypeDTO.class)))
+    })
     @GetMapping("/facility-types")
     public ResponseEntity<Page<FacilityTypeDTO>> getFacilityTypes(
             @RequestParam(defaultValue = "0") int page,
@@ -347,6 +385,10 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Lister les options de sécurité disponibles (Étape 3)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = SecurityFeatureLabelDTO.class)))
+    })
     @GetMapping("/security-features")
     public ResponseEntity<List<SecurityFeatureLabelDTO>> getSecurityFeatures() {
         return ResponseEntity.ok(residenceService.getSecurityFeatures());
@@ -357,6 +399,8 @@ public class SyndicResidenceController {
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Étape 3 enregistrée avec succès",
                     content = @Content(schema = @Schema(implementation = ResidenceDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à modifier cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Résidence ou type d'équipement introuvable",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
     })
@@ -368,6 +412,13 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Mettre à jour les options de sécurité d'une résidence (Étape 3)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Options de sécurité mises à jour avec succès"),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à modifier cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PutMapping("/residences/{id}/security-features")
     public ResponseEntity<Void> updateSecurityFeatures(
             @PathVariable Long id,
@@ -382,6 +433,10 @@ public class SyndicResidenceController {
     // =========================================================================
 
     @Operation(summary = "Statistiques globales du dashboard résidences", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Statistiques renvoyées avec succès",
+                    content = @Content(schema = @Schema(implementation = ResidenceDashboardStatsDTO.class)))
+    })
     @GetMapping("/residences/dashboard/stats")
     public ResponseEntity<ResidenceDashboardStatsDTO> getDashboardStats() {
         return ResponseEntity.ok(residenceService.getDashboardStats());
@@ -409,12 +464,28 @@ public class SyndicResidenceController {
     // ONGLET 1
     // =========================================================================
     @Operation(summary = "Statistiques du bandeau d'indicateurs d'une résidence", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Statistiques renvoyées avec succès",
+                    content = @Content(schema = @Schema(implementation = ResidenceHeaderStatsDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/residences/{id}/stats")
     public ResponseEntity<ResidenceHeaderStatsDTO> getResidenceStats(@PathVariable Long id) {
         return ResponseEntity.ok(residenceService.getResidenceStats(id));
     }
 
     @Operation(summary = "Contenu de l'onglet Vue générale d'une résidence", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Détail renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = ResidenceDetailDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/residences/{id}")
     public ResponseEntity<ResidenceDetailDTO> getResidenceGeneralView(@PathVariable Long id) {
         return ResponseEntity.ok(residenceService.getResidenceGeneralView(id));
@@ -430,6 +501,8 @@ public class SyndicResidenceController {
             @ApiResponse(responseCode = "200", description = "Page de lots renvoyée avec succès",
                     content = @Content(schema = @Schema(implementation = PropertyListItemDTO.class))),
             @ApiResponse(responseCode = "400", description = "Valeur de status invalide (doit être MAINTENANCE, UNPAID, LATE, OCCUPIED ou VACANT)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Résidence introuvable",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
@@ -457,6 +530,8 @@ public class SyndicResidenceController {
             @ApiResponse(responseCode = "400", description = "Ce lot a déjà un locataire actif, n'a pas de propriétaire, "
                     + "ou l'email/téléphone est déjà utilisé",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à modifier cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Résidence ou lot introuvable",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
     })
@@ -477,6 +552,14 @@ public class SyndicResidenceController {
     // ONGLET 3
     // =========================================================================
     @Operation(summary = "Lister les équipements communs d'une résidence avec filtres (onglet Biens communs)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = CommonFacilityListItemDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/residences/{residenceId}/common-facilities")
     public ResponseEntity<List<CommonFacilityListItemDTO>> getCommonFacilitiesWithFilters(
             @PathVariable Long residenceId,
@@ -487,6 +570,14 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Détail d'un équipement commun (onglet Biens communs)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Détail renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = CommonFacilityDetailDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence, ou cet équipement n'appartient pas à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence ou équipement introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/residences/{residenceId}/common-facilities/{facilityId}")
     public ResponseEntity<CommonFacilityDetailDTO> getCommonFacilityDetail(
             @PathVariable Long residenceId,
@@ -495,6 +586,14 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Kanban des interventions (onglet Travaux)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Kanban renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = InterventionKanbanResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/residences/{residenceId}/interventions/kanban")
     public ResponseEntity<InterventionKanbanResponseDTO> getInterventionsKanban(
             @PathVariable Long residenceId) {
@@ -505,6 +604,14 @@ public class SyndicResidenceController {
     // ONGLET 4
     // =========================================================================
     @Operation(summary = "Évolution mensuelle des paiements collectés (onglet Finances)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Évolution renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = MonthlyPaymentDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/residences/{residenceId}/finances/payments-evolution")
     public ResponseEntity<List<MonthlyPaymentDTO>> getMonthlyPaymentsEvolution(
             @PathVariable Long residenceId,
@@ -513,6 +620,14 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Répartition des vraies dépenses par catégorie (onglet Finances)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Répartition renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = ExpenseBreakdownDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/residences/{residenceId}/finances/expenses-breakdown")
     public ResponseEntity<ExpenseBreakdownDTO> getExpensesBreakdown(
             @PathVariable Long residenceId,
@@ -521,6 +636,14 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Liste des appels de charges par copropriétaire (onglet Finances)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = ChargeCallItemSummaryDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/residences/{residenceId}/finances/charge-calls-summary")
     public ResponseEntity<List<ChargeCallItemSummaryDTO>> getChargeCallsSummary(
             @PathVariable Long residenceId) {
@@ -528,6 +651,14 @@ public class SyndicResidenceController {
     }
 
     @Operation(summary = "Liste des transactions récentes du wallet (onglet Finances)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = WalletTransactionDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/residences/{residenceId}/wallet/transactions/recent")
     public ResponseEntity<List<WalletTransactionDTO>> getRecentWalletTransactions(
             @PathVariable Long residenceId,
@@ -537,6 +668,14 @@ public class SyndicResidenceController {
 
     @Operation(summary = "Journal d'activité d'une résidence (panneau Activité Récente)", tags = {"Syndic - Résidences"},
             description = "scope=interventions filtre par 'INTERVENTION' pour avoir les travaux")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Journal renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = ActivityLogItemDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/residences/{residenceId}/activity-log")
     public ResponseEntity<Page<ActivityLogItemDTO>> getActivityLog(
             @PathVariable Long residenceId,

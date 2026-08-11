@@ -14,6 +14,7 @@ import com.example.solimus.enums.ProviderWalletTransactionCategory;
 import com.example.solimus.enums.TransactionType;
 import com.example.solimus.enums.WithdrawalStatus;
 import com.example.solimus.exceptions.BadRequestException;
+import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.PaymentRepository;
 import com.example.solimus.repositories.ProviderWalletTransactionRepository;
 import com.example.solimus.repositories.UserRepository;
@@ -169,7 +170,7 @@ public class WalletServiceImpl implements WalletService {
     private ProviderWallet createWallet(Long providerId) {
 
         User provider = userRepository.findById(providerId)
-                .orElseThrow(() -> new RuntimeException("Prestataire introuvable"));
+                .orElseThrow(() -> new ResourceNotFoundException("Prestataire introuvable"));
         return ProviderWallet.builder()
                 .provider(provider)
                 .build();
@@ -282,6 +283,6 @@ public class WalletServiceImpl implements WalletService {
     private User getCurrentUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
     }
 }

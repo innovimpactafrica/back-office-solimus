@@ -1,17 +1,22 @@
 package com.example.solimus.controllers;
 
+import com.example.solimus.dtos.auth.ErrorResponseDTO;
 import com.example.solimus.dtos.syndic.meeting.*;
 import com.example.solimus.dtos.syndic.residence.ResidenceCardDTO;
 import com.example.solimus.enums.MeetingDocumentType;
 import com.example.solimus.enums.MeetingStatus;
 import com.example.solimus.enums.MeetingType;
+import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.services.syndic.residence.SyndicResidenceService;
 import com.example.solimus.services.syndic.syndicAG.SyndicMeetingService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -41,6 +46,10 @@ public class SyndicAGController {
 
     @GetMapping("/residences")
     @Operation(summary = "Lister les résidences du syndic")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = ResidenceCardDTO.class)))
+    })
     public ResponseEntity<Page<ResidenceCardDTO>> getResidences(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
@@ -49,6 +58,15 @@ public class SyndicAGController {
 
     @PostMapping(value = "/create", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Créer une nouvelle assemblée générale")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Réunion créée avec succès"),
+            @ApiResponse(responseCode = "400", description = "Date de convocation dans le passé, ou date de réunion dans le passé",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à créer une réunion pour cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     public ResponseEntity<String> createMeeting(
             @RequestParam Long residenceId,
             @RequestParam String title,
@@ -104,7 +122,7 @@ public class SyndicAGController {
 
         // Validation : la date de convocation ne doit pas être dans le passé
         if (convocationSentDate != null && convocationSentDate.isBefore(java.time.LocalDate.now())) {
-            throw new IllegalArgumentException("La date d'envoi de la convocation ne peut pas être dans le passé");
+            throw new BadRequestException("La date d'envoi de la convocation ne peut pas être dans le passé");
         }
 
         // Construire le DTO
@@ -131,6 +149,10 @@ public class SyndicAGController {
 
     @GetMapping("/list")
     @Operation(summary = "Lister les assemblées générales")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = AGListResponseDTO.class)))
+    })
     public ResponseEntity<AGListResponseDTO> getMeetingsList(
             @RequestParam(required = false) MeetingStatus status,
             @RequestParam(required = false) String search,
@@ -141,12 +163,27 @@ public class SyndicAGController {
 
     @GetMapping("/{meetingId}")
     @Operation(summary = "Détail d'une assemblée générale (Vue générale - Onglet 1)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Détail renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = MeetingDetailAGDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Réunion introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     public ResponseEntity<MeetingDetailAGDTO> getMeetingDetail(@PathVariable Long meetingId) {
         return ResponseEntity.ok(syndicMeetingService.getMeetingDetail(meetingId));
     }
 
     @PostMapping("/{meetingId}/publish")
     @Operation(summary = "Publier une assemblée générale (DRAFT -> UPCOMING) (Onglet 1)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Réunion publiée avec succès"),
+            @ApiResponse(responseCode = "400", description = "Cette réunion n'est pas en brouillon",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à publier cette réunion",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Réunion introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     public ResponseEntity<String> publishMeeting(@PathVariable Long meetingId) {
         syndicMeetingService.publishMeeting(meetingId);
         return ResponseEntity.ok("Réunion publiée avec succès");
@@ -154,6 +191,10 @@ public class SyndicAGController {
 
     @GetMapping("/{meetingId}/participants")
     @Operation(summary = "Liste des participants d'une assemblée générale (Onglet 2)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = MeetingParticipantsTabResponseDTO.class)))
+    })
     public ResponseEntity<MeetingParticipantsTabResponseDTO> getMeetingParticipants(
             @PathVariable Long meetingId,
             @RequestParam(defaultValue = "0") Integer page,
@@ -163,6 +204,13 @@ public class SyndicAGController {
 
     @PostMapping("/{meetingId}/participants/{participantId}/sign")
     @Operation(summary = "Signer la présence d'un participant (Onglet 2)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Présence mise à jour avec succès"),
+            @ApiResponse(responseCode = "400", description = "Ce participant n'appartient pas à cette réunion",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Participant ou présence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     public ResponseEntity<String> signPresence(
             @PathVariable Long meetingId,
             @PathVariable Long participantId,
@@ -173,18 +221,37 @@ public class SyndicAGController {
 
     @GetMapping("/{meetingId}/agenda")
     @Operation(summary = "Liste des points de l'ordre du jour (Onglet 3)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = AgendaItemsTabResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Réunion introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     public ResponseEntity<AgendaItemsTabResponseDTO> getAgendaItems(@PathVariable Long meetingId) {
         return ResponseEntity.ok(syndicMeetingService.getAgendaItems(meetingId));
     }
 
     @GetMapping("/{meetingId}/resolutions")
     @Operation(summary = "Liste des résolutions d'une assemblée générale (Onglet 4)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = ResolutionsTabResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Réunion introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     public ResponseEntity<ResolutionsTabResponseDTO> getResolutions(@PathVariable Long meetingId) {
         return ResponseEntity.ok(syndicMeetingService.getResolutions(meetingId));
     }
 
     @PutMapping("/{meetingId}/resolutions/{agendaItemId}")
     @Operation(summary = "Mettre à jour une résolution (Onglet 4)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Résolution mise à jour avec succès"),
+            @ApiResponse(responseCode = "400", description = "Ce point n'appartient pas à cette réunion, ou n'est pas marqué comme nécessitant une résolution",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Point de l'ordre du jour introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     public ResponseEntity<String> updateResolution(
             @PathVariable Long meetingId,
             @PathVariable Long agendaItemId,
@@ -195,6 +262,12 @@ public class SyndicAGController {
 
     @GetMapping("/{meetingId}/documents")
     @Operation(summary = "Liste des documents d'une assemblée générale (Onglet 5)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = MeetingDocumentsTabResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Réunion introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     public ResponseEntity<MeetingDocumentsTabResponseDTO> getMeetingDocuments(@PathVariable Long meetingId,
                                                                               @RequestParam(defaultValue = "0") Integer page,
                                                                               @RequestParam(defaultValue = "10") Integer size) {
@@ -203,6 +276,14 @@ public class SyndicAGController {
 
     @PostMapping("/{meetingId}/documents")
     @Operation(summary = "Ajouter des documents à une assemblée générale (Onglet 5)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Documents ajoutés avec succès",
+                    content = @Content(schema = @Schema(implementation = MeetingDocumentRowDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Un des fichiers est vide, dépasse 20 Mo, ou son format n'est pas autorisé (PDF, DOCX, XLSX uniquement)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Réunion introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     public ResponseEntity<List<MeetingDocumentRowDTO>> addMeetingDocuments(
             @PathVariable Long meetingId,
             @RequestPart("files") List<MultipartFile> files) {
@@ -211,6 +292,10 @@ public class SyndicAGController {
 
     @GetMapping("/{meetingId}/history")
     @Operation(summary = "Historique des événements d'une assemblée générale (Onglet 6)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Historique renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = MeetingHistoryTabResponseDTO.class)))
+    })
     public ResponseEntity<MeetingHistoryTabResponseDTO> getMeetingHistory(
             @PathVariable Long meetingId,
             @RequestParam(defaultValue = "0") Integer page,
@@ -220,18 +305,39 @@ public class SyndicAGController {
 
     @DeleteMapping("/{meetingId}")
     @Operation(summary = "Supprimer une assemblée générale (uniquement en statut DRAFT)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Réunion supprimée avec succès"),
+            @ApiResponse(responseCode = "400", description = "Seules les réunions en brouillon peuvent être supprimées",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à supprimer cette réunion",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Réunion introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     public ResponseEntity<String> deleteMeeting(@PathVariable Long meetingId) {
         syndicMeetingService.deleteMeeting(meetingId);
         return ResponseEntity.ok("Réunion supprimée avec succès");
     }
 
     @Operation(summary = "Liste légère des réunions d'une résidence (pour un sélecteur)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = MeetingSummaryDTO.class)))
+    })
     @GetMapping("/residences/{residenceId}/summaries")
     public ResponseEntity<List<MeetingSummaryDTO>> getMeetingSummariesByResidence(@PathVariable Long residenceId) {
         return ResponseEntity.ok(syndicMeetingService.getMeetingSummariesByResidence(residenceId));
     }
 
     @Operation(summary = "Créer un nouveau document AG complet (page Documents générale)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Document créé avec succès",
+                    content = @Content(schema = @Schema(implementation = MeetingDocumentRowDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Aucun fichier fourni, fichier dépassant 20 Mo, ou format non autorisé (PDF, DOCX, XLSX uniquement)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Réunion introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PostMapping(value = "/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<MeetingDocumentRowDTO> createMeetingDocument(
             @RequestParam Long meetingId,
@@ -256,6 +362,12 @@ public class SyndicAGController {
     }
 
     @Operation(summary = "Mettre à jour les métadonnées d'un document AG existant (page Documents générale)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Document mis à jour avec succès",
+                    content = @Content(schema = @Schema(implementation = MeetingDocumentRowDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Document introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PatchMapping("/documents/{documentId}")
     public ResponseEntity<MeetingDocumentRowDTO> updateMeetingDocument(
             @PathVariable Long documentId,
@@ -278,6 +390,11 @@ public class SyndicAGController {
     }
 
     @Operation(summary = "Supprimer un document AG (page Documents générale)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Document supprimé avec succès"),
+            @ApiResponse(responseCode = "404", description = "Document introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @DeleteMapping("/documents/{documentId}")
     public ResponseEntity<Void> deleteMeetingDocument(@PathVariable Long documentId) {
         syndicMeetingService.deleteMeetingDocument(documentId);
@@ -285,6 +402,10 @@ public class SyndicAGController {
     }
 
     @Operation(summary = "Listing général des documents AG (recherche + filtres) (page Documents générale)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = MeetingDocumentListResponseDTO.class)))
+    })
     @GetMapping("/documents")
     public ResponseEntity<MeetingDocumentListResponseDTO> getMeetingDocumentsList(
             @RequestParam(required = false) String search,
@@ -299,6 +420,12 @@ public class SyndicAGController {
 
     // ===== Détail d'un document (quorum, documents liés, résolutions, historique) =====
     @Operation(summary = "Détail d'un document AG (quorum, documents liés, historique)(page Documents générale)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Détail renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = MeetingDocumentDetailDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Document introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/documents/{documentId}")
     public ResponseEntity<MeetingDocumentDetailDTO> getMeetingDocumentDetail(@PathVariable Long documentId) {
         return ResponseEntity.ok(syndicMeetingService.getMeetingDocumentDetail(documentId));

@@ -58,7 +58,7 @@ public class SyndicWalletServiceImpl implements WalletService {
 
         // Récupérer la résidence
         Residence residence = residenceRepository.findById(dto.getResidenceId())
-                .orElseThrow(() -> new BadRequestException("Résidence non trouvée"));
+                .orElseThrow(() -> new ResourceNotFoundException("Résidence non trouvée"));
 
         // Vérifier que la résidence appartient au syndic
         if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
@@ -69,7 +69,7 @@ public class SyndicWalletServiceImpl implements WalletService {
         BudgetItem budgetItem = null;
         if (dto.getBudgetItemId() != null) {
             budgetItem = budgetItemRepository.findById(dto.getBudgetItemId())
-                    .orElseThrow(() -> new BadRequestException("Poste budgétaire non trouvé"));
+                    .orElseThrow(() -> new ResourceNotFoundException("Poste budgétaire non trouvé"));
 
             // Vérifier que le poste n'est pas lié à un bien commun
             // Les postes liés à des équipements (ex: Ascenseur, Jardin) doivent être gérés via le module Travaux
@@ -741,7 +741,7 @@ public class SyndicWalletServiceImpl implements WalletService {
                 .getAuthentication()
                 .getName();
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
     }
 
     // Construit la timeline "Progression de la demande" selon le statut actuel

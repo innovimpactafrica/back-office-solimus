@@ -1,6 +1,7 @@
 package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.auth.ErrorResponseDTO;
+import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
 import com.example.solimus.dtos.tenant.profil.TenantProfileDTO;
 import com.example.solimus.services.tenant.profil.TenantProfilService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,9 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/tenant")
@@ -37,5 +36,63 @@ public class TenantProfilController {
     @GetMapping("/profile")
     public ResponseEntity<TenantProfileDTO> getProfile() {
         return ResponseEntity.ok(tenantProfilService.getProfile());
+    }
+
+    // =========================================================================
+    // NOTIFICATIONS (CLOCHE)
+    // =========================================================================
+
+    @Operation(summary = "Lister mes notifications", description = "Retourne la liste paginée des notifications du locataire connecté, pour la cloche", tags = {"Locataire - Profil"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = NotificationListResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Utilisateur introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @GetMapping("/notifications")
+    public ResponseEntity<NotificationListResponseDTO> getMyNotifications(
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "20") Integer size) {
+        return ResponseEntity.ok(tenantProfilService.getMyNotifications(page, size));
+    }
+
+    @Operation(summary = "Marquer toutes mes notifications comme lues", tags = {"Locataire - Profil"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Notifications marquées comme lues avec succès"),
+            @ApiResponse(responseCode = "404", description = "Utilisateur introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @PatchMapping("/notifications/mark-all-read")
+    public ResponseEntity<Void> markAllNotificationsAsRead() {
+        tenantProfilService.markAllNotificationsAsRead();
+        return ResponseEntity.noContent().build();
+    }
+
+    // =========================================================================
+    // PRÉFÉRENCES DE NOTIFICATIONS
+    // =========================================================================
+
+    @Operation(summary = "Activer mes notifications", tags = {"Locataire - Profil"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Notifications activées avec succès"),
+            @ApiResponse(responseCode = "404", description = "Utilisateur introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @PatchMapping("/notifications/activate")
+    public ResponseEntity<Void> activateNotifications() {
+        tenantProfilService.activateNotifications();
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Désactiver mes notifications", tags = {"Locataire - Profil"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Notifications désactivées avec succès"),
+            @ApiResponse(responseCode = "404", description = "Utilisateur introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @PatchMapping("/notifications/deactivate")
+    public ResponseEntity<Void> deactivateNotifications() {
+        tenantProfilService.deactivateNotifications();
+        return ResponseEntity.noContent().build();
     }
 }

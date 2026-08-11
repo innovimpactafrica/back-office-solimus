@@ -6,6 +6,7 @@ import com.example.solimus.entities.*;
 import com.example.solimus.enums.PaymentDelayStatus;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.WalletTransactionCategory;
+import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.utils.PaymentStatusUtils;
 import lombok.RequiredArgsConstructor;
@@ -93,7 +94,7 @@ public class FinanceServiceImpl implements FinanceService {
         // Récupère toutes les lignes de charges non soldées, toutes résidences du syndic
         List<ChargeCallItem> allUnpaidItems = chargeCallItemRepository.findAllUnpaidByBudgetSyndicId(currentSyndic.getId());
         BigDecimal unpaidAmount = allUnpaidItems.stream()
-                .map(item -> item.getQuotePart().subtract(item.getPaidAmount()))
+                .map(item -> item.getRemainingAmount())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         dto.setUnpaidAmount(unpaidAmount);
 
@@ -244,7 +245,7 @@ public class FinanceServiceImpl implements FinanceService {
     private User getCurrentUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
     }
 
     private String formatRelativeTime(LocalDateTime dateTime) {
@@ -275,7 +276,7 @@ public class FinanceServiceImpl implements FinanceService {
         dto.setChargeCallItemId(item.getId());
         dto.setCoOwnerName(item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName());
         dto.setResidenceName(item.getChargeCall().getBudget().getResidence().getName());
-        dto.setAmountDue(item.getQuotePart());
+        dto.setAmountDue(item.getTotalDue()); // quote-part + pénalité si déjà appliquée
         dto.setDueDate(dueDate);
         dto.setDaysLate((int) Math.max(daysLate, 0));
         dto.setStatus(calculateItemStatus(item));
@@ -341,7 +342,7 @@ public class FinanceServiceImpl implements FinanceService {
         List<ChargeCallItem> allUnpaidItems = chargeCallItemRepository.findAllUnpaidByBudgetSyndicId(currentSyndic.getId());
 
         BigDecimal totalUnpaidAmount = allUnpaidItems.stream()
-                .map(item -> item.getQuotePart().subtract(item.getPaidAmount()))
+                .map(item -> item.getRemainingAmount())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         List<UnpaidRowDTO> rowDtos = unpaidPage.getContent().stream()
@@ -366,18 +367,20 @@ public class FinanceServiceImpl implements FinanceService {
     // à PaymentStatusUtils (seule source de vérité), PARTIEL si un acompte a déjà été versé
     private String calculateItemStatus(ChargeCallItem item) {
 
-        boolean isFullyPaid = item.getPaidAmount().compareTo(item.getQuotePart()) >= 0;
+        boolean isFullyPaid = item.getPaidAmount().compareTo(item.getTotalDue()) >= 0;
         if (isFullyPaid) return "PAYE";
 
         LocalDate dueDate = item.getChargeCall().getDueDate();
         PaymentDelayStatus delayStatus = PaymentStatusUtils.computeDelayStatus(dueDate, false, LocalDate.now());
 
-        if (delayStatus == PaymentDelayStatus.UNPAID) return "CRITIQUE";
-        if (delayStatus == PaymentDelayStatus.LATE) return "RETARD";
+        // En retard ou impayé : le libellé standard l'emporte, peu importe un éventuel acompte
+        if (delayStatus != PaymentDelayStatus.UP_TO_DATE) {
+            return PaymentStatusUtils.toLabel(delayStatus);
+        }
 
         boolean hasPartialPayment = item.getPaidAmount().compareTo(BigDecimal.ZERO) > 0;
         if (hasPartialPayment) return "PARTIEL";
-        return "A_JOUR";
+        return PaymentStatusUtils.toLabel(delayStatus);
     }
 
     // Construit le libellé des biens du copropriétaire pour cette résidence

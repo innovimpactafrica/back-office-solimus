@@ -13,5 +13,5 @@ public class UnpaidRowDTO {
     private BigDecimal amountDue;
     private LocalDate dueDate; // Ajouté — colonne "Échéance"
     private Integer daysLate;
-    private String status; // RETARD, CRITIQUE
+    private String status; // RETARD, IMPAYE
 }

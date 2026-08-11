@@ -34,6 +34,10 @@ public class SyndicTravauxManualController {
     // =========================================================================
 
     @Operation(summary = "Dashboard des travaux (flux manuel)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Dashboard renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = TravauxDashboardDTO.class)))
+    })
     @GetMapping("/dashboard")
     public ResponseEntity<TravauxDashboardDTO> getDashboard() {
         return ResponseEntity.ok(syndicTravauxManualService.getDashboard());
@@ -44,6 +48,10 @@ public class SyndicTravauxManualController {
     // =========================================================================
 
     @Operation(summary = "Lister les incidents travaux (flux manuel)", description = "Liste paginée avec recherche, filtre par statut et résidence")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = SyndicTravauxListResponse.class)))
+    })
     @GetMapping("/incidents")
     public ResponseEntity<SyndicTravauxListResponse> getIncidents(
             @RequestParam(required = false) String search,
@@ -59,6 +67,14 @@ public class SyndicTravauxManualController {
     // =========================================================================
 
     @Operation(summary = "Vue générale d'un incident (flux manuel)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Détail renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = SyndicTravauxDetailDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Cette intervention n'appartient pas au syndic connecté",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Intervention introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/{id}")
     public ResponseEntity<SyndicTravauxDetailDTO> getVueGenerale(@PathVariable Long id) {
         return ResponseEntity.ok(syndicTravauxManualService.getVueGenerale(id));
@@ -69,6 +85,14 @@ public class SyndicTravauxManualController {
     // =========================================================================
 
     @Operation(summary = "Historique complet d'un incident (flux manuel)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Historique renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = SyndicHistoryItemDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Cette intervention n'appartient pas au syndic connecté",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Intervention introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/{id}/history")
     public ResponseEntity<List<SyndicHistoryItemDTO>> getHistory(@PathVariable Long id) {
         return ResponseEntity.ok(syndicTravauxManualService.getHistory(id));

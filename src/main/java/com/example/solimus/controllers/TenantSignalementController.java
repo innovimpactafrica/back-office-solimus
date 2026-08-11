@@ -103,6 +103,10 @@ public class TenantSignalementController {
     // =========================================================================
 
     @Operation(summary = "Lister mes signalements", description = "Retourne la liste paginée des signalements du locataire connecté, avec recherche et filtre par statut")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = SignalementCardDTO.class)))
+    })
     @GetMapping("/signalements")
     public ResponseEntity<Page<SignalementCardDTO>> getMySignalements(
             @RequestParam(required = false) String search,

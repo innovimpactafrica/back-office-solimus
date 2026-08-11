@@ -67,6 +67,11 @@ public class SyndicFinancialSettings {
     @Column(nullable = false)
     private Integer reminderDelayDays = 30;
 
+    // Nombre de jours de grâce après le passage en IMPAYÉ (jour 31) avant l'application
+    // automatique de la pénalité de retard (timeline "Option C")
+    @Column(name = "penalty_grace_period_days", nullable = false)
+    private Integer penaltyGracePeriodDays = 15;
+
     // =========================================================================
     // FONDS DE RÉSERVE
     // =========================================================================

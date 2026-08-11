@@ -1,8 +1,11 @@
 package com.example.solimus.enums;
 
+import lombok.Getter;
+
 /**
  * Fréquence des appels de charges pour une copropriété.
  */
+@Getter
 public enum ChargeFrequency {
     MENSUEL("Mensuel"),
     TRIMESTRIEL("Trimestriel");
@@ -13,7 +16,4 @@ public enum ChargeFrequency {
         this.label = label;
     }
 
-    public String getLabel() {
-        return label;
-    }
 }

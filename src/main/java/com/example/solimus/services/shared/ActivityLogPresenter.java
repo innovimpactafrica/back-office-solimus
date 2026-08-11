@@ -62,7 +62,7 @@ public class ActivityLogPresenter {
             case MEETING_CREATED, MEETING_PUBLISHED, MEETING_DELETED -> "Réunion";
             case MEETING_DOCUMENT_ADDED, MEETING_DOCUMENT_DOWNLOADED, MEETING_DOCUMENT_VIEWED, MEETING_DOCUMENT_UPDATED, MEETING_DOCUMENT_DELETED -> "Document";
             case COMMENT_ADDED -> "Commentaire";
-            case BUDGET_CREATED, BUDGET_CLOSED, BUDGET_DELETED -> "Budget";
+            case BUDGET_CREATED, BUDGET_CLOSED, BUDGET_REOPENED, BUDGET_DELETED -> "Budget";
             case EXCEPTIONAL_CALL_CREATED, EXCEPTIONAL_CALL_ACTIVATED, EXCEPTIONAL_CALL_CLOSED -> "Appel exceptionnel";
         };
     }
@@ -99,7 +99,7 @@ public class ActivityLogPresenter {
     private ChargeCallStatus calculateChargeCallStatus(ChargeCall chargeCall) {
 
         boolean allSettled = chargeCall.getItems().stream()
-                .allMatch(item -> item.getPaidAmount().compareTo(item.getQuotePart()) >= 0);
+                .allMatch(item -> item.getPaidAmount().compareTo(item.getTotalDue()) >= 0);
 
         if (allSettled) {
             return ChargeCallStatus.SETTLED;

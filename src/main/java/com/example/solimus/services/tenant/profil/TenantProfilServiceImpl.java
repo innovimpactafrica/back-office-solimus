@@ -1,24 +1,37 @@
 package com.example.solimus.services.tenant.profil;
 
+import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
+import com.example.solimus.dtos.owner.dashboard.NotificationRowDTO;
 import com.example.solimus.dtos.tenant.profil.TenantProfileDTO;
+import com.example.solimus.entities.Notification;
 import com.example.solimus.entities.Property;
 import com.example.solimus.entities.User;
 import com.example.solimus.enums.UserStatus;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
+import com.example.solimus.repositories.NotificationRepository;
 import com.example.solimus.repositories.PropertyRepository;
 import com.example.solimus.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TenantProfilServiceImpl implements TenantProfilService {
 
     private final PropertyRepository propertyRepository;
     private final UserRepository userRepository;
+    private final NotificationRepository notificationRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -40,6 +53,67 @@ public class TenantProfilServiceImpl implements TenantProfilService {
                 .propertyReference(property.getReference())
                 .entryDate(property.getTenantAssignedAt())
                 .build();
+    }
+
+    // =========================================================================
+    // NOTIFICATIONS (CLOCHE)
+    // =========================================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public NotificationListResponseDTO getMyNotifications(int page, int size) {
+
+        User currentTenant = getCurrentUser();
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Notification> notificationPage = notificationRepository.findByUserOrderByCreatedAtDesc(currentTenant, pageable);
+
+        List<NotificationRowDTO> rows = new ArrayList<>();
+        for (Notification notification : notificationPage.getContent()) {
+            rows.add(NotificationRowDTO.builder()
+                    .id(notification.getId())
+                    .title(notification.getTitle())
+                    .body(notification.getBody())
+                    .read(notification.getRead())
+                    .createdAt(notification.getCreatedAt())
+                    .build());
+        }
+
+        return NotificationListResponseDTO.builder()
+                .totalCount(notificationPage.getTotalElements())
+                .notifications(rows)
+                .currentPage(notificationPage.getNumber())
+                .totalPages(notificationPage.getTotalPages())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public void markAllNotificationsAsRead() {
+        User currentTenant = getCurrentUser();
+        notificationRepository.markAllAsReadByUser(currentTenant);
+    }
+
+    // =========================================================================
+    // PRÉFÉRENCES DE NOTIFICATIONS
+    // =========================================================================
+
+    @Override
+    @Transactional
+    public void activateNotifications() {
+        User currentTenant = getCurrentUser();
+        currentTenant.setNotificationsEnabled(true);
+        userRepository.save(currentTenant);
+        log.info("Notifications activées pour le locataire : {}", currentTenant.getEmail());
+    }
+
+    @Override
+    @Transactional
+    public void deactivateNotifications() {
+        User currentTenant = getCurrentUser();
+        currentTenant.setNotificationsEnabled(false);
+        userRepository.save(currentTenant);
+        log.info("Notifications désactivées pour le locataire : {}", currentTenant.getEmail());
     }
 
     // =========================================================================

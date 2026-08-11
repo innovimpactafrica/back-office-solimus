@@ -38,6 +38,10 @@ public class AdminSubscriptionController {
     // ===== KPIs =====
 
     @Operation(summary = "KPIs de la page Gestion des abonnements")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "KPIs renvoyés avec succès",
+                    content = @Content(schema = @Schema(implementation = SubscriptionKpiDTO.class)))
+    })
     @GetMapping("/kpis")
     public ResponseEntity<SubscriptionKpiDTO> getSubscriptionKpis() {
         return ResponseEntity.ok(planService.getSubscriptionKpis());
@@ -46,18 +50,36 @@ public class AdminSubscriptionController {
     // ===== Listing unifié (Syndic + Prestataire) =====
 
     @Operation(summary = "Liste unifiée de toutes les formules (Syndic + Prestataire)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = PlanOverviewDTO.class)))
+    })
     @GetMapping("/plans")
     public ResponseEntity<List<PlanOverviewDTO>> getAllPlansOverview() {
         return ResponseEntity.ok(planService.getAllPlansOverview());
     }
 
     @Operation(summary = "Créer une nouvelle formule syndic")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Formule créée avec succès",
+                    content = @Content(schema = @Schema(implementation = SyndicPlanDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Une formule syndic portant ce nom existe déjà",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PostMapping("/syndic-plans")
     public ResponseEntity<SyndicPlanDTO> createSyndicPlan(@RequestBody SyndicPlanRequestDTO dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(planService.createSyndicPlan(dto));
     }
 
     @Operation(summary = "Modifier une formule syndic existante")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Formule modifiée avec succès",
+                    content = @Content(schema = @Schema(implementation = SyndicPlanDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Une formule syndic portant ce nom existe déjà",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Formule introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PatchMapping("/syndic-plans/{id}")
     public ResponseEntity<SyndicPlanDTO> updateSyndicPlan(
             @PathVariable Long id,
@@ -66,6 +88,13 @@ public class AdminSubscriptionController {
     }
 
     @Operation(summary = "Supprimer une formule syndic")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Formule supprimée avec succès"),
+            @ApiResponse(responseCode = "400", description = "Impossible de supprimer une formule ayant encore des abonnés actifs",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Formule introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @DeleteMapping("/syndic-plans/{id}")
     public ResponseEntity<String> deleteSyndicPlan(@PathVariable Long id) {
         planService.deleteSyndicPlan(id);
@@ -73,6 +102,12 @@ public class AdminSubscriptionController {
     }
 
     @Operation(summary = "Activer ou désactiver une formule syndic")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Statut modifié avec succès",
+                    content = @Content(schema = @Schema(implementation = SyndicPlanDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Formule introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PatchMapping("/syndic-plans/{id}/status")
     public ResponseEntity<SyndicPlanDTO> toggleSyndicPlanStatus(
             @PathVariable Long id,
@@ -81,6 +116,10 @@ public class AdminSubscriptionController {
     }
 
     @Operation(summary = "Liste de toutes les fonctionnalités disponibles pour les formules syndic")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = SyndicPlanFeatureDTO.class)))
+    })
     @GetMapping("/syndic-plan-features")
     public ResponseEntity<List<SyndicPlanFeatureDTO>> getAllSyndicPlanFeatures() {
 
@@ -98,12 +137,26 @@ public class AdminSubscriptionController {
     // ===== Formules Prestataire (CRUD) =====
 
     @Operation(summary = "Créer une nouvelle formule prestataire")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Formule créée avec succès",
+                    content = @Content(schema = @Schema(implementation = ProviderPlanDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Une formule prestataire portant ce nom existe déjà",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PostMapping("/provider-plans")
     public ResponseEntity<ProviderPlanDTO> createProviderPlan(@RequestBody ProviderPlanRequestDTO dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(planService.createProviderPlan(dto));
     }
 
     @Operation(summary = "Modifier une formule prestataire existante")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Formule modifiée avec succès",
+                    content = @Content(schema = @Schema(implementation = ProviderPlanDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Une formule prestataire portant ce nom existe déjà",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Formule introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PatchMapping("/provider-plans/{id}")
     public ResponseEntity<ProviderPlanDTO> updateProviderPlan(
             @PathVariable Long id,
@@ -112,6 +165,12 @@ public class AdminSubscriptionController {
     }
 
     @Operation(summary = "Activer ou désactiver une formule prestataire")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Statut modifié avec succès",
+                    content = @Content(schema = @Schema(implementation = ProviderPlanDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Formule introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PatchMapping("/provider-plans/{id}/status")
     public ResponseEntity<ProviderPlanDTO> toggleProviderPlanStatus(
             @PathVariable Long id,
@@ -120,6 +179,13 @@ public class AdminSubscriptionController {
     }
 
     @Operation(summary = "Supprimer une formule prestataire")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Formule supprimée avec succès"),
+            @ApiResponse(responseCode = "400", description = "Impossible de supprimer une formule ayant encore des abonnés actifs",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Formule introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @DeleteMapping("/provider-plans/{id}")
     public ResponseEntity<String> deleteProviderPlan(@PathVariable Long id) {
         planService.deleteProviderPlan(id);
@@ -127,6 +193,10 @@ public class AdminSubscriptionController {
     }
 
     @Operation(summary = "Liste de toutes les fonctionnalités disponibles pour les formules prestataire")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = SyndicPlanFeatureDTO.class)))
+    })
     @GetMapping("/provider-plan-features")
     public ResponseEntity<List<SyndicPlanFeatureDTO>> getAllProviderPlanFeatures() {
 
@@ -144,6 +214,10 @@ public class AdminSubscriptionController {
     // ===== Liste unifiée des abonnés (Syndic + Prestataire) =====
 
     @Operation(summary = "Liste paginée des abonnés (Syndic + Prestataire), avec recherche et filtres")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = SubscriberListResponseDTO.class)))
+    })
     @GetMapping("/subscribers")
     public ResponseEntity<SubscriberListResponseDTO> getAllSubscribers(
             @RequestParam(required = false) String search,

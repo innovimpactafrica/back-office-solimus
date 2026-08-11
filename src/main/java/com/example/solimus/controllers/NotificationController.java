@@ -2,6 +2,8 @@ package com.example.solimus.controllers;
 
 import com.example.solimus.services.notification.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +19,9 @@ public class NotificationController {
 
     // Appelé par l'app mobile au démarrage pour enregistrer ou mettre à jour le token FCM de l'utilisateur connecté
     @Operation(summary = "Enregistrer mon token FCM")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Token FCM enregistré avec succès")
+    })
     @PutMapping("/fcm-token")
     public ResponseEntity<String> saveFcmToken(@RequestParam String fcmToken) {
         notificationService.saveFcmToken(fcmToken);

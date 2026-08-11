@@ -31,6 +31,10 @@ public class AdminWithdrawalRequestController {
     // ===== Bloc 1 =====
 
     @Operation(summary = "KPIs de la page \"Demandes de retraits\" (Syndic + Prestataire confondus)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "KPIs renvoyés avec succès",
+                    content = @Content(schema = @Schema(implementation = WithdrawalDashboardKpiDTO.class)))
+    })
     @GetMapping("/dashboard/kpis")
     public ResponseEntity<WithdrawalDashboardKpiDTO> getDashboardKpis() {
         return ResponseEntity.ok(withdrawalRequestService.getDashboardKpis());
@@ -39,6 +43,10 @@ public class AdminWithdrawalRequestController {
     // ===== Bloc 2 =====
 
     @Operation(summary = "Liste paginée des demandes de retrait (Syndic + Prestataire), avec recherche et filtre par statut")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = WithdrawalRequestRowDTO.class)))
+    })
     @GetMapping
     public ResponseEntity<Page<WithdrawalRequestRowDTO>> getAllWithdrawalRequests(
             @RequestParam(required = false) String search,

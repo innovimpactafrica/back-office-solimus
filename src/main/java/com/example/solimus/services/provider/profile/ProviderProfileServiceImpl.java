@@ -3,6 +3,7 @@ package com.example.solimus.services.provider.profile;
 import com.example.solimus.dtos.provider.profile.*;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.*;
+import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.minio.MinioService;
@@ -67,7 +68,7 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
 
         // Récupérer le profil prestataire
         ProviderProfile profile = providerProfileRepository.findByUser(currentUser)
-                .orElseThrow(() -> new RuntimeException("Profil prestataire introuvable"));
+                .orElseThrow(() -> new ResourceNotFoundException("Profil prestataire introuvable"));
 
         // Mettre à jour les coordonnées GPS et l'horodatage
         profile.setGpsLatitude(dto.getLatitude());
@@ -148,14 +149,14 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
         if (dto.getPhone() != null) {
             // Vérifier si le téléphone est déjà utilisé par un autre utilisateur
             if (userRepository.existsByPhoneAndIdNot(dto.getPhone(), currentProvider.getId())) {
-                throw new RuntimeException("Ce numéro de téléphone est déjà utilisé par un autre compte.");
+                throw new BadRequestException("Ce numéro de téléphone est déjà utilisé par un autre compte.");
             }
             currentProvider.setPhone(dto.getPhone());
         }
         if (dto.getEmail() != null) {
             // Vérifier si l'email est déjà utilisé par un autre utilisateur
             if (userRepository.existsByEmailAndIdNot(dto.getEmail(), currentProvider.getId())) {
-                throw new RuntimeException("Cet email est déjà utilisé par un autre compte.");
+                throw new BadRequestException("Cet email est déjà utilisé par un autre compte.");
             }
             currentProvider.setEmail(dto.getEmail());
         }

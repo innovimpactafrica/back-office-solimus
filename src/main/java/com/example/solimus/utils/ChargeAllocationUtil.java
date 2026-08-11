@@ -78,12 +78,17 @@ public final class ChargeAllocationUtil {
                 .intValue();
 
         // 3. Classe les copropriétaires selon la partie décimale perdue à l'arrondi, la plus grande d'abord
-        List<Long> orderedByLostRemainder = tantiemeByOwnerId.keySet().stream()
-                .sorted((a, b) -> {
-                    BigDecimal remainderA = exactShareByOwnerId.get(a).subtract(flooredShareByOwnerId.get(a));
-                    BigDecimal remainderB = exactShareByOwnerId.get(b).subtract(flooredShareByOwnerId.get(b));
-                    return remainderB.compareTo(remainderA);
-                })
+        Map<Long, BigDecimal> lostRemainderByOwnerId = new LinkedHashMap<>();
+        for (Long ownerId : tantiemeByOwnerId.keySet()) {
+            lostRemainderByOwnerId.put(ownerId, exactShareByOwnerId.get(ownerId).subtract(flooredShareByOwnerId.get(ownerId)));
+        }
+
+        List<Long> orderedByLostRemainder = lostRemainderByOwnerId.entrySet().stream()
+                .sorted(
+                    Map.Entry.<Long, BigDecimal>comparingByValue().reversed()
+                        .thenComparing(Map.Entry.comparingByKey()) // départage par ID croissant si reste égal
+                )
+                .map(Map.Entry::getKey)
                 .toList();
 
         // 4. Distribue le reste, 1 FCFA à la fois, à ceux qui ont le plus perdu à l'arrondi

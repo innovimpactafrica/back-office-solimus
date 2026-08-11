@@ -1,5 +1,6 @@
 package com.example.solimus.controllers;
 
+import com.example.solimus.dtos.auth.ErrorResponseDTO;
 import com.example.solimus.dtos.owner.CoOwnerInterventionsResponseDTO;
 import com.example.solimus.dtos.owner.CoOwnerMeetingsDTO;
 import com.example.solimus.dtos.owner.CoOwnerResidenceDTO;
@@ -12,7 +13,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import lombok.RequiredArgsConstructor;
@@ -40,6 +44,17 @@ public class SyndicOwnerController {
 
     @Operation(summary = "Ajouter un copropriétaire (Workflow OTP) avec photo", tags = {"Syndic - Copropriétaires"},
             description = "propertiesJson filtre par résidence pour les lots")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Copropriétaire ajouté avec succès"),
+            @ApiResponse(responseCode = "400", description = "Aucun bien fourni, lot n'appartenant pas à la résidence indiquée, ou lot déjà occupé",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Une des résidences indiquées ne vous appartient pas",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Rôle copropriétaire, résidence ou lot introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "409", description = "Un copropriétaire avec cet email ou ce téléphone existe déjà",
+                    content = @Content(schema = @Schema(implementation = CoOwnerConflictResponseDTO.class)))
+    })
     @PostMapping(value = "/co-owners", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<String> addCoOwner(
             @RequestParam String firstName,
@@ -88,6 +103,14 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Lister les biens disponibles (VACANT) d'une résidence", tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = PropertySummaryDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Cette résidence ne vous appartient pas",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/residences/{residenceId}/properties/available")
     public ResponseEntity<Page<PropertySummaryDTO>> getAvailableProperties(
             @PathVariable Long residenceId,
@@ -97,6 +120,10 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Lister les résidences qui ont au moins un bien vacant", tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = ResidenceSummaryDTO.class)))
+    })
     @GetMapping("/residences/with-vacant-properties")
     public ResponseEntity<Page<ResidenceSummaryDTO>> getResidencesWithVacantProperties(
             @RequestParam(defaultValue = "0") Integer page,
@@ -105,6 +132,10 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Lister les copropriétaires (recherche + filtre résidence + statut + pagination)", tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = CoOwnerListDTO.class)))
+    })
     @GetMapping("/co-owners")
     public ResponseEntity<Page<CoOwnerListDTO>> getCoOwners(
             @RequestParam(required = false) String search,
@@ -116,12 +147,26 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Détail d'un copropriétaire (en-tête + KPIs)", tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Détail renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = CoOwnerDetailDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Ce copropriétaire n'a pas de lot dans vos résidences",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Copropriétaire introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/co-owners/{coOwnerId}")
     public ResponseEntity<CoOwnerDetailDTO> getCoOwnerDetail(@PathVariable Long coOwnerId) {
         return ResponseEntity.ok(syndicOwnerService.getCoOwnerDetail(coOwnerId));
     }
 
     @Operation(summary = "Lister les résidences d'un copropriétaire (pour le filtre finances)", tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = CoOwnerResidenceDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Copropriétaire introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/co-owners/{coOwnerId}/residences")
     public ResponseEntity<Page<CoOwnerResidenceDTO>> getCoOwnerResidences(
             @PathVariable Long coOwnerId,
@@ -131,6 +176,14 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Lister les lots d'un copropriétaire (onglet Appartements du détail)", tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = CoOwnerPropertyItemDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Ce copropriétaire n'a pas de lot dans vos résidences",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Copropriétaire introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/co-owners/{coOwnerId}/properties")
     public ResponseEntity<Page<CoOwnerPropertyItemDTO>> getCoOwnerProperties(
             @PathVariable Long coOwnerId,
@@ -140,6 +193,14 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Finances d'un copropriétaire pour une résidence (onglet Finances du détail)", tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Finances renvoyées avec succès",
+                    content = @Content(schema = @Schema(implementation = CoOwnerFinancesDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Cette résidence ne vous appartient pas, ou ce copropriétaire n'a pas de lot dans cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Copropriétaire ou résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/co-owners/{coOwnerId}/finances")
     public ResponseEntity<CoOwnerFinancesDTO> getCoOwnerFinances(
             @PathVariable Long coOwnerId,
@@ -148,6 +209,14 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Historique des paiements d'un copropriétaire (onglet Paiements du détail)", tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Historique renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = CoOwnerPaymentItemDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Ce copropriétaire n'a pas de lot dans vos résidences",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Copropriétaire introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/co-owners/{coOwnerId}/payments")
     public ResponseEntity<Page<CoOwnerPaymentItemDTO>> getCoOwnerPayments(
             @PathVariable Long coOwnerId,
@@ -158,6 +227,14 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Assemblées Générales d'un copropriétaire (onglet AG du détail)", tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Assemblées renvoyées avec succès",
+                    content = @Content(schema = @Schema(implementation = CoOwnerMeetingsDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Ce copropriétaire n'a pas de lot dans vos résidences",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Copropriétaire introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/co-owners/{coOwnerId}/meetings")
     public ResponseEntity<CoOwnerMeetingsDTO> getCoOwnerMeetings(
             @PathVariable Long coOwnerId,
@@ -170,12 +247,28 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Travaux d'un copropriétaire (onglet Travaux du détail)", tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Travaux renvoyés avec succès",
+                    content = @Content(schema = @Schema(implementation = CoOwnerInterventionsResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Ce copropriétaire n'a pas de lot dans vos résidences",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Copropriétaire introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/co-owners/{coOwnerId}/interventions")
     public ResponseEntity<CoOwnerInterventionsResponseDTO> getCoOwnerInterventions(@PathVariable Long coOwnerId) {
         return ResponseEntity.ok(syndicOwnerService.getCoOwnerInterventions(coOwnerId));
     }
 
     @Operation(summary = "Documents d'un copropriétaire (manuel + AG + charges exceptionnelles, fusionnés)", tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Documents renvoyés avec succès",
+                    content = @Content(schema = @Schema(implementation = CoOwnerDocumentUnifiedListResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Ce copropriétaire n'a pas de lot dans vos résidences",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Copropriétaire introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/co-owners/{coOwnerId}/documents")
     public ResponseEntity<CoOwnerDocumentUnifiedListResponseDTO> getCoOwnerDocuments(
             @PathVariable Long coOwnerId,
@@ -192,6 +285,14 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Activité récente d'un copropriétaire (panneau Activité Récente du détail)", tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Journal renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = ActivityLogItemDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Ce copropriétaire n'a pas de lot dans vos résidences",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Copropriétaire introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/co-owners/{coOwnerId}/activity-log")
     public ResponseEntity<Page<ActivityLogItemDTO>> getCoOwnerActivityLog(
             @PathVariable Long coOwnerId,
@@ -201,6 +302,10 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Autocomplete — rechercher un copropriétaire par nom, email ou téléphone", tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = CoOwnerSearchResultDTO.class)))
+    })
     @GetMapping("/co-owners/search")
     public ResponseEntity<Page<CoOwnerSearchResultDTO>> searchCoOwners(
             @RequestParam String q,
@@ -210,6 +315,13 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Lier un copropriétaire existant au syndic connecté", tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Copropriétaire lié avec succès"),
+            @ApiResponse(responseCode = "400", description = "Cet utilisateur n'est pas un copropriétaire, ou est déjà dans votre liste",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Copropriétaire introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PostMapping("/co-owners/{id}/link")
     public ResponseEntity<String> linkCoOwner(@PathVariable Long id) {
         syndicOwnerService.linkCoOwner(id);
@@ -217,6 +329,13 @@ public class SyndicOwnerController {
     }
 
     @Operation(summary = "Mettre à jour partiellement un copropriétaire", tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Copropriétaire mis à jour avec succès"),
+            @ApiResponse(responseCode = "403", description = "Ce copropriétaire n'a pas de lot dans vos résidences",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Copropriétaire introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PatchMapping("/co-owners/{id}")
     public ResponseEntity<Void> updateCoOwner(
             @PathVariable Long id,
@@ -237,7 +356,15 @@ public class SyndicOwnerController {
         return ResponseEntity.ok().build();
     }
 
-    @Operation(summary = "Supprimer un copropriétaire et libérer ses lots", tags = {"Syndic - Copropriétaires"})
+    @Operation(summary = "Supprimer un copropriétaire et libérer ses lots", tags = {"Syndic - Copropriétaires"},
+            description = "Le compte User n'est réellement supprimé que s'il n'est lié à aucun autre syndic et ne possède plus de lot ailleurs ; sinon, seuls le lien avec ce syndic et ses lots dans vos résidences sont libérés")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Copropriétaire supprimé (ou délié) avec succès"),
+            @ApiResponse(responseCode = "403", description = "Ce copropriétaire n'a pas de lot dans vos résidences",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Copropriétaire introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @DeleteMapping("/co-owners/{id}")
     public ResponseEntity<Void> deleteCoOwner(@PathVariable Long id) {
         syndicOwnerService.deleteCoOwner(id);

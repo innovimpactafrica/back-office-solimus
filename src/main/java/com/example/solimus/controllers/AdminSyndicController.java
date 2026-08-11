@@ -33,12 +33,25 @@ public class AdminSyndicController {
     // ===== Création d'un syndic =====
 
     @Operation(summary = "Créer un nouveau syndic avec son abonnement")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Syndic créé avec succès"),
+            @ApiResponse(responseCode = "400", description = "La formule choisie ne propose pas de tarif pour la durée demandée (annuel/mensuel)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Formule d'abonnement introuvable, ou rôle SYNDIC introuvable en base",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "409", description = "Un compte avec cet email ou ce téléphone existe déjà",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PostMapping
     public ResponseEntity<CreateSyndicResponseDTO> createSyndic(@RequestBody @Valid CreateSyndicDTO dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(syndicService.createSyndic(dto));
     }
 
     @Operation(summary = "Lister les formules disponibles pour la création d'un syndic")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = SyndicPlanOptionDTO.class)))
+    })
     @GetMapping("/plans")
     public List<SyndicPlanOptionDTO> listAvailablePlans() {
         return syndicService.listAvailablePlans();
@@ -47,6 +60,10 @@ public class AdminSyndicController {
     // ===== Dashboard =====
 
     @Operation(summary = "KPIs de la page \"Gestion des syndics\"")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "KPIs renvoyés avec succès",
+                    content = @Content(schema = @Schema(implementation = AdminSyndicDashboardKpiDTO.class)))
+    })
     @GetMapping("/dashboard/kpis")
     public ResponseEntity<AdminSyndicDashboardKpiDTO> getDashboardKpis() {
         return ResponseEntity.ok(syndicService.getDashboardKpis());
@@ -55,6 +72,10 @@ public class AdminSyndicController {
     // ===== Liste des syndics =====
 
     @Operation(summary = "Liste paginée des syndics, avec recherche (nom, prénom, email, entreprise) et filtre par statut d'abonnement")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = AdminSyndicListResponseDTO.class)))
+    })
     @GetMapping
     public ResponseEntity<AdminSyndicListResponseDTO> getAllSyndics(
             @RequestParam(required = false) String search,

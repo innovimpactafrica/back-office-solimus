@@ -19,6 +19,7 @@ import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.shared.StatusRecalculationService;
 import com.example.solimus.utils.PasswordGeneratorUtil;
+import com.example.solimus.utils.PaymentStatusUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -68,6 +69,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
     private final MeetingDocumentRepository meetingDocumentRepository;
     private final ActivityLogRepository activityLogRepository;
     private final CoOwnerDocumentUnifiedRepository coOwnerDocumentUnifiedRepository;
+    private final BudgetCoOwnerAllocationRepository budgetCoOwnerAllocationRepository;
     private final StatusRecalculationService statusRecalculationService;
 
 
@@ -345,6 +347,19 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
     @Transactional(readOnly = true)
     public CoOwnerDocumentUnifiedListResponseDTO getCoOwnerDocuments(Long coOwnerId, String search, String category,
                                                                      int page, int size) {
+
+        // Récupérer le syndic connecté
+        User currentSyndic = getCurrentUser();
+
+        // Récupérer le copropriétaire
+        userRepository.findById(coOwnerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
+
+        // Vérifier que le copropriétaire a au moins un lot chez le syndic
+        long apartmentsCount = propertyRepository.countApartmentsByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
+        if (apartmentsCount == 0) {
+            throw new ForbiddenException("Ce copropriétaire n'a pas de lot dans vos résidences");
+        }
 
         // Prépare la pagination
         Pageable pageable = PageRequest.of(page, size);
@@ -883,15 +898,8 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         Integer maxDaysLate = chargeCallItemRepository
                 .findMaxDaysLateByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
 
-       // Applique la même logique de statut que le reste de l'application (Paiements/Impayés)
-        String status;
-        if (maxDaysLate == null || maxDaysLate <= 0) {
-            status = "A_JOUR";
-        } else if (maxDaysLate <= 30) {
-            status = "RETARD";
-        } else {
-            status = "CRITIQUE";
-        }
+        // Applique la même logique de statut que le reste de l'application (Paiements/Impayés)
+        String status = computeCoOwnerStatus(maxDaysLate);
 
         // Calculer annualCharges (basé sur le budget annuel et tantièmes)
         BigDecimal annualCharges = BigDecimal.ZERO;
@@ -927,18 +935,12 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 partResidence = chargeCallItemRepository.sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(
                         coOwnerId, residenceId, currentYear);
             } else {
-                // Mode OWNERSHIP_SHARES : calcul basé sur les tantièmes
-                BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-                for (Property p : allProperties) {
-                    if (p.getResidence().getId().equals(residenceId)) {
-                        tantiemeCoOwner = tantiemeCoOwner.add(p.getShare());
-                    }
-                }
-
-                // Calculer la part : budgetTotal * (tantiemeCoOwner / 100)
-                partResidence = budget.getBudgetTotal()
-                        .multiply(tantiemeCoOwner)
-                        .divide(BigDecimal.valueOf(100));
+                // Mode OWNERSHIP_SHARES : lit la quote-part annuelle déjà figée à la création du
+                // budget (ChargeAllocationUtil.distributeByLargestRemainder) — plus aucun recalcul ici
+                partResidence = budgetCoOwnerAllocationRepository
+                        .findByBudgetIdAndCoOwnerId(budget.getId(), coOwnerId)
+                        .map(BudgetCoOwnerAllocation::getAnnualQuotePart)
+                        .orElse(BigDecimal.ZERO);
             }
 
             annualCharges = annualCharges.add(partResidence);
@@ -1113,17 +1115,12 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 annualCharges = chargeCallItemRepository.sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(
                         coOwnerId, residenceId, currentYear);
             } else {
-                // Mode OWNERSHIP_SHARES : calcul basé sur les tantièmes
-                BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-                List<Property> properties = propertyRepository.findAllByOwnerId(coOwnerId);
-                for (Property p : properties) {
-                    if (p.getResidence().getId().equals(residenceId)) {
-                        tantiemeCoOwner = tantiemeCoOwner.add(p.getShare());
-                    }
-                }
-                annualCharges = budget.getBudgetTotal()
-                        .multiply(tantiemeCoOwner)
-                        .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+                // Mode OWNERSHIP_SHARES : lit la quote-part annuelle déjà figée à la création du
+                // budget (ChargeAllocationUtil.distributeByLargestRemainder) — plus aucun recalcul ici
+                annualCharges = budgetCoOwnerAllocationRepository
+                        .findByBudgetIdAndCoOwnerId(budget.getId(), coOwnerId)
+                        .map(BudgetCoOwnerAllocation::getAnnualQuotePart)
+                        .orElse(BigDecimal.ZERO);
             }
         }
 
@@ -1324,14 +1321,20 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             coOwnerProfileRepository.delete(profile);
         }
 
-        // Supprimer les relations syndic-copropriétaire
+        // Supprimer uniquement la relation avec CE syndic (le copropriétaire peut être lié à
+        // d'autres syndics via linkCoOwner — on ne touche pas à leurs relations)
         List<SyndicOwnerRelation> relations = syndicCoOwnerRelationRepository.findAllBySyndicId(currentSyndic.getId(), Pageable.unpaged()).getContent();
         relations.stream()
                 .filter(r -> r.getCoOwner().getId().equals(coOwnerId))
                 .forEach(syndicCoOwnerRelationRepository::delete);
 
-        // Supprimer l'utilisateur
-        userRepository.delete(coOwner);
+        // Ne supprimer le compte User que s'il n'est plus lié à aucun autre syndic et ne possède
+        // plus aucun lot ailleurs — sinon on se contente d'avoir libéré ses lots et son lien avec ce syndic
+        boolean stillLinkedElsewhere = syndicCoOwnerRelationRepository.countByCoOwnerId(coOwnerId) > 0;
+        boolean stillOwnsPropertiesElsewhere = propertyRepository.countByOwnerId(coOwnerId) > 0;
+        if (!stillLinkedElsewhere && !stillOwnsPropertiesElsewhere) {
+            userRepository.delete(coOwner);
+        }
     }
 
     //------------------------------------------
@@ -1377,14 +1380,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 .findMaxDaysLateByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
 
         // Applique la même logique de statut que le reste de l'application (Paiements/Impayés)
-        String status;
-        if (maxDaysLate == null || maxDaysLate <= 0) {
-            status = "A_JOUR";
-        } else if (maxDaysLate <= 30) {
-            status = "RETARD";
-        } else {
-            status = "CRITIQUE";
-        }
+        String status = computeCoOwnerStatus(maxDaysLate);
 
         // Calculer le solde global : SUM(paidAmount) - SUM(quotePart)
         // Négatif = doit de l'argent, Zéro = il ne doit pas d'argent
@@ -1412,6 +1408,14 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
     }
 
+    // Statut d'un copropriétaire à partir de son plus grand retard — délègue à PaymentStatusUtils
+    // (seule source de vérité), jamais un seuil recalculé à la main
+    private String computeCoOwnerStatus(Integer maxDaysLate) {
+        PaymentDelayStatus delayStatus = PaymentStatusUtils.computeDelayStatusFromDaysLate(
+                maxDaysLate != null ? maxDaysLate : 0);
+        return PaymentStatusUtils.toLabel(delayStatus);
+    }
+
     // Calculer la charge annuelle pour un seul lot
     private BigDecimal calculateAnnualChargeForProperty(Property property, int currentYear) {
         var budgetOpt = budgetRepository.findByResidenceIdAndAnnee(property.getResidence().getId(), currentYear);
@@ -1420,19 +1424,40 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         }
         var budget = budgetOpt.get();
 
+        if (property.getOwner() == null) {
+            return BigDecimal.ZERO;
+        }
+
         if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
             // Mode CUSTOM : sommer les quoteParts des ChargeCallItem générés pour le propriétaire de ce lot
-            if (property.getOwner() != null) {
-                return chargeCallItemRepository.sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(
-                        property.getOwner().getId(), property.getResidence().getId(), currentYear);
-            }
-            return BigDecimal.ZERO;
-        } else {
-            // Mode OWNERSHIP_SHARES : calcul basé sur les tantièmes
-            return budget.getBudgetTotal()
-                    .multiply(property.getShare())
-                    .divide(BigDecimal.valueOf(100));
+            return chargeCallItemRepository.sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(
+                    property.getOwner().getId(), property.getResidence().getId(), currentYear);
         }
+
+        // Mode OWNERSHIP_SHARES : lit la quote-part annuelle du copropriétaire déjà figée à la
+        // création du budget (ChargeAllocationUtil.distributeByLargestRemainder), puis la répartit
+        // au prorata des lots de ce copropriétaire dans la résidence — plus aucun recalcul depuis budgetTotal
+        BudgetCoOwnerAllocation allocation = budgetCoOwnerAllocationRepository
+                .findByBudgetIdAndCoOwnerId(budget.getId(), property.getOwner().getId())
+                .orElse(null);
+        if (allocation == null || property.getShare() == null) {
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal totalTantiemeOwner = propertyRepository
+                .findByOwnerIdAndResidenceId(property.getOwner().getId(), property.getResidence().getId())
+                .stream()
+                .map(Property::getShare)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (totalTantiemeOwner.compareTo(BigDecimal.ZERO) == 0) {
+            return BigDecimal.ZERO;
+        }
+
+        return allocation.getAnnualQuotePart()
+                .multiply(property.getShare())
+                .divide(totalTantiemeOwner, 2, RoundingMode.HALF_UP);
     }
 
     /**

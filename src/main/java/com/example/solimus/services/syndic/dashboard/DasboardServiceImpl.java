@@ -4,6 +4,8 @@ import com.example.solimus.dtos.syndic.dashboard.*;
 import com.example.solimus.dtos.syndic.travaux.SyndicResidenceDTO;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.*;
+import com.example.solimus.exceptions.ForbiddenException;
+import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.shared.ActivityLogPresenter;
 import lombok.RequiredArgsConstructor;
@@ -109,7 +111,7 @@ public class DasboardServiceImpl implements DashboardService {
         // Additionne tous les montants déjà payés
         BigDecimal totalPaid = allItems.stream().map(ChargeCallItem::getPaidAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         // Additionne tous les montants restants à payer
-        BigDecimal totalUnpaid = allItems.stream().map(item -> item.getQuotePart().subtract(item.getPaidAmount())).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalUnpaid = allItems.stream().map(item -> item.getRemainingAmount()).reduce(BigDecimal.ZERO, BigDecimal::add);
 
         // Calcule le taux de recouvrement (protection contre la division par zéro)
         double recoveryRate = 0.0;
@@ -340,31 +342,25 @@ public class DasboardServiceImpl implements DashboardService {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         // Recherche l'utilisateur correspondant à cet email
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
     }
 
-    // Résout l'ID de résidence à utiliser : celui fourni (après vérification qu'il appartient au syndic),
-    // ou automatiquement la résidence la plus récemment créée par ce syndic si aucun ID n'est fourni
+    // Valide un residenceId fourni explicitement par l'appelant : vérifie qu'il existe et qu'il
+    // appartient bien au syndic connecté. N'est jamais appelée avec un residenceId null — quand
+    // aucune résidence n'est précisée, getMainDashboard reste volontairement en mode global
+    // (toutes résidences confondues), il n'y a pas de repli automatique sur une résidence précise.
     private Long resolveResidenceId(Long residenceId, User currentSyndic) {
 
-        // Cas 1 : une résidence précise a été demandée
-        if (residenceId != null) {
-            // Récupère la résidence, erreur si elle n'existe pas
-            Residence residence = residenceRepository.findById(residenceId)
-                    .orElseThrow(() -> new RuntimeException("Résidence non trouvée"));
+        // Récupère la résidence, erreur si elle n'existe pas
+        Residence residence = residenceRepository.findById(residenceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Résidence non trouvée"));
 
-            // Sécurité : vérifie que cette résidence appartient bien au syndic connecté
-            if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
-                throw new RuntimeException("Vous n'êtes pas autorisé à accéder à cette résidence");
-            }
-            // Retourne l'ID de cette résidence
-            return residence.getId();
+        // Sécurité : vérifie que cette résidence appartient bien au syndic connecté
+        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
         }
-
-        // Cas 2 : aucune résidence précisée, on prend automatiquement la plus récemment créée
-        return residenceRepository.findFirstBySyndicIdOrderByCreatedAtDesc(currentSyndic.getId())
-                .map(Residence::getId)
-                .orElseThrow(() -> new RuntimeException("Aucune résidence trouvée pour ce syndic"));
+        // Retourne l'ID de cette résidence
+        return residence.getId();
     }
 
     // Calcule le solde du wallet à une date donnée
@@ -461,7 +457,7 @@ public class DasboardServiceImpl implements DashboardService {
         }
 
         // Additionne les soldes restants de tous ces items
-        return items.stream().map(item -> item.getQuotePart().subtract(item.getPaidAmount())).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return items.stream().map(item -> item.getRemainingAmount()).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     // Construit une ligne du tableau "Incidents Récents"

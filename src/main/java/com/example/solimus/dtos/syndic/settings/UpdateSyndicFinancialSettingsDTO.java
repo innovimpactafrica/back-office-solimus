@@ -33,6 +33,9 @@ public class UpdateSyndicFinancialSettingsDTO {
     @Min(value = 0, message = "Le délai avant relance ne peut pas être négatif")
     private Integer reminderDelayDays;
 
+    @Min(value = 0, message = "Le délai de grâce avant pénalité ne peut pas être négatif")
+    private Integer penaltyGracePeriodDays;
+
     @DecimalMin(value = "0.0", message = "Le pourcentage ne peut pas être négatif")
     @DecimalMax(value = "100.0", message = "Le pourcentage ne peut pas dépasser 100%")
     private BigDecimal reserveFundPercentage;

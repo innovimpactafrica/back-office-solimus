@@ -42,6 +42,12 @@ public class TenantTravauxController {
     // =========================================================================
 
     @Operation(summary = "Lister les parties communes de ma résidence")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = CommonFacilityDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Aucun bien n'est assigné à ce compte locataire",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/common-facilities")
     public ResponseEntity<List<CommonFacilityDTO>> getCommonFacilities() {
         return ResponseEntity.ok(tenantTravauxService.getCommonFacilities());
@@ -98,6 +104,10 @@ public class TenantTravauxController {
     // =========================================================================
 
     @Operation(summary = "Lister mes demandes de travaux (recherche + filtre statut + pagination)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = OwnerInterventionDTO.class)))
+    })
     @GetMapping("/interventions")
     public ResponseEntity<OwnerInterventionDTO> getMyInterventions(
             @RequestParam(required = false) String search,

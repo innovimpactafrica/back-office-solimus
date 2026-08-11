@@ -3,10 +3,12 @@ package com.example.solimus.services.syndic.charge;
 import com.example.solimus.dtos.syndic.charge.*;
 import com.example.solimus.dtos.syndic.finance.FinanceDashboardDTO;
 import com.example.solimus.dtos.syndic.finance.RecentPaymentDTO;
+import com.example.solimus.enums.RepartitionMode;
 import org.springframework.web.multipart.MultipartFile;
 
 import org.springframework.data.domain.Page;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 public interface ChargeService {
@@ -21,6 +23,13 @@ public interface ChargeService {
      * pour validation visuelle avant de passer à l'étape 2.
      */
     BudgetResidencePreviewDTO getResidencePreview(Long residenceId);
+
+    /**
+     * Étape 2 — aperçu de la répartition annuelle/par période AVANT la création du budget, à
+     * partir des postes en cours de saisie. Aucune donnée enregistrée — calcul à la volée avec
+     * exactement la même méthode que la création réelle (ChargeAllocationUtil.distributeByLargestRemainder).
+     */
+    BudgetRepartitionPreviewDTO previewBudgetRepartition(Long residenceId, BudgetRepartitionPreviewRequestDTO dto);
 
     /**
      * Crée un budget prévisionnel (résidence + année + postes budgétaires)
@@ -47,6 +56,13 @@ public interface ChargeService {
     ChargeCallPreviewDTO previewChargeCallByResidence(Long residenceId, Integer periodNumber);
 
     /**
+     * Aperçu de la répartition d'un appel de charges exceptionnel AVANT sa création — écran
+     * "Nouvel Appel Exceptionnel". Aucune donnée enregistrée — calcul à la volée avec exactement
+     * la même méthode que la création réelle (ChargeAllocationUtil.distributeByLargestRemainder).
+     */
+    ExceptionalCallPreviewDTO previewExceptionalCall(Long residenceId, BigDecimal totalAmount, RepartitionMode repartitionMode);
+
+    /**
      * Retourne la liste paginée des résidences du syndic connecté qui ont un budget actif
      */
     Page<ResidenceBudgetSummaryDTO> getResidencesWithActiveBudget(int page, int size);
@@ -61,13 +77,6 @@ public interface ChargeService {
      * que createBudget, réutilisée pour l'affichage après coup.
      */
     BudgetDetailDTO getBudgetDetail(Long budgetId);
-
-    /**
-     * Met à jour partiellement un budget prévisionnel existant.
-     * Seuls les champs fournis sont mis à jour.
-     */
-    BudgetDetailDTO updateBudget(Long budgetId, UpdateBudgetDTO dto);
-
 
     /** Retourne le détail complet d'un budget pour la vue "carte KPI" : budget total, dépenses réelles
      globales, écart, consommation, et le tableau des postes (montantReel = montantPrevu en V1)*/
@@ -97,8 +106,16 @@ public interface ChargeService {
     void closeBudget(Long budgetId);
 
     /**
+     * Réactiver un budget clôturé
+     * Change le statut du budget de CLOSED à ACTIVE et trace l'action dans le journal d'activité.
+     * Utile quand le budget a déjà des appels de charges générés (donc non supprimable).
+     */
+    void reopenBudget(Long budgetId);
+
+    /**
      * Supprimer un budget prévisionnel
-     * Supprime le budget et tous ses postes budgétaires associés
+     * Supprime le budget et tous ses postes budgétaires associés (y compris s'il est clôturé,
+     * tant qu'aucun appel de charges n'a été généré)
      */
     void deleteBudget(Long budgetId);
 

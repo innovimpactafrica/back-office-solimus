@@ -157,22 +157,22 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
         // est rattaché
         InterventionRequest request = interventionRequestRepository
                 .findByIdAndNotifiedProvidersContaining(dto.getInterventionRequestId(), provider)
-                .orElseThrow(() -> new RuntimeException(
+                .orElseThrow(() -> new ResourceNotFoundException(
                         "Demande introuvable ou vous n'êtes pas autorisé à répondre à cette demande."));
 
         // 3. Vérifier que la demande accepte encore des devis (Statut PENDING)
         if (request.getStatus() != InterventionStatus.PENDING) {
-            throw new RuntimeException("Cette demande n'accepte plus de nouveaux devis.");
+            throw new BadRequestException("Cette demande n'accepte plus de nouveaux devis.");
         }
 
         // 4. Vérifier que ce prestataire n'a pas déjà soumis un devis
         if (quoteRepository.existsByInterventionRequestAndProvider(request, provider)) {
-            throw new RuntimeException("Vous avez déjà soumis un devis pour cette demande d'intervention.");
+            throw new BadRequestException("Vous avez déjà soumis un devis pour cette demande d'intervention.");
         }
 
         // 5. Récupération de l'option de délai choisie dans le dropdown
         EstimatedDelay delay = estimatedDelayRepository.findById(dto.getEstimatedDelayId())
-                .orElseThrow(() -> new RuntimeException("Délai estimé introuvable"));
+                .orElseThrow(() -> new ResourceNotFoundException("Délai estimé introuvable"));
 
         // 6. Initialisation de l'entité Quote
         Quote quote = new Quote();

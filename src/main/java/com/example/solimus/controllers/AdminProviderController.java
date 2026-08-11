@@ -30,6 +30,10 @@ public class AdminProviderController {
     // ===== Dashboard =====
 
     @Operation(summary = "KPIs de la page \"Gestion des prestataires\"")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "KPIs renvoyés avec succès",
+                    content = @Content(schema = @Schema(implementation = AdminProviderDashboardKpiDTO.class)))
+    })
     @GetMapping("/dashboard/kpis")
     public ResponseEntity<AdminProviderDashboardKpiDTO> getDashboardKpis() {
         return ResponseEntity.ok(providerService.getDashboardKpis());
@@ -38,6 +42,10 @@ public class AdminProviderController {
     // ===== Liste des prestataires =====
 
     @Operation(summary = "Liste paginée des prestataires, avec recherche (entreprise, responsable, email) et filtre par statut d'abonnement")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = AdminProviderListResponseDTO.class)))
+    })
     @GetMapping
     public ResponseEntity<AdminProviderListResponseDTO> getAllProviders(
             @RequestParam(required = false) String search,

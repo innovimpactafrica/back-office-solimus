@@ -409,23 +409,24 @@ public class AuthServiceImpl implements AuthService {
 
         // ---------------------------------------------------------------------
         // Recherche par email OU téléphone
+        // Sécurité anti-énumération : si l'identifiant n'existe pas, ou si le compte
+        // n'est pas éligible (désactivé, pas encore actif), on ne lève AUCUNE erreur —
+        // on se contente de ne rien envoyer, en silence, pour ne jamais révéler à
+        // l'appelant si un compte existe. Le endpoint répond toujours 200.
         // ---------------------------------------------------------------------
-        User user = userRepository.findByEmail(dto.getEmailOrPhone())
-                .or(() -> userRepository.findByPhone(dto.getEmailOrPhone()))
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Aucun compte n'est associé à cet identifiant."));
+        Optional<User> userOpt = userRepository.findByEmail(dto.getEmailOrPhone())
+                .or(() -> userRepository.findByPhone(dto.getEmailOrPhone()));
 
-        // ---------------------------------------------------------------------
-        // Vérifications du statut du compte
-        // ---------------------------------------------------------------------
-        if (user.getStatus() == UserStatus.DISABLED) {
-            throw new BadRequestException(
-                    "Ce compte a été désactivé par un administrateur.");
+        if (userOpt.isEmpty()) {
+            log.info("Demande de réinitialisation pour un identifiant inconnu (ignorée en silence).");
+            return;
         }
+
+        User user = userOpt.get();
+
         if (user.getStatus() != UserStatus.ACTIVE) {
-            throw new BadRequestException(
-                    "Ce compte n'est pas encore actif. " +
-                            "Veuillez d'abord valider votre inscription.");
+            log.info("Demande de réinitialisation pour un compte non actif : {} (ignorée en silence).", user.getEmail());
+            return;
         }
 
         // ---------------------------------------------------------------------

@@ -19,6 +19,7 @@ import com.example.solimus.repositories.ExceptionalCallItemRepository;
 import com.example.solimus.repositories.ExceptionalCallPaymentRepository;
 import com.example.solimus.repositories.PropertyRepository;
 import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.utils.ChargeAllocationUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -30,7 +31,9 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Service
@@ -283,7 +286,7 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
             throw new BadRequestException("Le budget de cette résidence a été clôturé, cette charge n'accepte plus de paiement");
         }
 
-        BigDecimal remainingAmount = item.getQuotePart().subtract(item.getPaidAmount());
+        BigDecimal remainingAmount = item.getRemainingAmount();
         if (remainingAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BadRequestException("Cette charge est déjà payée");
         }
@@ -463,7 +466,7 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .residenceName(residence.getName())
                 .residenceId(residence.getId())
                 .propertyReference(propertyRef)
-                .remainingAmount(item.getQuotePart().subtract(item.getPaidAmount()))
+                .remainingAmount(item.getRemainingAmount())
                 .dueDate(item.getChargeCall().getDueDate())
                 .status(item.getStatus().getLabel())
                 .paymentBlocked(item.getChargeCall().getBudget().getStatus() == BudgetStatus.CLOSED)
@@ -513,15 +516,15 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
         Residence residence = budget.getResidence();
         String propertyRef = findPropertyReference(item.getCoOwner().getId(), residence.getId());
 
-       // la répartition par poste : montant du poste (résidence) × tantième / 100 / nombre de périodes
-        List<ChargeBreakdownLineDTO> breakdown = buildBreakdown(budget, item.getTantieme(), chargeCall.getFrequency());
+        // Répartition par poste du quotePart réel de cet appel (pas la quote-part annuelle)
+        List<ChargeBreakdownLineDTO> breakdown = buildBreakdown(budget, item.getQuotePart());
 
         return MyChargeDetailDTO.builder()
                 .id(item.getId())
                 .reference(item.getReference())
                 .type(ChargeType.REGULAR.name())
                 .typeLabel(ChargeType.REGULAR.getDescription())
-                .remainingAmount(item.getQuotePart().subtract(item.getPaidAmount()))
+                .remainingAmount(item.getRemainingAmount())
                 .dueDate(chargeCall.getDueDate())
                 .residenceName(residence.getName())
                 .propertyReference(propertyRef)
@@ -530,7 +533,9 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .status(item.getStatus().getLabel())
                 .paymentBlocked(budget.getStatus() == BudgetStatus.CLOSED)
                 .breakdown(breakdown)
-                .breakdownTotal(breakdown.stream().map(ChargeBreakdownLineDTO::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add))
+                // Toujours le vrai montant dû, jamais une re-somme du détail — garanti égal par
+                // construction (buildBreakdown redistribue exactement quotePart entre les postes)
+                .breakdownTotal(item.getQuotePart())
                 .build();
     }
 
@@ -563,23 +568,34 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .build();
     }
 
-    // Construit la répartition par poste : montant du poste (résidence) × tantième / 100 / nombre de périodes
-    private List<ChargeBreakdownLineDTO> buildBreakdown(Budget budget, BigDecimal tantieme, ChargeFrequency frequency) {
+    // Construit la répartition par poste budgétaire d'un appel de charges précis : redistribue le
+    // quotePart réel de la période (jamais la quote-part annuelle) entre les postes, au prorata de
+    // leur montant dans le budget, via la méthode du plus grand reste — garantit que la somme des
+    // lignes affichées est toujours exactement égale à quotePart, jamais plus, jamais moins.
+    private List<ChargeBreakdownLineDTO> buildBreakdown(Budget budget, BigDecimal quotePart) {
 
-        int diviseur = (frequency == ChargeFrequency.MENSUEL) ? 12 : 4;
+        // Poids de chaque poste = son propre montant dans le budget (utilisé comme un tantième)
+        Map<Long, BigDecimal> montantByBudgetItemId = new LinkedHashMap<>();
+        for (BudgetItem budgetItem : budget.getItems()) {
+            montantByBudgetItemId.put(budgetItem.getId(), budgetItem.getMontant());
+        }
 
         List<ChargeBreakdownLineDTO> lines = new ArrayList<>();
 
+        // Rien à répartir si le budget n'a aucun poste
+        if (montantByBudgetItemId.isEmpty()) {
+            return lines;
+        }
+
+        // Répartit exactement quotePart entre les postes, au prorata de leur montant — même
+        // méthode que la répartition entre copropriétaires
+        Map<Long, BigDecimal> partByBudgetItemId =
+                ChargeAllocationUtil.distributeByLargestRemainder(quotePart, montantByBudgetItemId);
+
         for (BudgetItem budgetItem : budget.getItems()) {
-            BigDecimal partPoste = budgetItem.getMontant()
-                    .multiply(tantieme)
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-
-            BigDecimal partPeriode = partPoste.divide(BigDecimal.valueOf(diviseur), 0, RoundingMode.HALF_UP);
-
             lines.add(ChargeBreakdownLineDTO.builder()
                     .label(budgetItem.getLibelle())
-                    .amount(partPeriode)
+                    .amount(partByBudgetItemId.get(budgetItem.getId()))
                     .build());
         }
 

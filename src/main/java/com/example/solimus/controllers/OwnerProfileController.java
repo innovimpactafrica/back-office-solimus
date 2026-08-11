@@ -1,5 +1,6 @@
 package com.example.solimus.controllers;
 
+import com.example.solimus.dtos.auth.ErrorResponseDTO;
 import com.example.solimus.dtos.owner.document.CoOwnerDocumentListResponseDTO;
 import com.example.solimus.dtos.owner.signalement.CreateSignalementDTO;
 import com.example.solimus.dtos.owner.signalement.SignalementCardDTO;
@@ -16,6 +17,10 @@ import com.example.solimus.services.owner.signalement.OwnerSignalementService;
 import com.example.solimus.services.provider.profile.ProviderProfileService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -47,12 +52,20 @@ public class OwnerProfileController {
     // =========================================================================
 
     @Operation(summary = "Voir mon profil")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Profil renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = CoOwnerProfileDTO.class)))
+    })
     @GetMapping
     public ResponseEntity<CoOwnerProfileDTO> getProfile() {
         return ResponseEntity.ok(profileService.getProfile());
     }
 
     @Operation(summary = "Modifier mon profil", description = "Permet de modifier : prénom, nom, téléphone et photo de profil. L'email et le bien sont non modifiables.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Profil modifié avec succès",
+                    content = @Content(schema = @Schema(implementation = CoOwnerProfileDTO.class)))
+    })
     @PutMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<CoOwnerProfileDTO> updateProfile(
             @RequestParam(required = false) String firstName,
@@ -73,6 +86,9 @@ public class OwnerProfileController {
     // =========================================================================
 
     @Operation(summary = "Activer/Désactiver les notifications")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Préférence mise à jour avec succès")
+    })
     @PutMapping("/notifications")
     public ResponseEntity<Void> toggleNotifications() {
         providerProfileService.toggleNotifications();
@@ -84,6 +100,13 @@ public class OwnerProfileController {
     // =========================================================================
 
     @Operation(summary = "Créer un signalement", description = "Permet au copropriétaire de signaler un incident, avec photos optionnelles")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Signalement créé avec succès"),
+            @ApiResponse(responseCode = "400", description = "Données incohérentes avec le type de localisation (bien/équipement commun manquant ou en trop)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence, appartement ou équipement commun introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @PostMapping(value = "/signalements", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Void> createSignalement(
             @RequestParam String title,
@@ -125,6 +148,10 @@ public class OwnerProfileController {
     // =========================================================================
 
     @Operation(summary = "Lister mes signalements", description = "Retourne la liste paginée des signalements du copropriétaire connecté, avec recherche et filtres")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = SignalementCardDTO.class)))
+    })
     @GetMapping("/signalements")
     public ResponseEntity<Page<SignalementCardDTO>> getMySignalements(
             @RequestParam(required = false) String search,
@@ -141,6 +168,14 @@ public class OwnerProfileController {
     // =========================================================================
 
     @Operation(summary = "Détail d'un signalement", description = "Retourne le détail complet d'un signalement du copropriétaire connecté, avec historique")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Détail renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = SignalementDetailDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à ce signalement",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Signalement introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
     @GetMapping("/signalements/{id}")
     public ResponseEntity<SignalementDetailDTO> getSignalementDetail(@PathVariable Long id) {
         return ResponseEntity.ok(signalementService.getSignalementDetail(id));
@@ -151,6 +186,10 @@ public class OwnerProfileController {
     // =========================================================================
 
     @Operation(summary = "Mes documents (AG + charges exceptionnelles fusionnés, avec recherche et filtre)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = CoOwnerDocumentListResponseDTO.class)))
+    })
     @GetMapping("/documents")
     public ResponseEntity<CoOwnerDocumentListResponseDTO> getMyDocuments(
             @RequestParam(required = false) String search,
