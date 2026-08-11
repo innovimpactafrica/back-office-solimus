@@ -60,6 +60,9 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_BUCKET: ${MINIO_BUCKET}
 
+      # Credentials Firebase (notifications push) — lus depuis .env, jamais committés
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON}
+
     ports:
       - "8086:8082"
     restart: unless-stopped

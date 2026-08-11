@@ -118,6 +118,13 @@ public class NotificationServiceImpl implements NotificationService{
                     + "ne reçoit toujours rien, le problème est côté mobile (permissions notifications "
                     + "refusées, config Firebase du mobile différente du projet du serveur, app tuée "
                     + "par l'optimisation batterie, etc.), pas côté serveur.";
+        } catch (IllegalStateException e) {
+            // "FirebaseApp with name [DEFAULT] doesn't exist" — le SDK Firebase Admin ne s'est jamais
+            // initialisé sur ce serveur (credentials absents), pas un problème de token
+            return "ÉCHEC : Firebase Admin SDK n'est pas initialisé sur ce serveur (" + e.getMessage()
+                    + "). Ce n'est pas un problème de token FCM — vérifier que firebase-service-account.json "
+                    + "ou la variable d'environnement FIREBASE_SERVICE_ACCOUNT_JSON est bien présente sur "
+                    + "le serveur déployé, puis regarder les logs de démarrage de l'application.";
         } catch (Exception e) {
             return "ÉCHEC Firebase : " + e.getClass().getSimpleName() + " — " + e.getMessage()
                     + ". Le token FCM enregistré est probablement invalide ou n'appartient pas au "
