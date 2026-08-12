@@ -2,6 +2,7 @@ package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.auth.ErrorResponseDTO;
 import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
+import com.example.solimus.dtos.syndic.settings.ChangePasswordDTO;
 import com.example.solimus.dtos.tenant.profil.TenantProfileDTO;
 import com.example.solimus.services.tenant.profil.TenantProfilService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -10,6 +11,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -36,6 +38,18 @@ public class TenantProfilController {
     @GetMapping("/profile")
     public ResponseEntity<TenantProfileDTO> getProfile() {
         return ResponseEntity.ok(tenantProfilService.getProfile());
+    }
+
+    @Operation(summary = "Changer mon mot de passe", tags = {"Locataire - Profil"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Mot de passe changé avec succès"),
+            @ApiResponse(responseCode = "400", description = "Mot de passe actuel incorrect, ou confirmation ne correspondant pas au nouveau mot de passe",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @PutMapping("/profile/change-password")
+    public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordDTO dto) {
+        tenantProfilService.changePassword(dto);
+        return ResponseEntity.noContent().build();
     }
 
     // =========================================================================

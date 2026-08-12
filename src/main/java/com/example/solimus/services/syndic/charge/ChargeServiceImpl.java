@@ -1231,25 +1231,9 @@ public class ChargeServiceImpl implements ChargeService {
                 .filter(item -> item.getRemainingAmount().compareTo(BigDecimal.ZERO) > 0)
                 .toList();
 
-        // Envoie email + notification push à chacun (non-bloquant)
+        // Message différencié selon le statut réel de chaque ligne (retard simple / avertissement pénalité)
         for (ChargeCallItem item : unpaidItems) {
-            try {
-                String subject = "Rappel — Appel de charges " + buildPeriodLabel(chargeCall);
-                String body = buildReminderEmailBody(chargeCall, item);
-                emailService.sendEmail(item.getCoOwner().getEmail(), subject, body);
-            } catch (Exception e) {
-                System.err.println("Erreur envoi email de relance à " + item.getCoOwner().getEmail() + ": " + e.getMessage());
-            }
-
-            try {
-                if (item.getCoOwner().isNotificationsEnabled()) {
-                    String title = "Rappel de paiement";
-                    String body = buildPeriodLabel(chargeCall) + " — solde restant: " + item.getRemainingAmount() + " FCFA";
-                    notificationService.sendPush(item.getCoOwner().getId(), title, body);
-                }
-            } catch (Exception e) {
-                System.err.println("Erreur envoi notification de relance à " + item.getCoOwner().getId() + ": " + e.getMessage());
-            }
+            sendDifferentiatedReminder(item);
         }
 
         return unpaidItems.size();
@@ -2008,7 +1992,7 @@ public class ChargeServiceImpl implements ChargeService {
             throw new BadRequestException("Cette charge est déjà soldée");
         }
 
-        sendReminderForItem(item);
+        sendDifferentiatedReminder(item);
     }
 
     // ============================================================
@@ -2024,7 +2008,7 @@ public class ChargeServiceImpl implements ChargeService {
         List<ChargeCallItem> allUnpaidItems = chargeCallItemRepository.findAllUnpaidByBudgetSyndicId(currentSyndic.getId());
 
         for (ChargeCallItem item : allUnpaidItems) {
-            sendReminderForItem(item);
+            sendDifferentiatedReminder(item);
         }
 
         return allUnpaidItems.size();
@@ -2038,7 +2022,7 @@ public class ChargeServiceImpl implements ChargeService {
     // renvoyée "parce que le temps passe" — remplace l'ancienne notifySyndicsOfOverdueUnpaidCharges.
     // ============================================================
 
-    @Scheduled(cron = "0 0 8 * * *") // tous les jours à 8h
+    @Scheduled(cron = "0 0 12 * * *") // tous les jours à midi
     @Transactional
     public void dailyChargeReminders() {
 
@@ -2055,9 +2039,7 @@ public class ChargeServiceImpl implements ChargeService {
             if (daysLate <= 0) continue;
 
             // Paramètres du syndic concerné (valeurs par défaut si jamais configurés)
-            User syndic = item.getChargeCall().getBudget().getSyndic();
-            SyndicFinancialSettings settings = syndicFinancialSettingsRepository.findBySyndicId(syndic.getId())
-                    .orElseGet(SyndicFinancialSettings::new);
+            SyndicFinancialSettings settings = getFinancialSettingsForItem(item);
 
             // Seule source de vérité pour LATE/UNPAID — jamais de seuil dupliqué ici
             PaymentDelayStatus delayStatus = PaymentStatusUtils.computeDelayStatusFromDaysLate(daysLate);
@@ -2083,29 +2065,36 @@ public class ChargeServiceImpl implements ChargeService {
         notifySyndicsDailyDigest(unpaidItems);
     }
 
-    // Envoie l'unique relance automatique "douce" au copropriétaire (jour reminderDelayDays)
+    // Envoie l'unique relance automatique "douce" au copropriétaire (jour reminderDelayDays) —
+    // toujours sur les 2 canaux (push + email), jamais l'un sans l'autre
     private void sendReminder(ChargeCallItem item) {
         item.setReminderSentAt(LocalDateTime.now());
         chargeCallItemRepository.save(item);
 
-        notificationService.sendPush(item.getCoOwner().getId(), "Rappel de paiement",
-                "Votre charge " + item.getReference() + " est en retard. Merci de régulariser.");
+        String title = "Rappel de paiement";
+        String body = "Votre charge " + item.getReference() + " est en retard. Merci de régulariser.";
+        notificationService.sendPush(item.getCoOwner().getId(), title, body);
+        sendReminderEmail(item, "Relance — Appel de charges " + buildPeriodLabel(item.getChargeCall()));
     }
 
-    // Envoie l'unique avertissement de pénalité au copropriétaire (jour 31, passage en IMPAYÉ)
+    // Envoie l'unique avertissement de pénalité au copropriétaire (jour 31, passage en IMPAYÉ) —
+    // toujours sur les 2 canaux (push + email)
     private void sendPenaltyWarning(ChargeCallItem item, SyndicFinancialSettings settings) {
         item.setWarningSentAt(LocalDateTime.now());
         chargeCallItemRepository.save(item);
 
         BigDecimal montantAvecPenalite = calculerMontantAvecPenalite(item, settings);
-        notificationService.sendPush(item.getCoOwner().getId(), "Avertissement — Pénalité de retard",
-                "Vous devez " + item.getQuotePart() + " FCFA. Sans paiement sous "
-                        + settings.getPenaltyGracePeriodDays() + " jours, une pénalité de "
-                        + settings.getLatePenaltyRate() + "% sera appliquée (nouveau montant : "
-                        + montantAvecPenalite + " FCFA).");
+        String title = "Avertissement — Pénalité de retard";
+        String body = "Vous devez " + item.getQuotePart() + " FCFA. Sans paiement sous "
+                + settings.getPenaltyGracePeriodDays() + " jours, une pénalité de "
+                + settings.getLatePenaltyRate() + "% sera appliquée (nouveau montant : "
+                + montantAvecPenalite + " FCFA).";
+        notificationService.sendPush(item.getCoOwner().getId(), title, body);
+        sendEmailSafe(item, title, body);
     }
 
-    // Applique l'unique pénalité de retard au copropriétaire (jour 31 + délai de grâce)
+    // Applique l'unique pénalité de retard au copropriétaire (jour 31 + délai de grâce) —
+    // toujours sur les 2 canaux (push + email)
     private void applyPenalty(ChargeCallItem item, SyndicFinancialSettings settings) {
         BigDecimal penalty = item.getQuotePart()
                 .multiply(settings.getLatePenaltyRate())
@@ -2115,9 +2104,31 @@ public class ChargeServiceImpl implements ChargeService {
         item.setPenaltyAppliedAt(LocalDateTime.now());
         chargeCallItemRepository.save(item);
 
-        notificationService.sendPush(item.getCoOwner().getId(), "Pénalité de retard appliquée",
-                "Une pénalité de " + penalty + " FCFA a été appliquée. Vous devez maintenant "
-                        + item.getTotalDue() + " FCFA.");
+        String title = "Pénalité de retard appliquée";
+        String body = "Une pénalité de " + penalty + " FCFA a été appliquée. Vous devez maintenant "
+                + item.getTotalDue() + " FCFA.";
+        notificationService.sendPush(item.getCoOwner().getId(), title, body);
+        sendEmailSafe(item, title, body);
+    }
+
+    // Envoie l'email de relance détaillé (résidence, période, échéance, montant restant) — utilisé
+    // par sendReminder et par le fallback "pas encore en retard" de sendDifferentiatedReminder
+    private void sendReminderEmail(ChargeCallItem item, String subject) {
+        try {
+            String body = buildReminderEmailBody(item.getChargeCall(), item);
+            emailService.sendEmail(item.getCoOwner().getEmail(), subject, body);
+        } catch (Exception e) {
+            System.err.println("Erreur envoi email de relance à " + item.getCoOwner().getEmail() + ": " + e.getMessage());
+        }
+    }
+
+    // Envoie un email simple (même titre/corps que le push) — best-effort, ne bloque jamais l'appelant
+    private void sendEmailSafe(ChargeCallItem item, String subject, String body) {
+        try {
+            emailService.sendEmail(item.getCoOwner().getEmail(), subject, body);
+        } catch (Exception e) {
+            System.err.println("Erreur envoi email à " + item.getCoOwner().getEmail() + ": " + e.getMessage());
+        }
     }
 
     // Montant que le copropriétaire devrait payer si la pénalité était appliquée aujourd'hui
@@ -2141,10 +2152,24 @@ public class ChargeServiceImpl implements ChargeService {
         for (Long syndicId : syndicIds) {
             long lateCount = chargeCallItemRepository.countLateBySyndicId(syndicId);
             long unpaidCount = chargeCallItemRepository.countUnpaidBySyndicId(syndicId);
-            if (lateCount == 0 && unpaidCount == 0) continue;
+            long partiallyPaidCount = chargeCallItemRepository.countPartiallyPaidBySyndicId(syndicId);
+            if (lateCount == 0 && unpaidCount == 0 && partiallyPaidCount == 0) continue;
 
-            notificationService.sendUnpaidReminderNotification(syndicId, "Récapitulatif impayés",
-                    lateCount + " charge(s) en retard, " + unpaidCount + " impayée(s) à traiter.");
+            String title = "Récapitulatif impayés";
+            String body = lateCount + " charge(s) en retard, " + unpaidCount + " impayée(s) à traiter, "
+                    + partiallyPaidCount + " payée(s) partiellement.";
+
+            // Push (gardé par la préférence "Relance impayés" du syndic)
+            notificationService.sendUnpaidReminderNotification(syndicId, title, body);
+
+            // Email — même contenu, toujours envoyé en complément du push
+            userRepository.findById(syndicId).ifPresent(syndic -> {
+                try {
+                    emailService.sendEmail(syndic.getEmail(), title, body);
+                } catch (Exception e) {
+                    System.err.println("Erreur envoi email digest à " + syndic.getEmail() + ": " + e.getMessage());
+                }
+            });
         }
     }
     // ============================================================
@@ -2406,26 +2431,37 @@ public class ChargeServiceImpl implements ChargeService {
         return propertiesStr + " – " + item.getChargeCall().getBudget().getResidence().getName();
     }
 
-    // Envoie une relance (email + push) pour une ligne de charge précise, non-bloquant
-    private void sendReminderForItem(ChargeCallItem item) {
+    // Relance manuelle (boutons "Relancer"/"Avertissement" + relances groupées) : choisit le bon
+    // message selon le statut réel de retard de la ligne, en réutilisant EXACTEMENT les mêmes
+    // messages que le job automatique quotidien (Option C) — jamais un texte différent pour le même état.
+    // sendReminder/sendPenaltyWarning envoient déjà push + email eux-mêmes ; seul le cas "pas encore
+    // en retard" (relance préventive) doit encore le faire ici.
+    private void sendDifferentiatedReminder(ChargeCallItem item) {
 
-        try {
-            String subject = "Relance — Appel de charges " + buildPeriodLabel(item.getChargeCall());
-            String body = buildReminderEmailBody(item.getChargeCall(), item);
-            emailService.sendEmail(item.getCoOwner().getEmail(), subject, body);
-        } catch (Exception e) {
-            System.err.println("Erreur envoi email de relance à " + item.getCoOwner().getEmail() + ": " + e.getMessage());
-        }
+        LocalDate dueDate = item.getChargeCall().getDueDate();
+        PaymentDelayStatus delayStatus = PaymentStatusUtils.computeDelayStatus(dueDate, false, LocalDate.now());
 
-        try {
-            if (item.getCoOwner().isNotificationsEnabled()) {
-                String title = "Rappel de paiement";
-                String body = "Solde restant: " + item.getRemainingAmount() + " FCFA";
-                notificationService.sendPush(item.getCoOwner().getId(), title, body);
-            }
-        } catch (Exception e) {
-            System.err.println("Erreur envoi notification de relance à " + item.getCoOwner().getId() + ": " + e.getMessage());
+        if (delayStatus == PaymentDelayStatus.UNPAID) {
+            // Impayé : même avertissement (avec taux de pénalité) que l'automatique — pose aussi
+            // warningSentAt, donc le job quotidien ne le renverra pas une deuxième fois le même jour
+            SyndicFinancialSettings settings = getFinancialSettingsForItem(item);
+            sendPenaltyWarning(item, settings);
+        } else if (delayStatus == PaymentDelayStatus.LATE) {
+            // Retard simple : même relance douce que l'automatique — pose aussi reminderSentAt
+            sendReminder(item);
+        } else {
+            // Pas encore en retard (relance "préventive" avant échéance) : message générique minimal,
+            // sur les 2 canaux comme partout ailleurs
+            notificationService.sendPush(item.getCoOwner().getId(), "Relance", "Relance retard");
+            sendReminderEmail(item, "Relance — Appel de charges " + buildPeriodLabel(item.getChargeCall()));
         }
+    }
+
+    // Paramètres financiers du syndic propriétaire de cette ligne (valeurs par défaut si jamais configurés)
+    private SyndicFinancialSettings getFinancialSettingsForItem(ChargeCallItem item) {
+        User syndic = item.getChargeCall().getBudget().getSyndic();
+        return syndicFinancialSettingsRepository.findBySyndicId(syndic.getId())
+                .orElseGet(SyndicFinancialSettings::new);
     }
 
     // ============================================================

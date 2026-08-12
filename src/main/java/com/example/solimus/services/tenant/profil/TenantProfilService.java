@@ -1,6 +1,7 @@
 package com.example.solimus.services.tenant.profil;
 
 import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
+import com.example.solimus.dtos.syndic.settings.ChangePasswordDTO;
 import com.example.solimus.dtos.tenant.profil.TenantProfileDTO;
 
 public interface TenantProfilService {
@@ -29,4 +30,9 @@ public interface TenantProfilService {
      * Désactive les notifications push pour le locataire connecté.
      */
     void deactivateNotifications();
+
+    /**
+     * Change le mot de passe du locataire connecté (mêmes règles que côté syndic/copropriétaire).
+     */
+    void changePassword(ChangePasswordDTO dto);
 }

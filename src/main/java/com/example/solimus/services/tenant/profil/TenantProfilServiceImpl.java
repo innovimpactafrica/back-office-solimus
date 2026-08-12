@@ -2,11 +2,13 @@ package com.example.solimus.services.tenant.profil;
 
 import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
 import com.example.solimus.dtos.owner.dashboard.NotificationRowDTO;
+import com.example.solimus.dtos.syndic.settings.ChangePasswordDTO;
 import com.example.solimus.dtos.tenant.profil.TenantProfileDTO;
 import com.example.solimus.entities.Notification;
 import com.example.solimus.entities.Property;
 import com.example.solimus.entities.User;
 import com.example.solimus.enums.UserStatus;
+import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.NotificationRepository;
@@ -18,6 +20,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +35,7 @@ public class TenantProfilServiceImpl implements TenantProfilService {
     private final PropertyRepository propertyRepository;
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     @Transactional(readOnly = true)
@@ -114,6 +118,31 @@ public class TenantProfilServiceImpl implements TenantProfilService {
         currentTenant.setNotificationsEnabled(false);
         userRepository.save(currentTenant);
         log.info("Notifications désactivées pour le locataire : {}", currentTenant.getEmail());
+    }
+
+    // =========================================================================
+    // PARAMÈTRES DU COMPTE
+    // =========================================================================
+
+    @Override
+    @Transactional
+    public void changePassword(ChangePasswordDTO dto) {
+        User currentTenant = getCurrentUser();
+
+        // Vérifier que le mot de passe actuel est correct
+        if (!passwordEncoder.matches(dto.getCurrentPassword(), currentTenant.getPassword())) {
+            throw new BadRequestException("Le mot de passe actuel est incorrect");
+        }
+
+        // Vérifier que confirmPassword correspond à newPassword si fourni
+        if (dto.getConfirmPassword() != null && !dto.getConfirmPassword().equals(dto.getNewPassword())) {
+            throw new BadRequestException("La confirmation du mot de passe ne correspond pas");
+        }
+
+        // Encoder et définir le nouveau mot de passe
+        currentTenant.setPassword(passwordEncoder.encode(dto.getNewPassword()));
+        userRepository.save(currentTenant);
+        log.info("Mot de passe changé pour le locataire : {}", currentTenant.getEmail());
     }
 
     // =========================================================================

@@ -2,13 +2,16 @@ package com.example.solimus.services.owner.profile;
 
 import com.example.solimus.dtos.profile.CoOwnerProfileDTO;
 import com.example.solimus.dtos.profile.UpdateCoOwnerProfileDTO;
+import com.example.solimus.dtos.syndic.settings.ChangePasswordDTO;
 import com.example.solimus.entities.User;
+import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.UserRepository;
 import com.example.solimus.services.minio.MinioService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -20,6 +23,7 @@ public class ProfileServiceImpl implements ProfileService{
 
     private final UserRepository userRepository;
     private final MinioService minioService;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     @Transactional(readOnly = true)
@@ -61,6 +65,27 @@ public class ProfileServiceImpl implements ProfileService{
         log.info("Profil mis à jour pour l'utilisateur {}", currentUser.getEmail());
 
         return getProfile();
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(ChangePasswordDTO dto) {
+        User currentUser = getCurrentUser();
+
+        // Vérifier que le mot de passe actuel est correct
+        if (!passwordEncoder.matches(dto.getCurrentPassword(), currentUser.getPassword())) {
+            throw new BadRequestException("Le mot de passe actuel est incorrect");
+        }
+
+        // Vérifier que confirmPassword correspond à newPassword si fourni
+        if (dto.getConfirmPassword() != null && !dto.getConfirmPassword().equals(dto.getNewPassword())) {
+            throw new BadRequestException("La confirmation du mot de passe ne correspond pas");
+        }
+
+        // Encoder et définir le nouveau mot de passe
+        currentUser.setPassword(passwordEncoder.encode(dto.getNewPassword()));
+        userRepository.save(currentUser);
+        log.info("Mot de passe changé pour le copropriétaire : {}", currentUser.getEmail());
     }
 
     private User getCurrentUser() {

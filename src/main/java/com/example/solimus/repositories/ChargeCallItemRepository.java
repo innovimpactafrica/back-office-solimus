@@ -313,4 +313,11 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
            "AND i.status IN ('PENDING', 'PARTIALLY_PAID') " +
            "AND DATEDIFF(CURRENT_DATE, i.chargeCall.dueDate) > 30")
     long countUnpaidBySyndicId(@Param("syndicId") Long syndicId);
+
+    // Compte les lignes partiellement payées pour un syndic (toutes résidences, peu importe le
+    // retard) — inclus dans le digest quotidien pour informer le syndic des paiements en cours
+    @Query("SELECT COUNT(i) FROM ChargeCallItem i " +
+           "WHERE i.chargeCall.budget.syndic.id = :syndicId " +
+           "AND i.status = 'PARTIALLY_PAID'")
+    long countPartiallyPaidBySyndicId(@Param("syndicId") Long syndicId);
 }
