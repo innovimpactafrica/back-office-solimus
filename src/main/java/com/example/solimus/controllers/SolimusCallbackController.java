@@ -60,6 +60,7 @@ public class SolimusCallbackController {
     private final AdminNotificationPreferenceService adminNotificationPreferenceService;
     private final PropertyRepository propertyRepository;
     private final StatusRecalculationService statusRecalculationService;
+    private final UserRepository userRepository;
 
     // URL de la page "Paramètres" de l'app web Angular (espace syndic uniquement pour l'instant) —
     // destination des paiements self-service (SYR-). Les autres références (mobile, ou web admin
@@ -466,6 +467,9 @@ public class SolimusCallbackController {
                     String temporaryPassword = PasswordGeneratorUtil.generateTemporaryPassword();
                     syndic.setPassword(passwordEncoder.encode(temporaryPassword));
                     syndic.setStatus(UserStatus.ACTIVE);
+                    // Sauvegarde explicite — ne pas se reposer uniquement sur le dirty-checking JPA
+                    // pour un compte utilisateur au statut/mot de passe aussi critique
+                    userRepository.save(syndic);
 
                     subscription.setStatus(SubscriptionStatus.ACTIVE);
                     // Posé une seule fois, ici, et jamais modifié ensuite — même si l'abonnement expire,
