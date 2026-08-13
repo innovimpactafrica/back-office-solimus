@@ -93,7 +93,9 @@ public class AdminWithdrawalRequestController {
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Aucune demande avec cet id",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
-            @ApiResponse(responseCode = "409", description = "Cette demande a déjà été traitée",
+            @ApiResponse(responseCode = "409", description = "Cette demande a déjà été traitée, OU le solde disponible actuel "
+                    + "(retraits COMPLETED déduits, jamais les PENDING) ne couvre plus le montant demandé — peut survenir si "
+                    + "une autre demande concurrente a déjà été validée entre-temps",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
     })
     @PostMapping(value = "/{id}/validate", consumes = "multipart/form-data")

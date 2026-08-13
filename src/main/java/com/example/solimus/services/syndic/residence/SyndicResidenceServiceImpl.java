@@ -18,6 +18,7 @@ import com.example.solimus.security.PlanLimitGuard;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
+import com.example.solimus.services.shared.SyndicTreasuryService;
 import com.example.solimus.utils.PasswordGeneratorUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -58,13 +59,13 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     private final ChargeCallPaymentRepository chargeCallPaymentRepository;
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
     private final SyndicWalletRepository syndicWalletRepository;
-    private final SyndicWithdrawalRequestRepository syndicWithdrawalRequestRepository;
     private final InterventionStatusHistoryRepository interventionStatusHistoryRepository;
     private final ActivityLogRepository activityLogRepository;
     private final BudgetItemRepository budgetItemRepository;
     private final PlanLimitGuard planLimitGuard;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final SyndicTreasuryService syndicTreasuryService;
     private final EmailService emailService;
     private final NotificationService notificationService;
 
@@ -711,13 +712,9 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         // passé dans la caisse, entrées et sorties confondues.
         BigDecimal totalTransactions = calculerSoldeADate(walletId, maintenant);
 
-        // On regarde combien d'argent est déjà "réservé" pour un retrait (demandé ou déjà validé). Cet argent ne doit plus compter comme disponible, même si le virement n'est pas encore parti.
-        BigDecimal totalRetraitsEnCours = (walletId != null)
-                ? syndicWithdrawalRequestRepository.sumPendingAndValidatedByWallet(walletId)
-                : BigDecimal.ZERO;
-
-        // La vraie trésorerie disponible = ce qu'il y a dans la caisse, moins ce qui est déjà réservé pour partir.
-        BigDecimal tresorerieGlobale = totalTransactions.subtract(totalRetraitsEnCours);
+        // Trésorerie disponible = source unique (SyndicTreasuryService), ne soustrait que les
+        // retraits réellement COMPLETED — jamais les PENDING
+        BigDecimal tresorerieGlobale = syndicTreasuryService.getAvailableBalance(walletId, null);
 
 
         // ===== CALCUL DE LA VARIATION (le pourcentage +...% mois précédent) =====
@@ -933,15 +930,15 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     @Override
     @Transactional(readOnly = true)
     public Page<PropertyListItemDTO> getPropertiesPaginatedWithFilters(
-            Long residenceId, String search, Integer floor, PropertyDisplayStatus status, Integer page, Integer size) {
+            Long residenceId, String search, Integer floor, PropertyRentalStatus status, Integer page, Integer size) {
 
         // Vérifie l'appartenance de la résidence au syndic
         Residence residence = getResidenceOrThrow(residenceId);
         verifyResidenceOwnership(residence);
 
-        // Requête réellement paginée : recherche, étage et statut filtrés directement en SQL
-        // (le statut est déjà persisté sur Property.displayStatus, jamais recalculé ici ;
-        // sa validité est garantie par la conversion automatique de Spring sur le paramètre d'URL)
+        // Requête réellement paginée : recherche, étage et statut filtrés directement en SQL — le
+        // statut ici est PropertyRentalStatus (VACANT/RENTED/TO_RENT, calculé sur owner/tenant),
+        // pas Property.displayStatus (MAINTENANCE/UNPAID/LATE...) utilisé ailleurs dans l'app
         Pageable pageable = PageRequest.of(page, size);
         Page<Property> propertiesPage = propertyRepository.findByResidenceIdWithFilters(
                 residenceId, search, floor, status, pageable);
@@ -956,27 +953,46 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         }
 
         // Construit le DTO de chaque lot de la page
-        return propertiesPage.map(property -> PropertyListItemDTO.builder()
-                .id(property.getId())
-                .reference(property.getReference())
-                .propertyType(property.getTypeBien() != null ? property.getTypeBien().getName() : null)
-                .floor(property.getFloor())
-                .owner(property.getOwner() != null
-                        ? PropertyListItemDTO.OwnerInfo.builder()
-                                .fullName(property.getOwner().getFirstName() + " " + property.getOwner().getLastName())
-                                .photoUrl(property.getOwner().getProfilePhotoUrl())
-                                .build()
-                        : null)
-                // Locataire du lot — null si le bien n'est pas loué
-                .tenant(property.getTenant() != null
-                        ? PropertyListItemDTO.OwnerInfo.builder()
-                                .fullName(property.getTenant().getFirstName() + " " + property.getTenant().getLastName())
-                                .photoUrl(property.getTenant().getProfilePhotoUrl())
-                                .build()
-                        : null)
-                .status(property.getDisplayStatus() != null ? property.getDisplayStatus().name() : null)
-                .charge(calculatePropertyCharge(property, chargeCallItemByOwnerId))
-                .build());
+        return propertiesPage.map(property -> {
+            PropertyRentalStatus rentalStatus = computeRentalStatus(property);
+
+            return PropertyListItemDTO.builder()
+                    .id(property.getId())
+                    .reference(property.getReference())
+                    .propertyType(property.getTypeBien() != null ? property.getTypeBien().getName() : null)
+                    .floor(property.getFloor())
+                    .owner(property.getOwner() != null
+                            ? PropertyListItemDTO.OwnerInfo.builder()
+                                    .fullName(property.getOwner().getFirstName() + " " + property.getOwner().getLastName())
+                                    .photoUrl(property.getOwner().getProfilePhotoUrl())
+                                    .build()
+                            : null)
+                    // Locataire du lot — null si le bien n'est pas loué
+                    .tenant(property.getTenant() != null
+                            ? PropertyListItemDTO.OwnerInfo.builder()
+                                    .fullName(property.getTenant().getFirstName() + " " + property.getTenant().getLastName())
+                                    .photoUrl(property.getTenant().getProfilePhotoUrl())
+                                    .build()
+                            : null)
+                    .status(rentalStatus.name())
+                    .charge(calculatePropertyCharge(property, chargeCallItemByOwnerId))
+                    .build();
+        });
+    }
+
+    // Statut de location d'un lot (onglet Appartements) : VACANT si ni propriétaire ni locataire,
+    // RENTED si les deux sont présents, TO_RENT si un propriétaire existe mais pas de locataire
+    private PropertyRentalStatus computeRentalStatus(Property property) {
+        boolean hasOwner = property.getOwner() != null;
+        boolean hasTenant = property.getTenant() != null;
+
+        if (!hasOwner && !hasTenant) {
+            return PropertyRentalStatus.VACANT;
+        }
+        if (hasOwner && hasTenant) {
+            return PropertyRentalStatus.RENTED;
+        }
+        return PropertyRentalStatus.TO_RENT;
     }
 
     // =========================================================================

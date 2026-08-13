@@ -8,6 +8,7 @@ import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.WalletTransactionCategory;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
+import com.example.solimus.services.shared.SyndicTreasuryService;
 import com.example.solimus.utils.PaymentStatusUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -33,11 +34,11 @@ public class FinanceServiceImpl implements FinanceService {
     private final UserRepository userRepository;
     private final SyndicWalletRepository syndicWalletRepository;
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
-    private final SyndicWithdrawalRequestRepository syndicWithdrawalRequestRepository;
     private final ChargeCallPaymentRepository chargeCallPaymentRepository;
     private final ChargeCallItemRepository chargeCallItemRepository;
     private final ChargeCallRepository chargeCallRepository;
     private final PropertyRepository propertyRepository;
+    private final SyndicTreasuryService syndicTreasuryService;
 
     // ============================================================
     // DASHBOARD "FINANCES"
@@ -58,17 +59,13 @@ public class FinanceServiceImpl implements FinanceService {
         SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId()).orElse(null);
         Long walletId = wallet != null ? wallet.getId() : null;
 
-        // Calcule le solde actuel du wallet (somme de toutes les transactions jusqu'à maintenant)
+        // Calcule le solde actuel du wallet (somme de toutes les transactions jusqu'à maintenant) —
+        // utilisé plus bas pour l'évolution vs mois dernier (flux de transactions seuls)
         BigDecimal treasuryBrute = calculerSoldeADate(walletId, LocalDateTime.now());
 
-        // Retraits déjà réservés (PENDING + COMPLETED) : cet argent ne doit plus être disponible
-        BigDecimal retraitsReserves = walletId != null
-                ? syndicWithdrawalRequestRepository.sumPendingAndValidatedByWalletAndResidence(walletId, null)
-                : BigDecimal.ZERO;
-
-        // Trésorerie disponible = transactions - retraits réservés
-        BigDecimal treasuryDisponible = treasuryBrute.subtract(retraitsReserves);
-        dto.setTreasuryGlobal(treasuryDisponible);
+        // Trésorerie disponible = source unique (SyndicTreasuryService), ne soustrait que les retraits
+        // réellement COMPLETED — jamais les PENDING
+        dto.setTreasuryGlobal(syndicTreasuryService.getAvailableBalance(walletId, null));
 
         // Calcule le solde qu'il y avait au début du mois en cours, pour comparer l'évolution
         // (variation calculée uniquement sur les flux de transactions, sans les retraits réservés)
@@ -193,10 +190,9 @@ public class FinanceServiceImpl implements FinanceService {
             LocalDate currentMonthDate = startMonth.plusMonths(i);
             LocalDate endOfMonth = currentMonthDate.plusMonths(1);
 
-            // Calcule le solde à la fin de ce mois : par résidence si fournie, sinon global (wallet)
-            BigDecimal treasury = (residenceId != null)
-                    ? syndicWalletTransactionRepository.sumAllByResidenceId(residenceId, endOfMonth.atStartOfDay())
-                    : calculerSoldeADate(walletId, endOfMonth.atStartOfDay());
+            // Trésorerie disponible à la fin de ce mois (source unique SyndicTreasuryService) — déduit
+            // les retraits COMPLETED traités jusqu'à cette date, cohérent avec la carte KPI du dashboard
+            BigDecimal treasury = syndicTreasuryService.getAvailableBalanceAsOf(walletId, residenceId, endOfMonth.atStartOfDay());
 
             // Additionne tous les ChargeCall créés avant la fin de ce mois (cumul progressif)
             BigDecimal chargeCallsCumulated = allChargeCalls.stream()

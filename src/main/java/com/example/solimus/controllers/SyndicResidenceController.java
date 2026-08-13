@@ -3,7 +3,7 @@ package com.example.solimus.controllers;
 import com.example.solimus.dtos.auth.ErrorResponseDTO;
 import com.example.solimus.dtos.syndic.residence.*;
 import com.example.solimus.dtos.syndic.settings.FacilityTypeDTO;
-import com.example.solimus.enums.PropertyDisplayStatus;
+import com.example.solimus.enums.PropertyRentalStatus;
 import com.example.solimus.enums.ResidenceHealthStatus;
 import com.example.solimus.services.syndic.residence.SyndicResidenceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -495,12 +495,12 @@ public class SyndicResidenceController {
     // ONGLET 2
     // =========================================================================
     @Operation(summary = "Lister les lots d'une résidence avec filtres (onglet Appartements)", tags = {"Syndic - Résidences"},
-            description = "status filtre directement sur Property.displayStatus (déjà persisté) : " +
-                    "MAINTENANCE, UNPAID, LATE, OCCUPIED ou VACANT")
+            description = "status filtre sur la présence propriétaire/locataire (calculé, pas persisté) : " +
+                    "VACANT (ni propriétaire ni locataire), RENTED (les deux), TO_RENT (propriétaire sans locataire)")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Page de lots renvoyée avec succès",
                     content = @Content(schema = @Schema(implementation = PropertyListItemDTO.class))),
-            @ApiResponse(responseCode = "400", description = "Valeur de status invalide (doit être MAINTENANCE, UNPAID, LATE, OCCUPIED ou VACANT)",
+            @ApiResponse(responseCode = "400", description = "Valeur de status invalide (doit être VACANT, RENTED ou TO_RENT)",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
@@ -512,7 +512,7 @@ public class SyndicResidenceController {
             @PathVariable Long residenceId,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Integer floor,
-            @RequestParam(required = false) PropertyDisplayStatus status,
+            @RequestParam(required = false) PropertyRentalStatus status,
             @RequestParam(defaultValue = "0") Integer page,
             @RequestParam(defaultValue = "12") Integer size) {
         return ResponseEntity.ok(residenceService.getPropertiesPaginatedWithFilters(

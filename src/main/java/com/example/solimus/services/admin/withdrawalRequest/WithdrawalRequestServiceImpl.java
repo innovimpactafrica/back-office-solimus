@@ -13,6 +13,7 @@ import com.example.solimus.enums.WithdrawalMode;
 import com.example.solimus.enums.WithdrawalStatus;
 import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ConflictException;
+import com.example.solimus.exceptions.InsufficientBalanceException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.AdminWithdrawalRequestRepository;
 import com.example.solimus.repositories.NotificationRepository;
@@ -27,6 +28,7 @@ import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.notification.NotificationService;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.provider.wallet.WalletBalanceService;
+import com.example.solimus.services.shared.SyndicTreasuryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -61,6 +63,7 @@ public class WithdrawalRequestServiceImpl implements WithdrawalRequestService {
     private final NotificationService notificationService;
     private final EmailService emailService;
     private final MinioService minioService;
+    private final SyndicTreasuryService syndicTreasuryService;
 
     private static final long MAX_RECEIPT_SIZE_BYTES = 5L * 1024 * 1024;
     private static final List<String> ALLOWED_RECEIPT_CONTENT_TYPES =
@@ -199,9 +202,9 @@ public class WithdrawalRequestServiceImpl implements WithdrawalRequestService {
         // Dernier instant du mois précédent, pas le premier instant du mois courant
         LocalDateTime endOfPreviousMonth = startOfMonth.minusNanos(1);
 
-        BigDecimal transactionsActuelles = syndicWalletTransactionRepository.sumTransactionsUpTo(walletId, now);
-        BigDecimal retraitsReserves = syndicWithdrawalRequestRepository.sumPendingAndValidatedByWallet(walletId);
-        BigDecimal currentBalance = transactionsActuelles.subtract(retraitsReserves);
+        // Trésorerie disponible = source unique (SyndicTreasuryService), ne soustrait que les
+        // retraits réellement COMPLETED — jamais les PENDING
+        BigDecimal currentBalance = syndicTreasuryService.getAvailableBalance(walletId, null);
 
         BigDecimal soldeFinMoisPrecedent = syndicWalletTransactionRepository.sumTransactionsUpTo(walletId, endOfPreviousMonth);
         Double evolutionPercentage = calculatePercentage(currentBalance.subtract(soldeFinMoisPrecedent), soldeFinMoisPrecedent);
@@ -360,6 +363,17 @@ public class WithdrawalRequestServiceImpl implements WithdrawalRequestService {
 
             if (request.getStatus() != WithdrawalStatus.PENDING) {
                 throw new ConflictException("Cette demande a déjà été traitée");
+            }
+
+            // Vérifie que le solde actuel (retraits COMPLETED uniquement, même calcul que le dashboard)
+            // couvre bien le montant demandé — seul moment où le blocage se fait, pas à la création de
+            // la demande. Si plusieurs demandes PENDING existent pour le même wallet, valider la première
+            // fait baisser ce solde : la suivante peut alors être bloquée ici, à raison.
+            BigDecimal soldeActuel = syndicTreasuryService.getAvailableBalance(request.getWallet().getId(), null);
+            if (request.getAmount().compareTo(soldeActuel) > 0) {
+                throw new InsufficientBalanceException(
+                        "Solde insuffisant : solde actuel " + soldeActuel + " FCFA, montant demandé "
+                                + request.getAmount() + " FCFA");
             }
 
             request.setStatus(WithdrawalStatus.COMPLETED);

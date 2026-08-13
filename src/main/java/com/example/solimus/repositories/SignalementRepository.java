@@ -2,6 +2,7 @@ package com.example.solimus.repositories;
 
 import com.example.solimus.entities.Signalement;
 import com.example.solimus.enums.SignalementStatus;
+import com.example.solimus.enums.UrgencyLevel;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -72,5 +73,17 @@ public interface SignalementRepository extends JpaRepository<Signalement, Long> 
             @Param("search") String search,
             @Param("status") SignalementStatus status,
             @Param("residenceId") Long residenceId,
+            Pageable pageable);
+
+    // Dernier signalement urgent non résolu pour un syndic (toutes résidences) — pour l'alerte
+    // "Signalement urgent" du tableau de bord. Exclut RESOLVED et CONVERTED_TO_WORK (une fois converti
+    // en travaux, il est déjà couvert par l'alerte "Intervention urgente" sur l'InterventionRequest créée)
+    @Query("SELECT s FROM Signalement s WHERE s.residence.syndic.id = :syndicId " +
+           "AND s.urgencyLevel = :urgency " +
+           "AND s.status NOT IN (com.example.solimus.enums.SignalementStatus.RESOLVED, com.example.solimus.enums.SignalementStatus.CONVERTED_TO_WORK) " +
+           "ORDER BY s.createdAt DESC")
+    List<Signalement> findLatestUrgentBySyndicId(
+            @Param("syndicId") Long syndicId,
+            @Param("urgency") UrgencyLevel urgency,
             Pageable pageable);
 }

@@ -8,6 +8,7 @@ import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.shared.ActivityLogPresenter;
+import com.example.solimus.services.shared.SyndicTreasuryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -31,14 +32,15 @@ public class DasboardServiceImpl implements DashboardService {
     private final PropertyRepository propertyRepository;
     private final SyndicWalletRepository syndicWalletRepository;
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
-    private final SyndicWithdrawalRequestRepository syndicWithdrawalRequestRepository;
     private final ChargeCallRepository chargeCallRepository;
     private final ChargeCallItemRepository chargeCallItemRepository;
     private final InterventionRequestRepository interventionRequestRepository;
     private final MeetingRepository meetingRepository;
     private final ActivityLogRepository activityLogRepository;
     private final ExceptionalCallRepository exceptionalCallRepository;
+    private final SignalementRepository signalementRepository;
     private final ActivityLogPresenter activityLogPresenter;
+    private final SyndicTreasuryService syndicTreasuryService;
 
     // =========================================================================
     // TABLEAU DE BORD PRINCIPAL (KPIs, résidence optionnelle avec repli automatique)
@@ -62,26 +64,15 @@ public class DasboardServiceImpl implements DashboardService {
 
         // --- Trésorerie Totale (globale ou filtrée par résidence) ---
 
-        BigDecimal treasuryBrute;
-        BigDecimal retraitsReserves;
+        // Solde brut, utilisé plus bas pour l'évolution vs mois dernier (flux de transactions seuls)
+        BigDecimal treasuryBrute = (resolvedResidenceId != null)
+                ? syndicWalletTransactionRepository.sumAllByResidenceId(resolvedResidenceId, LocalDateTime.now())
+                : calculerSoldeADate(walletId, LocalDateTime.now());
 
-        if (resolvedResidenceId != null) {
-            // Mode filtré par résidence
-            treasuryBrute = syndicWalletTransactionRepository.sumAllByResidenceId(resolvedResidenceId, LocalDateTime.now());
-            retraitsReserves = (walletId != null)
-                    ? syndicWithdrawalRequestRepository.sumPendingAndValidatedByWalletAndResidence(walletId, resolvedResidenceId)
-                    : BigDecimal.ZERO;
-        } else {
-            // Mode global (toutes résidences)
-            treasuryBrute = calculerSoldeADate(walletId, LocalDateTime.now());
-            retraitsReserves = (walletId != null)
-                    ? syndicWithdrawalRequestRepository.sumPendingAndValidatedByWalletAndResidence(walletId, null)
-                    : BigDecimal.ZERO;
-        }
-
-        // Trésorerie disponible = transactions - retraits réservés
-        BigDecimal treasuryDisponible = treasuryBrute.subtract(retraitsReserves);
-        dto.setTreasuryTotal(treasuryDisponible);
+        // Trésorerie disponible = source unique (SyndicTreasuryService), ne soustrait que les retraits
+        // réellement COMPLETED — jamais les PENDING (voir WithdrawalRequestServiceImpl pour le blocage
+        // au moment de la validation, plus à la création de la demande)
+        dto.setTreasuryTotal(syndicTreasuryService.getAvailableBalance(walletId, resolvedResidenceId));
 
         // Calcule la date de fin du mois précédent (= début du mois actuel)
         LocalDateTime finMoisPrecedent = LocalDate.now().withDayOfMonth(1).atStartOfDay();
@@ -126,7 +117,9 @@ public class DasboardServiceImpl implements DashboardService {
         // bonne formule (le calcul actuel — charges créées le mois dernier × paidAmount d'aujourd'hui —
         // donne un chiffre qui bouge rétroactivement, à revoir) // à définir
         dto.setRecoveryRateEvolutionPercent(null);
-        dto.setUnpaidEvolutionPercent(calculateUnpaidEvolution(resolvedResidenceId, currentSyndic.getId()));
+        // Même souci que recoveryRateEvolutionPercent ci-dessus (charges créées le mois dernier ×
+        // remainingAmount d'aujourd'hui, chiffre pas stable dans le temps) — désactivée en attendant // à définir
+        dto.setUnpaidEvolutionPercent(null);
 
         // --- Résidences Gérées (TOUJOURS global syndic, indépendant de la résidence sélectionnée) ---
 
@@ -262,6 +255,22 @@ public class DasboardServiceImpl implements DashboardService {
             alerts.add(alert);
         }
 
+        // --- Signalement urgent (le dernier déclaré, non résolu) ---
+
+        // Récupère le dernier signalement urgent non résolu déclaré pour ce syndic
+        List<Signalement> urgentSignalements = signalementRepository
+                .findLatestUrgentBySyndicId(currentSyndic.getId(), UrgencyLevel.URGENT, PageRequest.of(0, 1));
+
+        if (!urgentSignalements.isEmpty()) {
+            Signalement signalement = urgentSignalements.get(0);
+            AlertDTO alert = new AlertDTO();
+            alert.setType("SIGNALEMENT");
+            alert.setTitle("Signalement urgent");
+            alert.setDescription(signalement.getResidence().getName() + " - " + signalement.getTitle());
+            alert.setOccurredAt(signalement.getCreatedAt());
+            alerts.add(alert);
+        }
+
         // Trie toutes les alertes par date décroissante, les plus récentes en premier
         alerts.sort((a, b) -> b.getOccurredAt().compareTo(a.getOccurredAt()));
 
@@ -386,41 +395,6 @@ public class DasboardServiceImpl implements DashboardService {
                 .setScale(2, RoundingMode.HALF_UP);
     }
 
-
-    // Calcule l'évolution du montant impayé entre le mois dernier complet et le mois d'avant
-    private Double calculateUnpaidEvolution(Long residenceId, Long syndicId) {
-
-        // Calcule les bornes de dates du mois dernier complet et du mois d'avant
-        LocalDate now = LocalDate.now();
-        LocalDate startLastMonth = now.withDayOfMonth(1).minusMonths(1);
-        LocalDate endLastMonth = now.withDayOfMonth(1);
-        LocalDate startMonthBefore = startLastMonth.minusMonths(1);
-
-        // Calcule le montant impayé pour chacune des deux périodes
-        BigDecimal lastMonthUnpaid = getUnpaidForPeriod(residenceId, syndicId, startLastMonth, endLastMonth);
-        BigDecimal monthBeforeUnpaid = getUnpaidForPeriod(residenceId, syndicId, startMonthBefore, startLastMonth);
-
-        // Retourne la variation en pourcentage entre les deux périodes
-        return calculerVariation(lastMonthUnpaid, monthBeforeUnpaid).doubleValue();
-    }
-
-    // Calcule le montant impayé sur une période donnée
-    private BigDecimal getUnpaidForPeriod(Long residenceId, Long syndicId, LocalDate start, LocalDate end) {
-        // Récupère les items de la résidence ou du syndic créés dans cette période précise
-        List<ChargeCallItem> items;
-        if (residenceId != null) {
-            items = chargeCallItemRepository
-                    .findByChargeCallBudgetResidenceIdAndChargeCallCreatedAtBetween(
-                            residenceId, start.atStartOfDay(), end.atStartOfDay());
-        } else {
-            items = chargeCallItemRepository
-                    .findByChargeCallBudgetSyndicIdAndChargeCallCreatedAtBetween(
-                            syndicId, start.atStartOfDay(), end.atStartOfDay());
-        }
-
-        // Additionne les soldes restants de tous ces items
-        return items.stream().map(item -> item.getRemainingAmount()).reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
 
     // Construit une ligne du tableau "Incidents Récents"
     private RecentIncidentDTO buildRecentIncidentDto(InterventionRequest intervention) {

@@ -34,7 +34,8 @@ public class PropertyListItemDTO {
     // Locataire du lot (null si le bien n'est pas loué) — réutilise OwnerInfo
     private OwnerInfo tenant;
 
-    // Statut composite calculé à la volée (MAINTENANCE, OVERDUE, OCCUPIED, VACANT)
+    // Statut de location calculé à la volée — code brut de l'enum : VACANT, RENTED, TO_RENT
+    // (pas traduit — c'est au Front de mapper vers son propre libellé/icône)
     private String status;
 
     // Charge calculée pour ce lot (répartition théorique par lot)

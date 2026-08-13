@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 //DTO d'une alerte affichée sur le tableau de bord
 @Data
 public class AlertDTO {
-    private String type; // UNPAID, MEETING
+    private String type; // MEETING, UNPAID, INTERVENTION, SIGNALEMENT
     private String title; // "Impayé Important", "AG à préparer"
     private String description; // "Résidence Montparnasse - 12 500 000 FCFA"
     private LocalDateTime occurredAt; // Date brute, utilisée pour le tri (pas affichée telle quelle)

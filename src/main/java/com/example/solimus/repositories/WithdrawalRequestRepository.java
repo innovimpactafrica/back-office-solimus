@@ -57,8 +57,10 @@ public interface WithdrawalRequestRepository extends JpaRepository<ProviderWithd
     // ============================================================
 
     // Somme des retraits PENDING ou COMPLETED d'un prestataire — montant "réservé", à soustraire du
-    // total encaissé pour obtenir le solde disponible (même principe que
-    // SyndicWithdrawalRequestRepository.sumPendingAndValidatedByWallet)
+    // total encaissé pour obtenir le solde disponible.
+    // ATTENTION : ce principe (réserver les PENDING) a été volontairement abandonné côté syndic —
+    // voir SyndicTreasuryService.getAvailableBalance, qui ne déduit plus que les retraits COMPLETED —
+    // ce même correctif n'a pas encore été appliqué ici côté prestataire, à faire si besoin
     @Query("SELECT COALESCE(SUM(w.amount), 0) FROM ProviderWithdrawalRequest w " +
            "WHERE w.provider.id = :providerId " +
            "AND w.status IN (com.example.solimus.enums.WithdrawalStatus.PENDING, com.example.solimus.enums.WithdrawalStatus.COMPLETED)")

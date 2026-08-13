@@ -17,25 +17,6 @@ import java.util.List;
 @Repository
 public interface SyndicWithdrawalRequestRepository extends JpaRepository<SyndicWithdrawalRequest, Long> {
 
-    /**
-     * Somme des retraits en cours (PENDING) ou validés (COMPLETED) pour un wallet
-     * Utilisé pour calculer la trésorerie disponible réelle (transactions - retraits en attente)
-     */
-    @Query("SELECT COALESCE(SUM(r.amount), 0) FROM SyndicWithdrawalRequest r " +
-           "WHERE r.wallet.id = :walletId AND r.status IN (com.example.solimus.enums.WithdrawalStatus.PENDING, com.example.solimus.enums.WithdrawalStatus.COMPLETED)")
-    BigDecimal sumPendingAndValidatedByWallet(@Param("walletId") Long walletId);
-
-    /**
-     * Somme des retraits en cours (PENDING) ou validés (COMPLETED) pour un wallet,
-     * optionnellement filtré par résidence.
-     * Utilisé pour calculer la trésorerie disponible réelle (transactions - retraits réservés)
-     */
-    @Query("SELECT COALESCE(SUM(r.amount), 0) FROM SyndicWithdrawalRequest r " +
-           "WHERE r.wallet.id = :walletId " +
-           "AND r.status IN (com.example.solimus.enums.WithdrawalStatus.PENDING, com.example.solimus.enums.WithdrawalStatus.COMPLETED) " +
-           "AND (:residenceId IS NULL OR r.residence.id = :residenceId)")
-    BigDecimal sumPendingAndValidatedByWalletAndResidence(@Param("walletId") Long walletId,
-                                                          @Param("residenceId") Long residenceId);
 
     /** Somme des retraits COMPLETED (validés) liés à un poste budgétaire précis.
       Pas besoin de filtrer par résidence/année en plus : chaque BudgetItem appartient
@@ -72,6 +53,16 @@ public interface SyndicWithdrawalRequestRepository extends JpaRepository<SyndicW
            "WHERE w.wallet.id = :walletId AND w.status = 'COMPLETED' " +
            "AND (:residenceId IS NULL OR w.residence.id = :residenceId)")
     BigDecimal sumCompletedAmount(@Param("walletId") Long walletId, @Param("residenceId") Long residenceId);
+
+    // Somme des retraits COMPLETED traités jusqu'à une date précise (pas "depuis toujours") — pour
+    // calculer la trésorerie disponible à une date passée (ex: un point du graphique mensuel)
+    @Query("SELECT COALESCE(SUM(w.amount), 0) FROM SyndicWithdrawalRequest w " +
+           "WHERE w.wallet.id = :walletId AND w.status = 'COMPLETED' " +
+           "AND w.processedAt <= :asOfDate " +
+           "AND (:residenceId IS NULL OR w.residence.id = :residenceId)")
+    BigDecimal sumCompletedAmountUpTo(@Param("walletId") Long walletId,
+                                       @Param("asOfDate") LocalDateTime asOfDate,
+                                       @Param("residenceId") Long residenceId);
 
     // Historique paginé des demandes de retrait, triées par date décroissante, optionnellement filtré par résidence
     @Query("SELECT w FROM SyndicWithdrawalRequest w " +

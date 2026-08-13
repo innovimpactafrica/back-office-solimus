@@ -1,7 +1,7 @@
 package com.example.solimus.repositories;
 
 import com.example.solimus.entities.Property;
-import com.example.solimus.enums.PropertyDisplayStatus;
+import com.example.solimus.enums.PropertyRentalStatus;
 import com.example.solimus.enums.PropertyStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -90,19 +90,23 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
     // Lister les biens d'une résidence avec filtres (paginé)
     // search : reference du lot OU nom du owner, LIKE insensible casse
     // floor : exact match
-    // status : filtre sur le displayStatus déjà persisté (calculé et recalculé côté service, jamais ici)
+    // status : filtre calculé à la volée sur la présence propriétaire/locataire (VACANT/RENTED/TO_RENT),
+    // pas le displayStatus (MAINTENANCE/UNPAID/LATE...) utilisé ailleurs dans l'app
     @Query("SELECT p FROM Property p LEFT JOIN p.owner o WHERE p.residence.id = :residenceId " +
            "AND (:search IS NULL OR LOWER(p.reference) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR (o IS NOT NULL AND LOWER(o.firstName) LIKE LOWER(CONCAT('%', :search, '%'))) " +
            "OR (o IS NOT NULL AND LOWER(o.lastName) LIKE LOWER(CONCAT('%', :search, '%')))) " +
            "AND (:floor IS NULL OR p.floor = :floor) " +
-           "AND (:status IS NULL OR p.displayStatus = :status) " +
-           "ORDER BY p.reference ASC")
+           "AND (:status IS NULL " +
+           "     OR (:status = com.example.solimus.enums.PropertyRentalStatus.VACANT AND p.owner IS NULL AND p.tenant IS NULL) " +
+           "     OR (:status = com.example.solimus.enums.PropertyRentalStatus.RENTED AND p.owner IS NOT NULL AND p.tenant IS NOT NULL) " +
+           "     OR (:status = com.example.solimus.enums.PropertyRentalStatus.TO_RENT AND p.owner IS NOT NULL AND p.tenant IS NULL)) " +
+           "ORDER BY p.createdAt DESC")
     Page<Property> findByResidenceIdWithFilters(
             @Param("residenceId") Long residenceId,
             @Param("search") String search,
             @Param("floor") Integer floor,
-            @Param("status") PropertyDisplayStatus status,
+            @Param("status") PropertyRentalStatus status,
             Pageable pageable);
 
     // Trouver la date de première acquisition d'un copropriétaire chez un syndic

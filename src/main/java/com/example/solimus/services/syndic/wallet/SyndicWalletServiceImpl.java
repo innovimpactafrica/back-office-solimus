@@ -9,6 +9,7 @@ import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
+import com.example.solimus.services.shared.SyndicTreasuryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -41,6 +42,7 @@ public class SyndicWalletServiceImpl implements WalletService {
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
     private final PropertyRepository propertyRepository;
     private final BudgetRepository budgetRepository;
+    private final SyndicTreasuryService syndicTreasuryService;
 
     @Override
     @Transactional
@@ -141,18 +143,9 @@ public class SyndicWalletServiceImpl implements WalletService {
                     return syndicWalletRepository.save(newWallet);
                 });
 
-        LocalDateTime now = LocalDateTime.now();
-
-        // Solde brut = somme de toutes les transactions du wallet jusqu'à maintenant
-        BigDecimal totalTransactions = calculerSoldeADate(wallet.getId(), now);
-
-        // Retraits déjà réservés (demandés PENDING ou validés COMPLETED) : cet argent
-        // ne doit plus être considéré comme disponible
-        BigDecimal retraitsReserves = syndicWithdrawalRequestRepository
-                .sumPendingAndValidatedByWalletAndResidence(wallet.getId(), null);
-
-        // Solde réellement disponible = transactions - retraits réservés
-        BigDecimal soldeDisponible = totalTransactions.subtract(retraitsReserves);
+        // Trésorerie disponible = source unique (SyndicTreasuryService), ne soustrait que les
+        // retraits réellement COMPLETED — jamais les PENDING
+        BigDecimal soldeDisponible = syndicTreasuryService.getAvailableBalance(wallet.getId(), null);
 
         return WalletBalanceDTO.builder()
                 .soldeDisponible(soldeDisponible)
@@ -197,17 +190,15 @@ public class SyndicWalletServiceImpl implements WalletService {
         LocalDateTime finMoisPrecedent = now.withDayOfMonth(1).minusNanos(1);
 
         // Solde actuel (brut) : si un filtre résidence est actif, on utilise la méthode filtrée par résidence,
-        // sinon on utilise la méthode globale déjà existante (calculerSoldeADate)
+        // sinon on utilise la méthode globale déjà existante (calculerSoldeADate) — réutilisé plus bas
+        // pour l'évolution vs mois dernier (flux de transactions seuls)
         BigDecimal transactionsActuelles = (residenceId != null)
                 ? syndicWalletTransactionRepository.sumAllByResidenceId(residenceId, now)
                 : calculerSoldeADate(wallet.getId(), now);
 
-        // Retraits déjà réservés (PENDING + COMPLETED), optionnellement filtrés par résidence
-        BigDecimal retraitsReserves = syndicWithdrawalRequestRepository
-                .sumPendingAndValidatedByWalletAndResidence(wallet.getId(), residenceId);
-
-        // Solde réellement disponible = transactions - retraits réservés
-        BigDecimal soldeActuel = transactionsActuelles.subtract(retraitsReserves);
+        // Trésorerie disponible = source unique (SyndicTreasuryService), ne soustrait que les
+        // retraits réellement COMPLETED — jamais les PENDING
+        BigDecimal soldeActuel = syndicTreasuryService.getAvailableBalance(wallet.getId(), residenceId);
 
         // Même logique de transactions, mais calculée à la date de fin du mois précédent, pour la variation
         BigDecimal soldePrecedent = (residenceId != null)
@@ -572,19 +563,9 @@ public class SyndicWalletServiceImpl implements WalletService {
                     return syndicWalletRepository.save(newWallet);
                 });
 
-        LocalDateTime now = LocalDateTime.now();
-
-        // Transactions brutes (charges reçues + travaux payés)
-        BigDecimal transactionsActuelles = (residenceId != null)
-                ? syndicWalletTransactionRepository.sumAllByResidenceId(residenceId, now)
-                : calculerSoldeADate(wallet.getId(), now);
-
-        // Retraits réservés (PENDING + COMPLETED) : déjà engagés, plus disponibles
-        BigDecimal retraitsReserves = syndicWithdrawalRequestRepository
-                .sumPendingAndValidatedByWalletAndResidence(wallet.getId(), residenceId);
-
-        // Solde réellement disponible = transactions - retraits réservés
-        BigDecimal soldeDisponible = transactionsActuelles.subtract(retraitsReserves);
+        // Trésorerie disponible = source unique (SyndicTreasuryService), ne soustrait que les
+        // retraits réellement COMPLETED — jamais les PENDING
+        BigDecimal soldeDisponible = syndicTreasuryService.getAvailableBalance(wallet.getId(), residenceId);
 
         // Somme de toutes les demandes de retrait encore en attente de validation
         BigDecimal enAttente = syndicWithdrawalRequestRepository.sumPendingAmount(wallet.getId(), residenceId);

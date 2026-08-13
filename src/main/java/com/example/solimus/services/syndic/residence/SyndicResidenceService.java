@@ -2,7 +2,7 @@ package com.example.solimus.services.syndic.residence;
 
 import com.example.solimus.dtos.syndic.residence.*;
 import com.example.solimus.dtos.syndic.settings.FacilityTypeDTO;
-import com.example.solimus.enums.PropertyDisplayStatus;
+import com.example.solimus.enums.PropertyRentalStatus;
 import com.example.solimus.enums.ResidenceHealthStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -32,7 +32,7 @@ public interface SyndicResidenceService {
 
     // Étape 2 — Lister les lots d'une résidence avec filtres (paginé, pour onglet Appartements)
     Page<PropertyListItemDTO> getPropertiesPaginatedWithFilters(
-            Long residenceId, String search, Integer floor, PropertyDisplayStatus status, Integer page, Integer size);
+            Long residenceId, String search, Integer floor, PropertyRentalStatus status, Integer page, Integer size);
 
     // Étape 2 — Ajouter un locataire à un lot déjà attribué à un propriétaire
     PropertyDTO addTenant(Long residenceId, Long propertyId, String firstName, String lastName,
