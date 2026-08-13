@@ -80,12 +80,14 @@ public class SolimusCallbackController {
     @Operation(summary = "Page de retour navigateur/WebView après un paiement réussi côté TouchPay",
             description = "Toujours 200 (page HTML passive). Ne confirme le paiement en base (best-effort) que si "
                     + "payment_status ou errorCode vaut explicitement 200 dans l'URL de retour — la source de vérité "
-                    + "reste le webhook POST /callback.")
+                    + "reste le webhook POST /callback. Le chemin \"/payment-success\" est volontaire : la WebView "
+                    + "mobile intercepte la navigation dès qu'elle reconnaît ce texte dans l'URL, avant même que "
+                    + "cette page HTML ne s'affiche — pas de deeplink solimus:// nécessaire.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Page HTML de redirection renvoyée",
                     content = @Content(mediaType = "text/html"))
     })
-    @GetMapping(value = "/redirect-success", produces = "text/html")
+    @GetMapping(value = "/payment-success", produces = "text/html")
     public String redirectPaymentSuccess(
             @RequestParam("num_command") String reference,
             @RequestParam(value = "payment_status", required = false) String paymentStatus,
@@ -99,7 +101,7 @@ public class SolimusCallbackController {
         }
 
         // SYR- vient du self-service syndic sur le web : on renvoie vers l'app Angular, pas vers le
-        // lien profond mobile (qui échouerait silencieusement dans un navigateur)
+        // mobile (l'app web n'a pas de WebView interceptant l'URL)
         if (reference.startsWith("SYR-")) {
             String webRedirect = syndicWebAppRedirectUrl + "?paymentStatus=success&ref=" + reference;
             return "<html><body>" +
@@ -107,25 +109,24 @@ public class SolimusCallbackController {
                     "</body></html>";
         }
 
+        // Mobile (CPY-/ECP-/SYN-/...) : la WebView a déjà intercepté cette URL (contient "payment-success")
+        // avant ce rendu — cette page ne sert que de filet de sécurité si jamais elle s'affiche quand même
         return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
-                "<h1 style=\"color:#2a538b;\">Paiement en cours de vérification</h1>" +
-                "<p>Nous vérifions votre paiement, cela peut prendre quelques instants.</p>" +
-                "<p><a href=\"solimus://payment/pending?ref=" + reference + "\">Retourner à l'application</a></p>" +
-                "<script>" +
-                "  window.location.href = 'solimus://payment/pending?ref=" + reference + "';" +
-                "</script>" +
+                "<h1 style=\"color:#0f8a3b;\">Paiement réussi</h1>" +
+                "<p>Référence : " + reference + "</p>" +
                 "</body></html>";
     }
 
     @Operation(summary = "Page de retour navigateur/WebView après un paiement échoué côté TouchPay",
             description = "Toujours 200 (page HTML passive). Ne marque l'échec en base (best-effort) que si "
                     + "payment_status ou errorCode est explicitement présent et différent de 200 dans l'URL de retour "
-                    + "— la source de vérité reste le webhook POST /callback.")
+                    + "— la source de vérité reste le webhook POST /callback. Le chemin \"/payment-failed\" est "
+                    + "volontaire, voir /payment-success pour l'explication.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Page HTML de redirection renvoyée",
                     content = @Content(mediaType = "text/html"))
     })
-    @GetMapping(value = "/redirect-failed", produces = "text/html")
+    @GetMapping(value = "/payment-failed", produces = "text/html")
     public String redirectPaymentFailed(
             @RequestParam("num_command") String reference,
             @RequestParam(value = "payment_status", required = false) String paymentStatus,
@@ -147,13 +148,10 @@ public class SolimusCallbackController {
                     "</body></html>";
         }
 
+        // Mobile : la WebView a déjà intercepté cette URL (contient "payment-failed") avant ce rendu
         return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
-                "<h1 style=\"color:#2a538b;\">Paiement en cours de vérification</h1>" +
-                "<p>Nous vérifions votre paiement, cela peut prendre quelques instants.</p>" +
-                "<p><a href=\"solimus://payment/pending?ref=" + reference + "\">Retourner à l'application</a></p>" +
-                "<script>" +
-                "  window.location.href = 'solimus://payment/pending?ref=" + reference + "';" +
-                "</script>" +
+                "<h1 style=\"color:#c62828;\">Paiement non confirmé</h1>" +
+                "<p>Référence : " + reference + "</p>" +
                 "</body></html>";
     }
 

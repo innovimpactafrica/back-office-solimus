@@ -122,8 +122,10 @@ public class DasboardServiceImpl implements DashboardService {
         dto.setRecoveryRate(recoveryRate);
         dto.setUnpaidAmount(totalUnpaid);
 
-        // Calcule les évolutions vs le mois dernier (comparaison mois complet vs mois complet précédent)
-        dto.setRecoveryRateEvolutionPercent(calculateRecoveryRateEvolution(resolvedResidenceId, currentSyndic.getId()));
+        // Évolution du taux de recouvrement : pas calculée pour l'instant, en attente de décider la
+        // bonne formule (le calcul actuel — charges créées le mois dernier × paidAmount d'aujourd'hui —
+        // donne un chiffre qui bouge rétroactivement, à revoir) // à définir
+        dto.setRecoveryRateEvolutionPercent(null);
         dto.setUnpaidEvolutionPercent(calculateUnpaidEvolution(resolvedResidenceId, currentSyndic.getId()));
 
         // --- Résidences Gérées (TOUJOURS global syndic, indépendant de la résidence sélectionnée) ---
@@ -384,46 +386,6 @@ public class DasboardServiceImpl implements DashboardService {
                 .setScale(2, RoundingMode.HALF_UP);
     }
 
-    // Calcule l'évolution du taux de recouvrement entre le mois dernier complet et le mois d'avant
-    private Double calculateRecoveryRateEvolution(Long residenceId, Long syndicId) {
-
-        // Calcule les bornes de dates du mois dernier complet
-        LocalDate now = LocalDate.now();
-        LocalDate startLastMonth = now.withDayOfMonth(1).minusMonths(1);
-        LocalDate endLastMonth = now.withDayOfMonth(1);
-        // Calcule les bornes de dates du mois d'avant (encore plus tôt)
-        LocalDate startMonthBefore = startLastMonth.minusMonths(1);
-
-        // Calcule le taux de recouvrement pour chacune des deux périodes
-        double lastMonthRate = getRecoveryRateForPeriod(residenceId, syndicId, startLastMonth, endLastMonth);
-        double monthBeforeRate = getRecoveryRateForPeriod(residenceId, syndicId, startMonthBefore, startLastMonth);
-
-        // Retourne la différence en points de pourcentage
-        return lastMonthRate - monthBeforeRate;
-    }
-
-    // Calcule le taux de recouvrement sur une période donnée
-    private double getRecoveryRateForPeriod(Long residenceId, Long syndicId, LocalDate start, LocalDate end) {
-        // Récupère les items de la résidence ou du syndic créés dans cette période précise
-        List<ChargeCallItem> items;
-        if (residenceId != null) {
-            items = chargeCallItemRepository
-                    .findByChargeCallBudgetResidenceIdAndChargeCallCreatedAtBetween(
-                            residenceId, start.atStartOfDay(), end.atStartOfDay());
-        } else {
-            items = chargeCallItemRepository
-                    .findByChargeCallBudgetSyndicIdAndChargeCallCreatedAtBetween(
-                            syndicId, start.atStartOfDay(), end.atStartOfDay());
-        }
-
-        // Additionne les montants dus et payés sur cette période
-        BigDecimal due = items.stream().map(ChargeCallItem::getQuotePart).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal paid = items.stream().map(ChargeCallItem::getPaidAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        // Évite la division par zéro, sinon calcule le pourcentage payé
-        if (due.compareTo(BigDecimal.ZERO) == 0) return 0.0;
-        return paid.divide(due, 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100)).doubleValue();
-    }
 
     // Calcule l'évolution du montant impayé entre le mois dernier complet et le mois d'avant
     private Double calculateUnpaidEvolution(Long residenceId, Long syndicId) {
