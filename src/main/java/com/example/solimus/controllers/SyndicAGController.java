@@ -6,7 +6,6 @@ import com.example.solimus.dtos.syndic.residence.ResidenceCardDTO;
 import com.example.solimus.enums.MeetingDocumentType;
 import com.example.solimus.enums.MeetingStatus;
 import com.example.solimus.enums.MeetingType;
-import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.services.syndic.residence.SyndicResidenceService;
 import com.example.solimus.services.syndic.syndicAG.SyndicMeetingService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -60,7 +59,7 @@ public class SyndicAGController {
     @Operation(summary = "Créer une nouvelle assemblée générale")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Réunion créée avec succès"),
-            @ApiResponse(responseCode = "400", description = "Date de convocation dans le passé, ou date de réunion dans le passé",
+            @ApiResponse(responseCode = "400", description = "Date de réunion dans le passé",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à créer une réunion pour cette résidence",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
@@ -88,11 +87,8 @@ public class SyndicAGController {
             @RequestParam(required = false) LocalTime endTime,
             @Parameter(description = "Lieu de la réunion", example = "Salle des fêtes")
             @RequestParam(required = false) String location,
-            @Parameter(
-                description = "Date d'envoi de la convocation",
-                schema = @Schema(type = "string", format = "date", example = "2026-12-20")
-            )
-            @RequestParam(required = false) LocalDate convocationSentDate,
+            @Parameter(description = "Objectif de quorum en pourcentage", example = "50.00")
+            @RequestParam java.math.BigDecimal quorumObjectivePercentage,
             @Parameter(description = "Message de la convocation", example = "Convocation à l'assemblée générale")
             @RequestParam(required = false) String convocationMessage,
             @Parameter(description = "Envoyer par email", example = "true")
@@ -120,11 +116,6 @@ public class SyndicAGController {
                     objectMapper.getTypeFactory().constructCollectionType(List.class, AgendaItemDTO.class));
         }
 
-        // Validation : la date de convocation ne doit pas être dans le passé
-        if (convocationSentDate != null && convocationSentDate.isBefore(java.time.LocalDate.now())) {
-            throw new BadRequestException("La date d'envoi de la convocation ne peut pas être dans le passé");
-        }
-
         // Construire le DTO
         CreateMeetingDTO dto = CreateMeetingDTO.builder()
                 .residenceId(residenceId)
@@ -134,7 +125,7 @@ public class SyndicAGController {
                 .startTime(startTime)
                 .endTime(endTime)
                 .location(location)
-                .convocationSentDate(convocationSentDate)
+                .quorumObjectivePercentage(quorumObjectivePercentage)
                 .convocationMessage(convocationMessage)
                 .sendByEmail(sendByEmail)
                 .sendByPlatformNotification(sendByPlatformNotification)
@@ -200,23 +191,6 @@ public class SyndicAGController {
             @RequestParam(defaultValue = "0") Integer page,
             @RequestParam(defaultValue = "10") Integer size) {
         return ResponseEntity.ok(syndicMeetingService.getMeetingParticipants(meetingId,page,size));
-    }
-
-    @PostMapping("/{meetingId}/participants/{participantId}/sign")
-    @Operation(summary = "Signer la présence d'un participant (Onglet 2)")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Présence mise à jour avec succès"),
-            @ApiResponse(responseCode = "400", description = "Ce participant n'appartient pas à cette réunion",
-                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Participant ou présence introuvable",
-                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
-    })
-    public ResponseEntity<String> signPresence(
-            @PathVariable Long meetingId,
-            @PathVariable Long participantId,
-            @RequestBody SignPresenceDTO dto) {
-        syndicMeetingService.signPresence(meetingId, participantId, dto);
-        return ResponseEntity.ok("Présence mise à jour avec succès");
     }
 
     @GetMapping("/{meetingId}/agenda")

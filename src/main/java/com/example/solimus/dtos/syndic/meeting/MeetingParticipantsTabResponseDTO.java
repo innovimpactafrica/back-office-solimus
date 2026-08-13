@@ -11,9 +11,10 @@ import java.util.List;
 @AllArgsConstructor
 public class MeetingParticipantsTabResponseDTO {
 
-    private long totalCount;    // "Tous "
-    private long presentCount;  // "Présent "
-    private long absentCount;   // "Absent "
+    private long totalCount;         // "Tous "
+    private long presentCount;       // "Présents "
+    private long procurationsCount;  // "Procurations "
+    private long absentCount;        // "Absents "
 
     private List<MeetingParticipantRowDTO> participants;
     private long currentPage;

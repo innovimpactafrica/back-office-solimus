@@ -2,6 +2,7 @@ package com.example.solimus.services.owner.meeting;
 
 import com.example.solimus.dtos.owner.meeting.*;
 import com.example.solimus.entities.*;
+import com.example.solimus.enums.AttendanceType;
 import com.example.solimus.enums.MeetingType;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
@@ -223,6 +224,43 @@ public class OwnerMeetingServiceImpl implements OwnerMeetingService {
         return OwnerMeetingCalendarDTO.builder()
                 .meetingsByDate(meetingsByDate)
                 .build();
+    }
+
+    // =========================================================================
+    // Déclaration de présence par le copropriétaire lui-même (remplace signPresence syndic)
+    // =========================================================================
+    @Override
+    @Transactional
+    public void markPresent(Long meetingId) {
+        MeetingParticipant participant = getParticipantForCurrentOwner(meetingId);
+
+        MeetingPresence presence = meetingPresenceRepository.findByMeetingParticipantId(participant.getId());
+        presence.setAttendanceType(AttendanceType.PRESENT);
+        presence.setMandataireName(null);
+        meetingPresenceRepository.save(presence);
+    }
+
+    @Override
+    @Transactional
+    public void giveProcuration(Long meetingId, GiveProcurationDTO dto) {
+        MeetingParticipant participant = getParticipantForCurrentOwner(meetingId);
+
+        MeetingPresence presence = meetingPresenceRepository.findByMeetingParticipantId(participant.getId());
+        presence.setAttendanceType(AttendanceType.PROXY);
+        presence.setMandataireName(dto.getMandataireName());
+        meetingPresenceRepository.save(presence);
+    }
+
+    // Vérifie que le copropriétaire connecté est bien convoqué à cette réunion, et retourne sa convocation
+    private MeetingParticipant getParticipantForCurrentOwner(Long meetingId) {
+        User currentUser = getCurrentUser();
+
+        if (!meetingRepository.existsById(meetingId)) {
+            throw new ResourceNotFoundException("Réunion introuvable");
+        }
+
+        return meetingParticipantRepository.findByMeetingIdAndUserId(meetingId, currentUser.getId())
+                .orElseThrow(() -> new ForbiddenException("Vous n'êtes pas convoqué à cette réunion"));
     }
 
     // =========================================================================

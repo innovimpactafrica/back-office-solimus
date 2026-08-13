@@ -63,4 +63,36 @@ public class OwnerMeetingController {
             @RequestParam int month) {
         return ResponseEntity.ok(ownerMeetingService.getOwnerMeetingsCalendar(year, month));
     }
+
+    @PostMapping("/{meetingId}/mark-present")
+    @Operation(summary = "Déclarer sa présence physique à une réunion (auto-déclaratif)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Présence enregistrée avec succès"),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas convoqué à cette réunion",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Réunion introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    public ResponseEntity<Void> markPresent(@PathVariable Long meetingId) {
+        ownerMeetingService.markPresent(meetingId);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{meetingId}/procuration")
+    @Operation(summary = "Donner procuration à un mandataire pour une réunion (auto-déclaratif)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Procuration enregistrée avec succès"),
+            @ApiResponse(responseCode = "400", description = "Le nom du mandataire est obligatoire",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas convoqué à cette réunion",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Réunion introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    public ResponseEntity<Void> giveProcuration(
+            @PathVariable Long meetingId,
+            @jakarta.validation.Valid @RequestBody GiveProcurationDTO dto) {
+        ownerMeetingService.giveProcuration(meetingId, dto);
+        return ResponseEntity.ok().build();
+    }
 }

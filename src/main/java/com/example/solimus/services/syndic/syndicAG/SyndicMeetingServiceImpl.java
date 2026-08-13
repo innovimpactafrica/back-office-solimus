@@ -25,6 +25,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -48,6 +49,7 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
     private final MeetingDocumentRepository meetingDocumentRepository;
     private final BudgetRepository budgetRepository;
     private final NotificationService notificationService;
+    private final MeetingConvocationSenderService convocationSenderService;
 
     // =========================================================================
     // RAPPEL AG (réunions programmées pour le lendemain)
@@ -89,6 +91,38 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         }
     }
 
+    /**
+     * Rappel unique aux copropriétaires convoqués, 2 jours avant la réunion. Ne part qu'une seule
+     * fois par réunion, gardé par reminderSentAt — remplace l'ancien envoi de convocation planifié
+     * à une date choisie (voir createMeeting/publishMeeting, qui envoient la convocation immédiatement).
+     */
+    @Scheduled(cron = "0 0 8 * * *") // tous les jours à 8h
+    @Transactional
+    public void sendMeetingReminders() {
+
+        LocalDate targetDate = LocalDate.now().plusDays(2);
+        List<Meeting> meetings = meetingRepository.findByMeetingDateAndReminderSentAtIsNull(targetDate);
+
+        for (Meeting meeting : meetings) {
+
+            // Notifie chaque convoqué (copropriétaire) — rappel simple, 2 jours avant
+            List<MeetingParticipant> participants = meetingParticipantRepository
+                    .findByMeetingId(meeting.getId(), Pageable.unpaged()).getContent();
+
+            for (MeetingParticipant participant : participants) {
+                notificationService.sendPush(participant.getUser().getId(), "Rappel — Assemblée Générale",
+                        meeting.getTitle() + " a lieu dans 2 jours.");
+            }
+
+            meeting.setReminderSentAt(LocalDateTime.now());
+            meetingRepository.save(meeting);
+        }
+
+        if (!meetings.isEmpty()) {
+            log.info("{} réunion(s) rappelée(s) aux copropriétaires (J-2)", meetings.size());
+        }
+    }
+
     // =========================================================================
     // Créer Réunion
     // =========================================================================
@@ -123,11 +157,11 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         meeting.setStartTime(dto.getStartTime());
         meeting.setEndTime(dto.getEndTime());
         meeting.setLocation(dto.getLocation());
-        meeting.setConvocationSentDate(dto.getConvocationSentDate());
         meeting.setConvocationMessage(dto.getConvocationMessage());
         meeting.setSendByEmail(dto.getSendByEmail() != null ? dto.getSendByEmail() : false);
         meeting.setSendByPlatformNotification(dto.getSendByPlatformNotification() != null ? dto.getSendByPlatformNotification() : false);
         meeting.setSendBySms(dto.getSendBySms() != null ? dto.getSendBySms() : false);
+        meeting.setQuorumObjectivePercentage(dto.getQuorumObjectivePercentage());
 
         // Construit l'ordre du jour à partir de la liste de points (titre + description optionnelle)
         List<MeetingAgendaItem> agendaItems = new ArrayList<>();
@@ -199,6 +233,10 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
             // Génère la photo figée des participants (copropriétaires + tantièmes)
             // directement si l'AG est publiée dès sa création
             generateParticipants(savedMeeting);
+
+            // Envoie la convocation immédiatement — plus de date de convocation choisie à l'avance
+            convocationSenderService.sendConvocation(savedMeeting);
+            savedMeeting.setConvocationSent(true);
 
         } else {
             // Reste en brouillon : pas de participants générés tant que le syndic n'a pas publié
@@ -289,24 +327,25 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
                     // Sinon, on récupère le nombre total de convoqués
                     long totalParticipants = stats != null ? stats.getTotalParticipants() : 0L;
 
-                   // Même logique : nombre de personnes ayant signé leur présence
-                    long presentCount = stats != null ? stats.getSignedCount() : 0L;
+                    // Présents physiques et procurations, comptés séparément
+                    long presentCount = stats != null ? stats.getPresentCount() : 0L;
+                    long procurationsCount = stats != null ? stats.getProcurationsCount() : 0L;
 
-                    // Taux de participation pondere par tantieme, 0% par defaut (si pas de stats du tout)
+                    // Taux de participation pondere par tantieme (présents + procurations), 0% par defaut
                     double participationRate = 0.0;
 
                     // On ne calcule le pourcentage que si :
                     // 1. on a bien trouvé des stats pour cette reunion (stats != null)
                     // 2. le tantième total n'est pas vide (getTotalTantieme() != null)
-                    // 3. le tantième signé n'est pas vide (getSignedTantieme() != null)
+                    // 3. le tantième participant n'est pas vide (getParticipatingTantieme() != null)
                     // 4. le tantième total est supérieur a 0 (protection contre une division par zero)
                     if (stats != null && stats.getTotalTantieme() != null
-                            && stats.getSignedTantieme() != null
+                            && stats.getParticipatingTantieme() != null
                             && stats.getTotalTantieme().compareTo(BigDecimal.ZERO) > 0) {
 
-                        // Formule : (tantieme des presents / tantieme total) x 100
+                        // Formule : (tantieme présents+procurations / tantieme total) x 100
                         // .doubleValue() convertit le BigDecimal en nombre à virgule classique pour la division
-                        participationRate = stats.getSignedTantieme().doubleValue()
+                        participationRate = stats.getParticipatingTantieme().doubleValue()
                                 / stats.getTotalTantieme().doubleValue() * 100.0;
                     }
 
@@ -324,8 +363,11 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
                             .startTime(meeting.getStartTime())
                             .location(meeting.getLocation())
                             .presentCount(presentCount)
+                            .procurationsCount(procurationsCount)
                             .totalParticipants(totalParticipants)
                             .participationRate(participationRate)
+                            .quorumStatus(calculateQuorumStatus(participationRate, meeting.getQuorumObjectivePercentage()))
+                            .quorumObjectivePercentage(meeting.getQuorumObjectivePercentage())
                             .resolutionsCount(countResolutions(meeting.getAgendaItems()))
                             .documentsCount(documentsCount)
                             .build();
@@ -373,16 +415,17 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
                 meetingRepository.findParticipationStats(List.of(meetingId));
         MeetingParticipationStats stats = statsList.isEmpty() ? null : statsList.get(0);
 
-        // Nombre de convoqués et de présents, 0 par défaut si aucune stat trouvée
+        // Nombre de convoqués, présents et procurations, 0 par défaut si aucune stat trouvée
         int convoquesCount = stats != null ? stats.getTotalParticipants().intValue() : 0;
-        int presentCount = stats != null ? stats.getSignedCount().intValue() : 0;
+        int presentCount = stats != null ? stats.getPresentCount().intValue() : 0;
+        int procurationsCount = stats != null ? stats.getProcurationsCount().intValue() : 0;
 
-        // Taux de participation pondéré par tantième, réutilisé pour le bloc Quorum
+        // Taux de participation pondéré par tantième (présents + procurations), réutilisé pour le bloc Quorum
         double participationRate = 0.0;
         if (stats != null && stats.getTotalTantieme() != null
-                && stats.getSignedTantieme() != null
+                && stats.getParticipatingTantieme() != null
                 && stats.getTotalTantieme().compareTo(BigDecimal.ZERO) > 0) {
-            participationRate = stats.getSignedTantieme().doubleValue()
+            participationRate = stats.getParticipatingTantieme().doubleValue()
                     / stats.getTotalTantieme().doubleValue() * 100.0;
         }
 
@@ -424,7 +467,10 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
                 // KPIs du haut
                 .convoquesCount(convoquesCount)
                 .presentCount(presentCount)
+                .procurationsCount(procurationsCount)
                 .participationRate(participationRate)
+                .quorumStatus(calculateQuorumStatus(participationRate, meeting.getQuorumObjectivePercentage()))
+                .quorumObjectivePercentage(meeting.getQuorumObjectivePercentage())
                 .resolvedResolutionsCount(resolvedResolutionsCount)
                 .totalResolutionsCount(totalResolutionsCount)
 
@@ -434,7 +480,8 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
 
                 // Bloc "Quorum" (mêmes valeurs que les KPIs, réaffichées dans un bloc à part)
                 .quorumPresentCount(presentCount)
-                .quorumAbsentCount(convoquesCount - presentCount)
+                .quorumProcurationsCount(procurationsCount)
+                .quorumAbsentCount(convoquesCount - presentCount - procurationsCount)
 
                 // Badges des onglets
                 .participantsTabCount(convoquesCount)
@@ -479,6 +526,11 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         // Génère la photo figée des participants (copropriétaires + tantièmes) au moment de la publication
         generateParticipants(meeting);
 
+        // Envoie la convocation immédiatement — plus de date de convocation choisie à l'avance
+        convocationSenderService.sendConvocation(meeting);
+        meeting.setConvocationSent(true);
+        meetingRepository.save(meeting);
+
         // Trace l'événement dans l'historique de la résidence
         ActivityLog activityLog = ActivityLog.builder()
                 .residence(meeting.getResidence())
@@ -493,7 +545,9 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
     }
 
     // =========================================================================
-    // Liste des participants d'une réunion (onglet Participants de la modale)
+    // Liste des participants d'une réunion (onglet Participants de la modale) — la signature de
+    // présence par le syndic a été retirée (voir OwnerMeetingServiceImpl.markPresent/giveProcuration) :
+    // cette méthode ne fait plus que LIRE l'attendanceType déclaré par chaque copropriétaire
     // =========================================================================
     @Override
     @Transactional(readOnly = true)
@@ -502,70 +556,49 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         Pageable pageable = PageRequest.of(page, size);
 
         // Récupère tous les participants de cette réunion
-        Page<MeetingParticipant> participants = meetingParticipantRepository.findByMeetingId(meetingId,pageable);
+        Page<MeetingParticipant> participants = meetingParticipantRepository.findByMeetingId(meetingId, pageable);
 
         List<MeetingParticipantRowDTO> rows = new ArrayList<>();
-        long presentCount = 0;
 
         // Construit chaque ligne du tableau
         for (MeetingParticipant participant : participants) {
 
-            // Récupère la présence liée à ce participant
-            MeetingPresence presence = meetingPresenceRepository
-                    .findByMeetingParticipantId(participant.getId());
+            MeetingPresence presence = meetingPresenceRepository.findByMeetingParticipantId(participant.getId());
 
-            boolean hasSigned = presence != null && Boolean.TRUE.equals(presence.getHasSigned());
-            if (hasSigned) {
-                presentCount++;
-            }
+            AttendanceType attendanceType = presence != null ? presence.getAttendanceType() : AttendanceType.ABSENT;
+            String presenceLabel = switch (attendanceType) {
+                case PRESENT -> "Présent";
+                case PROXY -> "Procuration";
+                case ABSENT -> "Absent";
+            };
 
             MeetingParticipantRowDTO row = MeetingParticipantRowDTO.builder()
                     .participantId(participant.getId())
                     .fullName(participant.getUser().getFirstName() + " " + participant.getUser().getLastName())
                     .apartments(participant.getApartments())
                     .tantieme(presence != null ? presence.getTantiemeSnapshot() : BigDecimal.ZERO)
-                    .hasSigned(hasSigned)
-                    .presenceLabel(hasSigned ? "Présent" : "Absent")
+                    .attendanceType(attendanceType)
+                    .presenceLabel(presenceLabel)
+                    .mandataireName(presence != null ? presence.getMandataireName() : null)
                     .build();
 
             rows.add(row);
         }
 
-        // Construit la réponse avec les compteurs pour les pills de filtre
+        // Construit la réponse avec les compteurs pour les 3 pills de filtre (Tous/Présents/Procurations/Absents)
+        long presentCount = meetingParticipantRepository.countByMeetingIdAndAttendanceType(meetingId, AttendanceType.PRESENT);
+        long procurationsCount = meetingParticipantRepository.countByMeetingIdAndAttendanceType(meetingId, AttendanceType.PROXY);
+        long absentCount = meetingParticipantRepository.countByMeetingIdAndAttendanceType(meetingId, AttendanceType.ABSENT);
+
         return MeetingParticipantsTabResponseDTO.builder()
                 .totalCount(participants.getTotalElements())
-                .presentCount(meetingParticipantRepository.countSignedByMeetingId(meetingId))
-                .absentCount(participants.getTotalElements() - meetingParticipantRepository.countSignedByMeetingId(meetingId))
+                .presentCount(presentCount)
+                .procurationsCount(procurationsCount)
+                .absentCount(absentCount)
                 .participants(rows)
                 .currentPage(participants.getNumber())
                 .totalPages(participants.getTotalPages())
                 .build();
-    }
-
-    // =========================================================================
-    // Marque un participant comme présent/absent (signature de la feuille de présence)
-    // =========================================================================
-    @Override
-    @Transactional
-    public void signPresence(Long meetingId, Long participantId, SignPresenceDTO dto) {
-
-        // Vérifie que le participant appartient bien à cette réunion
-        MeetingParticipant participant = meetingParticipantRepository.findById(participantId)
-                .orElseThrow(() -> new ResourceNotFoundException("Participant introuvable"));
-
-        if (!participant.getMeeting().getId().equals(meetingId)) {
-            throw new BadRequestException("Ce participant n'appartient pas à cette réunion");
-        }
-
-        MeetingPresence presence = meetingPresenceRepository
-                .findByMeetingParticipantId(participantId);
-
-        if (presence == null) {
-            throw new ResourceNotFoundException("Présence introuvable pour ce participant");
-        }
-
-        presence.setHasSigned(dto.isHasSigned());
-        meetingPresenceRepository.save(presence);
     }
 
     // =========================================================================
@@ -846,7 +879,7 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
             MeetingPresence presence = new MeetingPresence();
             presence.setMeetingParticipant(savedParticipant);
             presence.setTantiemeSnapshot(aggregate.totalTantieme); // fige le tantième au moment de la publication
-            presence.setHasSigned(false); // personne n'a encore signé, l'AG n'a pas encore eu lieu
+            // attendanceType reste à son défaut ABSENT — personne ne s'est encore déclaré, l'AG n'a pas encore eu lieu
             meetingPresenceRepository.save(presence);
         }
     }
@@ -902,6 +935,17 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Syndic non trouvé"));
+    }
+
+    // Compare le taux de participation réel à l'objectif de quorum fixé par le syndic — seule
+    // méthode de calcul du quorum, réutilisée par le listing et le détail d'une AG
+    private QuorumStatus calculateQuorumStatus(double participationRate, BigDecimal quorumObjective) {
+        if (quorumObjective == null) {
+            return null;
+        }
+        return participationRate >= quorumObjective.doubleValue()
+                ? QuorumStatus.REACHED
+                : QuorumStatus.NOT_REACHED;
     }
 
     // Compte les points marqués comme "nécessitant une résolution", peu importe leur statut
@@ -1182,18 +1226,18 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         // Nombre de convoqués : 0 par défaut si aucune stat trouvée
         long convoquesCount = stats != null ? stats.getTotalParticipants() : 0;
 
-        // Nombre de présents (ayant signé) : 0 par défaut si aucune stat trouvée
-        long participantsCount = stats != null ? stats.getSignedCount() : 0;
+        // Nombre de présents + procurations (participants au sens quorum) : 0 par défaut si aucune stat trouvée
+        long participantsCount = stats != null ? stats.getPresentCount() + stats.getProcurationsCount() : 0;
 
-        // Taux de participation pondéré par tantième, 0% par défaut
+        // Taux de participation pondéré par tantième (présents + procurations), 0% par défaut
         double quorumPercentage = 0.0;
 
         // On ne calcule le pourcentage que si on a bien des stats ET un tantième total valide (> 0),
         // pour éviter une division par zéro
         if (stats != null && stats.getTotalTantieme() != null
-                && stats.getSignedTantieme() != null
+                && stats.getParticipatingTantieme() != null
                 && stats.getTotalTantieme().compareTo(BigDecimal.ZERO) > 0) {
-            quorumPercentage = stats.getSignedTantieme().doubleValue()
+            quorumPercentage = stats.getParticipatingTantieme().doubleValue()
                     / stats.getTotalTantieme().doubleValue() * 100.0;
         }
 

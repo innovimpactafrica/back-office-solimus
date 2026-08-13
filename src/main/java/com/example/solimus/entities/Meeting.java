@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.LocalDateTime;
@@ -49,8 +50,6 @@ public class Meeting {
 
     private String location;
 
-    private LocalDate convocationSentDate;
-
     @Column(columnDefinition = "TEXT")
     private String convocationMessage;
 
@@ -58,9 +57,21 @@ public class Meeting {
     private Boolean sendByPlatformNotification = false;
     private Boolean sendBySms = false;
 
-    // Passe à true une fois la convocation réellement envoyée par le job planifié
+    // Passe à true dès que la convocation est envoyée — maintenant déclenché directement à la
+    // publication de l'AG (plus de date de convocation choisie ni de job planifié pour ça)
     @Column(name = "convocation_sent", nullable = false)
     private Boolean convocationSent = false;
+
+    // Empêche de renvoyer le rappel automatique (J-2 avant meetingDate) une deuxième fois
+    @Column(name = "reminder_sent_at")
+    private LocalDateTime reminderSentAt;
+
+    /**
+     * Pourcentage de tantième que le syndic vise à atteindre pour valider le quorum de cette
+     * réunion. Comparé à participationRate pour déterminer REACHED/NOT_REACHED.
+     */
+    @Column(name = "quorum_objective_percentage", precision = 5, scale = 2)
+    private BigDecimal quorumObjectivePercentage;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "residence_id", nullable = false)

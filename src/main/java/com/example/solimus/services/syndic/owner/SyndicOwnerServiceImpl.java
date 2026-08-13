@@ -160,7 +160,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                     participant.getMeeting().getId());
             for (MeetingPresence presence : presences) {
                 if (presence.getMeetingParticipant().getId().equals(participant.getId())) {
-                    if (Boolean.TRUE.equals(presence.getHasSigned())) {
+                    if (presence.getAttendanceType() != AttendanceType.ABSENT) {
                         presentOrProxyMeetings++;
                     }
                     break;
@@ -197,7 +197,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
 
             BigDecimal sumTantiemePresentOrRepresented = BigDecimal.ZERO;
             for (MeetingPresence presence : allPresences) {
-                if (Boolean.TRUE.equals(presence.getHasSigned())) {
+                if (presence.getAttendanceType() != AttendanceType.ABSENT) {
                     if (presence.getTantiemeSnapshot() != null) {
                         sumTantiemePresentOrRepresented = sumTantiemePresentOrRepresented.add(presence.getTantiemeSnapshot());
                     }
@@ -219,11 +219,11 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                         .doubleValue();
             }
 
-            // Trouver la présence de ce copropriétaire
+            // Trouver la présence de ce copropriétaire (compte Présent ET Procuration comme "signé")
             Boolean hasSigned = null;
             for (MeetingPresence presence : allPresences) {
                 if (presence.getMeetingParticipant().getId().equals(participant.getId())) {
-                    hasSigned = presence.getHasSigned();
+                    hasSigned = presence.getAttendanceType() != AttendanceType.ABSENT;
                     break;
                 }
             }

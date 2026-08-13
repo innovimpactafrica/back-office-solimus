@@ -21,8 +21,6 @@ public interface SyndicMeetingService {
 
     MeetingParticipantsTabResponseDTO getMeetingParticipants(Long meetingId, int page, int size);
 
-    void signPresence(Long meetingId, Long participantId, SignPresenceDTO dto);
-
     AgendaItemsTabResponseDTO getAgendaItems(Long meetingId);
 
     ResolutionsTabResponseDTO getResolutions(Long meetingId);

@@ -7,17 +7,20 @@ public class MeetingParticipationStats {
 
     private Long meetingId;
     private Long totalParticipants;
-    private Long signedCount;
+    private Long presentCount;         // uniquement AttendanceType.PRESENT
+    private Long procurationsCount;    // uniquement AttendanceType.PROXY
     private BigDecimal totalTantieme;
-    private BigDecimal signedTantieme;
+    private BigDecimal participatingTantieme; // tantième des PRESENT + PROXY (compte pour le quorum)
 
-    public MeetingParticipationStats(Long meetingId, Long totalParticipants, Long signedCount,
-                                     BigDecimal totalTantieme, BigDecimal signedTantieme) {
+    public MeetingParticipationStats(Long meetingId, Long totalParticipants, Long presentCount,
+                                      Long procurationsCount, BigDecimal totalTantieme,
+                                      BigDecimal participatingTantieme) {
         this.meetingId = meetingId;
         this.totalParticipants = totalParticipants;
-        this.signedCount = signedCount;
+        this.presentCount = presentCount;
+        this.procurationsCount = procurationsCount;
         this.totalTantieme = totalTantieme;
-        this.signedTantieme = signedTantieme;
+        this.participatingTantieme = participatingTantieme;
     }
 
     public MeetingParticipationStats() {
@@ -31,15 +34,19 @@ public class MeetingParticipationStats {
         return totalParticipants;
     }
 
-    public Long getSignedCount() {
-        return signedCount;
+    public Long getPresentCount() {
+        return presentCount;
+    }
+
+    public Long getProcurationsCount() {
+        return procurationsCount;
     }
 
     public BigDecimal getTotalTantieme() {
         return totalTantieme;
     }
 
-    public BigDecimal getSignedTantieme() {
-        return signedTantieme;
+    public BigDecimal getParticipatingTantieme() {
+        return participatingTantieme;
     }
 }

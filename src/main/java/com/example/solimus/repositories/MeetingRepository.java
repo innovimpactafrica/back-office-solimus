@@ -106,12 +106,15 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
     long countByResidence_Syndic_IdAndStatusIn(Long syndicId, List<MeetingStatus> statuses);
 
     // ===== STATS DE PARTICIPATION PAR REUNION (une seule requête pour toute la page) =====
+    // participatingTantieme (utilisé pour le quorum) somme les tantièmes des PRESENT ET des PROXY
+    // (procuration) — pas seulement les présents physiques
     @Query("SELECT new com.example.solimus.repositories.meeting.MeetingParticipationStats(" +
             "mp.meetingParticipant.meeting.id, " +
             "COUNT(mp), " +
-            "SUM(CASE WHEN mp.hasSigned = true THEN 1 ELSE 0 END), " +
+            "SUM(CASE WHEN mp.attendanceType = com.example.solimus.enums.AttendanceType.PRESENT THEN 1 ELSE 0 END), " +
+            "SUM(CASE WHEN mp.attendanceType = com.example.solimus.enums.AttendanceType.PROXY THEN 1 ELSE 0 END), " +
             "SUM(mp.tantiemeSnapshot), " +
-            "SUM(CASE WHEN mp.hasSigned = true THEN mp.tantiemeSnapshot END)) " +
+            "SUM(CASE WHEN mp.attendanceType <> com.example.solimus.enums.AttendanceType.ABSENT THEN mp.tantiemeSnapshot END)) " +
             "FROM MeetingPresence mp " +
             "WHERE mp.meetingParticipant.meeting.id IN :meetingIds " +
             "GROUP BY mp.meetingParticipant.meeting.id")
@@ -126,15 +129,12 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
            "GROUP BY d.meeting.id")
     List<MeetingDocumentCount> countDocumentsByMeetingIds(@Param("meetingIds") List<Long> meetingIds);
 
-    // Réunions dont la date de convocation est atteinte et pas encore envoyée
-    @Query("SELECT m FROM Meeting m " +
-           "WHERE m.status = 'UPCOMING' " +
-           "AND m.convocationSent = false " +
-           "AND m.convocationSentDate <= :today")
-    List<Meeting> findMeetingsWithPendingConvocation(@Param("today") LocalDate today);
-
     // Réunions programmées (UPCOMING) à cette date précise — utilisé par le job de rappel AG syndic
     List<Meeting> findByMeetingDateAndStatus(LocalDate meetingDate, MeetingStatus status);
+
+    // Réunions dont la date est dans exactement N jours et dont le rappel copropriétaires (J-2)
+    // n'a pas encore été envoyé — évite tout renvoi en double
+    List<Meeting> findByMeetingDateAndReminderSentAtIsNull(LocalDate meetingDate);
 
     // Réunions ou ce copropriétaire est convoqué, filtrées sur UPCOMING uniquement
     @Query("SELECT DISTINCT mp.meeting FROM MeetingParticipant mp " +

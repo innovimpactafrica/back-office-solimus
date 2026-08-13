@@ -8,6 +8,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -38,14 +39,16 @@ public class CreateMeetingDTO {
 
     private String location;
 
-    private LocalDate convocationSentDate;
-
     @NotBlank(message = "Le message de convocation est obligatoire")
     private String convocationMessage;
 
     private Boolean sendByEmail;
     private Boolean sendByPlatformNotification;
     private Boolean sendBySms;
+
+    // Objectif de quorum (% de tantième) que le syndic vise pour cette AG
+    @NotNull(message = "L'objectif de quorum est obligatoire")
+    private BigDecimal quorumObjectivePercentage;
 
     // Ordre du jour — liste de points avec titre et description optionnelle
     private List<AgendaItemDTO> agendaItems;

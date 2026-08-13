@@ -1,5 +1,6 @@
 package com.example.solimus.entities;
 
+import com.example.solimus.enums.AttendanceType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -9,7 +10,7 @@ import java.math.BigDecimal;
 
 /**
  * PRÉSENCE À UNE AG
- * Une ligne par copropriétaire par AG. Pas de notion de vote ni de représentation en V1.
+ * Une ligne par copropriétaire par AG. Pas de notion de vote en V1.
  */
 @Entity
 @Table(name = "meeting_presences")
@@ -36,8 +37,14 @@ public class MeetingPresence {
     private BigDecimal tantiemeSnapshot;
 
     /**
-     * Signature électronique de présence.
+     * Présent / Procuration / Absent — déclaré par le copropriétaire lui-même (remplace
+     * l'ancienne signature de présence par le syndic).
      */
-    @Column(name = "has_signed")
-    private Boolean hasSigned = false;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "attendance_type", nullable = false)
+    private AttendanceType attendanceType = AttendanceType.ABSENT;
+
+    // Nom du mandataire — rempli uniquement si attendanceType = PROXY
+    @Column(name = "mandataire_name")
+    private String mandataireName;
 }
