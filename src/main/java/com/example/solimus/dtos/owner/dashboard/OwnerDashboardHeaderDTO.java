@@ -13,4 +13,5 @@ public class OwnerDashboardHeaderDTO {
     private String firstName;
     private String photoUrl;
     private long unreadNotificationsCount;
+    private String residencePhotoUrl;
 }

@@ -62,6 +62,7 @@ public class TenantAccueilServiceImpl implements TenantAccueilService {
                 .firstName(currentTenant.getFirstName())
                 .propertyReference(property.getReference())
                 .residenceName(property.getResidence().getName())
+                .residencePhotoUrl(property.getResidence().getPhotoUrl())
                 .bailActif(true) // toujours vrai tant que ce compte a accès à ce dashboard
                 .pendingReportsCount(pending)
                 .inProgressReportsCount(inProgress)

@@ -20,6 +20,8 @@ public class TenantDashboardDTO {
 
     private String residenceName; // "Résidence Les Acacias"
 
+    private String residencePhotoUrl; // Photo principale de la résidence
+
     private boolean bailActif; // true tant que property.tenant = ce locataire
 
     private int pendingReportsCount;

@@ -90,10 +90,16 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
 
         long unreadCount = notificationRepository.countByUserAndReadFalse(currentUser);
 
+        // Récupère la photo de la résidence du premier bien du copropriétaire (si existant)
+        String residencePhotoUrl = propertyRepository.findFirstByOwnerId(currentUser.getId())
+                .map(p -> p.getResidence().getPhotoUrl())
+                .orElse(null);
+
         return OwnerDashboardHeaderDTO.builder()
                 .firstName(currentUser.getFirstName())
                 .photoUrl(currentUser.getProfilePhotoUrl())
                 .unreadNotificationsCount(unreadCount)
+                .residencePhotoUrl(residencePhotoUrl)
                 .build();
     }
 
