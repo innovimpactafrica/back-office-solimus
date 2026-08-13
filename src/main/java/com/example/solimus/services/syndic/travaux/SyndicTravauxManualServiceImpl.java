@@ -17,6 +17,7 @@ import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.InterventionRequestRepository;
 import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -36,6 +37,7 @@ public class SyndicTravauxManualServiceImpl implements SyndicTravauxManualServic
     private final UserRepository userRepository;
     private final InterventionRequestRepository interventionRequestRepository;
     private final NotificationService notificationService;
+    private final EmailService emailService;
 
     // Statuts considérés comme "ouverts" (tout sauf clôturé/annulé) — même définition que le dashboard existant
     private static final List<InterventionStatus> OPEN_STATUSES = List.of(
@@ -243,13 +245,28 @@ public class SyndicTravauxManualServiceImpl implements SyndicTravauxManualServic
         request.getComments().add(comment);
     }
 
-    // Notifie le(s) demandeur(s) — copropriétaire et/ou locataire, selon qui est renseigné
+    // Notifie le(s) demandeur(s) — copropriétaire et/ou locataire, selon qui est renseigné —
+    // en push (si activé) + email (toujours), à chaque changement de statut du flux manuel
     private void notifyRequesters(InterventionRequest request, String message) {
-        if (request.getOwner() != null && request.getOwner().isNotificationsEnabled()) {
-            notificationService.sendPush(request.getOwner().getId(), "Mise à jour de votre demande", message);
+        String title = "Mise à jour de votre demande";
+        if (request.getOwner() != null) {
+            notifyUser(request.getOwner(), title, message);
         }
-        if (request.getTenant() != null && request.getTenant().isNotificationsEnabled()) {
-            notificationService.sendPush(request.getTenant().getId(), "Mise à jour de votre demande", message);
+        if (request.getTenant() != null) {
+            notifyUser(request.getTenant(), title, message);
+        }
+    }
+
+    // Envoie une notification push (si activée) + un email (toujours) à un utilisateur donné,
+    // sans jamais bloquer l'appelant en cas d'échec d'envoi
+    private void notifyUser(User user, String title, String message) {
+        try {
+            if (user.isNotificationsEnabled()) {
+                notificationService.sendPush(user.getId(), title, message);
+            }
+            emailService.sendEmail(user.getEmail(), title, message);
+        } catch (Exception e) {
+            System.err.println("Erreur envoi notification travaux à " + user.getEmail() + ": " + e.getMessage());
         }
     }
 

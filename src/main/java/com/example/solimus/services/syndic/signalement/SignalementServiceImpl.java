@@ -8,6 +8,7 @@ import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
+import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.notification.NotificationService;
 import com.example.solimus.services.shared.StatusRecalculationService;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class SignalementServiceImpl implements SignalementService {
     private final InterventionRequestRepository interventionRequestRepository;
     private final StatusRecalculationService statusRecalculationService;
     private final NotificationService notificationService;
+    private final EmailService emailService;
 
     // =========================================================================
     // DASHBOARD
@@ -150,18 +152,9 @@ public class SignalementServiceImpl implements SignalementService {
 
         signalementRepository.save(signalement);
 
-        // Notifie le copropriétaire que son signalement a été résolu (non-bloquant)
-        try {
-            if (signalement.getOwner().isNotificationsEnabled()) {
-                notificationService.sendPush(
-                        signalement.getOwner().getId(),
-                        "Signalement résolu",
-                        signalement.getTitle() + " a été traité par le syndic"
-                );
-            }
-        } catch (Exception e) {
-            System.err.println("Erreur envoi notification résolution signalement: " + e.getMessage());
-        }
+        // Notifie le copropriétaire (et le locataire si c'est lui qui a déclaré), push + email
+        notifyOwnerAndTenant(signalement, "Signalement résolu",
+                signalement.getTitle() + " a été traité par le syndic");
     }
 
     // =========================================================================
@@ -211,9 +204,18 @@ public class SignalementServiceImpl implements SignalementService {
         request.setLocationType(signalement.getLocationType());
         request.setManagementMode(InterventionManagementMode.SYNDIC);
 
+        // Reporte systématiquement le copropriétaire et le locataire d'origine sur l'intervention,
+        // pour qu'ils puissent tous les deux la suivre sur leur propre écran "Mes travaux"
+        // (findByOwnerWithFiltersAndResidence / findByTenantWithFilters filtrent strictement sur ces champs)
+        request.setOwner(signalement.getOwner());
+        request.setTenant(signalement.getTenant());
+
         if (signalement.getLocationType() == IncidentLocationType.APPARTEMENT) {
             request.setProperty(signalement.getProperty());
-            request.setOwner(signalement.getProperty() != null ? signalement.getProperty().getOwner() : signalement.getOwner());
+            // Privilégie le propriétaire actuel du bien s'il a changé depuis la création du signalement
+            if (signalement.getProperty() != null && signalement.getProperty().getOwner() != null) {
+                request.setOwner(signalement.getProperty().getOwner());
+            }
         } else {
             request.setCommonFacility(signalement.getCommonFacility());
         }
@@ -230,18 +232,9 @@ public class SignalementServiceImpl implements SignalementService {
 
         signalementRepository.save(signalement);
 
-        // Notifie le copropriétaire (non-bloquant)
-        try {
-            if (signalement.getOwner().isNotificationsEnabled()) {
-                notificationService.sendPush(
-                        signalement.getOwner().getId(),
-                        "Signalement transformé en travaux",
-                        signalement.getTitle() + " nécessite une intervention"
-                );
-            }
-        } catch (Exception e) {
-            System.err.println("Erreur envoi notification transformation signalement: " + e.getMessage());
-        }
+        // Notifie le copropriétaire (et le locataire si c'est lui qui a déclaré), push + email
+        notifyOwnerAndTenant(signalement, "Signalement transformé en travaux",
+                signalement.getTitle() + " nécessite une intervention");
 
         return savedIntervention.getId();
     }
@@ -249,6 +242,28 @@ public class SignalementServiceImpl implements SignalementService {
     // =========================================================================
     // UTILITAIRES ET MAPPERS
     // =========================================================================
+
+    // Notifie le copropriétaire (toujours) et le locataire (uniquement s'il est à l'origine du
+    // signalement — Signalement.tenant), en push + email pour chacun, de façon non-bloquante
+    private void notifyOwnerAndTenant(Signalement signalement, String title, String message) {
+        notifyUser(signalement.getOwner(), title, message);
+        if (signalement.getTenant() != null) {
+            notifyUser(signalement.getTenant(), title, message);
+        }
+    }
+
+    // Envoie une notification push (si activée) + un email (toujours) à un utilisateur donné,
+    // sans jamais bloquer l'appelant en cas d'échec d'envoi
+    private void notifyUser(User user, String title, String message) {
+        try {
+            if (user.isNotificationsEnabled()) {
+                notificationService.sendPush(user.getId(), title, message);
+            }
+            emailService.sendEmail(user.getEmail(), title, message);
+        } catch (Exception e) {
+            System.err.println("Erreur envoi notification signalement à " + user.getEmail() + ": " + e.getMessage());
+        }
+    }
 
     // Récupère l'utilisateur actuellement authentifié via le SecurityContext
     private User getCurrentUser() {
