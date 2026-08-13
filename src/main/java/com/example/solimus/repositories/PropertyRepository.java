@@ -97,16 +97,16 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
            "OR (o IS NOT NULL AND LOWER(o.firstName) LIKE LOWER(CONCAT('%', :search, '%'))) " +
            "OR (o IS NOT NULL AND LOWER(o.lastName) LIKE LOWER(CONCAT('%', :search, '%')))) " +
            "AND (:floor IS NULL OR p.floor = :floor) " +
-           "AND (:status IS NULL " +
-           "     OR (:status = com.example.solimus.enums.PropertyRentalStatus.VACANT AND p.owner IS NULL AND p.tenant IS NULL) " +
-           "     OR (:status = com.example.solimus.enums.PropertyRentalStatus.RENTED AND p.owner IS NOT NULL AND p.tenant IS NOT NULL) " +
-           "     OR (:status = com.example.solimus.enums.PropertyRentalStatus.TO_RENT AND p.owner IS NOT NULL AND p.tenant IS NULL)) " +
+           "AND (:statusName IS NULL " +
+           "     OR (:statusName = 'VACANT' AND p.owner IS NULL AND p.tenant IS NULL) " +
+           "     OR (:statusName = 'RENTED' AND p.owner IS NOT NULL AND p.tenant IS NOT NULL) " +
+           "     OR (:statusName = 'TO_RENT' AND p.owner IS NOT NULL AND p.tenant IS NULL)) " +
            "ORDER BY p.createdAt DESC")
     Page<Property> findByResidenceIdWithFilters(
             @Param("residenceId") Long residenceId,
             @Param("search") String search,
             @Param("floor") Integer floor,
-            @Param("status") PropertyRentalStatus status,
+            @Param("statusName") String statusName,
             Pageable pageable);
 
     // Trouver la date de première acquisition d'un copropriétaire chez un syndic

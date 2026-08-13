@@ -941,7 +941,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         // pas Property.displayStatus (MAINTENANCE/UNPAID/LATE...) utilisé ailleurs dans l'app
         Pageable pageable = PageRequest.of(page, size);
         Page<Property> propertiesPage = propertyRepository.findByResidenceIdWithFilters(
-                residenceId, search, floor, status, pageable);
+                residenceId, search, floor, status != null ? status.name() : null, pageable);
 
         // Précharge le ChargeCall le plus récent, pour calculer la charge de chaque lot de cette page
         var mostRecentChargeCall = chargeCallRepository.findMostRecentByResidenceId(residenceId);
