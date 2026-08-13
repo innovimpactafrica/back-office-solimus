@@ -55,7 +55,6 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     private final SecurityFeatureRepository securityFeatureRepository;
     private final BudgetRepository budgetRepository;
     private final ChargeCallItemRepository chargeCallItemRepository;
-    private final ChargeCallRepository chargeCallRepository;
     private final ChargeCallPaymentRepository chargeCallPaymentRepository;
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
     private final SyndicWalletRepository syndicWalletRepository;
@@ -943,15 +942,6 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         Page<Property> propertiesPage = propertyRepository.findByResidenceIdWithFilters(
                 residenceId, search, floor, status != null ? status.name() : null, pageable);
 
-        // Précharge le ChargeCall le plus récent, pour calculer la charge de chaque lot de cette page
-        var mostRecentChargeCall = chargeCallRepository.findMostRecentByResidenceId(residenceId);
-        Map<Long, ChargeCallItem> chargeCallItemByOwnerId = new HashMap<>();
-        if (mostRecentChargeCall.isPresent()) {
-            for (ChargeCallItem item : mostRecentChargeCall.get().getItems()) {
-                chargeCallItemByOwnerId.put(item.getCoOwner().getId(), item);
-            }
-        }
-
         // Construit le DTO de chaque lot de la page
         return propertiesPage.map(property -> {
             PropertyRentalStatus rentalStatus = computeRentalStatus(property);
@@ -975,7 +965,9 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                                     .build()
                             : null)
                     .status(rentalStatus.name())
-                    .charge(calculatePropertyCharge(property, chargeCallItemByOwnerId))
+                    // À définir car le restant à payer pour une charge, c'est seulement pour un
+                    // propriétaire, pas pour un appartement spécifique — champ volontairement non rempli
+                    .charge(null)
                     .build();
         });
     }
@@ -1068,11 +1060,11 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         // Envoie les identifiants de connexion par email (mot de passe temporaire)
         emailService.sendTenantAccountCreated(savedTenant.getEmail(), temporaryPassword, savedTenant.getFirstName());
 
-        // Notifie le propriétaire qu'un locataire a été ajouté à son bien
-        notificationService.sendPush(
-                property.getOwner().getId(),
-                "Nouveau locataire",
-                firstName + " " + lastName + " a été ajouté comme locataire de votre bien " + property.getReference());
+        // Notifie le propriétaire qu'un locataire a été ajouté à son bien (double canal : push + email)
+        String ownerNotificationMessage = firstName + " " + lastName
+                + " a été ajouté comme locataire de votre bien " + property.getReference();
+        notificationService.sendPush(property.getOwner().getId(), "Nouveau locataire", ownerNotificationMessage);
+        emailService.sendEmail(property.getOwner().getEmail(), "Nouveau locataire", ownerNotificationMessage);
 
         log.info("Locataire '{}' créé et rattaché au lot '{}' par le syndic {}",
                 savedTenant.getEmail(), property.getReference(), getCurrentUser().getEmail());
@@ -1749,36 +1741,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     // calculatePropertyStatus supprimée — remplacée par la lecture directe de
     // Property.displayStatus (persisté, recalculé par StatusRecalculationService)
 
-    /**
-     * Calcule la charge pour un lot précis
-     * Formule : ChargeCallItem.quotePart proportionnel à (Property.share / ChargeCallItem.tantieme)
-     * Explication : répartir le montant total du copropriétaire au prorata du poids de ce lot
-     */
-    private BigDecimal calculatePropertyCharge(
-            Property property,
-            Map<Long, ChargeCallItem> chargeCallItemByOwnerId) {
-
-        // Si le lot est vacant ou pas de ChargeCallItem, retourner ZERO
-        if (property.getOwner() == null) {
-            return BigDecimal.ZERO;
-        }
-
-        ChargeCallItem item = chargeCallItemByOwnerId.get(property.getOwner().getId());
-        if (item == null) {
-            return BigDecimal.ZERO;
-        }
-
-        // Éviter la division par zéro
-        if (item.getTantieme().compareTo(BigDecimal.ZERO) == 0) {
-            return BigDecimal.ZERO;
-        }
-
-        // Calculer la charge au prorata du tantième de ce lot
-        return item.getQuotePart()
-                .multiply(property.getShare())
-                .divide(item.getTantieme(), 2, java.math.RoundingMode.HALF_UP);
-    }
-
+    // calculatePropertyCharge supprimée — le "restant à payer" se calcule par copropriétaire,
+    // pas par lot spécifique (un copropriétaire peut avoir plusieurs lots). Voir PropertyListItemDTO.charge.
 
     /**
      * Calcule le statut composite d'un équipement commun

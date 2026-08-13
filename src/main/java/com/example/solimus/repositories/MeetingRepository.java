@@ -88,11 +88,12 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
     // =========================================================================
 
     // ===== RECHERCHE PAGINEE AVEC FILTRES (status + recherche par titre, tous deux optionnels) =====
+    // Triée par date de création décroissante : la dernière AG créée s'affiche en premier
     @Query("SELECT m FROM Meeting m " +
            "WHERE m.residence.syndic.id = :syndicId " +
            "AND (:status IS NULL OR m.status = :status) " +
            "AND (:search IS NULL OR LOWER(m.title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-           "ORDER BY m.meetingDate DESC")
+           "ORDER BY m.createdAt DESC")
     Page<Meeting> searchMeetings(@Param("syndicId") Long syndicId,
                                   @Param("status") MeetingStatus status,
                                   @Param("search") String search,

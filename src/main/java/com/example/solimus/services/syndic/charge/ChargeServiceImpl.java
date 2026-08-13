@@ -1882,10 +1882,11 @@ public class ChargeServiceImpl implements ChargeService {
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("chargeCall.createdAt").descending());
 
-        // Récupère les items, filtrés par recherche si fournie
+        // Récupère uniquement les items déjà PAYÉS (cet onglet ne montre pas les retards/impayés/en
+        // attente — pour ça, voir l'onglet Impayés), filtrés par recherche si fournie
         Page<ChargeCallItem> itemsPage = (search != null && !search.isBlank())
-                ? chargeCallItemRepository.findByChargeCallBudgetSyndicIdAndCoOwnerNameContaining(currentSyndic.getId(), search, pageable)
-                : chargeCallItemRepository.findByChargeCallBudgetSyndicId(currentSyndic.getId(), pageable);
+                ? chargeCallItemRepository.findPaidByChargeCallBudgetSyndicIdAndCoOwnerNameContaining(currentSyndic.getId(), search, pageable)
+                : chargeCallItemRepository.findByChargeCallBudgetSyndicIdAndStatus(currentSyndic.getId(), ChargeItemPaymentStatus.PAID, pageable);
 
         List<PaymentRowDTO> rowDtos = itemsPage.getContent().stream()
                 .map(this::buildPaymentRow)

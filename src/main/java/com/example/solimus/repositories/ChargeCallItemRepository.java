@@ -218,14 +218,17 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
 
     // ===== PAIEMENTS / IMPAYÉS (GLOBAL SYNDIC) =====
 
-    // Tous les items d'un syndic, paginés (pour l'onglet Paiements)
-    Page<ChargeCallItem> findByChargeCallBudgetSyndicId(Long syndicId, Pageable pageable);
+    // Items déjà soldés (PAID) d'un syndic, paginés — pour l'onglet Paiements, qui ne doit
+    // afficher que les paiements effectivement réglés (pas les retards/impayés/en attente)
+    Page<ChargeCallItem> findByChargeCallBudgetSyndicIdAndStatus(
+            Long syndicId, ChargeItemPaymentStatus status, Pageable pageable);
 
-    // Items filtrés par nom de copropriétaire, paginés
+    // Items PAID filtrés par nom de copropriétaire, paginés
     @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId " +
+           "AND i.status = 'PAID' " +
            "AND (LOWER(i.coOwner.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(i.coOwner.lastName) LIKE LOWER(CONCAT('%', :search, '%')))")
-    Page<ChargeCallItem> findByChargeCallBudgetSyndicIdAndCoOwnerNameContaining(
+    Page<ChargeCallItem> findPaidByChargeCallBudgetSyndicIdAndCoOwnerNameContaining(
             @Param("syndicId") Long syndicId, @Param("search") String search, Pageable pageable);
 
     // Items non soldés d'un syndic, paginés (pour l'onglet Impayés) — basé sur le statut posé

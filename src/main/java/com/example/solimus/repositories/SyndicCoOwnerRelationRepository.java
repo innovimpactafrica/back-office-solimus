@@ -66,7 +66,8 @@ public interface SyndicCoOwnerRelationRepository extends JpaRepository<SyndicOwn
            "  AND (:residenceId IS NULL OR p.residence.id = :residenceId)) " +
            "AND (:search IS NULL OR :search = '' " +
            "  OR LOWER(co.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "  OR LOWER(co.lastName) LIKE LOWER(CONCAT('%', :search, '%')))")
+           "  OR LOWER(co.lastName) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "ORDER BY co.createdAt DESC")
     List<SyndicOwnerRelation> findCoOwnersWithPropertiesBySyndicId(
             @Param("syndicId") Long syndicId,
             @Param("search") String search,
