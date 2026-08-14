@@ -2073,7 +2073,8 @@ public class ChargeServiceImpl implements ChargeService {
         chargeCallItemRepository.save(item);
 
         String title = "Rappel de paiement";
-        String body = "Votre charge " + item.getReference() + " est en retard. Merci de régulariser.";
+        String body = "🔔 Solimus — Petit rappel : votre charge de " + formatMontantFcfa(item.getRemainingAmount())
+                + " FCFA est toujours en attente de règlement. Merci de régulariser dès que possible.";
         notificationService.sendPush(item.getCoOwner().getId(), title, body);
         sendReminderEmail(item, "Relance — Appel de charges " + buildPeriodLabel(item.getChargeCall()));
     }
@@ -2084,14 +2085,18 @@ public class ChargeServiceImpl implements ChargeService {
         item.setWarningSentAt(LocalDateTime.now());
         chargeCallItemRepository.save(item);
 
-        BigDecimal montantAvecPenalite = calculerMontantAvecPenalite(item, settings);
         String title = "Avertissement — Pénalité de retard";
-        String body = "Vous devez " + item.getQuotePart() + " FCFA. Sans paiement sous "
-                + settings.getPenaltyGracePeriodDays() + " jours, une pénalité de "
-                + settings.getLatePenaltyRate() + "% sera appliquée (nouveau montant : "
-                + montantAvecPenalite + " FCFA).";
+        String body = "🚨 Solimus — Dernier avertissement : votre charge de " + formatMontantFcfa(item.getRemainingAmount())
+                + " FCFA est toujours impayée. Passé un délai de " + settings.getPenaltyGracePeriodDays()
+                + " jours, une pénalité de retard de " + settings.getLatePenaltyRate()
+                + "% s'appliquera automatiquement. Régularisez maintenant pour l'éviter.";
         notificationService.sendPush(item.getCoOwner().getId(), title, body);
         sendEmailSafe(item, title, body);
+    }
+
+    // Formate un montant FCFA sans décimales (convention du projet : pas de centimes en FCFA)
+    private String formatMontantFcfa(BigDecimal montant) {
+        return montant.setScale(0, RoundingMode.HALF_UP).toPlainString();
     }
 
     // Applique l'unique pénalité de retard au copropriétaire (jour 31 + délai de grâce) —
@@ -2106,8 +2111,8 @@ public class ChargeServiceImpl implements ChargeService {
         chargeCallItemRepository.save(item);
 
         String title = "Pénalité de retard appliquée";
-        String body = "Une pénalité de " + penalty + " FCFA a été appliquée. Vous devez maintenant "
-                + item.getTotalDue() + " FCFA.";
+        String body = "Une pénalité de " + formatMontantFcfa(penalty) + " FCFA a été appliquée. Vous devez maintenant "
+                + formatMontantFcfa(item.getTotalDue()) + " FCFA.";
         notificationService.sendPush(item.getCoOwner().getId(), title, body);
         sendEmailSafe(item, title, body);
     }
@@ -2130,15 +2135,6 @@ public class ChargeServiceImpl implements ChargeService {
         } catch (Exception e) {
             System.err.println("Erreur envoi email à " + item.getCoOwner().getEmail() + ": " + e.getMessage());
         }
-    }
-
-    // Montant que le copropriétaire devrait payer si la pénalité était appliquée aujourd'hui
-    // (utilisé uniquement pour l'annoncer dans l'avertissement, avant qu'elle ne soit posée)
-    private BigDecimal calculerMontantAvecPenalite(ChargeCallItem item, SyndicFinancialSettings settings) {
-        BigDecimal penaltyEstimate = item.getQuotePart()
-                .multiply(settings.getLatePenaltyRate())
-                .divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
-        return item.getQuotePart().add(penaltyEstimate);
     }
 
     // Récapitulatif quotidien envoyé à chaque syndic concerné (comptage LATE/UNPAID live,
