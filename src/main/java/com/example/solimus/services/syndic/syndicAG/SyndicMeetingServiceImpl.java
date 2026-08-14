@@ -331,22 +331,10 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
                     long presentCount = stats != null ? stats.getPresentCount() : 0L;
                     long procurationsCount = stats != null ? stats.getProcurationsCount() : 0L;
 
-                    // Taux de participation pondere par tantieme (présents + procurations), 0% par defaut
+                    // Taux de participation par tête (présents + procurations / convoqués), 0% par defaut
                     double participationRate = 0.0;
-
-                    // On ne calcule le pourcentage que si :
-                    // 1. on a bien trouvé des stats pour cette reunion (stats != null)
-                    // 2. le tantième total n'est pas vide (getTotalTantieme() != null)
-                    // 3. le tantième participant n'est pas vide (getParticipatingTantieme() != null)
-                    // 4. le tantième total est supérieur a 0 (protection contre une division par zero)
-                    if (stats != null && stats.getTotalTantieme() != null
-                            && stats.getParticipatingTantieme() != null
-                            && stats.getTotalTantieme().compareTo(BigDecimal.ZERO) > 0) {
-
-                        // Formule : (tantieme présents+procurations / tantieme total) x 100
-                        // .doubleValue() convertit le BigDecimal en nombre à virgule classique pour la division
-                        participationRate = stats.getParticipatingTantieme().doubleValue()
-                                / stats.getTotalTantieme().doubleValue() * 100.0;
+                    if (totalParticipants > 0) {
+                        participationRate = (double) (presentCount + procurationsCount) / totalParticipants * 100.0;
                     }
 
                     // Construit la carte finale avec toutes les infos calculees
@@ -420,13 +408,10 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         int presentCount = stats != null ? stats.getPresentCount().intValue() : 0;
         int procurationsCount = stats != null ? stats.getProcurationsCount().intValue() : 0;
 
-        // Taux de participation pondéré par tantième (présents + procurations), réutilisé pour le bloc Quorum
+        // Taux de participation par tête (présents + procurations / convoqués), réutilisé pour le bloc Quorum
         double participationRate = 0.0;
-        if (stats != null && stats.getTotalTantieme() != null
-                && stats.getParticipatingTantieme() != null
-                && stats.getTotalTantieme().compareTo(BigDecimal.ZERO) > 0) {
-            participationRate = stats.getParticipatingTantieme().doubleValue()
-                    / stats.getTotalTantieme().doubleValue() * 100.0;
+        if (convoquesCount > 0) {
+            participationRate = (double) (presentCount + procurationsCount) / convoquesCount * 100.0;
         }
 
         // Points de l'ordre du jour de cette réunion
@@ -1229,16 +1214,10 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         // Nombre de présents + procurations (participants au sens quorum) : 0 par défaut si aucune stat trouvée
         long participantsCount = stats != null ? stats.getPresentCount() + stats.getProcurationsCount() : 0;
 
-        // Taux de participation pondéré par tantième (présents + procurations), 0% par défaut
+        // Taux de participation par tête (présents + procurations / convoqués), 0% par défaut
         double quorumPercentage = 0.0;
-
-        // On ne calcule le pourcentage que si on a bien des stats ET un tantième total valide (> 0),
-        // pour éviter une division par zéro
-        if (stats != null && stats.getTotalTantieme() != null
-                && stats.getParticipatingTantieme() != null
-                && stats.getTotalTantieme().compareTo(BigDecimal.ZERO) > 0) {
-            quorumPercentage = stats.getParticipatingTantieme().doubleValue()
-                    / stats.getTotalTantieme().doubleValue() * 100.0;
+        if (convoquesCount > 0) {
+            quorumPercentage = (double) participantsCount / convoquesCount * 100.0;
         }
 
         // Récupère tous les autres documents de la même réunion, en excluant celui qu'on regarde actuellement

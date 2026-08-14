@@ -107,15 +107,12 @@ public interface MeetingRepository extends JpaRepository<Meeting, Long> {
     long countByResidence_Syndic_IdAndStatusIn(Long syndicId, List<MeetingStatus> statuses);
 
     // ===== STATS DE PARTICIPATION PAR REUNION (une seule requête pour toute la page) =====
-    // participatingTantieme (utilisé pour le quorum) somme les tantièmes des PRESENT ET des PROXY
-    // (procuration) — pas seulement les présents physiques
+    // Calcul par tête (nombre de personnes), pas par tantième — présents et procurations comptés séparément
     @Query("SELECT new com.example.solimus.repositories.meeting.MeetingParticipationStats(" +
             "mp.meetingParticipant.meeting.id, " +
             "COUNT(mp), " +
             "SUM(CASE WHEN mp.attendanceType = com.example.solimus.enums.AttendanceType.PRESENT THEN 1 ELSE 0 END), " +
-            "SUM(CASE WHEN mp.attendanceType = com.example.solimus.enums.AttendanceType.PROXY THEN 1 ELSE 0 END), " +
-            "SUM(mp.tantiemeSnapshot), " +
-            "SUM(CASE WHEN mp.attendanceType <> com.example.solimus.enums.AttendanceType.ABSENT THEN mp.tantiemeSnapshot END)) " +
+            "SUM(CASE WHEN mp.attendanceType = com.example.solimus.enums.AttendanceType.PROXY THEN 1 ELSE 0 END)) " +
             "FROM MeetingPresence mp " +
             "WHERE mp.meetingParticipant.meeting.id IN :meetingIds " +
             "GROUP BY mp.meetingParticipant.meeting.id")
