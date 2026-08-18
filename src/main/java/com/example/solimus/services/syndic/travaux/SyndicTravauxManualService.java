@@ -1,10 +1,12 @@
 package com.example.solimus.services.syndic.travaux;
 
 import com.example.solimus.dtos.syndic.travaux.SyndicHistoryItemDTO;
+import com.example.solimus.dtos.syndic.travaux.SyndicTravauxClosureDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicTravauxDetailDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicTravauxListResponse;
 import com.example.solimus.dtos.syndic.travaux.TravauxDashboardDTO;
 import com.example.solimus.enums.InterventionStatus;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -48,6 +50,13 @@ public interface SyndicTravauxManualService {
 
     /**
      * Passe la demande de FINISHED à FINAL_VALIDATION — clôture définitive.
+     * Les photos après travaux sont obligatoires pour clôturer.
      */
-    void closeIntervention(Long id, String closingNote);
+    void closeIntervention(Long id, String closingNote, List<MultipartFile> photos);
+
+    /**
+     * Détail de la clôture d'une intervention : dates clés, note de clôture,
+     * photos avant/après travaux.
+     */
+    SyndicTravauxClosureDTO getClosureDetail(Long id);
 }

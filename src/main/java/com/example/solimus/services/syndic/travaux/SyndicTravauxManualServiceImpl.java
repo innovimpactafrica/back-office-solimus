@@ -3,6 +3,7 @@ package com.example.solimus.services.syndic.travaux;
 import com.example.solimus.dtos.syndic.travaux.ParticipantDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicHistoryItemDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicTravauxCardDTO;
+import com.example.solimus.dtos.syndic.travaux.SyndicTravauxClosureDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicTravauxDetailDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicTravauxListResponse;
 import com.example.solimus.dtos.syndic.travaux.TravauxDashboardDTO;
@@ -18,18 +19,22 @@ import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.InterventionRequestRepository;
 import com.example.solimus.repositories.UserRepository;
 import com.example.solimus.services.auth.EmailService;
+import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SyndicTravauxManualServiceImpl implements SyndicTravauxManualService {
@@ -38,6 +43,7 @@ public class SyndicTravauxManualServiceImpl implements SyndicTravauxManualServic
     private final InterventionRequestRepository interventionRequestRepository;
     private final NotificationService notificationService;
     private final EmailService emailService;
+    private final MinioService minioService;
 
     // Statuts considérés comme "ouverts" (tout sauf clôturé/annulé) — même définition que le dashboard existant
     private static final List<InterventionStatus> OPEN_STATUSES = List.of(
@@ -194,7 +200,7 @@ public class SyndicTravauxManualServiceImpl implements SyndicTravauxManualServic
 
     @Override
     @Transactional
-    public void closeIntervention(Long id, String closingNote) {
+    public void closeIntervention(Long id, String closingNote, List<MultipartFile> photos) {
         InterventionRequest request = getRequestForSyndic(id);
         User currentSyndic = getCurrentUser();
 
@@ -202,12 +208,48 @@ public class SyndicTravauxManualServiceImpl implements SyndicTravauxManualServic
             throw new BadRequestException("Cette demande n'est pas encore terminée");
         }
 
+        // Au moins une photo après travaux est obligatoire pour clôturer définitivement
+        if (photos == null || photos.isEmpty()) {
+            throw new BadRequestException("Au moins une photo après travaux est requise pour clôturer");
+        }
+
+        for (MultipartFile photo : photos) {
+            try {
+                String photoUrl = minioService.uploadFile(photo, "interventions");
+                if (photoUrl != null) {
+                    request.getWorkPhotoUrls().add(photoUrl);
+                }
+            } catch (Exception e) {
+                log.error("Erreur lors de l'upload d'une photo après travaux", e);
+                throw new RuntimeException("Erreur lors de l'upload d'une photo");
+            }
+        }
+
         request.addStatusHistory(InterventionStatus.FINAL_VALIDATION, currentSyndic);
         request.setValidatedAt(LocalDateTime.now());
+        request.setClosingNote(closingNote);
         addNoteIfPresent(request, currentSyndic, closingNote);
         interventionRequestRepository.save(request);
 
         notifyRequesters(request, "Votre demande a été clôturée par le syndic");
+    }
+
+    // =========================================================================
+    // DÉTAIL DE CLÔTURE (dates clés, note, photos avant/après)
+    // =========================================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public SyndicTravauxClosureDTO getClosureDetail(Long id) {
+        InterventionRequest request = getRequestForSyndic(id);
+
+        return SyndicTravauxClosureDTO.builder()
+                .startedAt(request.getStartedAt())
+                .validatedAt(request.getValidatedAt())
+                .closingNote(request.getClosingNote())
+                .photosBefore(request.getPhotoUrls() != null ? request.getPhotoUrls() : new ArrayList<>())
+                .photosAfter(request.getWorkPhotoUrls() != null ? request.getWorkPhotoUrls() : new ArrayList<>())
+                .build();
     }
 
     // =========================================================================

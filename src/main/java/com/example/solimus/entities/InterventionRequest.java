@@ -132,6 +132,10 @@ public class InterventionRequest {
     @Column(name = "validated_at")
     private LocalDateTime validatedAt; // Date de validation finale par le syndic
 
+    // Note laissée par le syndic à la clôture définitive (flux manuel, closeIntervention)
+    @Column(name = "closing_note", columnDefinition = "TEXT")
+    private String closingNote;
+
     @Column(name = "quote_accepted_at")
     private LocalDateTime quoteAcceptedAt; // Date d'acceptation du devis
 

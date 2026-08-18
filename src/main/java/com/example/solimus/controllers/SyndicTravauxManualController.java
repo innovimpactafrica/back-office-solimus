@@ -2,6 +2,7 @@ package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.auth.ErrorResponseDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicHistoryItemDTO;
+import com.example.solimus.dtos.syndic.travaux.SyndicTravauxClosureDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicTravauxDetailDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicTravauxListResponse;
 import com.example.solimus.dtos.syndic.travaux.TravauxDashboardDTO;
@@ -14,9 +15,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -132,18 +135,39 @@ public class SyndicTravauxManualController {
         return ResponseEntity.ok().build();
     }
 
-    @Operation(summary = "Clôturer définitivement la demande", description = "FINISHED → FINAL_VALIDATION")
+    @Operation(summary = "Clôturer définitivement la demande", description = "FINISHED → FINAL_VALIDATION. Au moins une photo après travaux est obligatoire.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Demande clôturée avec succès"),
-            @ApiResponse(responseCode = "400", description = "Cette demande n'est pas encore terminée",
+            @ApiResponse(responseCode = "400", description = "Cette demande n'est pas encore terminée, ou aucune photo après travaux fournie",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Intervention introuvable",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
     })
-    @PostMapping("/{id}/close")
+    @PostMapping(value = "/{id}/close", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Void> closeIntervention(
-            @PathVariable Long id, @RequestParam(required = false) String closingNote) {
-        syndicTravauxManualService.closeIntervention(id, closingNote);
+            @PathVariable Long id,
+            @RequestParam(required = false) String closingNote,
+            @RequestPart(value = "photos") List<MultipartFile> photos) {
+        syndicTravauxManualService.closeIntervention(id, closingNote, photos);
         return ResponseEntity.ok().build();
+    }
+
+    // =========================================================================
+    // DÉTAIL DE CLÔTURE
+    // =========================================================================
+
+    @Operation(summary = "Détail de la clôture d'une intervention",
+            description = "Date de prise en charge, date de clôture, note de clôture, photos avant/après travaux")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Détail renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = SyndicTravauxClosureDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Cette intervention n'appartient pas au syndic connecté",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Intervention introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @GetMapping("/{id}/closure")
+    public ResponseEntity<SyndicTravauxClosureDTO> getClosureDetail(@PathVariable Long id) {
+        return ResponseEntity.ok(syndicTravauxManualService.getClosureDetail(id));
     }
 }
