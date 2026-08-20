@@ -53,6 +53,7 @@ services:
       MAIL_PORT: ${MAIL_PORT}
       MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
+      MAIL_FROM: ${MAIL_FROM}
 
       # Configuration MinIO
       MINIO_URL: ${MINIO_URL}

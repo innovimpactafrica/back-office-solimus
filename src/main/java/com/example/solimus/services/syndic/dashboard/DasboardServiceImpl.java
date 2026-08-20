@@ -97,8 +97,9 @@ public class DasboardServiceImpl implements DashboardService {
             allItems = chargeCallItemRepository.findAllByBudgetSyndicId(currentSyndic.getId());
         }
 
-        // Additionne tous les montants dus
-        BigDecimal totalDue = allItems.stream().map(ChargeCallItem::getQuotePart).reduce(BigDecimal.ZERO, BigDecimal::add);
+        // Additionne tous les montants dus (quote-part + pénalité si déjà appliquée) — cohérent
+        // avec les autres écrans financiers (Paiements, Impayés) qui utilisent aussi getTotalDue()
+        BigDecimal totalDue = allItems.stream().map(item -> item.getTotalDue()).reduce(BigDecimal.ZERO, BigDecimal::add);
         // Additionne tous les montants déjà payés
         BigDecimal totalPaid = allItems.stream().map(ChargeCallItem::getPaidAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         // Additionne tous les montants restants à payer
@@ -239,35 +240,35 @@ public class DasboardServiceImpl implements DashboardService {
             alerts.add(alert);
         }
 
-        // --- Intervention urgente (la dernière déclarée) ---
+        // --- Travaux non résolus (nombre total, tous niveaux d'urgence confondus) ---
 
-        // Récupère la dernière intervention urgente non résolue déclarée pour ce syndic
-        List<InterventionRequest> urgentInterventions = interventionRequestRepository
-                .findLatestUrgentBySyndicId(currentSyndic.getId(), UrgencyLevel.URGENT, PageRequest.of(0, 1));
+        // Même liste de statuts "ouverts" que le KPI "Incidents ouverts" du dashboard principal
+        List<InterventionStatus> openStatuses = List.of(
+                InterventionStatus.PENDING, InterventionStatus.SYNDIC_ASSIGNED,
+                InterventionStatus.QUOTE_VALIDATED, InterventionStatus.STARTED, InterventionStatus.FINISHED
+        );
+        long openInterventionsCount = interventionRequestRepository
+                .countByResidenceSyndicIdAndStatusIn(currentSyndic.getId(), openStatuses);
 
-        if (!urgentInterventions.isEmpty()) {
-            InterventionRequest intervention = urgentInterventions.get(0);
+        if (openInterventionsCount > 0) {
             AlertDTO alert = new AlertDTO();
             alert.setType("INTERVENTION");
-            alert.setTitle("Intervention urgente");
-            alert.setDescription(intervention.getResidence().getName() + " - " + intervention.getTitle());
-            alert.setOccurredAt(intervention.getCreatedAt());
+            alert.setTitle("Travaux non résolus");
+            alert.setDescription(openInterventionsCount + " demande(s) de travaux non résolue(s)");
+            alert.setOccurredAt(LocalDateTime.now());
             alerts.add(alert);
         }
 
-        // --- Signalement urgent (le dernier déclaré, non résolu) ---
+        // --- Signalements en attente (nombre total, ni traités ni transformés en travaux) ---
 
-        // Récupère le dernier signalement urgent non résolu déclaré pour ce syndic
-        List<Signalement> urgentSignalements = signalementRepository
-                .findLatestUrgentBySyndicId(currentSyndic.getId(), UrgencyLevel.URGENT, PageRequest.of(0, 1));
+        long pendingSignalementsCount = signalementRepository.countUnresolvedBySyndicId(currentSyndic.getId());
 
-        if (!urgentSignalements.isEmpty()) {
-            Signalement signalement = urgentSignalements.get(0);
+        if (pendingSignalementsCount > 0) {
             AlertDTO alert = new AlertDTO();
             alert.setType("SIGNALEMENT");
-            alert.setTitle("Signalement urgent");
-            alert.setDescription(signalement.getResidence().getName() + " - " + signalement.getTitle());
-            alert.setOccurredAt(signalement.getCreatedAt());
+            alert.setTitle("Signalements en attente");
+            alert.setDescription(pendingSignalementsCount + " signalement(s) en attente");
+            alert.setOccurredAt(LocalDateTime.now());
             alerts.add(alert);
         }
 

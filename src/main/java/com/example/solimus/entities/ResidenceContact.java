@@ -21,12 +21,10 @@ public class ResidenceContact {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Nom complet du contact clé de la résidence
-    @Column(nullable = false)
+    // Nom complet du contact clé de la résidence (optionnel)
     private String fullName;
 
-    // Numéro de téléphone utilisé pour contacter cette personne
-    @Column(nullable = false)
+    // Numéro de téléphone utilisé pour contacter cette personne (optionnel)
     private String phone;
 
     // Résidence à laquelle ce contact est rattaché

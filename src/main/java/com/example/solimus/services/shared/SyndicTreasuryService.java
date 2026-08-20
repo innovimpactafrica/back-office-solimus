@@ -1,7 +1,6 @@
 package com.example.solimus.services.shared;
 
 import com.example.solimus.repositories.SyndicWalletTransactionRepository;
-import com.example.solimus.repositories.SyndicWithdrawalRequestRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -16,32 +15,26 @@ import java.time.LocalDateTime;
 public class SyndicTreasuryService {
 
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
-    private final SyndicWithdrawalRequestRepository syndicWithdrawalRequestRepository;
 
-    // Trésorerie disponible À AUJOURD'HUI = toutes les transactions du wallet jusqu'à maintenant, moins
-    // UNIQUEMENT les retraits réellement COMPLETED. Les retraits encore PENDING ne réservent plus rien :
-    // le blocage se fait désormais au moment de la validation (voir WithdrawalRequestServiceImpl), pas
-    // à la création de la demande — donc deux demandes PENDING concurrentes peuvent chacune afficher
-    // le même solde disponible tant qu'aucune des deux n'est validée.
+    // Trésorerie disponible À AUJOURD'HUI = somme de toutes les SyndicWalletTransaction du wallet
+    // jusqu'à maintenant (CHARGES et TRAVAUX en positif/négatif, RETRAIT en négatif dès qu'un retrait
+    // est validé COMPLETED — voir WithdrawalRequestServiceImpl.validateWithdrawalRequest). Les retraits
+    // encore PENDING ne créent aucune transaction, donc ne réservent rien : le blocage se fait au
+    // moment de la validation, pas à la création de la demande.
     public BigDecimal getAvailableBalance(Long walletId, Long residenceId) {
         return getAvailableBalanceAsOf(walletId, residenceId, LocalDateTime.now());
     }
 
     // Même calcul, mais à une date passée précise (ex: un point du graphique "Évolution financière",
-    // un mois donné) — ne compte que les transactions et les retraits COMPLETED antérieurs à cette date
+    // un mois donné) — ne compte que les transactions antérieures à cette date
     public BigDecimal getAvailableBalanceAsOf(Long walletId, Long residenceId, LocalDateTime asOfDate) {
 
         if (walletId == null) {
             return BigDecimal.ZERO;
         }
 
-        BigDecimal transactions = (residenceId != null)
+        return (residenceId != null)
                 ? syndicWalletTransactionRepository.sumAllByResidenceId(residenceId, asOfDate)
                 : syndicWalletTransactionRepository.sumTransactionsUpTo(walletId, asOfDate);
-
-        BigDecimal retraitsCompletes = syndicWithdrawalRequestRepository
-                .sumCompletedAmountUpTo(walletId, asOfDate, residenceId);
-
-        return transactions.subtract(retraitsCompletes);
     }
 }

@@ -5,10 +5,12 @@ import com.example.solimus.entities.Notification;
 import com.example.solimus.entities.ProviderProfile;
 import com.example.solimus.entities.ProviderWithdrawalRequest;
 import com.example.solimus.entities.SyndicProfile;
+import com.example.solimus.entities.SyndicWalletTransaction;
 import com.example.solimus.entities.SyndicWithdrawalRequest;
 import com.example.solimus.entities.User;
 import com.example.solimus.enums.PaymentMethod;
 import com.example.solimus.enums.SubscriberType;
+import com.example.solimus.enums.WalletTransactionCategory;
 import com.example.solimus.enums.WithdrawalMode;
 import com.example.solimus.enums.WithdrawalStatus;
 import com.example.solimus.exceptions.BadRequestException;
@@ -382,6 +384,21 @@ public class WithdrawalRequestServiceImpl implements WithdrawalRequestService {
             request.setReceiptUrl(receiptUrl);
             request.setAdminComment(comment);
             SyndicWithdrawalRequest saved = syndicWithdrawalRequestRepository.save(request);
+
+            // Trace ce retrait dans l'historique financier unifié (catégorie RETRAIT, montant négatif) —
+            // SyndicTreasuryService se base désormais uniquement sur cette table, plus sur une soustraction séparée
+            SyndicWalletTransaction retraitTransaction = new SyndicWalletTransaction();
+            retraitTransaction.setWallet(saved.getWallet());
+            retraitTransaction.setResidence(saved.getResidence());
+            retraitTransaction.setCategory(WalletTransactionCategory.RETRAIT);
+            retraitTransaction.setAmount(saved.getAmount().negate());
+            retraitTransaction.setLabel("Retrait — " + (saved.getReason() != null ? saved.getReason() : saved.getMode().getLabel()));
+            retraitTransaction.setBeneficiaryName(
+                    saved.getWallet().getSyndic().getFirstName() + " " + saved.getWallet().getSyndic().getLastName());
+            retraitTransaction.setMode(saved.getMode() != null ? saved.getMode().name() : null);
+            retraitTransaction.setTransactionDate(saved.getProcessedAt());
+            retraitTransaction.setReference("RETRAIT-" + saved.getId());
+            syndicWalletTransactionRepository.save(retraitTransaction);
 
             notifyValidated(saved.getWallet().getSyndic(), saved.getAmount());
 

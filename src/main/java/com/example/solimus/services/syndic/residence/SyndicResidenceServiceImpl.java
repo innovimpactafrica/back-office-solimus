@@ -892,6 +892,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         List<ResidenceDetailDTO.KeyContactDTO> keyContacts = contactRepository.findByResidenceId(residenceId)
                 .stream()
                 .map(contact -> ResidenceDetailDTO.KeyContactDTO.builder()
+                        .id(contact.getId())
                         .fullName(contact.getFullName())
                         .phone(contact.getPhone())
                         .build())
@@ -908,6 +909,70 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 .securityLevel(securityLevel)
                 .keyContacts(keyContacts)
                 .build();
+    }
+
+    // =========================================================================
+    // CONTACTS CLÉS — AJOUTER / MODIFIER / SUPPRIMER (sur une résidence déjà créée)
+    // =========================================================================
+
+    @Override
+    @Transactional
+    public ResidenceDetailDTO.KeyContactDTO addResidenceContact(Long residenceId, ContactInputDTO dto) {
+        Residence residence = getResidenceOrThrow(residenceId);
+        verifyResidenceOwnership(residence);
+
+        ResidenceContact contact = new ResidenceContact();
+        contact.setResidence(residence);
+        contact.setFullName(dto.getFullName());
+        contact.setPhone(dto.getPhone());
+        ResidenceContact saved = contactRepository.save(contact);
+
+        return ResidenceDetailDTO.KeyContactDTO.builder()
+                .id(saved.getId())
+                .fullName(saved.getFullName())
+                .phone(saved.getPhone())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public ResidenceDetailDTO.KeyContactDTO updateResidenceContact(Long residenceId, Long contactId, ContactInputDTO dto) {
+        Residence residence = getResidenceOrThrow(residenceId);
+        verifyResidenceOwnership(residence);
+
+        ResidenceContact contact = contactRepository.findById(contactId)
+                .orElseThrow(() -> new ResourceNotFoundException("Contact introuvable"));
+
+        // Vérifie que ce contact appartient bien à cette résidence
+        if (!contact.getResidence().getId().equals(residenceId)) {
+            throw new BadRequestException("Ce contact n'appartient pas à cette résidence");
+        }
+
+        contact.setFullName(dto.getFullName());
+        contact.setPhone(dto.getPhone());
+        ResidenceContact saved = contactRepository.save(contact);
+
+        return ResidenceDetailDTO.KeyContactDTO.builder()
+                .id(saved.getId())
+                .fullName(saved.getFullName())
+                .phone(saved.getPhone())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public void deleteResidenceContact(Long residenceId, Long contactId) {
+        Residence residence = getResidenceOrThrow(residenceId);
+        verifyResidenceOwnership(residence);
+
+        ResidenceContact contact = contactRepository.findById(contactId)
+                .orElseThrow(() -> new ResourceNotFoundException("Contact introuvable"));
+
+        if (!contact.getResidence().getId().equals(residenceId)) {
+            throw new BadRequestException("Ce contact n'appartient pas à cette résidence");
+        }
+
+        contactRepository.delete(contact);
     }
 
     // =========================================================================

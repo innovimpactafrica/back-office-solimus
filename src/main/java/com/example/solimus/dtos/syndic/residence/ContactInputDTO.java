@@ -6,7 +6,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * DTO pour un contact clé lors de la création d'une résidence
+ * DTO pour un contact clé — utilisé à la création d'une résidence (liste, dans contactsJson)
+ * et par les endpoints CRUD dédiés. fullName et phone sont tous les deux optionnels.
  */
 @Data
 @Builder

@@ -492,6 +492,58 @@ public class SyndicResidenceController {
     }
 
     // =========================================================================
+    // CONTACTS CLÉS (sur une résidence déjà créée)
+    // =========================================================================
+
+    @Operation(summary = "Ajouter un contact clé à une résidence existante", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Contact ajouté avec succès",
+                    content = @Content(schema = @Schema(implementation = ResidenceDetailDTO.KeyContactDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @PostMapping("/residences/{id}/contacts")
+    public ResponseEntity<ResidenceDetailDTO.KeyContactDTO> addResidenceContact(
+            @PathVariable Long id, @Valid @RequestBody ContactInputDTO dto) {
+        return ResponseEntity.ok(residenceService.addResidenceContact(id, dto));
+    }
+
+    @Operation(summary = "Modifier un contact clé d'une résidence", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Contact modifié avec succès",
+                    content = @Content(schema = @Schema(implementation = ResidenceDetailDTO.KeyContactDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Ce contact n'appartient pas à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence ou contact introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @PutMapping("/residences/{id}/contacts/{contactId}")
+    public ResponseEntity<ResidenceDetailDTO.KeyContactDTO> updateResidenceContact(
+            @PathVariable Long id, @PathVariable Long contactId, @Valid @RequestBody ContactInputDTO dto) {
+        return ResponseEntity.ok(residenceService.updateResidenceContact(id, contactId, dto));
+    }
+
+    @Operation(summary = "Supprimer un contact clé d'une résidence", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Contact supprimé avec succès"),
+            @ApiResponse(responseCode = "400", description = "Ce contact n'appartient pas à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence ou contact introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @DeleteMapping("/residences/{id}/contacts/{contactId}")
+    public ResponseEntity<Void> deleteResidenceContact(@PathVariable Long id, @PathVariable Long contactId) {
+        residenceService.deleteResidenceContact(id, contactId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // =========================================================================
     // ONGLET 2
     // =========================================================================
     @Operation(summary = "Lister les lots d'une résidence avec filtres (onglet Appartements)", tags = {"Syndic - Résidences"},

@@ -54,15 +54,8 @@ public interface SyndicWithdrawalRequestRepository extends JpaRepository<SyndicW
            "AND (:residenceId IS NULL OR w.residence.id = :residenceId)")
     BigDecimal sumCompletedAmount(@Param("walletId") Long walletId, @Param("residenceId") Long residenceId);
 
-    // Somme des retraits COMPLETED traités jusqu'à une date précise (pas "depuis toujours") — pour
-    // calculer la trésorerie disponible à une date passée (ex: un point du graphique mensuel)
-    @Query("SELECT COALESCE(SUM(w.amount), 0) FROM SyndicWithdrawalRequest w " +
-           "WHERE w.wallet.id = :walletId AND w.status = 'COMPLETED' " +
-           "AND w.processedAt <= :asOfDate " +
-           "AND (:residenceId IS NULL OR w.residence.id = :residenceId)")
-    BigDecimal sumCompletedAmountUpTo(@Param("walletId") Long walletId,
-                                       @Param("asOfDate") LocalDateTime asOfDate,
-                                       @Param("residenceId") Long residenceId);
+    // sumCompletedAmountUpTo supprimée — SyndicTreasuryService se base désormais uniquement sur
+    // SyndicWalletTransaction (catégorie RETRAIT), plus sur une soustraction séparée ici
 
     // Historique paginé des demandes de retrait, triées par date décroissante, optionnellement filtré par résidence
     @Query("SELECT w FROM SyndicWithdrawalRequest w " +

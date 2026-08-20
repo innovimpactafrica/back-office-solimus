@@ -93,6 +93,17 @@ public interface SyndicResidenceService {
     // Contenu de l'onglet Vue générale (indépendant du bandeau)
     ResidenceDetailDTO getResidenceGeneralView(Long residenceId);
 
+    // ===== CONTACTS CLÉS (sur une résidence déjà créée) =====
+
+    // Ajoute un contact clé à une résidence — réutilise ContactInputDTO (déjà utilisé à la création)
+    ResidenceDetailDTO.KeyContactDTO addResidenceContact(Long residenceId, ContactInputDTO dto);
+
+    // Modifie un contact clé existant
+    ResidenceDetailDTO.KeyContactDTO updateResidenceContact(Long residenceId, Long contactId, ContactInputDTO dto);
+
+    // Supprime un contact clé précis (pas tous les contacts de la résidence)
+    void deleteResidenceContact(Long residenceId, Long contactId);
+
     // ===== DASHBOARD RÉSIDENCES =====
 
     // Statistiques globales du dashboard (bandeau de KPIs)
