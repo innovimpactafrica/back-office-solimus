@@ -1150,6 +1150,97 @@ public class ChargeServiceImpl implements ChargeService {
     }
 
     // ============================================================
+    // APPELS DE CHARGES D'UNE RÉSIDENCE (page complète "Voir plus", filtrée par année)
+    // ============================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public ChargeCallListResponse getChargeCallsForResidence(Long residenceId, Integer year, int page, int size) {
+
+        // Vérifie que la résidence appartient bien au syndic connecté
+        Residence residence = residenceRepository.findById(residenceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+        User currentSyndic = getCurrentUser();
+        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
+        }
+
+        // Année en cours par défaut si non fournie
+        int targetYear = (year != null) ? year : java.time.Year.now().getValue();
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<ChargeCall> chargeCallPage = chargeCallRepository
+                .findByBudgetResidenceIdAndYearOrderByPeriodNumberAsc(residenceId, targetYear, pageable);
+
+        List<ChargeCallCardDTO> cardDtos = chargeCallPage.getContent().stream()
+                .map(this::buildChargeCallCard)
+                .toList();
+
+        ChargeCallListResponse response = new ChargeCallListResponse();
+        response.setTotalChargeCalls((int) chargeCallPage.getTotalElements());
+        response.setChargeCalls(cardDtos);
+        response.setCurrentPage(page);
+        response.setTotalPages(chargeCallPage.getTotalPages());
+
+        return response;
+    }
+
+    // ============================================================
+    // REÇU DE PAIEMENT D'UNE LIGNE DE CHARGE
+    // ============================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public ChargeCallReceiptDTO getChargeCallReceipt(Long chargeCallItemId) {
+
+        ChargeCallItem item = chargeCallItemRepository.findById(chargeCallItemId)
+                .orElseThrow(() -> new ResourceNotFoundException("Ligne de charge introuvable"));
+
+        // Vérifie que cette ligne appartient bien à une résidence du syndic connecté
+        User currentSyndic = getCurrentUser();
+        if (!item.getChargeCall().getBudget().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette charge");
+        }
+
+        // Le reçu porte sur le dernier paiement réellement complété pour cette ligne
+        ChargeCallPayment payment = chargeCallPaymentRepository
+                .findLatestCompletedByChargeCallItemId(chargeCallItemId)
+                .orElseThrow(() -> new BadRequestException("Cette charge n'a jamais été payée"));
+
+        return ChargeCallReceiptDTO.builder()
+                .receiptReference(payment.getReference())
+                .coOwnerName(item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName())
+                .propertyReference(buildPropertyReferences(item))
+                .residenceName(item.getChargeCall().getBudget().getResidence().getName())
+                .periode(buildSimplePeriodeLabel(item.getChargeCall()))
+                .annee(item.getChargeCall().getYear())
+                .paymentDate(payment.getPaidAt())
+                .paymentMethod(payment.getMethod() != null ? payment.getMethod().name() : null)
+                .amountPaid(payment.getAmount())
+                .build();
+    }
+
+    // Libellé court de la période d'un appel de charges, ex: "T3" (trimestriel) ou "Jan" (mensuel)
+    private String buildSimplePeriodeLabel(ChargeCall chargeCall) {
+        if (chargeCall.getFrequency() == ChargeFrequency.TRIMESTRIEL) {
+            return "T" + chargeCall.getPeriodNumber();
+        }
+        String[] mois = {"Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"};
+        int index = chargeCall.getPeriodNumber() - 1;
+        return (index >= 0 && index < mois.length) ? mois[index] : "P" + chargeCall.getPeriodNumber();
+    }
+
+    // Lots (uniquement les références) du copropriétaire de cette ligne, séparés par virgule
+    private String buildPropertyReferences(ChargeCallItem item) {
+        List<Property> properties = propertyRepository.findByOwnerIdAndResidenceId(
+                item.getCoOwner().getId(), item.getChargeCall().getBudget().getResidence().getId());
+        return properties.stream()
+                .map(Property::getReference)
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("");
+    }
+
+    // ============================================================
     // DÉTAIL D'UN APPEL DE CHARGES (KPIs + suivi par copropriétaire)
     // ============================================================
 

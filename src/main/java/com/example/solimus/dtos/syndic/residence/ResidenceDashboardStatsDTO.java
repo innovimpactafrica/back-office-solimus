@@ -9,7 +9,7 @@ import java.math.BigDecimal;
 
 /**
  * DTO pour les statistiques globales du dashboard résidences
- * Contient les 5 KPIs du bandeau supérieur
+ * Contient les KPIs du bandeau supérieur
  */
 @Data
 @Builder
@@ -31,17 +31,14 @@ public class ResidenceDashboardStatsDTO {
     private BigDecimal variationTresoreriePourcentage;
 
     // Nombre de résidences ayant au moins un impayé (ChargeCallItem non payé)
+    // Sous-titre carte "Impayés" : "{residencesWithUnpaid} résidences sur {totalResidences} concernées"
     private Long residencesWithUnpaid;
 
-    // Pourcentage de résidences avec impayés (calculé en mémoire)
-    private Double percentageResidencesWithUnpaid;
+    // Carte "Travaux Ouverts"
+    private Long openInterventions; // Nombre total d'interventions ouvertes (non clôturées ni annulées)
+    private Long urgentOpenInterventions; // Parmi les ouvertes, celles marquées urgentes — sous-titre de la carte
 
-    // Nombre total d'interventions ouvertes (non clôturées ni annulées)
-    private Long openInterventions;
-
-    // Nombre d'interventions en cours (statut STARTED)
-    private Long inProgressInterventions;
-
-    // Nombre d'interventions planifiées (statut PENDING)
-    private Long pendingInterventions;
+    // Carte "Signalements Ouverts" (remplace l'ancienne carte "Interventions")
+    private Long openSignalements; // Nombre de signalements en attente (ni traités, ni transformés en travaux)
+    private Long urgentOpenSignalements; // Parmi les ouverts, ceux marqués urgents — sous-titre de la carte
 }

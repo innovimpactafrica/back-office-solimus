@@ -338,9 +338,6 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
         Pageable pageable
     );
 
-    // Compter les interventions par statut pour une résidence
-    long countByResidenceIdAndStatus(Long residenceId, InterventionStatus status);
-
     // Lister toutes les interventions d'une résidence
     List<InterventionRequest> findAllByResidenceId(Long residenceId);
 
@@ -350,16 +347,6 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
     @Query("SELECT COUNT(ir) FROM InterventionRequest ir WHERE ir.residence.syndic = :syndic " +
            "AND ir.status NOT IN ('FINAL_VALIDATION', 'CANCELLED')")
     long countOpenBySyndic(@Param("syndic") User syndic);
-
-    // Compter les interventions en cours (STARTED) pour un syndic
-    @Query("SELECT COUNT(ir) FROM InterventionRequest ir WHERE ir.residence.syndic = :syndic " +
-           "AND ir.status = 'STARTED'")
-    long countStartedBySyndic(@Param("syndic") User syndic);
-
-    // Compter les interventions planifiées (PENDING) pour un syndic
-    @Query("SELECT COUNT(ir) FROM InterventionRequest ir WHERE ir.residence.syndic = :syndic " +
-           "AND ir.status = 'PENDING'")
-    long countPendingBySyndic(@Param("syndic") User syndic);
 
     // Compter les interventions ouvertes pour une résidence
     @Query("SELECT COUNT(ir) FROM InterventionRequest ir WHERE ir.residence.id = :residenceId " +
@@ -412,17 +399,6 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
             Long residenceId, List<InterventionStatus> statuses, UrgencyLevel urgencyLevel);
 
     /**
-     * Compte les interventions d'une résidence créées dans une période donnée
-     */
-    long countByResidenceIdAndCreatedAtBetween(Long residenceId, LocalDateTime start, LocalDateTime end);
-
-    /**
-     * Compte les interventions d'une résidence créées dans une période donnée, avec un statut précis
-     */
-    long countByResidenceIdAndCreatedAtBetweenAndStatus(
-            Long residenceId, LocalDateTime start, LocalDateTime end, InterventionStatus status);
-
-    /**
      * Dernières interventions gérées par le syndic (via la résidence), filtrées sur le mode de gestion
      */
     @Query("SELECT i FROM InterventionRequest i JOIN FETCH i.residence WHERE i.residence.syndic.id = :syndicId " +
@@ -441,12 +417,6 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
 
     // Compte les interventions d'un syndic ayant un statut précis
     long countByResidenceSyndicIdAndStatus(Long syndicId, InterventionStatus status);
-
-    // Compte les interventions d'un syndic créées dans une période donnée
-    long countByResidenceSyndicIdAndCreatedAtBetween(Long syndicId, LocalDateTime start, LocalDateTime end);
-
-    // Compte les interventions d'un syndic créées dans une période donnée, avec un statut précis
-    long countByResidenceSyndicIdAndCreatedAtBetweenAndStatus(Long syndicId, LocalDateTime start, LocalDateTime end, InterventionStatus status);
 
     // Recherche paginée des interventions d'un syndic, avec filtres optionnels (recherche titre, statut, résidence)
     @Query("SELECT i FROM InterventionRequest i WHERE i.residence.syndic.id = :syndicId " +

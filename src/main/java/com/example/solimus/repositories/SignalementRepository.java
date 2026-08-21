@@ -2,6 +2,7 @@ package com.example.solimus.repositories;
 
 import com.example.solimus.entities.Signalement;
 import com.example.solimus.enums.SignalementStatus;
+import com.example.solimus.enums.UrgencyLevel;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -76,8 +77,26 @@ public interface SignalementRepository extends JpaRepository<Signalement, Long> 
 
     // Compte les signalements en attente (ni traités, ni transformés en travaux) pour un syndic,
     // toutes résidences confondues, tous niveaux d'urgence — pour l'alerte "Signalements en attente"
-    // du tableau de bord
+    // et la carte KPI "Signalements Ouverts" du tableau de bord
     @Query("SELECT COUNT(s) FROM Signalement s WHERE s.residence.syndic.id = :syndicId " +
            "AND s.status NOT IN (com.example.solimus.enums.SignalementStatus.RESOLVED, com.example.solimus.enums.SignalementStatus.CONVERTED_TO_WORK)")
     long countUnresolvedBySyndicId(@Param("syndicId") Long syndicId);
+
+    // Même comptage, filtré sur une résidence précise — pour la carte KPI quand une résidence est sélectionnée
+    @Query("SELECT COUNT(s) FROM Signalement s WHERE s.residence.id = :residenceId " +
+           "AND s.status NOT IN (com.example.solimus.enums.SignalementStatus.RESOLVED, com.example.solimus.enums.SignalementStatus.CONVERTED_TO_WORK)")
+    long countUnresolvedByResidenceId(@Param("residenceId") Long residenceId);
+
+    // Compte les signalements ouverts ET urgents pour un syndic, toutes résidences confondues —
+    // pour le sous-titre "X urgent(s)" de la carte KPI "Signalements Ouverts"
+    @Query("SELECT COUNT(s) FROM Signalement s WHERE s.residence.syndic.id = :syndicId " +
+           "AND s.status NOT IN (com.example.solimus.enums.SignalementStatus.RESOLVED, com.example.solimus.enums.SignalementStatus.CONVERTED_TO_WORK) " +
+           "AND s.urgencyLevel = :urgency")
+    long countUnresolvedBySyndicIdAndUrgencyLevel(@Param("syndicId") Long syndicId, @Param("urgency") UrgencyLevel urgency);
+
+    // Même comptage urgent, filtré sur une résidence précise
+    @Query("SELECT COUNT(s) FROM Signalement s WHERE s.residence.id = :residenceId " +
+           "AND s.status NOT IN (com.example.solimus.enums.SignalementStatus.RESOLVED, com.example.solimus.enums.SignalementStatus.CONVERTED_TO_WORK) " +
+           "AND s.urgencyLevel = :urgency")
+    long countUnresolvedByResidenceIdAndUrgencyLevel(@Param("residenceId") Long residenceId, @Param("urgency") UrgencyLevel urgency);
 }

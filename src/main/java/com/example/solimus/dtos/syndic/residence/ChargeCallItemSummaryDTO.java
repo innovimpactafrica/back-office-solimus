@@ -25,8 +25,17 @@ public class ChargeCallItemSummaryDTO {
     // Liste des lots que ce copropriétaire possède dans cette résidence
     private List<PropertySummaryDTO> properties;
 
-    // Montant dû pour cet appel de charges
+    // Période de l'appel, ex: "T3"
+    private String periode;
+
+    // Année de l'appel, ex: 2026
+    private Integer annee;
+
+    // Montant total dû (quote-part + pénalité si déjà appliquée) — item.getTotalDue()
     private BigDecimal amountDue;
+
+    // Montant de la pénalité isolé, pour affichage séparé si > 0 (0 si aucune pénalité)
+    private BigDecimal penaltyAmount;
 
     // Statut du paiement (PENDING, PAID, etc.)
     private ChargeItemPaymentStatus status;
@@ -36,4 +45,7 @@ public class ChargeCallItemSummaryDTO {
 
     // Mode de paiement du dernier paiement complété (si existe)
     private String paymentMethod;
+
+    // Référence du dernier paiement complété — null si jamais payé, utilisée par le bouton "Voir reçu"
+    private String paymentReference;
 }

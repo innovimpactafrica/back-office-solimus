@@ -138,6 +138,17 @@ public interface ChargeService {
     ChargeCallListResponse getChargeCallsForSyndic(int page, int size);
 
     /**
+     * Retourne la liste paginée des appels de charges d'une résidence précise, pour une année donnée
+     * (année en cours par défaut si non fournie) — page complète accessible via "Voir plus"
+     */
+    ChargeCallListResponse getChargeCallsForResidence(Long residenceId, Integer year, int page, int size);
+
+    /**
+     * Retourne le reçu de paiement d'une ligne de charge (dernier paiement COMPLETED)
+     */
+    ChargeCallReceiptDTO getChargeCallReceipt(Long chargeCallItemId);
+
+    /**
      * Détail d'un appel de charges
      * Retourne le détail complet d'un appel de charges avec les KPIs et le suivi par copropriétaire
      */

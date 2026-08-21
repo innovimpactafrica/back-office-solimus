@@ -62,4 +62,11 @@ public interface ChargeCallRepository extends JpaRepository<ChargeCall, Long> {
 
     List<ChargeCall> findByBudgetSyndicId(Long syndicId);
     List<ChargeCall> findByBudgetSyndicIdAndCreatedAtBetween(Long syndicId, LocalDateTime start, LocalDateTime end);
+
+    /**
+     * Page des appels de charges d'une résidence pour une année précise, triée par période croissante —
+     * pour la page complète "Appels de Charges" de l'onglet Finances d'une résidence
+     */
+    Page<ChargeCall> findByBudgetResidenceIdAndYearOrderByPeriodNumberAsc(
+            Long residenceId, Integer year, Pageable pageable);
 }

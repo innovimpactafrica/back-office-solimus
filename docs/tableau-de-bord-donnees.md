@@ -133,11 +133,12 @@ SINON : recoveryRate = totalPaid / totalDue × 100
 - **Origine** : `InterventionRequestRepository.countByResidenceIdAndStatusIn()` (filtré) ou `.countByResidenceSyndicIdAndStatusIn()` (global).
 - **Formule** : compte les `InterventionRequest` dont `status ∈ {PENDING, SYNDIC_ASSIGNED, QUOTE_VALIDATED, STARTED, FINISHED}` (tout sauf `FINAL_VALIDATION` et `CANCELLED`). Le compteur "urgents" ajoute le filtre `urgencyLevel = URGENT`.
 
-### 2.7. Interventions du jour / planifiées (`todayInterventionsCount`, `plannedInterventionsCount`)
+### 2.7. Signalements Ouverts (`openSignalementsCount`, `urgentSignalementsCount`)
 
-- **Simple** : combien de demandes de travaux créées aujourd'hui, et combien sont encore en attente de traitement.
-- **Origine** : `InterventionRequestRepository.countByResidenceIdAndCreatedAtBetween()` etc.
-- **Formule** : `createdAt` compris entre `LocalDate.now().atStartOfDay()` (00h00 aujourd'hui) et ce même instant `+1 jour` (23h59:59). "Planifiées" ajoute le filtre `status = PENDING`.
+- **Simple** : combien de signalements sont encore en attente (ni traités, ni transformés en travaux), et combien sont urgents parmi eux.
+- ✅ Remplace l'ancienne carte "Interventions du Jour" (`todayInterventionsCount`/`plannedInterventionsCount`, supprimée avec ses 4 méthodes repository devenues inutiles).
+- **Origine** : `SignalementRepository.countUnresolvedBySyndicId()` (global) / `.countUnresolvedByResidenceId()` (filtré) — même liste d'exclusion que l'alerte `SIGNALEMENT` : statut hors `RESOLVED`/`CONVERTED_TO_WORK`.
+- **Formule sous-titre** : `countUnresolvedBySyndicIdAndUrgencyLevel(..., URGENT)` (ou variante filtrée par résidence) — même signalements que ci-dessus, filtrés en plus sur `urgencyLevel = URGENT`, affiché "X urgent(s)".
 
 ---
 

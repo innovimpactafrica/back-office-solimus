@@ -30,7 +30,12 @@ public class ResidenceHeaderStatsDTO {
     private Long totalApartments;
     private BigDecimal annualBudget;
     private Long coOwnersCount;
-    private Long worksInProgress;
-    private Long pendingQuotes;
-    private Long openIncidents;
+
+    // Carte "Travaux Ouverts"
+    private Long openWorksCount; // Travaux ouverts (non clôturés ni annulés) de cette résidence
+    private Long urgentWorksCount; // Parmi les ouverts, ceux marqués urgents — sous-titre de la carte
+
+    // Carte "Signalements Ouverts" (remplace l'ancienne carte "Interventions")
+    private Long openSignalementsCount; // Signalements en attente (ni traités, ni transformés en travaux)
+    private Long urgentSignalementsCount; // Parmi les ouverts, ceux marqués urgents — sous-titre de la carte
 }

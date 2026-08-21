@@ -67,6 +67,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     private final SyndicTreasuryService syndicTreasuryService;
     private final EmailService emailService;
     private final NotificationService notificationService;
+    private final SignalementRepository signalementRepository;
 
     // =========================================================================
     // ÉTAPE 1 — CRÉER UNE RÉSIDENCE (infos générales uniquement)
@@ -113,6 +114,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
         // Crée les contacts liés à cette résidence, si fournis
         if (dto.getContacts() != null) {
+            assertNoDuplicatePhonesInBatch(dto.getContacts());
             for (ContactInputDTO contactDto : dto.getContacts()) {
                 ResidenceContact contact = new ResidenceContact();
                 contact.setFullName(contactDto.getFullName());
@@ -192,6 +194,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
         // Crée les contacts liés à cette résidence
         if (dto.getContacts() != null) {
+            assertNoDuplicatePhonesInBatch(dto.getContacts());
             for (ContactInputDTO contactDto : dto.getContacts()) {
                 ResidenceContact contact = new ResidenceContact();
                 contact.setFullName(contactDto.getFullName());
@@ -311,6 +314,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
         // Gestion des contacts : remplacement complet si fourni, sinon rien
         if (dto.getContacts() != null) {
+            assertNoDuplicatePhonesInBatch(dto.getContacts());
+
             // Supprimer tous les contacts existants
             contactRepository.deleteByResidenceId(residenceId);
 
@@ -723,23 +728,24 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         BigDecimal soldePrecedent = calculerSoldeADate(walletId, finMoisPrecedent);
         BigDecimal variationTresoreriePourcentage = calculerVariation(totalTransactions, soldePrecedent);
 
-        // 4. Résidences avec impayés et pourcentage
+        // 4. Résidences avec impayés — le pourcentage fixe a été retiré, le front recompose le
+        // sous-titre "{residencesWithUnpaid} résidences sur {totalResidences} concernées" avec ces 2 chiffres déjà présents
         long residencesAvecImpayes = chargeCallItemRepository.countResidencesWithUnpaidBySyndic(
                 currentSyndic, ChargeItemPaymentStatus.PAID);
 
-        double pourcentageResidencesImpayees = 0.0;
-        if (totalResidences > 0) {
-            pourcentageResidencesImpayees = (double) residencesAvecImpayes / totalResidences * 100;
-        }
-
-        // 5. Interventions ouvertes (non clôturées ni annulées)
+        // 5. Travaux ouverts (non clôturés ni annulés) + urgents parmi eux — carte "Travaux Ouverts"
         long interventionsOuvertes = interventionRequestRepository.countOpenBySyndic(currentSyndic);
+        List<InterventionStatus> openStatuses = List.of(
+                InterventionStatus.PENDING, InterventionStatus.SYNDIC_ASSIGNED,
+                InterventionStatus.QUOTE_VALIDATED, InterventionStatus.STARTED, InterventionStatus.FINISHED
+        );
+        long urgentInterventionsOuvertes = interventionRequestRepository
+                .countByResidenceSyndicIdAndStatusInAndUrgencyLevel(currentSyndic.getId(), openStatuses, UrgencyLevel.URGENT);
 
-        // 6. Interventions en cours (STARTED)
-        long interventionsEnCours = interventionRequestRepository.countStartedBySyndic(currentSyndic);
-
-        // 7. Interventions planifiées (PENDING)
-        long interventionsPlanifiees = interventionRequestRepository.countPendingBySyndic(currentSyndic);
+        // 6. Signalements ouverts + urgents parmi eux — carte "Signalements Ouverts" (remplace "Interventions")
+        long signalementsOuverts = signalementRepository.countUnresolvedBySyndicId(currentSyndic.getId());
+        long urgentSignalementsOuverts = signalementRepository
+                .countUnresolvedBySyndicIdAndUrgencyLevel(currentSyndic.getId(), UrgencyLevel.URGENT);
 
         return ResidenceDashboardStatsDTO.builder()
                 .totalResidences(totalResidences)
@@ -747,10 +753,10 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 .globalTreasury(tresorerieGlobale)
                 .variationTresoreriePourcentage(variationTresoreriePourcentage)
                 .residencesWithUnpaid(residencesAvecImpayes)
-                .percentageResidencesWithUnpaid(pourcentageResidencesImpayees)
                 .openInterventions(interventionsOuvertes)
-                .inProgressInterventions(interventionsEnCours)
-                .pendingInterventions(interventionsPlanifiees)
+                .urgentOpenInterventions(urgentInterventionsOuvertes)
+                .openSignalements(signalementsOuverts)
+                .urgentOpenSignalements(urgentSignalementsOuverts)
                 .build();
     }
 
@@ -764,6 +770,10 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     public Page<ResidenceCardDTO> getResidencesPaginated(String search, String city, ResidenceHealthStatus status, Integer page, Integer size) {
 
         User currentSyndic = getCurrentUser();
+
+        // Récupère le wallet du syndic, pour calculer la trésorerie de chaque résidence (source unique)
+        SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId()).orElse(null);
+        Long walletId = (wallet != null) ? wallet.getId() : null;
 
         // Requête réellement paginée : recherche, ville et statut de santé filtrés directement en SQL
         // (le statut est déjà persisté sur Residence.healthStatus, jamais recalculé ici ;
@@ -789,8 +799,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             // Nombre d'appartements
             long appartementsCount = propertyRepository.countByResidenceId(residence.getId());
 
-            // Trésorerie de la résidence
-            BigDecimal tresorerie = amountPaid != null ? amountPaid : BigDecimal.ZERO;
+            // Trésorerie disponible = source unique (SyndicTreasuryService), cohérente avec le reste de l'app
+            BigDecimal tresorerie = syndicTreasuryService.getAvailableBalance(walletId, residence.getId());
 
             // Interventions ouvertes pour cette résidence
             long openInterventions = interventionRequestRepository.countOpenByResidenceId(residence.getId());
@@ -838,16 +848,19 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 .map(Budget::getBudgetTotal)
                 .orElse(null);
 
-        // 4. Nombre d'interventions en cours (STARTED)
-        long worksInProgress = interventionRequestRepository.countByResidenceIdAndStatus(
-                residenceId, InterventionStatus.STARTED);
+        // 4. Travaux ouverts (non clôturés ni annulés) de cette résidence + urgents parmi eux
+        long openWorksCount = interventionRequestRepository.countOpenByResidenceId(residenceId);
+        List<InterventionStatus> openStatuses = List.of(
+                InterventionStatus.PENDING, InterventionStatus.SYNDIC_ASSIGNED,
+                InterventionStatus.QUOTE_VALIDATED, InterventionStatus.STARTED, InterventionStatus.FINISHED
+        );
+        long urgentWorksCount = interventionRequestRepository
+                .countByResidenceIdAndStatusInAndUrgencyLevel(residenceId, openStatuses, UrgencyLevel.URGENT);
 
-        // 4. Nombre d'interventions en attente (PENDING)
-        long pendingQuotes = interventionRequestRepository.countByResidenceIdAndStatus(
-                residenceId, InterventionStatus.PENDING);
-
-        // 5. Nombre d'incidents ouverts (non clôturés ni annulés)
-        long openIncidents = interventionRequestRepository.countOpenByResidenceId(residenceId);
+        // 5. Signalements ouverts de cette résidence + urgents parmi eux
+        long openSignalementsCount = signalementRepository.countUnresolvedByResidenceId(residenceId);
+        long urgentSignalementsCount = signalementRepository
+                .countUnresolvedByResidenceIdAndUrgencyLevel(residenceId, UrgencyLevel.URGENT);
 
         // 6. Statut de santé — déjà persisté, recalculé sur événement et par le job quotidien
         ResidenceHealthStatus healthStatus = residence.getHealthStatus();
@@ -861,9 +874,10 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 .totalApartments(totalApartments)
                 .annualBudget(annualBudget)
                 .coOwnersCount(coOwnersCount)
-                .worksInProgress(worksInProgress)
-                .pendingQuotes(pendingQuotes)
-                .openIncidents(openIncidents)
+                .openWorksCount(openWorksCount)
+                .urgentWorksCount(urgentWorksCount)
+                .openSignalementsCount(openSignalementsCount)
+                .urgentSignalementsCount(urgentSignalementsCount)
                 .build();
     }
 
@@ -920,6 +934,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     public ResidenceDetailDTO.KeyContactDTO addResidenceContact(Long residenceId, ContactInputDTO dto) {
         Residence residence = getResidenceOrThrow(residenceId);
         verifyResidenceOwnership(residence);
+        assertPhoneUniqueForResidence(residenceId, dto.getPhone(), null);
 
         ResidenceContact contact = new ResidenceContact();
         contact.setResidence(residence);
@@ -948,8 +963,14 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             throw new BadRequestException("Ce contact n'appartient pas à cette résidence");
         }
 
-        contact.setFullName(dto.getFullName());
-        contact.setPhone(dto.getPhone());
+        // Mise à jour partielle : seuls les champs réellement fournis (non null) sont modifiés
+        if (dto.getFullName() != null) {
+            contact.setFullName(dto.getFullName());
+        }
+        if (dto.getPhone() != null) {
+            assertPhoneUniqueForResidence(residenceId, dto.getPhone(), contactId);
+            contact.setPhone(dto.getPhone());
+        }
         ResidenceContact saved = contactRepository.save(contact);
 
         return ResidenceDetailDTO.KeyContactDTO.builder()
@@ -1143,7 +1164,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     @Override
     @Transactional(readOnly = true)
     public List<CommonFacilityListItemDTO> getCommonFacilitiesWithFilters(
-            Long residenceId, String search, String status) {
+            Long residenceId, String search, CommonFacilityStatus status) {
 
         // Vérifier l'appartenance de la résidence au syndic
         Residence residence = getResidenceOrThrow(residenceId);
@@ -1194,7 +1215,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         // Filtrer par statut si demandé (après calcul de tous les statuts)
         if (status != null) {
             allItems = allItems.stream()
-                    .filter(dto -> status.equals(dto.getStatus()))
+                    .filter(dto -> status.name().equals(dto.getStatus()))
                     .toList();
         }
 
@@ -1443,9 +1464,9 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 propertySummaries.add(propertySummary);
             }
 
-            // Étape 3 : Récupérer le montant dû
-            // Le montant dû est la quote-part du copropriétaire pour cet appel de charges
-            BigDecimal amountDue = item.getQuotePart();
+            // Étape 3 : Récupérer le montant dû — quote-part + pénalité si déjà appliquée
+            BigDecimal amountDue = item.getTotalDue();
+            BigDecimal penaltyAmount = item.getPenaltyAmount() != null ? item.getPenaltyAmount() : BigDecimal.ZERO;
 
             // Étape 4 : Récupérer le statut
             // On utilise directement le statut PaymentStatus de l'item
@@ -1455,25 +1476,31 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             // La date limite est sur le ChargeCall parent
             LocalDate dueDate = item.getChargeCall().getDueDate();
 
-            // Étape 6 : Récupérer le mode de paiement du dernier paiement complété
+            // Étape 6 : Récupérer le mode et la référence du dernier paiement complété
             // On cherche le dernier paiement COMPLETED pour ce ChargeCallItem
             Optional<ChargeCallPayment> latestPayment = chargeCallPaymentRepository
                     .findLatestCompletedByChargeCallItemId(item.getId());
 
             String paymentMethod = null;
+            String paymentReference = null;
             if (latestPayment.isPresent()) {
-                // Si un paiement complété existe, on récupère son mode de paiement
+                // Si un paiement complété existe, on récupère son mode et sa référence (pour "Voir reçu")
                 paymentMethod = latestPayment.get().getMethod().name();
+                paymentReference = latestPayment.get().getReference();
             }
 
             // Étape 7 : Construire le DTO pour cet item
             ChargeCallItemSummaryDTO summaryDTO = ChargeCallItemSummaryDTO.builder()
                     .coOwnerName(coOwnerName)
                     .properties(propertySummaries)
+                    .periode(buildSimplePeriodeLabel(item.getChargeCall()))
+                    .annee(item.getChargeCall().getYear())
                     .amountDue(amountDue)
+                    .penaltyAmount(penaltyAmount)
                     .status(status)
                     .dueDate(dueDate)
                     .paymentMethod(paymentMethod)
+                    .paymentReference(paymentReference)
                     .build();
 
             summaryDTOs.add(summaryDTO);
@@ -1810,35 +1837,45 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     // pas par lot spécifique (un copropriétaire peut avoir plusieurs lots). Voir PropertyListItemDTO.charge.
 
     /**
-     * Calcule le statut composite d'un équipement commun
-     * MAINTENANCE si intervention active, FUNCTIONAL sinon
+     * Calcule le statut composite d'un équipement commun (jamais persisté, recalculé à chaque appel) :
+     * IN_PROGRESS si une intervention est en cours ou terminée mais pas encore validée (STARTED/FINISHED),
+     * REPORTED si une intervention existe mais n'a pas encore démarré (PENDING/SYNDIC_ASSIGNED/QUOTE_VALIDATED),
+     * FUNCTIONAL sinon (aucune intervention active — clôturée ou annulée)
      */
     private String calculateFacilityStatus(List<InterventionRequest> interventions) {
-        // Statuts terminaux : intervention clôturée
-        List<InterventionStatus> terminalStatuses = List.of(
-                InterventionStatus.FINISHED,
-                InterventionStatus.FINAL_VALIDATION,
-                InterventionStatus.CANCELLED
-        );
+        boolean hasInProgress = false;
+        boolean hasReported = false;
 
-        // Vérifier s'il existe une intervention active (non terminale)
         for (InterventionRequest intervention : interventions) {
-            if (!terminalStatuses.contains(intervention.getStatus())) {
-                return "MAINTENANCE";
+            InterventionStatus status = intervention.getStatus();
+            if (status == InterventionStatus.STARTED || status == InterventionStatus.FINISHED) {
+                hasInProgress = true;
+            } else if (status == InterventionStatus.PENDING
+                    || status == InterventionStatus.SYNDIC_ASSIGNED
+                    || status == InterventionStatus.QUOTE_VALIDATED) {
+                hasReported = true;
             }
         }
 
-        return "FUNCTIONAL";
+        if (hasInProgress) {
+            return CommonFacilityStatus.IN_PROGRESS.name();
+        }
+        if (hasReported) {
+            return CommonFacilityStatus.REPORTED.name();
+        }
+        return CommonFacilityStatus.FUNCTIONAL.name();
     }
 
     /**
-     * Calcule la date de la dernière maintenance terminée sur un équipement
-     * MAX(finishedAt) des interventions terminées
+     * Calcule la date de la dernière maintenance sur un équipement — MAX(validatedAt) des
+     * interventions clôturées (FINAL_VALIDATION), pas juste terminées (FINISHED). Cohérent avec
+     * calculateFacilityStatus : un équipement reste IN_PROGRESS tant qu'il n'est pas validé, donc
+     * "dernière maintenance" ne doit apparaître que pour une intervention réellement clôturée.
      */
     private LocalDate calculateLastMaintenanceDate(List<InterventionRequest> interventions) {
         return interventions.stream()
-                .filter(ir -> ir.getFinishedAt() != null)
-                .map(InterventionRequest::getFinishedAt)
+                .filter(ir -> ir.getValidatedAt() != null)
+                .map(InterventionRequest::getValidatedAt)
                 .max(LocalDateTime::compareTo)
                 .map(LocalDateTime::toLocalDate)
                 .orElse(null);
@@ -1903,6 +1940,46 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 : PropertyDisplayStatus.VACANT);
 
         return property;
+    }
+
+    // Vérifie qu'un numéro de téléphone n'est pas déjà utilisé par un autre contact de la même
+    // résidence — ignoré si le téléphone est vide (pas de contrainte sur un champ optionnel non rempli).
+    // excludeContactId permet d'ignorer le contact qu'on est en train de modifier lui-même
+    private void assertPhoneUniqueForResidence(Long residenceId, String phone, Long excludeContactId) {
+        if (phone == null || phone.isBlank()) {
+            return;
+        }
+        boolean exists = (excludeContactId != null)
+                ? contactRepository.existsByResidenceIdAndPhoneAndIdNot(residenceId, phone, excludeContactId)
+                : contactRepository.existsByResidenceIdAndPhone(residenceId, phone);
+        if (exists) {
+            throw new BadRequestException("Un contact avec ce numéro de téléphone existe déjà pour cette résidence");
+        }
+    }
+
+    // Vérifie qu'un lot de contacts soumis en une seule fois (contactsJson) ne contient pas déjà
+    // 2 fois le même téléphone en interne, avant même de toucher la base
+    private void assertNoDuplicatePhonesInBatch(List<ContactInputDTO> contacts) {
+        java.util.Set<String> seenPhones = new java.util.HashSet<>();
+        for (ContactInputDTO contactDto : contacts) {
+            String phone = contactDto.getPhone();
+            if (phone == null || phone.isBlank()) {
+                continue;
+            }
+            if (!seenPhones.add(phone)) {
+                throw new BadRequestException("Le numéro " + phone + " est utilisé par plusieurs contacts dans la même demande");
+            }
+        }
+    }
+
+    // Libellé court de la période d'un appel de charges, ex: "T3" (trimestriel) ou "Jan" (mensuel)
+    private String buildSimplePeriodeLabel(ChargeCall chargeCall) {
+        if (chargeCall.getFrequency() == ChargeFrequency.TRIMESTRIEL) {
+            return "T" + chargeCall.getPeriodNumber();
+        }
+        String[] mois = {"Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"};
+        int index = chargeCall.getPeriodNumber() - 1;
+        return (index >= 0 && index < mois.length) ? mois[index] : "P" + chargeCall.getPeriodNumber();
     }
 
     // Récupère une résidence ou lève une exception si introuvable

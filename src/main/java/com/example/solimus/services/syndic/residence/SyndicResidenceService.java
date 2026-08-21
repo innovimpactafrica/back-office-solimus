@@ -2,6 +2,7 @@ package com.example.solimus.services.syndic.residence;
 
 import com.example.solimus.dtos.syndic.residence.*;
 import com.example.solimus.dtos.syndic.settings.FacilityTypeDTO;
+import com.example.solimus.enums.CommonFacilityStatus;
 import com.example.solimus.enums.PropertyRentalStatus;
 import com.example.solimus.enums.ResidenceHealthStatus;
 import org.springframework.data.domain.Page;
@@ -40,7 +41,7 @@ public interface SyndicResidenceService {
 
     // Lister les équipements communs d'une résidence avec filtres (onglet Biens communs)
     List<CommonFacilityListItemDTO> getCommonFacilitiesWithFilters(
-            Long residenceId, String search, String status);
+            Long residenceId, String search, CommonFacilityStatus status);
 
     // Détail d'un équipement commun (onglet Biens communs)
     CommonFacilityDetailDTO getCommonFacilityDetail(Long residenceId, Long facilityId);

@@ -160,31 +160,25 @@ public class DasboardServiceImpl implements DashboardService {
         dto.setOpenIncidentsCount(openIncidentsCount);
         dto.setUrgentIncidentsCount(urgentIncidentsCount);
 
-        // --- Interventions du Jour (globales ou filtrées par résidence) ---
+        // --- Signalements Ouverts (globaux ou filtrés par résidence) ---
 
-        // Calcule les bornes de la journée actuelle (00h00 à 23h59)
-        LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
-        LocalDateTime endOfToday = startOfToday.plusDays(1);
-
-        long todayInterventionsCount;
-        long plannedInterventionsCount;
+        long openSignalementsCount;
+        long urgentSignalementsCount;
 
         if (resolvedResidenceId != null) {
             // Mode filtré par résidence
-            todayInterventionsCount = interventionRequestRepository
-                    .countByResidenceIdAndCreatedAtBetween(resolvedResidenceId, startOfToday, endOfToday);
-            plannedInterventionsCount = interventionRequestRepository
-                    .countByResidenceIdAndCreatedAtBetweenAndStatus(resolvedResidenceId, startOfToday, endOfToday, InterventionStatus.PENDING);
+            openSignalementsCount = signalementRepository.countUnresolvedByResidenceId(resolvedResidenceId);
+            urgentSignalementsCount = signalementRepository
+                    .countUnresolvedByResidenceIdAndUrgencyLevel(resolvedResidenceId, UrgencyLevel.URGENT);
         } else {
             // Mode global (toutes résidences)
-            todayInterventionsCount = interventionRequestRepository
-                    .countByResidenceSyndicIdAndCreatedAtBetween(currentSyndic.getId(), startOfToday, endOfToday);
-            plannedInterventionsCount = interventionRequestRepository
-                    .countByResidenceSyndicIdAndCreatedAtBetweenAndStatus(currentSyndic.getId(), startOfToday, endOfToday, InterventionStatus.PENDING);
+            openSignalementsCount = signalementRepository.countUnresolvedBySyndicId(currentSyndic.getId());
+            urgentSignalementsCount = signalementRepository
+                    .countUnresolvedBySyndicIdAndUrgencyLevel(currentSyndic.getId(), UrgencyLevel.URGENT);
         }
 
-        dto.setTodayInterventionsCount(todayInterventionsCount);
-        dto.setPlannedInterventionsCount(plannedInterventionsCount);
+        dto.setOpenSignalementsCount(openSignalementsCount);
+        dto.setUrgentSignalementsCount(urgentSignalementsCount);
 
         // Retourne le DTO complet avec toutes les 6 cards remplies
         return dto;

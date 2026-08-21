@@ -10,8 +10,11 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 
 // Entité représentant les contacts importants de la résidence.
+// Un même numéro ne peut pas être utilisé 2 fois pour la même résidence (mais peut se répéter
+// sur des résidences différentes) — contrôlé aussi côté service pour un message d'erreur clair.
 @Entity
-@Table(name = "residence_contacts")
+@Table(name = "residence_contacts",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"residence_id", "phone"}))
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

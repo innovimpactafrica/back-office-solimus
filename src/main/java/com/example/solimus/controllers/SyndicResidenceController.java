@@ -1,10 +1,14 @@
 package com.example.solimus.controllers;
 
 import com.example.solimus.dtos.auth.ErrorResponseDTO;
+import com.example.solimus.dtos.syndic.charge.ChargeCallListResponse;
+import com.example.solimus.dtos.syndic.charge.ChargeCallReceiptDTO;
 import com.example.solimus.dtos.syndic.residence.*;
 import com.example.solimus.dtos.syndic.settings.FacilityTypeDTO;
+import com.example.solimus.enums.CommonFacilityStatus;
 import com.example.solimus.enums.PropertyRentalStatus;
 import com.example.solimus.enums.ResidenceHealthStatus;
+import com.example.solimus.services.syndic.charge.ChargeService;
 import com.example.solimus.services.syndic.residence.SyndicResidenceService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -40,6 +44,7 @@ public class SyndicResidenceController {
 
     private final SyndicResidenceService residenceService;
     private final ObjectMapper objectMapper;
+    private final ChargeService chargeService;
 
     // =========================================================================
     // ÉTAPE 1 — CRÉER UNE RÉSIDENCE (infos générales uniquement)
@@ -616,7 +621,7 @@ public class SyndicResidenceController {
     public ResponseEntity<List<CommonFacilityListItemDTO>> getCommonFacilitiesWithFilters(
             @PathVariable Long residenceId,
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) String status) {
+            @RequestParam(required = false) CommonFacilityStatus status) {
         return ResponseEntity.ok(residenceService.getCommonFacilitiesWithFilters(
                 residenceId, search, status));
     }
@@ -700,6 +705,41 @@ public class SyndicResidenceController {
     public ResponseEntity<List<ChargeCallItemSummaryDTO>> getChargeCallsSummary(
             @PathVariable Long residenceId) {
         return ResponseEntity.ok(residenceService.getChargeCallsSummary(residenceId));
+    }
+
+    @Operation(summary = "Page complète des appels de charges d'une résidence (bouton \"Voir plus\", filtrée par année)", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = ChargeCallListResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @GetMapping("/residences/{residenceId}/finances/charge-calls")
+    public ResponseEntity<ChargeCallListResponse> getResidenceChargeCalls(
+            @PathVariable Long residenceId,
+            @Parameter(description = "Année en cours par défaut si non fournie", example = "2026")
+            @RequestParam(required = false) Integer annee,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(chargeService.getChargeCallsForResidence(residenceId, annee, page, size));
+    }
+
+    @Operation(summary = "Reçu de paiement d'une ligne de charge (bouton \"Voir reçu\")", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Reçu renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = ChargeCallReceiptDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Cette charge n'a jamais été payée",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette charge",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Ligne de charge introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @GetMapping("/charge-call-items/{chargeCallItemId}/receipt")
+    public ResponseEntity<ChargeCallReceiptDTO> getChargeCallReceipt(@PathVariable Long chargeCallItemId) {
+        return ResponseEntity.ok(chargeService.getChargeCallReceipt(chargeCallItemId));
     }
 
     @Operation(summary = "Liste des transactions récentes du wallet (onglet Finances)", tags = {"Syndic - Résidences"})

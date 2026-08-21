@@ -22,6 +22,6 @@ public class MainDashboardDTO {
     private Long openIncidentsCount; // Nombre d'incidents ouverts (hors FINAL_VALIDATION/CANCELLED)
     private Long urgentIncidentsCount; // Nombre d'incidents urgents parmi les ouverts
 
-    private Long todayInterventionsCount; // Nombre d'interventions créées aujourd'hui
-    private Long plannedInterventionsCount; // Nombre d'interventions encore en attente de devis (PENDING) créées aujourd'hui
+    private Long openSignalementsCount; // Nombre de signalements ouverts (hors RESOLVED/CONVERTED_TO_WORK)
+    private Long urgentSignalementsCount; // Nombre de signalements urgents parmi les ouverts
 }
