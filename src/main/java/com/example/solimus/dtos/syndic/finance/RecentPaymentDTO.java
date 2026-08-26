@@ -7,8 +7,11 @@ import java.math.BigDecimal;
 //DTO d'une ligne "Paiements Récents" du dashboard Finances
 @Data
 public class RecentPaymentDTO {
-    private String name; // Nom du copropriétaire
-    private String label; // Ex: "Charges T2"
+    private String coOwnerName; // Nom du copropriétaire payeur
+    private String residenceName;
+    private String period; // ex. "T3" (trimestriel) ou "Jan" (mensuel)
+    private Integer year;
+    private String label; // Ex: "Charges"
     private String relativeTime; // Ex: "Il y a 2h"
     private BigDecimal amount; // Montant payé
 }

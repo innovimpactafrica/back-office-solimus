@@ -7,6 +7,7 @@ import com.example.solimus.dtos.owner.charge.*;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.BudgetStatus;
 import com.example.solimus.enums.ChargeFrequency;
+import com.example.solimus.enums.ChargeItemPaymentStatus;
 import com.example.solimus.enums.ChargeType;
 import com.example.solimus.enums.ExceptionalCallStatus;
 import com.example.solimus.enums.PaymentStatus;
@@ -22,6 +23,9 @@ import com.example.solimus.repositories.UserRepository;
 import com.example.solimus.utils.ChargeAllocationUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,12 +33,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -55,9 +58,11 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
     // LISTER MES CHARGES (courantes + exceptionnelles mélangées, paginées, filtrées)
     // =========================================================================
 
-    // Note : pagination faite manuellement (pas Pageable de Spring Data) car on mélange
-    // 2 sources différentes (ChargeCallItem + ExceptionalCallItem) en une seule liste unifiée.
-    // Le volume par copropriétaire reste toujours faible, donc pas d'impact de performance.
+    // Pagination SQL réelle (UNION ALL natif entre ChargeCallItem et ExceptionalCallItem — voir
+    // ChargeCallItemRepository.findMyChargesUnion) : la base ne renvoie que les N lignes de la page
+    // demandée, plus de chargement complet en mémoire. Le libellé de période (title) des charges
+    // courantes reste calculé en Java (buildPeriodLabel) — appliqué uniquement sur les lignes déjà
+    // récupérées, jamais recalculé pour toute la liste.
     @Override
     @Transactional(readOnly = true)
     public MyChargeListResponse getMyCharges(String search, ChargeType type, String status, Long residenceId, int page, int size) {
@@ -65,48 +70,29 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
         // Récupère le copropriétaire connecté
         User currentOwner = getCurrentUser();
 
-        // Récupère toutes ses charges courantes et exceptionnelles, non filtrées pour l'instant
-        List<ChargeCallItem> chargeItems = chargeCallItemRepository.findByCoOwnerId(currentOwner.getId());
-        List<ExceptionalCallItem> exceptionalItems = exceptionalCallItemRepository.findByCoOwnerId(currentOwner.getId());
+        String typeCode = type != null ? type.name() : null;
+        String statusRaw = resolveStatusFilter(status);
 
-        // Construit une liste unifiée de cartes, en mélangeant les deux types
-        List<MyChargeCardDTO> allCards = new ArrayList<>();
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Object[]> rowsPage = chargeCallItemRepository.findMyChargesUnion(
+                currentOwner.getId(), residenceId, typeCode, statusRaw, search, pageable);
 
-        for (ChargeCallItem item : chargeItems) {
-            allCards.add(buildChargeCallCard(item));
-        }
-        for (ExceptionalCallItem item : exceptionalItems) {
-            allCards.add(buildExceptionalCallCard(item));
-        }
-
-        // Applique tous les filtres, y compris résidence.
-        // Chaque condition "== null || isBlank()" veut dire "pas de filtre demandé, on garde tout" ;
-        // sinon on vérifie la vraie correspondance (contains pour le texte libre, égalité exacte pour type/statut/résidence).
-        List<MyChargeCardDTO> filtered = allCards.stream()
-                .filter(c -> search == null || search.isBlank() || c.getTitle().toLowerCase().contains(search.toLowerCase()))
-                .filter(c -> type == null || c.getType().equalsIgnoreCase(type.name()))
-                .filter(c -> status == null || status.isBlank() || c.getStatus().equalsIgnoreCase(status))
-                .filter(c -> residenceId == null || c.getResidenceId().equals(residenceId))
-                .sorted(Comparator.comparing(MyChargeCardDTO::getDueDate, Comparator.nullsLast(Comparator.naturalOrder())))
+        List<MyChargeCardDTO> pageContent = rowsPage.getContent().stream()
+                .map(this::buildCardFromRow)
                 .toList();
 
-        // Construit le résumé (bandeau haut) à partir de la liste FILTRÉE :
-        // les KPI (total à payer, nombre en attente, prochaine échéance) suivent donc le filtre résidence appliqué
-        MyChargesSummaryDTO summary = buildSummary(filtered);
-
-        // Pagination manuelle : découpe la liste filtrée selon la page demandée
-        int start = Math.min(page * size, filtered.size());
-        int end = Math.min(start + size, filtered.size());
-        List<MyChargeCardDTO> pageContent = filtered.subList(start, end);
-
-        int totalPages = (int) Math.ceil((double) filtered.size() / size);
+        // KPI du bandeau haut, calculés sur TOUT l'ensemble filtré (mêmes filtres, sans pagination),
+        // pas seulement la page courante
+        List<Object[]> summaryRows = chargeCallItemRepository.sumMyChargesSummary(
+                currentOwner.getId(), residenceId, typeCode, statusRaw, search);
+        MyChargesSummaryDTO summary = buildSummaryFromRow(summaryRows.get(0));
 
         return MyChargeListResponse.builder()
                 .summary(summary)
                 .charges(pageContent)
                 .currentPage(page)
-                .totalPages(totalPages)
-                .totalElements(filtered.size())
+                .totalPages(rowsPage.getTotalPages())
+                .totalElements((int) rowsPage.getTotalElements())
                 .build();
     }
 
@@ -421,81 +407,76 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
     }
 
-    // Construit le résumé (bandeau haut) à partir de la liste de charges déjà filtrée
-    private MyChargesSummaryDTO buildSummary(List<MyChargeCardDTO> cards) {
+    // Traduit le "status" reçu en query param (libellé français, ex: "En attente") vers le nom brut
+    // de l'enum ChargeItemPaymentStatus (ex: "PENDING"), seule forme filtrable en SQL — accepte aussi
+    // directement le nom brut par tolérance. Aucun statut connu ne correspond → traité comme "pas de
+    // filtre" (permissif), plutôt que de risquer de masquer silencieusement toutes les lignes.
+    private String resolveStatusFilter(String status) {
+        if (status == null || status.isBlank()) return null;
+        for (ChargeItemPaymentStatus s : ChargeItemPaymentStatus.values()) {
+            if (s.getLabel().equalsIgnoreCase(status) || s.name().equalsIgnoreCase(status)) {
+                return s.name();
+            }
+        }
+        return null;
+    }
 
-        // Filtre uniquement les charges qui ont encore un montant à payer (non soldées)
-        List<MyChargeCardDTO> pending = cards.stream()
-                .filter(c -> c.getRemainingAmount().compareTo(BigDecimal.ZERO) > 0)
-                .toList();
+    // Construit une carte "Mes charges" à partir d'une ligne brute de findMyChargesUnion — voir l'ordre
+    // des colonnes dans ChargeCallItemRepository (SELECT * FROM (...) AS combined) :
+    // [0]=source_type [1]=id [2]=title [3]=type_code [4]=residence_name [5]=residence_id
+    // [6]=property_reference [7]=remaining_amount [8]=due_date [9]=status_raw [10]=payment_blocked
+    // [11]=frequency [12]=period_number [13]=year [14]=search_title (ignoré ici)
+    private MyChargeCardDTO buildCardFromRow(Object[] row) {
 
-        // Additionne les montants de toutes ces charges en attente
-        BigDecimal totalToPay = pending.stream()
-                .map(MyChargeCardDTO::getRemainingAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        String sourceType = (String) row[0];
+        ChargeType chargeType = ChargeType.valueOf((String) row[3]);
+        ChargeItemPaymentStatus statusEnum = ChargeItemPaymentStatus.valueOf((String) row[9]);
 
-        // Cherche la date d'échéance la plus proche parmi les charges en attente,
-        // en ignorant celles qui n'ont pas de date (cas des appels exceptionnels)
-        LocalDate nextDueDate = pending.stream()
-                .map(MyChargeCardDTO::getDueDate)
-                .filter(Objects::nonNull)
-                .min(LocalDate::compareTo)
-                .orElse(null);
+        // Le titre des charges courantes n'est jamais stocké : reconstruit ici, sur cette seule ligne
+        // de la page déjà récupérée (jamais sur toute la liste) — buildPeriodLabel reste l'unique
+        // source de vérité pour ce libellé, réutilisée telle quelle (voir sa surcharge ChargeCall)
+        String title = (String) row[2];
+        if ("CHARGE".equals(sourceType)) {
+            String frequency = (String) row[11];
+            int periodNumber = ((Number) row[12]).intValue();
+            int year = ((Number) row[13]).intValue();
+            title = "Charges " + buildPeriodLabel(frequency, periodNumber, year);
+        }
 
-        // Construit le résumé avec les 3 valeurs calculées
+        return MyChargeCardDTO.builder()
+                .id(((Number) row[1]).longValue())
+                .type(chargeType.name())
+                .typeLabel(chargeType.getDescription())
+                .title(title)
+                .residenceName((String) row[4])
+                .residenceId(((Number) row[5]).longValue())
+                .propertyReference((String) row[6])
+                .remainingAmount((BigDecimal) row[7])
+                .dueDate(toLocalDate(row[8]))
+                .status(statusEnum.getLabel())
+                .paymentBlocked(((Number) row[10]).intValue() == 1)
+                .build();
+    }
+
+    // Construit le résumé (bandeau haut) à partir de la ligne d'agrégats de sumMyChargesSummary —
+    // [0]=totalToPay [1]=pendingCount [2]=nextDueDate
+    private MyChargesSummaryDTO buildSummaryFromRow(Object[] row) {
         return MyChargesSummaryDTO.builder()
-                .totalToPay(totalToPay)
-                .pendingCount(pending.size())
-                .nextDueDate(nextDueDate)
+                .totalToPay((BigDecimal) row[0])
+                .pendingCount(((Number) row[1]).intValue())
+                .nextDueDate(toLocalDate(row[2]))
                 .build();
     }
 
-    // Construit une carte pour un ChargeCallItem
-    private MyChargeCardDTO buildChargeCallCard(ChargeCallItem item) {
-
-        Residence residence = item.getChargeCall().getBudget().getResidence();
-        String propertyRef = findPropertyReference(item.getCoOwner().getId(), residence.getId());
-
-        return MyChargeCardDTO.builder()
-                .id(item.getId())
-                .type(ChargeType.REGULAR.name())
-                .typeLabel(ChargeType.REGULAR.getDescription())
-                // ChargeCall n'a pas de titre propre (contrairement à ExceptionalCall) : on le construit
-                // dynamiquement à partir de sa période, pour distinguer chaque appel dans la liste
-                .title("Charges " + buildPeriodLabel(item.getChargeCall()))
-                .residenceName(residence.getName())
-                .residenceId(residence.getId())
-                .propertyReference(propertyRef)
-                .remainingAmount(item.getRemainingAmount())
-                .dueDate(item.getChargeCall().getDueDate())
-                .status(item.getStatus().getLabel())
-                .paymentBlocked(item.getChargeCall().getBudget().getStatus() == BudgetStatus.CLOSED)
-                .build();
-    }
-
-    // Construit une carte pour un ExceptionalCallItem
-    private MyChargeCardDTO buildExceptionalCallCard(ExceptionalCallItem item) {
-
-        Residence residence = item.getExceptionalCall().getResidence();
-        String propertyRef = findPropertyReference(item.getCoOwner().getId(), residence.getId());
-
-        // Calcule le remainingAmount à la volée
-        BigDecimal remainingAmount = item.getQuotePart().subtract(item.getPaidAmount());
-
-        return MyChargeCardDTO.builder()
-                .id(item.getId())
-                .type(ChargeType.EXCEPTIONAL.name())
-                .typeLabel(ChargeType.EXCEPTIONAL.getDescription())
-                // ExceptionalCall a déjà un titre propre, saisi par le syndic à la création
-                .title(item.getExceptionalCall().getTitle())
-                .residenceName(residence.getName())
-                .residenceId(residence.getId())
-                .propertyReference(propertyRef)
-                .remainingAmount(remainingAmount)
-                .dueDate(null) // ExceptionalCall n'a pas de champ dueDate dans le modèle actuel
-                .status(item.getStatus().getLabel())
-                .paymentBlocked(item.getExceptionalCall().getStatus() == ExceptionalCallStatus.CLOSED)
-                .build();
+    // Convertit une colonne date native (renvoyée en java.sql.Date/Timestamp/LocalDateTime selon le
+    // driver JDBC) en LocalDate
+    private LocalDate toLocalDate(Object value) {
+        if (value == null) return null;
+        if (value instanceof java.sql.Date d) return d.toLocalDate();
+        if (value instanceof java.sql.Timestamp ts) return ts.toLocalDateTime().toLocalDate();
+        if (value instanceof LocalDateTime ldt) return ldt.toLocalDate();
+        if (value instanceof LocalDate ld) return ld;
+        return null;
     }
 
     // Récupère TOUS les biens du copropriétaire dans cette résidence, séparés par des virgules
@@ -604,18 +585,25 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
 
     // Construit le libellé de période lisible (mensuel ou trimestriel)
     private String buildPeriodLabel(ChargeCall chargeCall) {
-        if (chargeCall.getFrequency() == ChargeFrequency.MENSUEL) {
+        return buildPeriodLabel(chargeCall.getFrequency().name(), chargeCall.getPeriodNumber(), chargeCall.getYear());
+    }
+
+    // Même logique, à partir de valeurs brutes plutôt que d'une entité ChargeCall — utilisée pour
+    // reconstruire le titre d'une ligne issue de findMyChargesUnion (voir buildCardFromRow), seule
+    // autre source de vérité pour ce libellé (jamais dupliqué ailleurs pour l'affichage)
+    private String buildPeriodLabel(String frequency, int periodNumber, int year) {
+        if (ChargeFrequency.MENSUEL.name().equals(frequency)) {
             String[] monthNames = {"Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
                     "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"};
-            int index = chargeCall.getPeriodNumber() - 1;
+            int index = periodNumber - 1;
             String monthLabel = (index >= 0 && index < monthNames.length) ? monthNames[index] : "";
-            return monthLabel + " " + chargeCall.getYear();
+            return monthLabel + " " + year;
         }
 
         String[] quarterLabels = {"Jan-Mar", "Avr-Jun", "Jul-Sep", "Oct-Dec"};
-        int index = chargeCall.getPeriodNumber() - 1;
+        int index = periodNumber - 1;
         String quarterLabel = (index >= 0 && index < quarterLabels.length) ? quarterLabels[index] : "";
-        return "T" + chargeCall.getPeriodNumber() + " " + chargeCall.getYear() + " (" + quarterLabel + ")";
+        return "T" + periodNumber + " " + year + " (" + quarterLabel + ")";
     }
 
     // Génère une référence unique avec un préfixe (ex: CPY-123456 ou ECP-123456)

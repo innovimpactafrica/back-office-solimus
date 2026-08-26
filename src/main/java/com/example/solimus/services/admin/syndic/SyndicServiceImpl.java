@@ -484,22 +484,14 @@ public class SyndicServiceImpl implements SyndicService {
 
         getResidenceOrThrow(syndicId, residenceId);
 
-        List<Object[]> rows = propertyRepository.countByResidenceIdGroupByPropertyType(residenceId);
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Object[]> rowsPage = propertyRepository.countByResidenceIdGroupByPropertyType(residenceId, pageable);
 
-        List<PropertyTypeBreakdownDTO> all = rows.stream()
-                .map(row -> PropertyTypeBreakdownDTO.builder()
-                        .propertyTypeId(((Number) row[0]).longValue())
-                        .typeLabel((String) row[1])
-                        .count(((Number) row[2]).longValue())
-                        .build())
-                .toList();
-
-        // Le nombre de types de biens d'un syndic reste toujours restreint (quelques types) —
-        // pagination faite en mémoire plutôt que via une requête paginée dédiée
-        int start = Math.min(page * size, all.size());
-        int end = Math.min(start + size, all.size());
-
-        return new PageImpl<>(all.subList(start, end), PageRequest.of(page, size), all.size());
+        return rowsPage.map(row -> PropertyTypeBreakdownDTO.builder()
+                .propertyTypeId(((Number) row[0]).longValue())
+                .typeLabel((String) row[1])
+                .count(((Number) row[2]).longValue())
+                .build());
     }
 
     @Override

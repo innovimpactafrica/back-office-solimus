@@ -19,6 +19,7 @@ import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
 import com.example.solimus.services.shared.SyndicTreasuryService;
+import com.example.solimus.services.shared.WalletTransactionPresenter;
 import com.example.solimus.utils.PasswordGeneratorUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -68,6 +69,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     private final EmailService emailService;
     private final NotificationService notificationService;
     private final SignalementRepository signalementRepository;
+    private final WalletTransactionPresenter walletTransactionPresenter;
 
     // =========================================================================
     // ÉTAPE 1 — CRÉER UNE RÉSIDENCE (infos générales uniquement)
@@ -1789,16 +1791,10 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
      * Convertit une SyndicWalletTransaction en WalletTransactionDTO
      * Le montant est stocké avec son signe (positif pour entrées, négatif pour sorties)
      */
+    // Logique d'enrichissement déplacée dans WalletTransactionPresenter (partagée avec le
+    // module Finances, qui en a maintenant besoin aussi pour l'historique complet)
     private WalletTransactionDTO toDTO(SyndicWalletTransaction tw) {
-        return WalletTransactionDTO.builder()
-                .id(tw.getId())
-                .label(tw.getLabel())
-                .reference(tw.getReference())
-                .transactionDate(tw.getTransactionDate())
-                .amount(tw.getAmount())
-                .mode(tw.getMode())
-                .category(tw.getCategory())
-                .build();
+        return walletTransactionPresenter.toDTO(tw);
     }
 
 

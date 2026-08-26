@@ -12,5 +12,5 @@ public class ExceptionalCallItemDetailDTO {
     private BigDecimal quotePart; // Montant qu'il doit payer
     private BigDecimal paidAmount; // Montant déjà payé
     private BigDecimal remainingAmount; // Solde restant à payer
-    private String status; // PAYE, PARTIEL, IMPAYE
+    private String status; // PAYE, IMPAYE, NON_APPLICABLE
 }

@@ -4,16 +4,13 @@ import com.example.solimus.dtos.provider.wallet.RequestWithdrawalDTO;
 import com.example.solimus.dtos.provider.wallet.WithdrawalRequestDTO;
 import com.example.solimus.dtos.provider.wallet.WalletDTO;
 import com.example.solimus.dtos.provider.wallet.WalletTransactionDTO;
-import com.example.solimus.entities.PaymentProvider;
 import com.example.solimus.entities.User;
 import com.example.solimus.entities.ProviderWallet;
 import com.example.solimus.entities.ProviderWalletTransaction;
 import com.example.solimus.entities.ProviderWithdrawalRequest;
-import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.ProviderWalletTransactionCategory;
 import com.example.solimus.enums.TransactionType;
 import com.example.solimus.enums.WithdrawalStatus;
-import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.PaymentRepository;
 import com.example.solimus.repositories.ProviderWalletTransactionRepository;
@@ -24,7 +21,6 @@ import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -32,9 +28,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -116,14 +111,12 @@ public class WalletServiceImpl implements WalletService {
         walletRepository.findByProviderId(currentProvider.getId())
                 .orElseGet(() -> walletRepository.save(createWallet(currentProvider.getId())));
 
-        // 1. Vérifier que le solde disponible (recalculé à la volée) est suffisant
-        BigDecimal availableBalance = walletBalanceService.getCurrentBalance(currentProvider.getId());
-        if (dto.getAmount().compareTo(availableBalance) > 0) {
-            throw new BadRequestException(
-                    "Solde insuffisant. Disponible : " + availableBalance + " FCFA");
-        }
+        // Pas de contrôle de solde ici — logique unifiée avec le syndic (voir
+        // SyndicWalletServiceImpl.requestWithdrawal) : rien n'empêche de créer plusieurs demandes
+        // PENDING même si leur somme dépasse le solde réel. Le contrôle anti-abus se fait au moment
+        // de la validation admin (voir WithdrawalRequestServiceImpl.validateWithdrawalRequest), pas ici.
 
-        // 2. Créer la demande de versement (retrait)
+        // Créer la demande de versement (retrait)
         ProviderWithdrawalRequest retrait = ProviderWithdrawalRequest.builder()
                 .reference(generateReference("WIT"))                     // Référence unique (ex: WIT-987654)
                 .provider(currentProvider)                              // Prestataire effectuant la demande
@@ -199,82 +192,36 @@ public class WalletServiceImpl implements WalletService {
     }
 
     /**
-     * Fusionne les paiements et les retraits, les mappe en DTO et pagine le résultat.
+     * Fusionne les paiements et les retraits d'un prestataire, triés par date décroissante,
+     * directement paginés en base (UNION ALL natif — voir PaymentRepository.findProviderWalletTransactionsUnion).
      */
     private Page<WalletTransactionDTO> getTransactions(Long providerId, int page, int size) {
 
-        // 1. Récupérer tous les paiements reçus
-        List<PaymentProvider> paiements = paymentRepository.findAllByProviderIdOrderByCreatedAtDesc(providerId);
-
-        // 2. Récupérer tous les retraits
-        List<ProviderWithdrawalRequest> retraits = withdrawalRequestRepository.findAllByProviderIdOrderByCreatedAtDesc(providerId);
-
-        // Liste fusionnée contenant paiements et retraits
-        List<WalletTransactionDTO> transactions = new ArrayList<>();
-
-        // 3. Ajouter les paiements (crédits)
-        if (paiements != null) {
-
-            // Parcourir chaque paiement pour le convertir en transaction
-            paiements.forEach(p -> {
-
-                // Récupérer le nom de la résidence (ou valeur par défaut)
-                String residenceName = p.getInterventionRequest().getResidence() != null
-                        ? p.getInterventionRequest().getResidence().getName()
-                        : "Résidence";
-                //Récupérer le nom de la spécialité ou valeur par défaut
-                String specialtyName = p.getInterventionRequest().getSpecialty() != null
-                        ? p.getInterventionRequest().getSpecialty().getName()
-                        : "Intervention";
-
-                // Créer et ajouter la transaction de paiement
-                transactions.add(WalletTransactionDTO.builder()
-                        .label(residenceName + " - " + specialtyName)
-                        .amount(p.getAmount())
-                        .type(TransactionType.ENTREE)
-                        .status(p.getStatus() == PaymentStatus.COMPLETED ? "Reçu" : "En attente")
-                        .date(p.getCreatedAt().toLocalDate())
-                        .build());
-            });
-        }
-
-        // 4. Ajouter les retraits (débits)
-        if (retraits != null) {
-            // Parcourir chaque retrait pour le convertir en transaction
-            retraits.forEach(r -> {
-                // Déterminer le label de la méthode de retrait
-                String methodeLabel = r.getMethod() != null ? r.getMethod().name() : "N/A";
-                String statutLabel = "En attente";
-                if (r.getStatus() == WithdrawalStatus.COMPLETED) {
-                    statutLabel = "Effectué";
-                } else if (r.getStatus() == WithdrawalStatus.REJECTED) {
-                    statutLabel = "Refusé";
-                }
-
-                // Créer et ajouter la transaction de retrait
-                transactions.add(WalletTransactionDTO.builder()
-                        .label("Retrait " + methodeLabel)
-                        .amount(r.getAmount().negate())
-                        .type(TransactionType.SORTIE)
-                        .status(statutLabel)
-                        .date(r.getCreatedAt().toLocalDate())
-                        .build());
-            });
-        }
-
-        // 5. Trier par date décroissante
-        transactions.sort(Comparator.comparing(WalletTransactionDTO::getDate).reversed());
-
-        // 6. Paginer la liste fusionnée
         Pageable pageable = PageRequest.of(page, size);
-        int start = (int) pageable.getOffset();
-        int end = Math.min(start + pageable.getPageSize(), transactions.size());
-        List<WalletTransactionDTO> pagedTransactions = transactions.subList(start, end);
+        Page<Object[]> rowsPage = paymentRepository.findProviderWalletTransactionsUnion(providerId, pageable);
 
-        // pagedTransactions -> liste des transactions à afficher dans cette page
-        // pageable -> infos pagination (numéro page, taille page, tri)
-        // transactions.size() -> nombre total de transactions (pour calculer nombre total de pages)
-        return new PageImpl<>(pagedTransactions, pageable, transactions.size());
+        return rowsPage.map(row -> WalletTransactionDTO.builder()
+                .label((String) row[0])
+                .amount((BigDecimal) row[1])
+                .type(TransactionType.valueOf((String) row[2]))
+                .status((String) row[3])
+                .date(toLocalDate(row[4]))
+                .build());
+    }
+
+    // Convertit la colonne "transaction_date" (renvoyée en Timestamp/LocalDateTime selon le driver JDBC)
+    // en LocalDate, tel qu'attendu par WalletTransactionDTO.date
+    private LocalDate toLocalDate(Object value) {
+        if (value instanceof java.sql.Timestamp ts) {
+            return ts.toLocalDateTime().toLocalDate();
+        }
+        if (value instanceof LocalDateTime ldt) {
+            return ldt.toLocalDate();
+        }
+        if (value instanceof java.sql.Date d) {
+            return d.toLocalDate();
+        }
+        return null;
     }
 
     /**

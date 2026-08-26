@@ -12,5 +12,5 @@ public class ChargeCallItemDetailDTO {
     private BigDecimal quotePart; // Montant dû
     private BigDecimal paidAmount; // Montant payé
     private BigDecimal remainingAmount; // Solde restant
-    private String status; // PAYE, PARTIEL, IMPAYE
+    private String status; // PAYE, IMPAYE, NON_APPLICABLE
 }

@@ -30,10 +30,8 @@ public class CoOwnerListDTO {
     // Nombre de résidences distinctes où le copropriétaire a des lots, restreint au syndic
     private int residencesCount;
 
-    // Statut calculé : "A_JOUR", "RETARD", "IMPAYE"
-    private String status;
-
-    // Solde global : SUM(paidAmount) - SUM(quotePart) pour tous les ChargeCallItems
-    // Négatif = doit de l'argent, Zéro ou positif = à jour
+    // Solde global : SUM(paidAmount) - SUM(totalDue) pour tous les ChargeCallItems
+    // Négatif = doit de l'argent, Zéro ou positif = à jour — seul indicateur de situation
+    // financière sur cette liste (le statut A_JOUR/RETARD/IMPAYE reste disponible sur le détail)
     private BigDecimal solde;
 }

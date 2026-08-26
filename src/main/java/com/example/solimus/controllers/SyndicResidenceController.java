@@ -707,24 +707,8 @@ public class SyndicResidenceController {
         return ResponseEntity.ok(residenceService.getChargeCallsSummary(residenceId));
     }
 
-    @Operation(summary = "Page complète des appels de charges d'une résidence (bouton \"Voir plus\", filtrée par année)", tags = {"Syndic - Résidences"})
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
-                    content = @Content(schema = @Schema(implementation = ChargeCallListResponse.class))),
-            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
-                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
-                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
-    })
-    @GetMapping("/residences/{residenceId}/finances/charge-calls")
-    public ResponseEntity<ChargeCallListResponse> getResidenceChargeCalls(
-            @PathVariable Long residenceId,
-            @Parameter(description = "Année en cours par défaut si non fournie", example = "2026")
-            @RequestParam(required = false) Integer annee,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(chargeService.getChargeCallsForResidence(residenceId, annee, page, size));
-    }
+    // getResidenceChargeCalls supprimée — remplacée par GET /api/syndic/budget/charge-calls
+    // ?residenceId=...&year=... (un seul endpoint pour la vue globale ET le bouton "Voir plus")
 
     @Operation(summary = "Reçu de paiement d'une ligne de charge (bouton \"Voir reçu\")", tags = {"Syndic - Résidences"})
     @ApiResponses({

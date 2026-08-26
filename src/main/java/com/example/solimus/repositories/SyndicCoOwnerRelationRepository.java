@@ -51,15 +51,10 @@ public interface SyndicCoOwnerRelationRepository extends JpaRepository<SyndicOwn
            "OR LOWER(r.coOwner.email) LIKE LOWER(CONCAT('%', :search, '%')))")
     List<User> findCoOwnersWithPropertiesBySyndicIdWithSearch(@Param("syndicId") Long syndicId, @Param("search") String search);
 
-    // Récupérer les relations d'un syndic pour les copropriétaires qui ont au moins un bien (paginé)
-    @Query("SELECT r FROM SyndicOwnerRelation r " +
-           "WHERE r.syndic.id = :syndicId " +
-           "AND EXISTS (SELECT 1 FROM Property p WHERE p.owner = r.coOwner)")
-    Page<SyndicOwnerRelation> findCoOwnersWithPropertiesBySyndicId(@Param("syndicId") Long syndicId, Pageable pageable);
-
-    // Récupérer TOUS les copropriétaires avec biens, filtrés par search et residenceId (sans pagination)
-    // Utilisé pour le filtrage par status en mémoire avant pagination manuelle
-    @Query("SELECT r FROM SyndicOwnerRelation r " +
+    // Page des copropriétaires ayant au moins un bien chez ce syndic, filtrés résidence/recherche
+    // tous deux optionnels — LIMIT/OFFSET géré directement par la base via Pageable (pas de
+    // chargement complet en mémoire).
+    @Query(value = "SELECT r FROM SyndicOwnerRelation r " +
            "JOIN r.coOwner co " +
            "WHERE r.syndic.id = :syndicId " +
            "AND EXISTS (SELECT 1 FROM Property p WHERE p.owner = co AND p.residence.syndic.id = :syndicId " +
@@ -67,9 +62,18 @@ public interface SyndicCoOwnerRelationRepository extends JpaRepository<SyndicOwn
            "AND (:search IS NULL OR :search = '' " +
            "  OR LOWER(co.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "  OR LOWER(co.lastName) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-           "ORDER BY co.createdAt DESC")
-    List<SyndicOwnerRelation> findCoOwnersWithPropertiesBySyndicId(
+           "ORDER BY co.createdAt DESC",
+           countQuery = "SELECT COUNT(r) FROM SyndicOwnerRelation r " +
+           "JOIN r.coOwner co " +
+           "WHERE r.syndic.id = :syndicId " +
+           "AND EXISTS (SELECT 1 FROM Property p WHERE p.owner = co AND p.residence.syndic.id = :syndicId " +
+           "  AND (:residenceId IS NULL OR p.residence.id = :residenceId)) " +
+           "AND (:search IS NULL OR :search = '' " +
+           "  OR LOWER(co.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "  OR LOWER(co.lastName) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<SyndicOwnerRelation> findCoOwnersWithPropertiesBySyndicId(
             @Param("syndicId") Long syndicId,
             @Param("search") String search,
-            @Param("residenceId") Long residenceId);
+            @Param("residenceId") Long residenceId,
+            Pageable pageable);
 }

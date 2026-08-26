@@ -340,22 +340,31 @@ public class ChargeServiceImpl implements ChargeService {
 
     @Override
     @Transactional(readOnly = true)
-    public BudgetListResponse getBudgetsForSyndic(int page, int size) {
+    public BudgetListResponse getBudgetsForSyndic(Long residenceId, Integer year, int page, int size) {
 
         // Récupère le syndic actuellement connecté
         User currentSyndic = getCurrentUser();
 
-        // Construit la pagination : page demandée, taille demandée, tri du plus récent au plus ancien
-        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        // Si une résidence est précisée, vérifie qu'elle appartient bien à ce syndic
+        if (residenceId != null) {
+            Residence residence = residenceRepository.findById(residenceId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+            if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+                throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
+            }
+        }
 
-        // Récupère uniquement les budgets de la page demandée (pas tous les budgets en mémoire)
-        Page<Budget> budgetPage = budgetRepository.findBySyndicId(currentSyndic.getId(), pageable);
+        // Pagination : tri déjà géré dans la requête (createdAt desc)
+        Pageable pageable = PageRequest.of(page, size);
 
-        // Compte le nombre total de budgets du syndic (toutes pages confondues)
-        Integer totalBudgets = budgetRepository.countBySyndicId(currentSyndic.getId());
+        // Récupère uniquement les budgets de la page demandée, filtrés résidence/année si fournis
+        Page<Budget> budgetPage = budgetRepository.findBySyndicIdWithFilters(currentSyndic.getId(), residenceId, year, pageable);
 
-        // Compte le nombre de budgets ACTIVE du syndic (toutes pages confondues)
-        Integer activeBudgetsCount = budgetRepository.countBySyndicIdAndStatus(currentSyndic.getId(), BudgetStatus.ACTIVE);
+        // Compte le nombre total de budgets du syndic, mêmes filtres
+        Integer totalBudgets = budgetRepository.countBySyndicIdWithFilters(currentSyndic.getId(), residenceId, year);
+
+        // Compte le nombre de budgets ACTIVE du syndic, mêmes filtres
+        Integer activeBudgetsCount = budgetRepository.countBySyndicIdAndStatusWithFilters(currentSyndic.getId(), BudgetStatus.ACTIVE, residenceId, year);
 
         // Transforme chaque Budget de la page courante en BudgetCardDTO
         List<BudgetCardDTO> cardDtos = budgetPage.getContent().stream() // récupère la liste des budgets de la page et ouvre un flux dessus
@@ -547,21 +556,11 @@ public class ChargeServiceImpl implements ChargeService {
             throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à ce budget");
         }
 
-        // Récupère directement les ChargeCall liés (relation déjà présente sur Budget)
-        List<ChargeCall> chargeCalls = budget.getChargeCalls();
+        // Page des ChargeCall liés à ce budget, directement filtrée/paginée en base
+        Pageable pageable = PageRequest.of(page, size);
+        Page<ChargeCall> chargeCallPage = chargeCallRepository.findByBudgetId(budgetId, pageable);
 
-        // Transforme chaque ChargeCall en DTO, avec son statut recalculé à la volée
-        List<BudgetLinkedChargeCallDTO> dtos = chargeCalls.stream()
-                .map(this::buildBudgetLinkedChargeCallDto)
-                .toList();
-
-        // Pagination manuelle
-        int totalElements = dtos.size();
-        int fromIndex = Math.min(page * size, totalElements);
-        int toIndex = Math.min(fromIndex + size, totalElements);
-        List<BudgetLinkedChargeCallDTO> pageContent = dtos.subList(fromIndex, toIndex);
-
-        return new PageImpl<>(pageContent, PageRequest.of(page, size), totalElements);
+        return chargeCallPage.map(this::buildBudgetLinkedChargeCallDto);
     }
 
     @Override
@@ -1123,16 +1122,25 @@ public class ChargeServiceImpl implements ChargeService {
 
     @Override
     @Transactional(readOnly = true)
-    public ChargeCallListResponse getChargeCallsForSyndic(int page, int size) {
+    public ChargeCallListResponse getChargeCallsForSyndic(Long residenceId, Integer year, int page, int size) {
 
         // Récupère le syndic actuellement connecté
         User currentSyndic = getCurrentUser();
 
-        // Construit la pagination, triée du plus récent au plus ancien
-        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        // Si une résidence est précisée, vérifie qu'elle appartient bien à ce syndic
+        if (residenceId != null) {
+            Residence residence = residenceRepository.findById(residenceId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+            if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+                throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
+            }
+        }
 
-        // Récupère les ChargeCall dont le budget appartient au syndic connecté
-        Page<ChargeCall> chargeCallPage = chargeCallRepository.findByBudgetSyndicId(currentSyndic.getId(), pageable);
+        // Pas de pré-filtrage par année — aligné sur wallet-transactions, montre tout l'historique
+        // si "year" n'est pas fourni
+        Pageable pageable = PageRequest.of(page, size);
+        Page<ChargeCall> chargeCallPage = chargeCallRepository
+                .findBySyndicIdAndYearAndOptionalResidence(currentSyndic.getId(), year, residenceId, pageable);
 
         // Transforme chaque ChargeCall en carte
         List<ChargeCallCardDTO> cardDtos = chargeCallPage.getContent().stream()
@@ -1140,42 +1148,6 @@ public class ChargeServiceImpl implements ChargeService {
                 .toList();
 
         // Assemble la réponse finale
-        ChargeCallListResponse response = new ChargeCallListResponse();
-        response.setTotalChargeCalls((int) chargeCallPage.getTotalElements());
-        response.setChargeCalls(cardDtos);
-        response.setCurrentPage(page);
-        response.setTotalPages(chargeCallPage.getTotalPages());
-
-        return response;
-    }
-
-    // ============================================================
-    // APPELS DE CHARGES D'UNE RÉSIDENCE (page complète "Voir plus", filtrée par année)
-    // ============================================================
-
-    @Override
-    @Transactional(readOnly = true)
-    public ChargeCallListResponse getChargeCallsForResidence(Long residenceId, Integer year, int page, int size) {
-
-        // Vérifie que la résidence appartient bien au syndic connecté
-        Residence residence = residenceRepository.findById(residenceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
-        User currentSyndic = getCurrentUser();
-        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
-            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
-        }
-
-        // Année en cours par défaut si non fournie
-        int targetYear = (year != null) ? year : java.time.Year.now().getValue();
-
-        Pageable pageable = PageRequest.of(page, size);
-        Page<ChargeCall> chargeCallPage = chargeCallRepository
-                .findByBudgetResidenceIdAndYearOrderByPeriodNumberAsc(residenceId, targetYear, pageable);
-
-        List<ChargeCallCardDTO> cardDtos = chargeCallPage.getContent().stream()
-                .map(this::buildChargeCallCard)
-                .toList();
-
         ChargeCallListResponse response = new ChargeCallListResponse();
         response.setTotalChargeCalls((int) chargeCallPage.getTotalElements());
         response.setChargeCalls(cardDtos);
@@ -1669,16 +1641,26 @@ public class ChargeServiceImpl implements ChargeService {
 
     @Override
     @Transactional(readOnly = true)
-    public ExceptionalCallListResponse getExceptionalCallsForSyndic(int page, int size) {
+    public ExceptionalCallListResponse getExceptionalCallsForSyndic(Long residenceId, Integer year, int page, int size) {
 
         // Récupère le syndic actuellement connecté
         User currentSyndic = getCurrentUser();
 
-        // Construit la pagination, triée du plus récent au plus ancien
-        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        // Si une résidence est précisée, vérifie qu'elle appartient bien à ce syndic
+        if (residenceId != null) {
+            Residence residence = residenceRepository.findById(residenceId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+            if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+                throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
+            }
+        }
 
-        // Récupère les appels exceptionnels dont le syndic est celui connecté
-        Page<ExceptionalCall> exceptionalCallPage = exceptionalCallRepository.findBySyndicId(currentSyndic.getId(), pageable);
+        // Pagination : tri déjà géré dans la requête (createdAt desc)
+        Pageable pageable = PageRequest.of(page, size);
+
+        // Récupère les appels exceptionnels du syndic, filtrés résidence/année si fournis
+        Page<ExceptionalCall> exceptionalCallPage = exceptionalCallRepository
+                .findBySyndicIdWithFilters(currentSyndic.getId(), residenceId, year, pageable);
 
         // Transforme chaque appel exceptionnel en carte
         List<ExceptionalCallCardDTO> cardDtos = exceptionalCallPage.getContent().stream()
@@ -1810,9 +1792,9 @@ public class ChargeServiceImpl implements ChargeService {
         dto.setRemainingAmount(remainingAmount);
 
         // Lit le statut déjà posé au moment du paiement confirmé — ne recalcule jamais
+        // PARTIALLY_PAID supprimé : plus aucun paiement partiel n'est autorisé
         dto.setStatus(switch (item.getStatus()) {
             case PAID -> "PAYE";
-            case PARTIALLY_PAID -> "PARTIEL";
             case PENDING -> "IMPAYE";
             case NO_AMOUNT_DUE -> "NON_APPLICABLE";
         });
@@ -1966,18 +1948,26 @@ public class ChargeServiceImpl implements ChargeService {
 
     @Override
     @Transactional(readOnly = true)
-    public PaymentListResponse getPaymentsForSyndic(int page, int size, String search) {
+    public PaymentListResponse getPaymentsForSyndic(Long residenceId, Integer year, int page, int size, String search) {
 
         // Récupère le syndic actuellement connecté
         User currentSyndic = getCurrentUser();
 
+        // Si une résidence est précisée, vérifie qu'elle appartient bien à ce syndic
+        if (residenceId != null) {
+            Residence residence = residenceRepository.findById(residenceId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+            if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+                throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
+            }
+        }
+
         Pageable pageable = PageRequest.of(page, size, Sort.by("chargeCall.createdAt").descending());
 
         // Récupère uniquement les items déjà PAYÉS (cet onglet ne montre pas les retards/impayés/en
-        // attente — pour ça, voir l'onglet Impayés), filtrés par recherche si fournie
-        Page<ChargeCallItem> itemsPage = (search != null && !search.isBlank())
-                ? chargeCallItemRepository.findPaidByChargeCallBudgetSyndicIdAndCoOwnerNameContaining(currentSyndic.getId(), search, pageable)
-                : chargeCallItemRepository.findByChargeCallBudgetSyndicIdAndStatus(currentSyndic.getId(), ChargeItemPaymentStatus.PAID, pageable);
+        // attente — pour ça, voir l'onglet Impayés), filtrés par résidence/année/recherche si fournis
+        Page<ChargeCallItem> itemsPage = chargeCallItemRepository.findPaidBySyndicIdWithFilters(
+                currentSyndic.getId(), residenceId, year, search, pageable);
 
         List<PaymentRowDTO> rowDtos = itemsPage.getContent().stream()
                 .map(this::buildPaymentRow)
@@ -1995,9 +1985,14 @@ public class ChargeServiceImpl implements ChargeService {
     // Construit une ligne du tableau "Paiements"
     private PaymentRowDTO buildPaymentRow(ChargeCallItem item) {
 
+        ChargeCall chargeCall = item.getChargeCall();
+
         PaymentRowDTO dto = new PaymentRowDTO();
         dto.setCoOwnerName(item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName());
-        dto.setPropertyLabel(buildPropertyLabel(item));
+        dto.setPropertyLabel(buildPropertyReferences(item));
+        dto.setResidenceName(chargeCall.getBudget().getResidence().getName());
+        dto.setPeriod(buildSimplePeriodeLabel(chargeCall));
+        dto.setYear(chargeCall.getYear());
         dto.setAmountDue(item.getTotalDue()); // quote-part + pénalité si déjà appliquée
         dto.setAmountPaid(item.getPaidAmount());
         dto.setBalance(item.getRemainingAmount());
@@ -2016,28 +2011,47 @@ public class ChargeServiceImpl implements ChargeService {
 
     @Override
     @Transactional(readOnly = true)
-    public UnpaidListResponse getUnpaidForSyndic(int page, int size) {
+    public UnpaidListResponse getUnpaidForSyndic(Long residenceId, Integer year, int page, int size) {
 
         User currentSyndic = getCurrentUser();
+
+        // Si une résidence est précisée, vérifie qu'elle appartient bien à ce syndic
+        if (residenceId != null) {
+            Residence residence = residenceRepository.findById(residenceId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+            if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+                throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
+            }
+        }
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("chargeCall.dueDate").ascending());
 
         // Récupère la page demandée, directement filtrée en base sur les items non soldés
-        Page<ChargeCallItem> unpaidPage = chargeCallItemRepository.findUnpaidByBudgetSyndicId(currentSyndic.getId(), pageable);
+        Page<ChargeCallItem> unpaidPage = chargeCallItemRepository.findUnpaidBySyndicIdWithFilters(
+                currentSyndic.getId(), residenceId, year, pageable);
 
-        // Récupère TOUS les items non soldés (sans pagination), pour calculer les KPI globaux
-        List<ChargeCallItem> allUnpaidItems = chargeCallItemRepository.findAllUnpaidByBudgetSyndicId(currentSyndic.getId());
+        // Récupère TOUS les items non soldés (sans pagination, mêmes filtres), pour calculer les KPI globaux
+        List<ChargeCallItem> allUnpaidItems = chargeCallItemRepository.findAllUnpaidBySyndicIdWithFilters(
+                currentSyndic.getId(), residenceId, year);
 
         BigDecimal totalUnpaidAmount = allUnpaidItems.stream()
                 .map(item -> item.getRemainingAmount())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Nombre de copropriétaires distincts concernés (un même copropriétaire peut avoir
+        // plusieurs lignes impayées — ex: plusieurs trimestres — et ne doit être compté qu'une fois ici)
+        long distinctCoOwners = allUnpaidItems.stream()
+                .map(item -> item.getCoOwner().getId())
+                .distinct()
+                .count();
 
         List<UnpaidRowDTO> rowDtos = unpaidPage.getContent().stream()
                 .map(this::buildUnpaidRow)
                 .toList();
 
         UnpaidListResponse response = new UnpaidListResponse();
-        response.setUnpaidCoOwnersCount(allUnpaidItems.size());
+        response.setUnpaidItemsCount(allUnpaidItems.size());
+        response.setDistinctUnpaidCoOwnersCount((int) distinctCoOwners);
         response.setTotalUnpaidAmount(totalUnpaidAmount);
         response.setUnpaidItems(rowDtos);
         response.setCurrentPage(page);
@@ -2049,16 +2063,19 @@ public class ChargeServiceImpl implements ChargeService {
     // Construit une ligne du tableau "Impayés"
     private UnpaidRowDTO buildUnpaidRow(ChargeCallItem item) {
 
-        LocalDate dueDate = item.getChargeCall().getDueDate();
+        ChargeCall chargeCall = item.getChargeCall();
+        LocalDate dueDate = chargeCall.getDueDate();
         long daysLate = ChronoUnit.DAYS.between(dueDate, LocalDate.now());
 
         UnpaidRowDTO dto = new UnpaidRowDTO();
         dto.setChargeCallItemId(item.getId());
         dto.setCoOwnerName(item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName());
-        dto.setPropertyLabel(buildPropertyLabel(item));
+        dto.setPropertyLabel(buildPropertyReferences(item));
+        dto.setResidenceName(chargeCall.getBudget().getResidence().getName());
+        dto.setPeriod(buildSimplePeriodeLabel(chargeCall));
+        dto.setYear(chargeCall.getYear());
         dto.setStatus(calculateItemStatus(item));
         dto.setAmountDue(item.getTotalDue()); // quote-part + pénalité si déjà appliquée
-        dto.setUnpaidBalance(item.getRemainingAmount());
         dto.setDaysLate((int) Math.max(daysLate, 0));
 
         return dto;
@@ -2240,12 +2257,10 @@ public class ChargeServiceImpl implements ChargeService {
         for (Long syndicId : syndicIds) {
             long lateCount = chargeCallItemRepository.countLateBySyndicId(syndicId);
             long unpaidCount = chargeCallItemRepository.countUnpaidBySyndicId(syndicId);
-            long partiallyPaidCount = chargeCallItemRepository.countPartiallyPaidBySyndicId(syndicId);
-            if (lateCount == 0 && unpaidCount == 0 && partiallyPaidCount == 0) continue;
+            if (lateCount == 0 && unpaidCount == 0) continue;
 
             String title = "Récapitulatif impayés";
-            String body = lateCount + " charge(s) en retard, " + unpaidCount + " impayée(s) à traiter, "
-                    + partiallyPaidCount + " payée(s) partiellement.";
+            String body = lateCount + " charge(s) en retard, " + unpaidCount + " impayée(s) à traiter.";
 
             // Push (gardé par la préférence "Relance impayés" du syndic)
             notificationService.sendUnpaidReminderNotification(syndicId, title, body);
@@ -2486,7 +2501,8 @@ public class ChargeServiceImpl implements ChargeService {
 
     // Calcule le statut d'une ligne de charge — lit le statut déjà posé au moment du paiement
     // confirmé (jamais recalculé), sinon délègue le seuil de retard à PaymentStatusUtils
-    // (seule source de vérité), PARTIEL si un acompte a déjà été versé
+    // (seule source de vérité). PARTIEL supprimé : aucun paiement partiel n'est plus autorisé,
+    // un item non PAID/NO_AMOUNT_DUE a donc toujours paidAmount = 0.
     private String calculateItemStatus(ChargeCallItem item) {
 
         // Lit le statut déjà posé au moment du paiement confirmé — ne recalcule jamais
@@ -2495,28 +2511,7 @@ public class ChargeServiceImpl implements ChargeService {
 
         LocalDate dueDate = item.getChargeCall().getDueDate();
         PaymentDelayStatus delayStatus = PaymentStatusUtils.computeDelayStatus(dueDate, false, LocalDate.now());
-
-        // En retard ou impayé : le libellé standard l'emporte, peu importe un éventuel acompte
-        if (delayStatus != PaymentDelayStatus.UP_TO_DATE) {
-            return PaymentStatusUtils.toLabel(delayStatus);
-        }
-
-        boolean hasPartialPayment = item.getPaidAmount().compareTo(BigDecimal.ZERO) > 0;
-        if (hasPartialPayment) return "PARTIEL";
         return PaymentStatusUtils.toLabel(delayStatus);
-    }
-
-    // Construit le libellé des biens du copropriétaire pour cette résidence
-    private String buildPropertyLabel(ChargeCallItem item) {
-        List<Property> properties = propertyRepository.findByOwnerIdAndResidenceId(
-                item.getCoOwner().getId(), item.getChargeCall().getBudget().getResidence().getId());
-
-        String propertiesStr = properties.stream()
-                .map(Property::getReference)
-                .reduce((a, b) -> a + ", " + b)
-                .orElse("");
-
-        return propertiesStr + " – " + item.getChargeCall().getBudget().getResidence().getName();
     }
 
     // Relance manuelle (boutons "Relancer"/"Avertissement" + relances groupées) : choisit le bon
@@ -2595,13 +2590,8 @@ public class ChargeServiceImpl implements ChargeService {
         if (q == null || q.trim().isEmpty()) {
             facilityPage = commonFacilityRepository.findByResidenceId(residenceId, pageable);
         } else {
-            // Pour la recherche, on utilise pagination manuelle car la méthode de recherche n'est pas paginée
-            List<CommonFacility> facilities = commonFacilityRepository.findByResidenceIdAndFacilityTypeNameContainingIgnoreCase(residenceId, q.trim());
-            int totalElements = facilities.size();
-            int fromIndex = Math.min(page * size, totalElements);
-            int toIndex = Math.min(fromIndex + size, totalElements);
-            List<CommonFacility> pageContent = facilities.subList(fromIndex, toIndex);
-            facilityPage = new PageImpl<>(pageContent, pageable, totalElements);
+            facilityPage = commonFacilityRepository
+                    .findByResidenceIdAndFacilityTypeNameContainingIgnoreCase(residenceId, q.trim(), pageable);
         }
 
         // Mapper vers DTO
@@ -2661,9 +2651,9 @@ public class ChargeServiceImpl implements ChargeService {
         dto.setRemainingAmount(item.getRemainingAmount());
 
         // Lit le statut déjà posé au moment du paiement confirmé — ne recalcule jamais
+        // PARTIALLY_PAID supprimé : plus aucun paiement partiel n'est autorisé
         dto.setStatus(switch (item.getStatus()) {
             case PAID -> "PAYE";
-            case PARTIALLY_PAID -> "PARTIEL";
             case PENDING -> "IMPAYE";
             case NO_AMOUNT_DUE -> "NON_APPLICABLE";
         });

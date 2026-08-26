@@ -28,13 +28,13 @@ public class WalletBalanceServiceImpl implements WalletBalanceService {
             return BigDecimal.ZERO;
         }
 
-        // Total encaissé jusqu'à maintenant, moins ce qui est réservé par des retraits en attente
-        // ou déjà validés (jamais compté deux fois : un retrait COMPLETED reste "réservé" ici, il
-        // n'a jamais été remis dans le total encaissé)
-        BigDecimal totalReceived = transactionRepository.sumTransactionsUpTo(wallet.getId(), LocalDateTime.now());
-        BigDecimal reserved = withdrawalRequestRepository.sumPendingAndCompletedByProviderId(providerId);
-
-        return totalReceived.subtract(reserved);
+        // Logique unifiée avec le syndic (voir SyndicTreasuryService.getAvailableBalance) : simple somme
+        // du grand livre jusqu'à maintenant (crédits en positif, retraits COMPLETED déjà en négatif —
+        // voir ProviderWalletTransaction/WithdrawalRequestServiceImpl.validateWithdrawalRequest). Les
+        // retraits encore PENDING ne réservent RIEN ici — ils ne créent aucune ligne dans le grand livre
+        // tant qu'ils ne sont pas validés. Le contrôle anti-abus (montant demandé > solde réel) se fait
+        // au moment de la validation admin, pas à la création de la demande (même règle des deux côtés).
+        return transactionRepository.sumTransactionsUpTo(wallet.getId(), LocalDateTime.now());
     }
 
     @Override

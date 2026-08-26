@@ -26,8 +26,8 @@ public interface SyndicOwnerService {
     /** Lister les résidences d'un copropriétaire (pour le filtre finances) */
     Page<CoOwnerResidenceDTO> getCoOwnerResidences(Long coOwnerId, Integer page, Integer size);
 
-    /** Lister les copropriétaires des résidences du syndic connecté, avec recherche, filtre résidence et statut */
-    Page<CoOwnerListDTO> getCoOwners(String search, Long residenceId, String status, Integer page, Integer size);
+    /** Lister les copropriétaires des résidences du syndic connecté, avec recherche et filtre résidence */
+    Page<CoOwnerListDTO> getCoOwners(String search, Long residenceId, Integer page, Integer size);
 
     /** Détail d'un copropriétaire (en-tête + KPIs) */
     CoOwnerDetailDTO getCoOwnerDetail(Long coOwnerId);

@@ -9,8 +9,12 @@ public class UnpaidRowDTO {
     private Long chargeCallItemId;
     private String coOwnerName;
     private String propertyLabel;
-    private String status; // IMPAYE, RETARD, PARTIEL
+    private String residenceName;
+    private String period; // ex. "T3" (trimestriel) ou "Jan" (mensuel)
+    private Integer year;
+    private String status; // IMPAYE, RETARD
     private BigDecimal amountDue;
-    private BigDecimal unpaidBalance;
+    // unpaidBalance supprimé : sans paiement partiel, un item PENDING a toujours un solde
+    // strictement égal à amountDue — colonne redondante, n'apportait plus d'info distincte
     private Integer daysLate;
 }

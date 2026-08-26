@@ -31,6 +31,10 @@ public interface ChargeCallRepository extends JpaRepository<ChargeCall, Long> {
      */
     List<ChargeCall> findByBudgetId(Long budgetId);
 
+    // Même filtre, paginé — LIMIT/OFFSET géré par la base (onglet "Appels de charges liés" d'un budget)
+    @Query("SELECT cc FROM ChargeCall cc WHERE cc.budget.id = :budgetId ORDER BY cc.periodNumber ASC")
+    Page<ChargeCall> findByBudgetId(@Param("budgetId") Long budgetId, Pageable pageable);
+
     /**
      * Vérifie si des appels de charges existent pour un budget.
      */
@@ -64,9 +68,18 @@ public interface ChargeCallRepository extends JpaRepository<ChargeCall, Long> {
     List<ChargeCall> findByBudgetSyndicIdAndCreatedAtBetween(Long syndicId, LocalDateTime start, LocalDateTime end);
 
     /**
-     * Page des appels de charges d'une résidence pour une année précise, triée par période croissante —
-     * pour la page complète "Appels de Charges" de l'onglet Finances d'une résidence
+     * Page des appels de charges d'un syndic, filtres résidence ET année tous les deux optionnels —
+     * pour /api/syndic/budget/charge-calls : aucun filtre par défaut (aligné sur wallet-transactions,
+     * pas de pré-filtrage sur l'année en cours), residenceId/year affinent si fournis
      */
-    Page<ChargeCall> findByBudgetResidenceIdAndYearOrderByPeriodNumberAsc(
-            Long residenceId, Integer year, Pageable pageable);
+    @Query("SELECT cc FROM ChargeCall cc " +
+           "WHERE cc.budget.syndic.id = :syndicId " +
+           "AND (:year IS NULL OR cc.year = :year) " +
+           "AND (:residenceId IS NULL OR cc.budget.residence.id = :residenceId) " +
+           "ORDER BY cc.year DESC, cc.periodNumber ASC")
+    Page<ChargeCall> findBySyndicIdAndYearAndOptionalResidence(
+            @Param("syndicId") Long syndicId,
+            @Param("year") Integer year,
+            @Param("residenceId") Long residenceId,
+            Pageable pageable);
 }

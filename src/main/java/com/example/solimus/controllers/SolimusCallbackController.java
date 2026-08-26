@@ -821,25 +821,31 @@ public class SolimusCallbackController {
                         ));
                     }
 
-                    //sinon
+                    // Aucun paiement partiel autorisé : le montant reçu doit couvrir le reste dû
+                    // actuel (quote-part + pénalité si appliquée entre-temps). Sinon on rejette —
+                    // ni SyndicWalletTransaction, ni modification de paidAmount/status.
+                    ChargeCallItem item = paiement.getChargeCallItem();
+                    BigDecimal montantRestantDu = item.getRemainingAmount();
+                    if (paiement.getAmount().compareTo(montantRestantDu) < 0) {
+                        paiement.setStatus(PaymentStatus.FAILED);
+                        chargeCallPaymentRepository.save(paiement);
+                        log.warn("Paiement charge {} rejeté : montant insuffisant ({} FCFA reçu, {} FCFA attendu)",
+                                ref, paiement.getAmount(), montantRestantDu);
+                        return ResponseEntity.badRequest().body(Map.<String, Object>of(
+                                "success", false,
+                                "message", "Montant insuffisant : " + montantRestantDu + " FCFA attendu, "
+                                        + paiement.getAmount() + " FCFA reçu"
+                        ));
+                    }
+
                     // Confirmer le paiement
                     paiement.setStatus(PaymentStatus.COMPLETED);
                     paiement.setPaidAt(LocalDateTime.now());
                     chargeCallPaymentRepository.save(paiement);
 
-                    // Met à jour la ligne de charge : ajoute ce paiement au montant déjà payé
-                    ChargeCallItem item = paiement.getChargeCallItem();
+                    // Met à jour la ligne de charge : toujours payée intégralement désormais
                     item.setPaidAmount(item.getPaidAmount().add(paiement.getAmount()));
-
-                    // Statut posé explicitement ICI, au moment du paiement réellement confirmé —
-                    // jamais recalculé ailleurs à l'affichage. Compare au montant total dû
-                    // (quote-part + pénalité si déjà appliquée), pas seulement la quote-part
-                    if (item.getPaidAmount().compareTo(item.getTotalDue()) >= 0) {
-                        item.setStatus(ChargeItemPaymentStatus.PAID);
-                    } else {
-                        item.setStatus(ChargeItemPaymentStatus.PARTIALLY_PAID);
-                    }
-
+                    item.setStatus(ChargeItemPaymentStatus.PAID);
                     chargeCallItemRepository.save(item);
 
                     // Recalcule les statuts affichés impactés par ce paiement : le(s) lot(s) du
@@ -863,7 +869,7 @@ public class SolimusCallbackController {
                     transaction.setCoOwner(paiement.getOwner());
                     transaction.setCategory(WalletTransactionCategory.CHARGES);
                     transaction.setAmount(paiement.getAmount());
-                    transaction.setLabel("Paiement charges — " + item.getReference());
+                    transaction.setLabel("Charge courante — " + buildSimplePeriodeLabel(item.getChargeCall()) + " " + item.getChargeCall().getYear());
                     transaction.setBeneficiaryName(paiement.getOwner().getFirstName() + " " + paiement.getOwner().getLastName());
                     transaction.setMode(paiement.getMethod() != null ? paiement.getMethod().name() : null);
                     transaction.setTransactionDate(LocalDateTime.now());
@@ -930,23 +936,30 @@ public class SolimusCallbackController {
                         ));
                     }
 
-                    //sinon, Confirmer le paiement
+                    // Aucun paiement partiel autorisé : le montant reçu doit couvrir le reste dû actuel
+                    ExceptionalCallItem item = paiement.getExceptionalCallItem();
+                    BigDecimal montantRestantDu = item.getQuotePart().subtract(
+                            item.getPaidAmount() != null ? item.getPaidAmount() : BigDecimal.ZERO);
+                    if (paiement.getAmount().compareTo(montantRestantDu) < 0) {
+                        paiement.setStatus(PaymentStatus.FAILED);
+                        exceptionalCallPaymentRepository.save(paiement);
+                        log.warn("Paiement charge exceptionnelle {} rejeté : montant insuffisant ({} FCFA reçu, {} FCFA attendu)",
+                                ref, paiement.getAmount(), montantRestantDu);
+                        return ResponseEntity.badRequest().body(Map.<String, Object>of(
+                                "success", false,
+                                "message", "Montant insuffisant : " + montantRestantDu + " FCFA attendu, "
+                                        + paiement.getAmount() + " FCFA reçu"
+                        ));
+                    }
+
+                    // Confirmer le paiement
                     paiement.setStatus(PaymentStatus.COMPLETED);
                     paiement.setPaidAt(LocalDateTime.now());
                     exceptionalCallPaymentRepository.save(paiement);
 
-                    // Met à jour la ligne d'appel exceptionnel
-                    ExceptionalCallItem item = paiement.getExceptionalCallItem();
+                    // Met à jour la ligne d'appel exceptionnel : toujours payée intégralement désormais
                     item.setPaidAmount(item.getPaidAmount().add(paiement.getAmount()));
-
-                    // Statut posé explicitement ICI, au moment du paiement réellement confirmé —
-                    // jamais recalculé ailleurs à l'affichage
-                    if (item.getPaidAmount().compareTo(item.getQuotePart()) >= 0) {
-                        item.setStatus(ChargeItemPaymentStatus.PAID);
-                    } else {
-                        item.setStatus(ChargeItemPaymentStatus.PARTIALLY_PAID);
-                    }
-
+                    item.setStatus(ChargeItemPaymentStatus.PAID);
                     exceptionalCallItemRepository.save(item);
 
                     // Crédite le wallet du syndic (catégorie CHARGES) — créé à la volée s'il n'existe
@@ -964,7 +977,7 @@ public class SolimusCallbackController {
                     transaction.setCoOwner(paiement.getOwner());
                     transaction.setCategory(WalletTransactionCategory.CHARGES);
                     transaction.setAmount(paiement.getAmount());
-                    transaction.setLabel("Paiement charge exceptionnelle — " + item.getExceptionalCall().getTitle());
+                    transaction.setLabel("Charge exceptionnelle — " + item.getExceptionalCall().getTitle());
                     transaction.setBeneficiaryName(paiement.getOwner().getFirstName() + " " + paiement.getOwner().getLastName());
                     transaction.setMode(paiement.getMethod() != null ? paiement.getMethod().name() : null);
                     transaction.setTransactionDate(LocalDateTime.now());
@@ -1040,5 +1053,15 @@ public class SolimusCallbackController {
         return providerProfileRepository.findByUser(provider)
                 .map(ProviderProfile::getCompanyName)
                 .orElse(provider.getFirstName() + " " + provider.getLastName());
+    }
+
+    // Libellé court de la période d'un appel de charges, ex: "T3" (trimestriel) ou "Jan" (mensuel)
+    private String buildSimplePeriodeLabel(ChargeCall chargeCall) {
+        if (chargeCall.getFrequency() == ChargeFrequency.TRIMESTRIEL) {
+            return "T" + chargeCall.getPeriodNumber();
+        }
+        String[] mois = {"Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"};
+        int index = chargeCall.getPeriodNumber() - 1;
+        return (index >= 0 && index < mois.length) ? mois[index] : "P" + chargeCall.getPeriodNumber();
     }
 }

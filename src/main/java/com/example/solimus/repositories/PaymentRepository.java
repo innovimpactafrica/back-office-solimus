@@ -3,6 +3,8 @@ package com.example.solimus.repositories;
 import com.example.solimus.entities.PaymentProvider;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.PaymentType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -67,4 +69,40 @@ public interface PaymentRepository extends JpaRepository<PaymentProvider, Long> 
      * → utilisé pour vérifier si un paiement existe déjà et permettre de réinitier en cas d'échec
      */
     Optional<PaymentProvider> findByInterventionRequestIdAndType(Long requestId, PaymentType type);
+
+    /**
+     * Historique fusionné paiements + retraits d'un prestataire ("Mon Wallet" → onglet Transactions),
+     * paginé directement en base via UNION ALL natif
+     */
+    @Query(value =
+            "SELECT * FROM ( " +
+            "  SELECT " +
+            "    CONCAT(COALESCE(r.name, 'Résidence'), ' - ', COALESCE(s.name, 'Intervention')) AS label, " +
+            "    p.amount AS amount, " +
+            "    'ENTREE' AS type, " +
+            "    CASE WHEN p.status = 'COMPLETED' THEN 'Reçu' ELSE 'En attente' END AS status, " +
+            "    p.created_at AS transaction_date " +
+            "  FROM payments p " +
+            "  LEFT JOIN intervention_requests ir ON ir.id = p.intervention_request_id " +
+            "  LEFT JOIN residences r ON r.id = ir.residence_id " +
+            "  LEFT JOIN specialties s ON s.id = ir.specialty_id " +
+            "  WHERE p.provider_id = :providerId " +
+            "  UNION ALL " +
+            "  SELECT " +
+            "    CONCAT('Retrait ', COALESCE(w.method, 'N/A')) AS label, " +
+            "    -w.amount AS amount, " +
+            "    'SORTIE' AS type, " +
+            "    CASE WHEN w.status = 'COMPLETED' THEN 'Effectué' " +
+            "         WHEN w.status = 'REJECTED' THEN 'Refusé' " +
+            "         ELSE 'En attente' END AS status, " +
+            "    w.created_at AS transaction_date " +
+            "  FROM withdrawal_requests w " +
+            "  WHERE w.provider_id = :providerId " +
+            ") AS combined " +
+            "ORDER BY transaction_date DESC",
+            countQuery =
+            "SELECT (SELECT COUNT(*) FROM payments p WHERE p.provider_id = :providerId) " +
+            "     + (SELECT COUNT(*) FROM withdrawal_requests w WHERE w.provider_id = :providerId)",
+            nativeQuery = true)
+    Page<Object[]> findProviderWalletTransactionsUnion(@Param("providerId") Long providerId, Pageable pageable);
 }

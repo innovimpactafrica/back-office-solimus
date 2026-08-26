@@ -9,6 +9,7 @@ import com.example.solimus.enums.RepartitionMode;
 import com.example.solimus.services.syndic.charge.ChargeService;
 import com.example.solimus.services.syndic.residence.SyndicResidenceService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -148,10 +149,14 @@ public class SyndicBudgetController {
     })
     @GetMapping("/budgets")
     public ResponseEntity<BudgetListResponse> getBudgets(
+            @Parameter(description = "Filtre optionnel sur une résidence précise — absent = toutes résidences du syndic")
+            @RequestParam(required = false) Long residenceId,
+            @Parameter(description = "Filtre optionnel par année — absent = toutes années confondues", example = "2026")
+            @RequestParam(required = false) Integer year,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
 
-        BudgetListResponse response = chargeService.getBudgetsForSyndic(page, size);
+        BudgetListResponse response = chargeService.getBudgetsForSyndic(residenceId, year, page, size);
         return ResponseEntity.ok(response);
     }
 
@@ -304,16 +309,24 @@ public class SyndicBudgetController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "Lister les appels de charges", tags = {"Syndic - Charges"})
+    @Operation(summary = "Lister les appels de charges (vue globale, ou d'une résidence précise via residenceId — bouton \"Voir plus\")", tags = {"Syndic - Charges"})
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
-                    content = @Content(schema = @Schema(implementation = ChargeCallListResponse.class)))
+                    content = @Content(schema = @Schema(implementation = ChargeCallListResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
     })
     @GetMapping("/charge-calls")
     public ResponseEntity<ChargeCallListResponse> getChargeCalls(
+            @Parameter(description = "Filtre optionnel sur une résidence précise — absent = toutes résidences du syndic")
+            @RequestParam(required = false) Long residenceId,
+            @Parameter(description = "Filtre optionnel par année — absent = toutes années confondues", example = "2026")
+            @RequestParam(required = false) Integer year,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(chargeService.getChargeCallsForSyndic(page, size));
+        return ResponseEntity.ok(chargeService.getChargeCallsForSyndic(residenceId, year, page, size));
     }
 
     @Operation(summary = "Détail d'un appel de charges", tags = {"Syndic - Charges"})
@@ -461,9 +474,13 @@ public class SyndicBudgetController {
     })
     @GetMapping("/exceptional-calls")
     public ResponseEntity<ExceptionalCallListResponse> getExceptionalCalls(
+            @Parameter(description = "Filtre optionnel sur une résidence précise — absent = toutes résidences du syndic")
+            @RequestParam(required = false) Long residenceId,
+            @Parameter(description = "Filtre optionnel par année — absent = toutes années confondues", example = "2026")
+            @RequestParam(required = false) Integer year,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(chargeService.getExceptionalCallsForSyndic(page, size));
+        return ResponseEntity.ok(chargeService.getExceptionalCallsForSyndic(residenceId, year, page, size));
     }
 
     @Operation(summary = "Vue d'ensemble d'un appel exceptionnel (onglet 1)", tags = {"Syndic - Charges"})
@@ -585,29 +602,45 @@ public class SyndicBudgetController {
     // PAIEMENTS / IMPAYÉS (global syndic)
     // =========================================================================
 
-    @Operation(summary = "Liste des paiements du syndic (toutes résidences)", tags = {"Syndic - Charges"})
+    @Operation(summary = "Liste des paiements du syndic", description = "Filtres optionnels par résidence, année et recherche nom copropriétaire", tags = {"Syndic - Charges"})
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
-                    content = @Content(schema = @Schema(implementation = PaymentListResponse.class)))
+                    content = @Content(schema = @Schema(implementation = PaymentListResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
     })
     @GetMapping("/payments")
     public ResponseEntity<PaymentListResponse> getPayments(
+            @Parameter(description = "Filtre optionnel sur une résidence précise — absent = toutes résidences du syndic")
+            @RequestParam(required = false) Long residenceId,
+            @Parameter(description = "Filtre optionnel par année — absent = toutes années confondues", example = "2026")
+            @RequestParam(required = false) Integer year,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String search) {
-        return ResponseEntity.ok(chargeService.getPaymentsForSyndic(page, size, search));
+        return ResponseEntity.ok(chargeService.getPaymentsForSyndic(residenceId, year, page, size, search));
     }
 
-    @Operation(summary = "Liste des impayés du syndic (toutes résidences)", tags = {"Syndic - Charges"})
+    @Operation(summary = "Liste des impayés du syndic", description = "Filtres optionnels par résidence et année", tags = {"Syndic - Charges"})
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
-                    content = @Content(schema = @Schema(implementation = UnpaidListResponse.class)))
+                    content = @Content(schema = @Schema(implementation = UnpaidListResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
     })
     @GetMapping("/unpaid")
     public ResponseEntity<UnpaidListResponse> getUnpaid(
+            @Parameter(description = "Filtre optionnel sur une résidence précise — absent = toutes résidences du syndic")
+            @RequestParam(required = false) Long residenceId,
+            @Parameter(description = "Filtre optionnel par année — absent = toutes années confondues", example = "2026")
+            @RequestParam(required = false) Integer year,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(chargeService.getUnpaidForSyndic(page, size));
+        return ResponseEntity.ok(chargeService.getUnpaidForSyndic(residenceId, year, page, size));
     }
 
     @Operation(summary = "Relancer un copropriétaire pour une charge impayée précise", tags = {"Syndic - Charges"})

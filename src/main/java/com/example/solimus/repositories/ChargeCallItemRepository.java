@@ -100,15 +100,31 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
 
     /**
      * Calculer le solde global d'un copropriétaire, restreint au syndic
-     * Solde = SUM(paidAmount) - SUM(quotePart)
+     * Solde = SUM(paidAmount) - SUM(totalDue), totalDue = quotePart + pénalité déjà appliquée —
+     * cohérent avec l'onglet Impayés (ChargeCallItem.getTotalDue() n'est pas un champ JPA mappé,
+     * donc recalculé ici explicitement à partir de quotePart + penaltyAmount)
      */
-    @Query("SELECT COALESCE(SUM(cci.paidAmount), 0) - COALESCE(SUM(cci.quotePart), 0) " +
+    @Query("SELECT COALESCE(SUM(cci.paidAmount), 0) - COALESCE(SUM(cci.quotePart + COALESCE(cci.penaltyAmount, 0)), 0) " +
            "FROM ChargeCallItem cci " +
            "JOIN cci.chargeCall cc " +
            "JOIN cc.budget b " +
            "WHERE cci.coOwner.id = :coOwnerId " +
            "AND b.residence.syndic.id = :syndicId")
     BigDecimal calculateSoldeByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
+
+    // Batch : même calcul de solde que ci-dessus, pour PLUSIEURS copropriétaires en une seule requête
+    // (évite le N+1 de calculateSoldeByCoOwnerAndSyndic appelée une par une pour chaque ligne d'une page)
+    // — chaque ligne retournée : [coOwnerId, solde]. Un copropriétaire sans aucun ChargeCallItem
+    // n'apparaît pas dans le résultat (solde à traiter comme 0 côté appelant).
+    @Query("SELECT cci.coOwner.id, COALESCE(SUM(cci.paidAmount), 0) - COALESCE(SUM(cci.quotePart + COALESCE(cci.penaltyAmount, 0)), 0) " +
+           "FROM ChargeCallItem cci " +
+           "JOIN cci.chargeCall cc " +
+           "JOIN cc.budget b " +
+           "WHERE cci.coOwner.id IN :coOwnerIds " +
+           "AND b.residence.syndic.id = :syndicId " +
+           "GROUP BY cci.coOwner.id")
+    List<Object[]> calculateSoldesByCoOwnerIdsAndSyndic(
+            @Param("coOwnerIds") List<Long> coOwnerIds, @Param("syndicId") Long syndicId);
 
     // ===== CALCULS POUR DÉTAIL COPROPRIÉTAIRE (KPIs) =====
 
@@ -209,36 +225,56 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
 
     // Récupère le nombre de jours de retard le plus important parmi tous les ChargeCallItem non soldés
     // de ce copropriétaire, restreint aux résidences de ce syndic. Retourne null si aucun item en retard.
+    // Statut PENDING uniquement désormais : PARTIALLY_PAID supprimé, aucun paiement partiel autorisé.
     @Query("SELECT MAX(DATEDIFF(CURRENT_DATE, i.chargeCall.dueDate)) FROM ChargeCallItem i " +
             "WHERE i.coOwner.id = :coOwnerId " +
             "AND i.chargeCall.budget.syndic.id = :syndicId " +
-            "AND i.status IN ('PENDING', 'PARTIALLY_PAID') " +
+            "AND i.status = 'PENDING' " +
             "AND i.chargeCall.dueDate < CURRENT_DATE")
     Integer findMaxDaysLateByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
 
     // ===== PAIEMENTS / IMPAYÉS (GLOBAL SYNDIC) =====
 
-    // Items déjà soldés (PAID) d'un syndic, paginés — pour l'onglet Paiements, qui ne doit
-    // afficher que les paiements effectivement réglés (pas les retards/impayés/en attente)
-    Page<ChargeCallItem> findByChargeCallBudgetSyndicIdAndStatus(
-            Long syndicId, ChargeItemPaymentStatus status, Pageable pageable);
-
-    // Items PAID filtrés par nom de copropriétaire, paginés
+    // Items déjà soldés (PAID) d'un syndic, filtrés optionnellement par résidence, année et
+    // recherche nom copropriétaire, paginés — pour l'onglet Paiements (module Charges)
     @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId " +
            "AND i.status = 'PAID' " +
-           "AND (LOWER(i.coOwner.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "OR LOWER(i.coOwner.lastName) LIKE LOWER(CONCAT('%', :search, '%')))")
-    Page<ChargeCallItem> findPaidByChargeCallBudgetSyndicIdAndCoOwnerNameContaining(
-            @Param("syndicId") Long syndicId, @Param("search") String search, Pageable pageable);
+           "AND (:residenceId IS NULL OR i.chargeCall.budget.residence.id = :residenceId) " +
+           "AND (:year IS NULL OR i.chargeCall.year = :year) " +
+           "AND (:search IS NULL OR :search = '' " +
+           "     OR LOWER(i.coOwner.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "     OR LOWER(i.coOwner.lastName) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<ChargeCallItem> findPaidBySyndicIdWithFilters(@Param("syndicId") Long syndicId,
+                                                        @Param("residenceId") Long residenceId,
+                                                        @Param("year") Integer year,
+                                                        @Param("search") String search,
+                                                        Pageable pageable);
 
     // Items non soldés d'un syndic, paginés (pour l'onglet Impayés) — basé sur le statut posé
-    // explicitement au paiement (PENDING/PARTIALLY_PAID), jamais recalculé par comparaison de montants
-    @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId AND i.status IN ('PENDING', 'PARTIALLY_PAID')")
+    // explicitement au paiement. PARTIALLY_PAID supprimé : un item non soldé est toujours PENDING.
+    @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId AND i.status = 'PENDING'")
     Page<ChargeCallItem> findUnpaidByBudgetSyndicId(@Param("syndicId") Long syndicId, Pageable pageable);
 
     // Tous les items non soldés, sans pagination (pour calculer les KPI globaux : total, count)
-    @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId AND i.status IN ('PENDING', 'PARTIALLY_PAID')")
+    @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId AND i.status = 'PENDING'")
     List<ChargeCallItem> findAllUnpaidByBudgetSyndicId(@Param("syndicId") Long syndicId);
+
+    // Variantes filtrées (résidence + année optionnelles) des deux méthodes ci-dessus, utilisées
+    // par l'onglet Impayés du module Charges (/api/syndic/budget/unpaid)
+    @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId AND i.status = 'PENDING' " +
+           "AND (:residenceId IS NULL OR i.chargeCall.budget.residence.id = :residenceId) " +
+           "AND (:year IS NULL OR i.chargeCall.year = :year)")
+    Page<ChargeCallItem> findUnpaidBySyndicIdWithFilters(@Param("syndicId") Long syndicId,
+                                                          @Param("residenceId") Long residenceId,
+                                                          @Param("year") Integer year,
+                                                          Pageable pageable);
+
+    @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId AND i.status = 'PENDING' " +
+           "AND (:residenceId IS NULL OR i.chargeCall.budget.residence.id = :residenceId) " +
+           "AND (:year IS NULL OR i.chargeCall.year = :year)")
+    List<ChargeCallItem> findAllUnpaidBySyndicIdWithFilters(@Param("syndicId") Long syndicId,
+                                                             @Param("residenceId") Long residenceId,
+                                                             @Param("year") Integer year);
 
     // Tous les items d'un syndic (non paginé), toutes résidences confondues (pour KPI dashboard global)
     @Query("SELECT i FROM ChargeCallItem i WHERE i.chargeCall.budget.syndic.id = :syndicId")
@@ -256,7 +292,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     // Compte les lignes en retard (date d'échéance dépassée) et non soldées pour un syndic (toutes résidences)
     @Query("SELECT COUNT(i) FROM ChargeCallItem i " +
            "WHERE i.chargeCall.budget.syndic.id = :syndicId " +
-           "AND i.status IN ('PENDING', 'PARTIALLY_PAID') " +
+           "AND i.status = 'PENDING' " +
            "AND i.chargeCall.dueDate < CURRENT_DATE")
     long countLateUnpaidBySyndicId(@Param("syndicId") Long syndicId);
 
@@ -265,18 +301,17 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     @Query("SELECT COUNT(i) FROM ChargeCallItem i " +
            "JOIN i.chargeCall cc JOIN cc.budget b " +
            "WHERE b.residence.id = :residenceId " +
-           "AND i.status IN ('PENDING', 'PARTIALLY_PAID') " +
+           "AND i.status = 'PENDING' " +
            "AND cc.dueDate < CURRENT_DATE")
     long countLateUnpaidByResidenceId(@Param("residenceId") Long residenceId);
 
     // Additionne tout ce qui reste à payer pour ce copropriétaire, dans cette résidence,
     // toutes périodes de charge confondues (peu importe le statut de chaque ChargeCall) — le montant
-    // restant se calcule (quotePart - paidAmount), mais seuls les items encore PENDING/PARTIALLY_PAID
-    // sont inclus, jamais déduit d'une comparaison de montants
+    // restant se calcule (quotePart - paidAmount), mais seuls les items encore PENDING sont inclus
     @Query("SELECT COALESCE(SUM(item.quotePart - item.paidAmount), 0) FROM ChargeCallItem item " +
            "WHERE item.coOwner.id = :coOwnerId " +
            "AND item.chargeCall.budget.residence.id = :residenceId " +
-           "AND item.status IN ('PENDING', 'PARTIALLY_PAID')")
+           "AND item.status = 'PENDING'")
     BigDecimal sumRemainingAmountByCoOwnerAndResidence(@Param("coOwnerId") Long coOwnerId,
                                                       @Param("residenceId") Long residenceId);
 
@@ -285,7 +320,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     @Query("SELECT item FROM ChargeCallItem item " +
            "WHERE item.coOwner.id = :coOwnerId " +
            "AND item.chargeCall.budget.residence.id = :residenceId " +
-           "AND item.status IN ('PENDING', 'PARTIALLY_PAID') " +
+           "AND item.status = 'PENDING' " +
            "ORDER BY item.chargeCall.dueDate ASC")
     List<ChargeCallItem> findPendingItemsByCoOwnerAndResidence(@Param("coOwnerId") Long coOwnerId,
                                                               @Param("residenceId") Long residenceId,
@@ -298,14 +333,14 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
 
     // Tous les items non soldés, toutes résidences et tous syndics confondus —
     // pour le job planifié quotidien (pas de "current user" dans un job planifié)
-    @Query("SELECT i FROM ChargeCallItem i WHERE i.status IN ('PENDING', 'PARTIALLY_PAID')")
+    @Query("SELECT i FROM ChargeCallItem i WHERE i.status = 'PENDING'")
     List<ChargeCallItem> findAllUnpaidItems();
 
     // Compte les lignes en retard (1 à 30 jours après échéance) et non soldées pour un syndic —
     // seuil identique à PaymentStatusUtils.UNPAID_THRESHOLD_DAYS (digest quotidien du syndic)
     @Query("SELECT COUNT(i) FROM ChargeCallItem i " +
            "WHERE i.chargeCall.budget.syndic.id = :syndicId " +
-           "AND i.status IN ('PENDING', 'PARTIALLY_PAID') " +
+           "AND i.status = 'PENDING' " +
            "AND DATEDIFF(CURRENT_DATE, i.chargeCall.dueDate) BETWEEN 1 AND 30")
     long countLateBySyndicId(@Param("syndicId") Long syndicId);
 
@@ -313,14 +348,107 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     // seuil identique à PaymentStatusUtils.UNPAID_THRESHOLD_DAYS (digest quotidien du syndic)
     @Query("SELECT COUNT(i) FROM ChargeCallItem i " +
            "WHERE i.chargeCall.budget.syndic.id = :syndicId " +
-           "AND i.status IN ('PENDING', 'PARTIALLY_PAID') " +
+           "AND i.status = 'PENDING' " +
            "AND DATEDIFF(CURRENT_DATE, i.chargeCall.dueDate) > 30")
     long countUnpaidBySyndicId(@Param("syndicId") Long syndicId);
 
-    // Compte les lignes partiellement payées pour un syndic (toutes résidences, peu importe le
-    // retard) — inclus dans le digest quotidien pour informer le syndic des paiements en cours
-    @Query("SELECT COUNT(i) FROM ChargeCallItem i " +
-           "WHERE i.chargeCall.budget.syndic.id = :syndicId " +
-           "AND i.status = 'PARTIALLY_PAID'")
-    long countPartiallyPaidBySyndicId(@Param("syndicId") Long syndicId);
+    // countPartiallyPaidBySyndicId supprimée — PARTIALLY_PAID n'existe plus, plus aucun paiement
+    // partiel n'est accepté (voir SolimusCallbackController)
+
+    // ============================================================
+    // "MES CHARGES" (copropriétaire) — UNION ALL ChargeCallItem + ExceptionalCallItem, paginée en base
+    // ============================================================
+    // Le libellé de période ("Charges T3 2026", "Charges Août 2026") n'est PAS recalculé ici pour
+    // l'affichage — seulement dupliqué dans search_title pour permettre au filtre "search" de matcher
+    // les charges courantes (dont le titre affiché est calculé en Java, voir
+    // OwnerChargeServiceImpl.buildPeriodLabel). L'affichage final reste construit en Java, uniquement
+    // sur les lignes de la page déjà récupérée — une seule source de vérité pour le libellé affiché.
+
+    String MY_CHARGES_CHARGE_BRANCH =
+            "SELECT 'CHARGE' AS source_type, " +
+            "cci.id AS id, " +
+            "NULL AS title, " +
+            "'REGULAR' AS type_code, " +
+            "r.name AS residence_name, " +
+            "r.id AS residence_id, " +
+            "(SELECT GROUP_CONCAT(p.reference SEPARATOR ', ') FROM properties p " +
+            "   WHERE p.owner_id = cci.coowner_id AND p.residence_id = r.id) AS property_reference, " +
+            "(cci.quote_part + COALESCE(cci.penalty_amount, 0) - COALESCE(cci.paid_amount, 0)) AS remaining_amount, " +
+            "cc.due_date AS due_date, " +
+            "cci.status AS status_raw, " +
+            "(b.status = 'CLOSED') AS payment_blocked, " +
+            "cc.frequency AS frequency, " +
+            "cc.period_number AS period_number, " +
+            "cc.annee AS year, " +
+            "CONCAT('Charges ', " +
+            "  CASE WHEN cc.frequency = 'MENSUEL' THEN " +
+            "    ELT(cc.period_number, 'Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre') " +
+            "  ELSE " +
+            "    CONCAT('T', cc.period_number, ' (', ELT(cc.period_number, 'Jan-Mar','Avr-Jun','Jul-Sep','Oct-Dec'), ')') " +
+            "  END, ' ', cc.annee) AS search_title " +
+            "FROM charge_call_items cci " +
+            "JOIN charge_calls cc ON cc.id = cci.charge_call_id " +
+            "JOIN budgets b ON b.id = cc.budget_id " +
+            "JOIN residences r ON r.id = b.residence_id " +
+            "WHERE cci.coowner_id = :coOwnerId " +
+            "AND (:residenceId IS NULL OR r.id = :residenceId) " +
+            "AND (:type IS NULL OR :type = 'REGULAR') " +
+            "AND (:statusRaw IS NULL OR cci.status = :statusRaw) ";
+
+    String MY_CHARGES_EXCEPTIONAL_BRANCH =
+            "SELECT 'EXCEPTIONAL' AS source_type, " +
+            "eci.id AS id, " +
+            "ec.title AS title, " +
+            "'EXCEPTIONAL' AS type_code, " +
+            "r2.name AS residence_name, " +
+            "r2.id AS residence_id, " +
+            "(SELECT GROUP_CONCAT(p2.reference SEPARATOR ', ') FROM properties p2 " +
+            "   WHERE p2.owner_id = eci.co_owner_id AND p2.residence_id = r2.id) AS property_reference, " +
+            "(eci.quote_part - COALESCE(eci.paid_amount, 0)) AS remaining_amount, " +
+            "NULL AS due_date, " +
+            "eci.status AS status_raw, " +
+            "(ec.status = 'CLOSED') AS payment_blocked, " +
+            "NULL AS frequency, " +
+            "NULL AS period_number, " +
+            "NULL AS year, " +
+            "ec.title AS search_title " +
+            "FROM exceptional_call_items eci " +
+            "JOIN exceptional_calls ec ON ec.id = eci.exceptional_call_id " +
+            "JOIN residences r2 ON r2.id = ec.residence_id " +
+            "WHERE eci.co_owner_id = :coOwnerId " +
+            "AND (:residenceId IS NULL OR r2.id = :residenceId) " +
+            "AND (:type IS NULL OR :type = 'EXCEPTIONAL') " +
+            "AND (:statusRaw IS NULL OR eci.status = :statusRaw) ";
+
+    // Page de "mes charges" (courantes + exceptionnelles fusionnées), triée par échéance croissante
+    // (NULL en dernier, comme Comparator.nullsLast), LIMIT/OFFSET géré par la base
+    @Query(value =
+            "SELECT * FROM (" + MY_CHARGES_CHARGE_BRANCH + " UNION ALL " + MY_CHARGES_EXCEPTIONAL_BRANCH + ") AS combined " +
+            "WHERE (:search IS NULL OR :search = '' OR LOWER(search_title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+            "ORDER BY due_date IS NULL, due_date ASC",
+            countQuery =
+            "SELECT COUNT(*) FROM (" + MY_CHARGES_CHARGE_BRANCH + " UNION ALL " + MY_CHARGES_EXCEPTIONAL_BRANCH + ") AS combined " +
+            "WHERE (:search IS NULL OR :search = '' OR LOWER(search_title) LIKE LOWER(CONCAT('%', :search, '%')))",
+            nativeQuery = true)
+    Page<Object[]> findMyChargesUnion(@Param("coOwnerId") Long coOwnerId,
+                                       @Param("residenceId") Long residenceId,
+                                       @Param("type") String type,
+                                       @Param("statusRaw") String statusRaw,
+                                       @Param("search") String search,
+                                       Pageable pageable);
+
+    // Résumé (bandeau haut "Mes charges") calculé sur TOUT l'ensemble filtré, pas seulement la page —
+    // une seule ligne : [totalToPay, pendingCount, nextDueDate]
+    @Query(value =
+            "SELECT COALESCE(SUM(CASE WHEN remaining_amount > 0 THEN remaining_amount ELSE 0 END), 0) AS total_to_pay, " +
+            "       SUM(CASE WHEN remaining_amount > 0 THEN 1 ELSE 0 END) AS pending_count, " +
+            "       MIN(CASE WHEN remaining_amount > 0 THEN due_date ELSE NULL END) AS next_due_date " +
+            "FROM (" + MY_CHARGES_CHARGE_BRANCH + " UNION ALL " + MY_CHARGES_EXCEPTIONAL_BRANCH + ") AS combined " +
+            "WHERE (:search IS NULL OR :search = '' OR LOWER(search_title) LIKE LOWER(CONCAT('%', :search, '%')))",
+            nativeQuery = true)
+    List<Object[]> sumMyChargesSummary(@Param("coOwnerId") Long coOwnerId,
+                                        @Param("residenceId") Long residenceId,
+                                        @Param("type") String type,
+                                        @Param("statusRaw") String statusRaw,
+                                        @Param("search") String search);
 }

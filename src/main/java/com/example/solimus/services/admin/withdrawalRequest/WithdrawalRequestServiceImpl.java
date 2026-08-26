@@ -3,12 +3,15 @@ package com.example.solimus.services.admin.withdrawalRequest;
 import com.example.solimus.dtos.admin.withdrawal.*;
 import com.example.solimus.entities.Notification;
 import com.example.solimus.entities.ProviderProfile;
+import com.example.solimus.entities.ProviderWallet;
+import com.example.solimus.entities.ProviderWalletTransaction;
 import com.example.solimus.entities.ProviderWithdrawalRequest;
 import com.example.solimus.entities.SyndicProfile;
 import com.example.solimus.entities.SyndicWalletTransaction;
 import com.example.solimus.entities.SyndicWithdrawalRequest;
 import com.example.solimus.entities.User;
 import com.example.solimus.enums.PaymentMethod;
+import com.example.solimus.enums.ProviderWalletTransactionCategory;
 import com.example.solimus.enums.SubscriberType;
 import com.example.solimus.enums.WalletTransactionCategory;
 import com.example.solimus.enums.WithdrawalMode;
@@ -20,6 +23,8 @@ import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.AdminWithdrawalRequestRepository;
 import com.example.solimus.repositories.NotificationRepository;
 import com.example.solimus.repositories.ProviderProfileRepository;
+import com.example.solimus.repositories.ProviderWalletRepository;
+import com.example.solimus.repositories.ProviderWalletTransactionRepository;
 import com.example.solimus.repositories.SyndicProfileRepository;
 import com.example.solimus.repositories.SyndicWalletTransactionRepository;
 import com.example.solimus.repositories.SyndicWithdrawalRequestRepository;
@@ -56,6 +61,8 @@ public class WithdrawalRequestServiceImpl implements WithdrawalRequestService {
     private final WithdrawalRequestRepository providerWithdrawalRequestRepository;
     private final AdminWithdrawalRequestRepository adminWithdrawalRequestRepository;
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
+    private final ProviderWalletRepository providerWalletRepository;
+    private final ProviderWalletTransactionRepository providerWalletTransactionRepository;
     private final WalletBalanceService providerWalletBalanceService;
     private final SyndicProfileRepository syndicProfileRepository;
     private final ProviderProfileRepository providerProfileRepository;
@@ -393,8 +400,7 @@ public class WithdrawalRequestServiceImpl implements WithdrawalRequestService {
             retraitTransaction.setCategory(WalletTransactionCategory.RETRAIT);
             retraitTransaction.setAmount(saved.getAmount().negate());
             retraitTransaction.setLabel("Retrait — " + (saved.getReason() != null ? saved.getReason() : saved.getMode().getLabel()));
-            retraitTransaction.setBeneficiaryName(
-                    saved.getWallet().getSyndic().getFirstName() + " " + saved.getWallet().getSyndic().getLastName());
+            // beneficiaryName reste null pour RETRAIT (réservé à CHARGES/TRAVAUX, voir entité)
             retraitTransaction.setMode(saved.getMode() != null ? saved.getMode().name() : null);
             retraitTransaction.setTransactionDate(saved.getProcessedAt());
             retraitTransaction.setReference("RETRAIT-" + saved.getId());
@@ -417,12 +423,38 @@ public class WithdrawalRequestServiceImpl implements WithdrawalRequestService {
             throw new ConflictException("Cette demande a déjà été traitée");
         }
 
+        // Vérifie que le solde actuel (retraits COMPLETED uniquement, même calcul que le wallet
+        // affiché) couvre bien le montant demandé — seul moment où le blocage se fait, pas à la
+        // création de la demande. Logique unifiée avec le syndic (voir la branche SYNDIC ci-dessus) :
+        // si plusieurs demandes PENDING existent pour le même prestataire, valider la première fait
+        // baisser ce solde, la suivante peut alors être refusée ici, à raison.
+        BigDecimal soldeActuel = providerWalletBalanceService.getCurrentBalance(request.getProvider().getId());
+        if (request.getAmount().compareTo(soldeActuel) > 0) {
+            throw new InsufficientBalanceException(
+                    "Solde insuffisant : solde actuel " + soldeActuel + " FCFA, montant demandé "
+                            + request.getAmount() + " FCFA");
+        }
+
         request.setStatus(WithdrawalStatus.COMPLETED);
         request.setProcessedAt(LocalDateTime.now());
         request.setProcessedBy(currentAdmin);
         request.setReceiptUrl(receiptUrl);
         request.setAdminComment(comment);
         ProviderWithdrawalRequest saved = providerWithdrawalRequestRepository.save(request);
+
+        // Trace ce retrait dans le grand livre du wallet prestataire (catégorie RETRAIT, montant négatif) —
+        // WalletBalanceServiceImpl.getCurrentBalance se base désormais uniquement sur cette table (comme
+        // SyndicTreasuryService côté syndic), plus sur une soustraction séparée des PENDING
+        ProviderWallet wallet = providerWalletRepository.findByProviderId(saved.getProvider().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Wallet prestataire introuvable"));
+        ProviderWalletTransaction retraitTransaction = new ProviderWalletTransaction();
+        retraitTransaction.setWallet(wallet);
+        retraitTransaction.setCategory(ProviderWalletTransactionCategory.RETRAIT);
+        retraitTransaction.setAmount(saved.getAmount().negate());
+        retraitTransaction.setLabel("Retrait " + (saved.getMethod() != null ? saved.getMethod().name() : "N/A"));
+        retraitTransaction.setReference("RETRAIT-" + saved.getId());
+        retraitTransaction.setTransactionDate(saved.getProcessedAt());
+        providerWalletTransactionRepository.save(retraitTransaction);
 
         notifyValidated(saved.getProvider(), saved.getAmount());
 

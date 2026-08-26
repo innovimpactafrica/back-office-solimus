@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(./mvnw.cmd -q compile)"
+      "Bash(./mvnw.cmd -q compile)",
+      "Bash(cd \"c:/PROJECT/projet-innov/back-office-solimus\" && sed -i '22s/.*/    private String status; \\\\/\\\\/ \"En attente\", \"Pay\\\\xc3\\\\xa9\", \"Rien \\\\xc3\\\\xa0 payer\"/' src/main/java/com/example/solimus/dtos/owner/charge/MyChargeCardDTO.java && sed -n '22p' src/main/java/com/example/solimus/dtos/owner/charge/MyChargeCardDTO.java)",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Read(//tmp/**)"
     ]
   }
 }

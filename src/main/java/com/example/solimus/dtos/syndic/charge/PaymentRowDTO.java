@@ -9,9 +9,12 @@ import java.time.LocalDate;
 public class PaymentRowDTO {
     private String coOwnerName;
     private String propertyLabel;
+    private String residenceName;
+    private String period; // ex. "T3" (trimestriel) ou "Jan" (mensuel)
+    private Integer year;
     private BigDecimal amountDue;
     private BigDecimal amountPaid;
     private BigDecimal balance;
-    private String status; // PAYE, IMPAYE, RETARD, PARTIEL, A_JOUR
+    private String status; // PAYE, IMPAYE, RETARD, A_JOUR
     private LocalDate paymentDate;
 }

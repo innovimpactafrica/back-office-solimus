@@ -161,4 +161,18 @@ public interface SyndicWalletTransactionRepository extends JpaRepository<SyndicW
                                                     @Param("residenceId") Long residenceId,
                                                     Pageable pageable);
 
+    // Historique paginé complet des transactions d'un wallet (toutes catégories, y compris RETRAIT),
+    // filtres category, année et résidence tous optionnels — pour "Voir l'historique complet" (module Finances)
+    @Query("SELECT t FROM SyndicWalletTransaction t " +
+            "WHERE t.wallet.id = :walletId " +
+            "AND (:category IS NULL OR t.category = :category) " +
+            "AND (:year IS NULL OR YEAR(t.transactionDate) = :year) " +
+            "AND (:residenceId IS NULL OR t.residence.id = :residenceId) " +
+            "ORDER BY t.transactionDate DESC")
+    Page<SyndicWalletTransaction> findByWalletIdWithFilters(@Param("walletId") Long walletId,
+                                                            @Param("category") WalletTransactionCategory category,
+                                                            @Param("year") Integer year,
+                                                            @Param("residenceId") Long residenceId,
+                                                            Pageable pageable);
+
 }

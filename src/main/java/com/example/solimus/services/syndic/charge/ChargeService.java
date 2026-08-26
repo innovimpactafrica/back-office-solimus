@@ -68,9 +68,10 @@ public interface ChargeService {
     Page<ResidenceBudgetSummaryDTO> getResidencesWithActiveBudget(int page, int size);
 
     /**
-     * Retourne la liste paginée des budgets du syndic + totaux globaux (nb budgets, nb actifs)
+     * Retourne la liste paginée des budgets du syndic + totaux globaux (nb budgets, nb actifs),
+     * avec filtres résidence et année tous les deux optionnels
      */
-    BudgetListResponse getBudgetsForSyndic(int page, int size);
+    BudgetListResponse getBudgetsForSyndic(Long residenceId, Integer year, int page, int size);
 
     /**
      * Consulte le détail d'un budget existant — même structure
@@ -132,16 +133,11 @@ public interface ChargeService {
 
     
     /**
-     * Lister les appels de charges du syndic
-     * Retourne la liste paginée des appels de charges du syndic connecté avec les totaux globaux
+     * Lister les appels de charges du syndic, pour une année donnée (année en cours par défaut si
+     * non fournie), avec filtre résidence optionnel — residenceId null = toutes résidences (vue
+     * globale module Charges), fourni = une résidence précise (bouton "Voir plus" depuis une fiche résidence)
      */
-    ChargeCallListResponse getChargeCallsForSyndic(int page, int size);
-
-    /**
-     * Retourne la liste paginée des appels de charges d'une résidence précise, pour une année donnée
-     * (année en cours par défaut si non fournie) — page complète accessible via "Voir plus"
-     */
-    ChargeCallListResponse getChargeCallsForResidence(Long residenceId, Integer year, int page, int size);
+    ChargeCallListResponse getChargeCallsForSyndic(Long residenceId, Integer year, int page, int size);
 
     /**
      * Retourne le reçu de paiement d'une ligne de charge (dernier paiement COMPLETED)
@@ -196,9 +192,10 @@ public interface ChargeService {
 
     /**
      * Lister les appels exceptionnels du syndic
-     * Retourne la liste paginée des appels exceptionnels du syndic connecté
+     * Retourne la liste paginée des appels exceptionnels du syndic connecté, avec filtres
+     * résidence et année tous les deux optionnels
      */
-    ExceptionalCallListResponse getExceptionalCallsForSyndic(int page, int size);
+    ExceptionalCallListResponse getExceptionalCallsForSyndic(Long residenceId, Integer year, int page, int size);
 
     /**
      * Vue d'ensemble d'un appel exceptionnel (onglet 1)
@@ -237,14 +234,15 @@ public interface ChargeService {
     //--------------------------------------------------
 
     /**
-     * Liste paginée des paiements du syndic, avec recherche optionnelle par nom de copropriétaire
+     * Liste paginée des paiements du syndic, avec filtres optionnels résidence/année et
+     * recherche optionnelle par nom de copropriétaire
      */
-    PaymentListResponse getPaymentsForSyndic(int page, int size, String search);
+    PaymentListResponse getPaymentsForSyndic(Long residenceId, Integer year, int page, int size, String search);
 
     /**
-     * Liste paginée des impayés du syndic (charges non soldées)
+     * Liste paginée des impayés du syndic (charges non soldées), avec filtres optionnels résidence/année
      */
-    UnpaidListResponse getUnpaidForSyndic(int page, int size);
+    UnpaidListResponse getUnpaidForSyndic(Long residenceId, Integer year, int page, int size);
 
     /**
      * Relance un copropriétaire pour une charge impayée précise

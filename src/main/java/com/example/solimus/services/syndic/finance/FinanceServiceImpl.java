@@ -1,14 +1,21 @@
 package com.example.solimus.services.syndic.finance;
 
+import com.example.solimus.dtos.shared.ExcelFileDTO;
+import com.example.solimus.dtos.syndic.charge.PaymentListResponse;
+import com.example.solimus.dtos.syndic.charge.PaymentRowDTO;
 import com.example.solimus.dtos.syndic.dashboard.TreasuryEvolutionPointDTO;
 import com.example.solimus.dtos.syndic.finance.*;
+import com.example.solimus.dtos.syndic.residence.WalletTransactionDTO;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.PaymentDelayStatus;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.WalletTransactionCategory;
+import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.shared.SyndicTreasuryService;
+import com.example.solimus.services.shared.WalletTransactionPresenter;
+import com.example.solimus.utils.ExcelExportUtil;
 import com.example.solimus.utils.PaymentStatusUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -21,11 +28,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.Normalizer;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -38,7 +48,9 @@ public class FinanceServiceImpl implements FinanceService {
     private final ChargeCallItemRepository chargeCallItemRepository;
     private final ChargeCallRepository chargeCallRepository;
     private final PropertyRepository propertyRepository;
+    private final ResidenceRepository residenceRepository;
     private final SyndicTreasuryService syndicTreasuryService;
+    private final WalletTransactionPresenter walletTransactionPresenter;
 
     // ============================================================
     // DASHBOARD "FINANCES"
@@ -126,29 +138,34 @@ public class FinanceServiceImpl implements FinanceService {
     public List<RecentPaymentDTO> getRecentPayments(int limit) {
         User currentSyndic = getCurrentUser();
 
-        SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId()).orElse(null);
-        if (wallet == null) {
-            return List.of();
-        }
+        Pageable pageable = PageRequest.of(0, limit, Sort.by("paidAt").descending());
 
-        // Récupère les transactions de catégorie CHARGES les plus récentes
-        List<SyndicWalletTransaction> transactions = syndicWalletTransactionRepository
-                .findTopByWalletIdAndCategoryOrderByTransactionDateDesc(
-                        wallet.getId(),
-                        WalletTransactionCategory.CHARGES,
-                        org.springframework.data.domain.PageRequest.of(0, limit)
-                );
+        // Récupère les paiements de charges COMPLETED les plus récents — même source que
+        // /finances/payments, pour que le lien "Voir tous les paiements" reste cohérent
+        Page<ChargeCallPayment> recentPage = chargeCallPaymentRepository
+                .findByChargeCallItemChargeCallBudgetSyndicIdAndStatus(currentSyndic.getId(), PaymentStatus.COMPLETED, pageable);
 
-        return transactions.stream()
-                .map(t -> {
-                    RecentPaymentDTO dto = new RecentPaymentDTO();
-                    dto.setName("Paiement charges"); // À adapter selon les données disponibles
-                    dto.setLabel("Charges");
-                    dto.setRelativeTime(formatRelativeTime(t.getTransactionDate()));
-                    dto.setAmount(t.getAmount().abs());
-                    return dto;
-                })
+        return recentPage.getContent().stream()
+                .map(this::buildRecentPaymentRow)
                 .toList();
+    }
+
+    // Construit une ligne "Paiements Récents" (dashboard Finances) — aperçu minimal mais identifiable :
+    // qui a payé, pour quelle résidence, pour quelle période
+    private RecentPaymentDTO buildRecentPaymentRow(ChargeCallPayment payment) {
+
+        ChargeCall chargeCall = payment.getChargeCallItem().getChargeCall();
+
+        RecentPaymentDTO dto = new RecentPaymentDTO();
+        dto.setCoOwnerName(payment.getOwner().getFirstName() + " " + payment.getOwner().getLastName());
+        dto.setResidenceName(chargeCall.getBudget().getResidence().getName());
+        dto.setPeriod(buildSimplePeriodeLabel(chargeCall));
+        dto.setYear(chargeCall.getYear());
+        dto.setLabel("Charges");
+        dto.setRelativeTime(formatRelativeTime(payment.getPaidAt()));
+        dto.setAmount(payment.getAmount());
+
+        return dto;
     }
 
     @Override
@@ -262,16 +279,21 @@ public class FinanceServiceImpl implements FinanceService {
     // LISTE DES IMPAYÉS (module Finances, historique complet)
     // ============================================================
 
-    // Construit une ligne du tableau "Impayés"
+    // Construit une ligne du tableau "Impayés" (module Finances) — mêmes champs que le module
+    // Charges, plus dueDate (spécifique au module Finances)
     private UnpaidRowDTO buildUnpaidRow(ChargeCallItem item) {
 
-        LocalDate dueDate = item.getChargeCall().getDueDate();
+        ChargeCall chargeCall = item.getChargeCall();
+        LocalDate dueDate = chargeCall.getDueDate();
         long daysLate = ChronoUnit.DAYS.between(dueDate, LocalDate.now());
 
         UnpaidRowDTO dto = new UnpaidRowDTO();
         dto.setChargeCallItemId(item.getId());
         dto.setCoOwnerName(item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName());
-        dto.setResidenceName(item.getChargeCall().getBudget().getResidence().getName());
+        dto.setPropertyLabel(buildPropertyReferences(item));
+        dto.setResidenceName(chargeCall.getBudget().getResidence().getName());
+        dto.setPeriod(buildSimplePeriodeLabel(chargeCall));
+        dto.setYear(chargeCall.getYear());
         dto.setAmountDue(item.getTotalDue()); // quote-part + pénalité si déjà appliquée
         dto.setDueDate(dueDate);
         dto.setDaysLate((int) Math.max(daysLate, 0));
@@ -286,35 +308,58 @@ public class FinanceServiceImpl implements FinanceService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<FinancePaymentRowDTO> getFinancePayments(int page, int size) {
+    public PaymentListResponse getFinancePayments(Long residenceId, Integer year, int page, int size, String search) {
 
         // Récupère le syndic actuellement connecté
         User currentSyndic = getCurrentUser();
 
-        // Construit la pagination, triée du paiement le plus récent au plus ancien
-        Pageable pageable = PageRequest.of(page, size, Sort.by("paidAt").descending());
+        // Si une résidence est précisée, vérifie qu'elle appartient bien à ce syndic
+        if (residenceId != null) {
+            Residence residence = residenceRepository.findById(residenceId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+            if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+                throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
+            }
+        }
 
-        // Récupère les paiements de charges COMPLETED du syndic, directement paginés en base
-        Page<ChargeCallPayment> paymentsPage = chargeCallPaymentRepository
-                .findByChargeCallItemChargeCallBudgetSyndicIdAndStatus(currentSyndic.getId(), PaymentStatus.COMPLETED, pageable);
+        Pageable pageable = PageRequest.of(page, size, Sort.by("chargeCall.createdAt").descending());
 
-        // Transforme chaque paiement en ligne du tableau
-        return paymentsPage.map(this::buildFinancePaymentRow);
+        // Aligné intégralement sur /api/syndic/budget/payments : même source (ChargeCallItem PAID),
+        // mêmes filtres résidence/année/recherche
+        Page<ChargeCallItem> itemsPage = chargeCallItemRepository.findPaidBySyndicIdWithFilters(
+                currentSyndic.getId(), residenceId, year, search, pageable);
+
+        List<PaymentRowDTO> rowDtos = itemsPage.getContent().stream()
+                .map(this::buildPaymentRow)
+                .toList();
+
+        PaymentListResponse response = new PaymentListResponse();
+        response.setTotalPayments((int) itemsPage.getTotalElements());
+        response.setPayments(rowDtos);
+        response.setCurrentPage(page);
+        response.setTotalPages(itemsPage.getTotalPages());
+
+        return response;
     }
 
-    // Construit une ligne du tableau "Paiements" (module Finances)
-    private FinancePaymentRowDTO buildFinancePaymentRow(ChargeCallPayment payment) {
+    // Construit une ligne du tableau "Paiements" (module Finances) — mêmes champs que le module Charges
+    private PaymentRowDTO buildPaymentRow(ChargeCallItem item) {
 
-        ChargeCall chargeCall = payment.getChargeCallItem().getChargeCall();
+        ChargeCall chargeCall = item.getChargeCall();
 
-        FinancePaymentRowDTO dto = new FinancePaymentRowDTO();
-        dto.setDate(payment.getPaidAt() != null ? payment.getPaidAt().toLocalDate() : null);
-        dto.setCoOwnerName(payment.getOwner().getFirstName() + " " + payment.getOwner().getLastName());
+        PaymentRowDTO dto = new PaymentRowDTO();
+        dto.setCoOwnerName(item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName());
+        dto.setPropertyLabel(buildPropertyReferences(item));
         dto.setResidenceName(chargeCall.getBudget().getResidence().getName());
-        // Même format pour mensuel et trimestriel : "Charges T" + periodNumber
-        dto.setType("Charges T" + chargeCall.getPeriodNumber());
-        dto.setAmount(payment.getAmount());
-        dto.setStatus(payment.getStatus() == PaymentStatus.COMPLETED ? "Validé" : payment.getStatus().name());
+        dto.setPeriod(buildSimplePeriodeLabel(chargeCall));
+        dto.setYear(chargeCall.getYear());
+        dto.setAmountDue(item.getTotalDue()); // quote-part + pénalité si déjà appliquée
+        dto.setAmountPaid(item.getPaidAmount());
+        dto.setBalance(item.getRemainingAmount());
+        dto.setStatus(calculateItemStatus(item));
+
+        chargeCallPaymentRepository.findFirstByChargeCallItemIdOrderByPaidAtDesc(item.getId())
+                .ifPresent(p -> dto.setPaymentDate(p.getPaidAt() != null ? p.getPaidAt().toLocalDate() : null));
 
         return dto;
     }
@@ -325,28 +370,47 @@ public class FinanceServiceImpl implements FinanceService {
 
     @Override
     @Transactional(readOnly = true)
-    public UnpaidListResponse getFinanceUnpaid(int page, int size) {
+    public UnpaidListResponse getFinanceUnpaid(Long residenceId, Integer year, int page, int size) {
 
         User currentSyndic = getCurrentUser();
+
+        // Si une résidence est précisée, vérifie qu'elle appartient bien à ce syndic
+        if (residenceId != null) {
+            Residence residence = residenceRepository.findById(residenceId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+            if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+                throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
+            }
+        }
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("chargeCall.dueDate").ascending());
 
         // Récupère la page demandée, directement filtrée en base sur les items non soldés
-        Page<ChargeCallItem> unpaidPage = chargeCallItemRepository.findUnpaidByBudgetSyndicId(currentSyndic.getId(), pageable);
+        Page<ChargeCallItem> unpaidPage = chargeCallItemRepository.findUnpaidBySyndicIdWithFilters(
+                currentSyndic.getId(), residenceId, year, pageable);
 
-        // Récupère TOUS les items non soldés (sans pagination), pour calculer les KPI globaux
-        List<ChargeCallItem> allUnpaidItems = chargeCallItemRepository.findAllUnpaidByBudgetSyndicId(currentSyndic.getId());
+        // Récupère TOUS les items non soldés (sans pagination, mêmes filtres), pour calculer les KPI globaux
+        List<ChargeCallItem> allUnpaidItems = chargeCallItemRepository.findAllUnpaidBySyndicIdWithFilters(
+                currentSyndic.getId(), residenceId, year);
 
         BigDecimal totalUnpaidAmount = allUnpaidItems.stream()
                 .map(item -> item.getRemainingAmount())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Nombre de copropriétaires distincts concernés (un même copropriétaire peut avoir
+        // plusieurs lignes impayées — ex: plusieurs trimestres — et ne doit être compté qu'une fois ici)
+        long distinctCoOwners = allUnpaidItems.stream()
+                .map(item -> item.getCoOwner().getId())
+                .distinct()
+                .count();
 
         List<UnpaidRowDTO> rowDtos = unpaidPage.getContent().stream()
                 .map(this::buildUnpaidRow)
                 .toList();
 
         UnpaidListResponse response = new UnpaidListResponse();
-        response.setUnpaidCoOwnersCount(allUnpaidItems.size());
+        response.setUnpaidItemsCount(allUnpaidItems.size());
+        response.setDistinctUnpaidCoOwnersCount((int) distinctCoOwners);
         response.setTotalUnpaidAmount(totalUnpaidAmount);
         response.setUnpaidItems(rowDtos);
         response.setCurrentPage(page);
@@ -356,11 +420,171 @@ public class FinanceServiceImpl implements FinanceService {
     }
 
     // ============================================================
+    // TRANSACTIONS WALLET (historique complet, "Voir l'historique complet")
+    // ============================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<WalletTransactionDTO> getWalletTransactions(Long residenceId, WalletTransactionCategory category, Integer year, int page, int size) {
+
+        User currentSyndic = getCurrentUser();
+
+        // Si une résidence est précisée, vérifie qu'elle appartient bien à ce syndic
+        if (residenceId != null) {
+            Residence residence = residenceRepository.findById(residenceId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+            if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+                throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
+            }
+        }
+
+        SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId()).orElse(null);
+        if (wallet == null) {
+            return Page.empty(PageRequest.of(page, size));
+        }
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<SyndicWalletTransaction> transactionPage = syndicWalletTransactionRepository
+                .findByWalletIdWithFilters(wallet.getId(), category, year, residenceId, pageable);
+
+        return transactionPage.map(walletTransactionPresenter::toDTO);
+    }
+
+    // ============================================================
+    // EXPORTS EXCEL (mêmes filtres que la liste paginée correspondante — sans pagination,
+    // toutes les lignes filtrées sont incluses)
+    // ============================================================
+
+    private static final String[] PAYMENTS_EXPORT_HEADERS =
+            {"Copropriétaire", "Lot", "Résidence", "Période", "Montant payé", "Statut", "Date paiement"};
+    private static final String[] UNPAID_EXPORT_HEADERS =
+            {"Copropriétaire", "Lot", "Résidence", "Période", "Statut", "Montant dû", "Échéance", "Jours de retard"};
+    private static final String[] TRANSACTIONS_EXPORT_HEADERS =
+            {"Libellé", "Payeur / Prestataire", "Lot", "Résidence", "Catégorie", "Montant", "Mode", "Référence", "Date"};
+
+    private static final String PAYMENTS_HEADER_COLOR = "C8E6C9";
+    private static final String UNPAID_HEADER_COLOR = "F5C6C6";
+    private static final String TRANSACTIONS_HEADER_COLOR = "C5D5F7";
+
+    @Override
+    @Transactional(readOnly = true)
+    public ExcelFileDTO exportPayments(Long residenceId, Integer year, String search) {
+
+        User currentSyndic = getCurrentUser();
+        Residence residence = checkResidenceOwnership(residenceId, currentSyndic);
+
+        // Toutes les lignes filtrées, sans pagination (Pageable.unpaged), même tri que la liste paginée
+        Page<ChargeCallItem> itemsPage = chargeCallItemRepository.findPaidBySyndicIdWithFilters(
+                currentSyndic.getId(), residenceId, year, search,
+                Pageable.unpaged(Sort.by("chargeCall.createdAt").descending()));
+
+        List<Object[]> rows = itemsPage.getContent().stream()
+                .map(item -> {
+                    ChargeCall chargeCall = item.getChargeCall();
+                    LocalDate paymentDate = chargeCallPaymentRepository
+                            .findFirstByChargeCallItemIdOrderByPaidAtDesc(item.getId())
+                            .map(p -> p.getPaidAt() != null ? p.getPaidAt().toLocalDate() : null)
+                            .orElse(null);
+                    return new Object[]{
+                            item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName(),
+                            buildPropertyReferences(item),
+                            chargeCall.getBudget().getResidence().getName(),
+                            buildSimplePeriodeLabel(chargeCall) + " " + chargeCall.getYear(),
+                            item.getPaidAmount(),
+                            calculateItemStatus(item),
+                            paymentDate
+                    };
+                })
+                .toList();
+
+        byte[] content = ExcelExportUtil.generate("Paiements", PAYMENTS_EXPORT_HEADERS, rows, PAYMENTS_HEADER_COLOR, Set.of(4));
+        String fileName = "paiements_" + residenceSegment(residence) + "_" + yearSegment(year) + ".xlsx";
+
+        return new ExcelFileDTO(fileName, content);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ExcelFileDTO exportUnpaid(Long residenceId, Integer year) {
+
+        User currentSyndic = getCurrentUser();
+        Residence residence = checkResidenceOwnership(residenceId, currentSyndic);
+
+        List<ChargeCallItem> allUnpaidItems = chargeCallItemRepository
+                .findAllUnpaidBySyndicIdWithFilters(currentSyndic.getId(), residenceId, year)
+                .stream()
+                .sorted(Comparator.comparing(item -> item.getChargeCall().getDueDate()))
+                .toList();
+
+        List<Object[]> rows = allUnpaidItems.stream()
+                .map(item -> {
+                    ChargeCall chargeCall = item.getChargeCall();
+                    LocalDate dueDate = chargeCall.getDueDate();
+                    long daysLate = ChronoUnit.DAYS.between(dueDate, LocalDate.now());
+                    return new Object[]{
+                            item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName(),
+                            buildPropertyReferences(item),
+                            chargeCall.getBudget().getResidence().getName(),
+                            buildSimplePeriodeLabel(chargeCall) + " " + chargeCall.getYear(),
+                            calculateItemStatus(item),
+                            item.getTotalDue(),
+                            dueDate,
+                            (int) Math.max(daysLate, 0)
+                    };
+                })
+                .toList();
+
+        byte[] content = ExcelExportUtil.generate("Impayés", UNPAID_EXPORT_HEADERS, rows, UNPAID_HEADER_COLOR, Set.of(5));
+        String fileName = "impayes_" + residenceSegment(residence) + "_" + yearSegment(year) + ".xlsx";
+
+        return new ExcelFileDTO(fileName, content);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ExcelFileDTO exportWalletTransactions(Long residenceId, WalletTransactionCategory category, Integer year) {
+
+        User currentSyndic = getCurrentUser();
+        Residence residence = checkResidenceOwnership(residenceId, currentSyndic);
+
+        SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId()).orElse(null);
+
+        // ORDER BY déjà porté par la requête (transactionDate DESC) — pas besoin de Sort ici
+        List<WalletTransactionDTO> transactions = wallet == null
+                ? List.of()
+                : syndicWalletTransactionRepository
+                        .findByWalletIdWithFilters(wallet.getId(), category, year, residenceId, Pageable.unpaged())
+                        .getContent().stream()
+                        .map(walletTransactionPresenter::toDTO)
+                        .toList();
+
+        List<Object[]> rows = transactions.stream()
+                .map(t -> new Object[]{
+                        t.getLabel(),
+                        t.getPayerOrPayeeName(),
+                        t.getPropertyReference(),
+                        t.getResidenceName(),
+                        t.getCategory() != null ? t.getCategory().name() : null,
+                        t.getAmount(),
+                        t.getMode(),
+                        t.getReference(),
+                        t.getTransactionDate()
+                })
+                .toList();
+
+        byte[] content = ExcelExportUtil.generate("Transactions", TRANSACTIONS_EXPORT_HEADERS, rows, TRANSACTIONS_HEADER_COLOR, Set.of(5));
+        String fileName = "transactions_" + residenceSegment(residence) + "_" + categorySegment(category) + "_" + yearSegment(year) + ".xlsx";
+
+        return new ExcelFileDTO(fileName, content);
+    }
+
+    // ============================================================
     // UTILITAIRES PARTAGÉS
     // ============================================================
 
     // Calcule le statut d'une ligne de charge — PAYE si soldée, sinon délègue le seuil de retard
-    // à PaymentStatusUtils (seule source de vérité), PARTIEL si un acompte a déjà été versé
+    // à PaymentStatusUtils (seule source de vérité). PARTIEL supprimé : aucun paiement partiel
+    // n'est plus autorisé, un item non soldé a donc toujours paidAmount = 0.
     private String calculateItemStatus(ChargeCallItem item) {
 
         boolean isFullyPaid = item.getPaidAmount().compareTo(item.getTotalDue()) >= 0;
@@ -368,27 +592,58 @@ public class FinanceServiceImpl implements FinanceService {
 
         LocalDate dueDate = item.getChargeCall().getDueDate();
         PaymentDelayStatus delayStatus = PaymentStatusUtils.computeDelayStatus(dueDate, false, LocalDate.now());
-
-        // En retard ou impayé : le libellé standard l'emporte, peu importe un éventuel acompte
-        if (delayStatus != PaymentDelayStatus.UP_TO_DATE) {
-            return PaymentStatusUtils.toLabel(delayStatus);
-        }
-
-        boolean hasPartialPayment = item.getPaidAmount().compareTo(BigDecimal.ZERO) > 0;
-        if (hasPartialPayment) return "PARTIEL";
         return PaymentStatusUtils.toLabel(delayStatus);
     }
 
-    // Construit le libellé des biens du copropriétaire pour cette résidence
-    private String buildPropertyLabel(ChargeCallItem item) {
+    // Construit la liste des lots du copropriétaire pour cette résidence (résidence exclue —
+    // portée par le champ residenceName séparé du DTO)
+    private String buildPropertyReferences(ChargeCallItem item) {
         List<Property> properties = propertyRepository.findByOwnerIdAndResidenceId(
                 item.getCoOwner().getId(), item.getChargeCall().getBudget().getResidence().getId());
 
-        String propertiesStr = properties.stream()
+        return properties.stream()
                 .map(Property::getReference)
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("");
+    }
 
-        return propertiesStr + " – " + item.getChargeCall().getBudget().getResidence().getName();
+    // Libellé court de la période d'un appel de charges, ex: "T3" (trimestriel) ou "Jan" (mensuel)
+    private String buildSimplePeriodeLabel(ChargeCall chargeCall) {
+        if (chargeCall.getFrequency() != null && chargeCall.getFrequency().name().equals("TRIMESTRIEL")) {
+            return "T" + chargeCall.getPeriodNumber();
+        }
+        String[] mois = {"Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"};
+        int index = chargeCall.getPeriodNumber() - 1;
+        return (index >= 0 && index < mois.length) ? mois[index] : "P" + chargeCall.getPeriodNumber();
+    }
+
+    // Vérifie que la résidence (si fournie) appartient bien au syndic connecté, et la retourne
+    // (null si aucun filtre résidence) — réutilisé par les 3 exports pour construire le nom de fichier
+    private Residence checkResidenceOwnership(Long residenceId, User currentSyndic) {
+        if (residenceId == null) return null;
+        Residence residence = residenceRepository.findById(residenceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Résidence introuvable"));
+        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette résidence");
+        }
+        return residence;
+    }
+
+    private String residenceSegment(Residence residence) {
+        return residence != null ? slugify(residence.getName()) : "toutes-residences";
+    }
+
+    private String yearSegment(Integer year) {
+        return year != null ? year.toString() : "toutes-annees";
+    }
+
+    private String categorySegment(WalletTransactionCategory category) {
+        return category != null ? category.name().toLowerCase() : "toutes-categories";
+    }
+
+    // Normalise un texte pour un nom de fichier : sans accents, sans espaces ni caractères spéciaux
+    private String slugify(String input) {
+        String withoutAccents = Normalizer.normalize(input, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        return withoutAccents.replaceAll("[^a-zA-Z0-9]+", "-").replaceAll("^-|-$", "");
     }
 }

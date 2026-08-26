@@ -19,6 +19,16 @@ public class WalletTransactionDTO {
 
     private String label;
 
+    // Nom de la résidence concernée — utile surtout en vue globale (toutes résidences mélangées,
+    // sans filtre residenceId). Null uniquement si la transaction n'a aucune résidence rattachée.
+    private String residenceName;
+
+    // Copropriétaire payeur (CHARGES) ou prestataire payé (TRAVAUX) — null pour RETRAIT
+    private String payerOrPayeeName;
+
+    // Lot(s) concerné(s), séparés par virgule — uniquement pour CHARGES, null sinon
+    private String propertyReference;
+
     private String reference;
 
     private LocalDateTime transactionDate;

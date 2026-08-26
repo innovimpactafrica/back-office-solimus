@@ -529,6 +529,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                 request.getSelectedProvider() != null
                         ? request.getSelectedProvider().getFirstName() + " " + request.getSelectedProvider().getLastName()
                         : "Prestataire");
+        transaction.setInterventionRequest(request);
         transaction.setTransactionDate(LocalDateTime.now());
         syndicWalletTransactionRepository.save(transaction);
 
@@ -661,6 +662,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                 request.getSelectedProvider() != null
                         ? request.getSelectedProvider().getFirstName() + " " + request.getSelectedProvider().getLastName()
                         : "Prestataire");
+        transaction.setInterventionRequest(request);
         transaction.setTransactionDate(LocalDateTime.now());
         syndicWalletTransactionRepository.save(transaction);
 

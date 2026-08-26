@@ -19,6 +19,6 @@ public class MyChargeCardDTO {
     private String propertyReference; // numéro bien
     private BigDecimal remainingAmount; // Solde restant à payer
     private LocalDate dueDate;
-    private String status; // "En attente", "Payé", "Partiel"
+    private String status; // "En attente", "Payé", "Rien à payer"
     private Boolean paymentBlocked; // true si le budget (charge courante) ou l'appel (exceptionnelle) est clôturé — plus aucun paiement possible
 }

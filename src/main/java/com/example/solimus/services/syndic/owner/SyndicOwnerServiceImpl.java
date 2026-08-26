@@ -42,6 +42,7 @@ import java.time.LocalDateTime;
 import java.time.Year;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -814,7 +815,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
 
         // Pagination au niveau de la base de données
         // La requête utilise DISTINCT pour éviter les doublons quand un copropriétaire a plusieurs lots dans la même résidence
-        // La pagination est gérée directement par MySQL pour de meilleures performances
         Page<Residence> residencesPage = propertyRepository.findDistinctResidencesByCoOwnerAndSyndic(
                 coOwnerId,
                 currentSyndic.getId(),
@@ -835,39 +835,64 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
 
     //-------------------------------------------------------
     //Lister les copropriétaires du syndic connecté (ayant au moins un bien)
-    // Avec filtres search, residenceId, status et pagination manuelle
+    // Pagination SQL réelle (LIMIT/OFFSET géré par la base via Pageable) — aucun chargement complet
+    // en mémoire, aucun état conservé entre deux appels (chaque requête HTTP est autonome, donc
+    // deux appels concurrents sur des pages différentes ne s'interfèrent jamais).
     //-------------------------------------------------------
     @Override
     @Transactional(readOnly = true)
-    public Page<CoOwnerListDTO> getCoOwners(String search, Long residenceId, String status, Integer page, Integer size) {
+    public Page<CoOwnerListDTO> getCoOwners(String search, Long residenceId, Integer page, Integer size) {
 
         // Récupérer le syndic connecté
         User currentSyndic = getCurrentUser();
 
-        // Étape 1 : récupérer TOUS les copropriétaires candidats du syndic,
-        // filtrés par search et residenceId (vraies colonnes SQL, filtrables directement),
-        // SANS pagination SQL ici — le filtre status vient après, en mémoire.
-        //  Cette approche charge tous les copropriétaires avant de paginer.
-          List<SyndicOwnerRelation> allRelations = syndicCoOwnerRelationRepository
-                .findCoOwnersWithPropertiesBySyndicId(currentSyndic.getId(), search, residenceId);
+        // Page directement filtrée et paginée en base (search/residenceId en SQL, LIMIT/OFFSET via Pageable)
+        Pageable pageable = PageRequest.of(page, size);
+        Page<SyndicOwnerRelation> relationsPage = syndicCoOwnerRelationRepository
+                .findCoOwnersWithPropertiesBySyndicId(currentSyndic.getId(), search, residenceId, pageable);
 
-        // Étape 2 : construire le DTO complet de chaque copropriétaire (avec status et solde calculés)
-        List<CoOwnerListDTO> allDtos = allRelations.stream()
-                .map(relation -> mapToCoOwnerListDTO(relation.getCoOwner(), currentSyndic))
-                .collect(Collectors.toList());
+        List<User> coOwners = relationsPage.getContent().stream()
+                .map(SyndicOwnerRelation::getCoOwner)
+                .toList();
 
-        // Étape 3 : filtrer par status si demandé — sur la liste complète, pas sur une page
-        List<CoOwnerListDTO> filteredDtos = allDtos.stream()
-                .filter(dto -> status == null || status.isEmpty() || dto.getStatus().equals(status))
-                .collect(Collectors.toList());
+        if (coOwners.isEmpty()) {
+            return Page.empty(pageable);
+        }
 
-        // Étape 4 : pagination manuelle, APRÈS le filtre status
-        int totalElements = filteredDtos.size();
-        int fromIndex = Math.min(page * size, totalElements);
-        int toIndex = Math.min(fromIndex + size, totalElements);
-        List<CoOwnerListDTO> pageContent = filteredDtos.subList(fromIndex, toIndex);
+        List<Long> coOwnerIds = coOwners.stream().map(User::getId).toList();
 
-        return new PageImpl<>(pageContent, PageRequest.of(page, size), totalElements);
+        // Batch 1/2 : lots + résidences distinctes de TOUS les copropriétaires de cette page, en une requête
+        Map<Long, long[]> apartmentsAndResidencesByCoOwner = propertyRepository
+                .countApartmentsAndResidencesByCoOwnerIdsAndSyndic(coOwnerIds, currentSyndic.getId())
+                .stream()
+                .collect(Collectors.toMap(
+                        row -> (Long) row[0],
+                        row -> new long[]{(Long) row[1], (Long) row[2]}));
+
+        // Batch 2/2 : solde de TOUS les copropriétaires de cette page, en une requête
+        Map<Long, BigDecimal> soldeByCoOwner = chargeCallItemRepository
+                .calculateSoldesByCoOwnerIdsAndSyndic(coOwnerIds, currentSyndic.getId())
+                .stream()
+                .collect(Collectors.toMap(row -> (Long) row[0], row -> (BigDecimal) row[1]));
+
+        List<CoOwnerListDTO> content = coOwners.stream()
+                .map(user -> {
+                    long[] counts = apartmentsAndResidencesByCoOwner.getOrDefault(user.getId(), new long[]{0L, 0L});
+                    BigDecimal solde = soldeByCoOwner.getOrDefault(user.getId(), BigDecimal.ZERO);
+                    return CoOwnerListDTO.builder()
+                            .id(user.getId())
+                            .fullName(user.getFirstName() + " " + user.getLastName())
+                            .photoUrl(user.getProfilePhotoUrl())
+                            .email(user.getEmail())
+                            .phone(user.getPhone())
+                            .apartmentsCount((int) counts[0])
+                            .residencesCount((int) counts[1])
+                            .solde(solde)
+                            .build();
+                })
+                .toList();
+
+        return new PageImpl<>(content, pageable, relationsPage.getTotalElements());
     }
 
     //-------------------------------------------------------
@@ -1001,35 +1026,27 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             throw new ForbiddenException("Ce copropriétaire n'a pas de lot dans vos résidences");
         }
 
-        // Récupérer tous les lots du copropriétaire
-        List<Property> allProperties = propertyRepository.findAllByOwnerId(coOwnerId);
-        ArrayList<CoOwnerPropertyItemDTO> result = new ArrayList<>();
+        // Récupère directement la page demandée des lots du copropriétaire, restreints à ce syndic —
+        // LIMIT/OFFSET géré par la base, pas de chargement complet en mémoire
         int currentYear = Year.now().getValue();
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Property> propertyPage = propertyRepository
+                .findByOwnerIdAndResidenceSyndicId(coOwnerId, currentSyndic.getId(), pageable);
 
-        // Filtrer par syndic et construire les DTOs
-        for (Property p : allProperties) {
-            if (p.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
-                BigDecimal annualCharge = calculateAnnualChargeForProperty(p, currentYear);
-                CoOwnerPropertyItemDTO dto = CoOwnerPropertyItemDTO.builder()
-                        .reference(p.getReference())
-                        .bloc(p.getBloc())
-                        .floor(p.getFloor())
-                        .area(p.getArea())
-                        .share(p.getShare())
-                        .residenceName(p.getResidence().getName())
-                        .annualCharge(annualCharge)
-                        .build();
-                result.add(dto);
-            }
-        }
+        Page<CoOwnerPropertyItemDTO> result = propertyPage.map(p -> {
+            BigDecimal annualCharge = calculateAnnualChargeForProperty(p, currentYear);
+            return CoOwnerPropertyItemDTO.builder()
+                    .reference(p.getReference())
+                    .bloc(p.getBloc())
+                    .floor(p.getFloor())
+                    .area(p.getArea())
+                    .share(p.getShare())
+                    .residenceName(p.getResidence().getName())
+                    .annualCharge(annualCharge)
+                    .build();
+        });
 
-        // Pagination manuelle
-        int totalElements = result.size();
-        int fromIndex = Math.min(page * size, totalElements);
-        int toIndex = Math.min(fromIndex + size, totalElements);
-        List<CoOwnerPropertyItemDTO> pageContent = result.subList(fromIndex, toIndex);
-
-        return new PageImpl<>(pageContent, PageRequest.of(page, size), totalElements);
+        return result;
     }
 
     @Override
@@ -1363,42 +1380,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         }
         String extension = fileName.substring(fileName.lastIndexOf(".") + 1);
         return extension.toUpperCase();
-    }
-
-    private CoOwnerListDTO mapToCoOwnerListDTO(User user, User currentSyndic) {
-
-        // Calculer le nombre d'appartements (lots) restreint aux résidences du syndic
-        long apartmentsCount = propertyRepository
-                .countApartmentsByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
-
-        // Calculer le nombre de résidences distinctes restreint au syndic
-        long residencesCount = propertyRepository
-                .countResidencesByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
-
-        // Récupère le nombre de jours de retard le plus important parmi tous ses items impayés
-        Integer maxDaysLate = chargeCallItemRepository
-                .findMaxDaysLateByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
-
-        // Applique la même logique de statut que le reste de l'application (Paiements/Impayés)
-        String status = computeCoOwnerStatus(maxDaysLate);
-
-        // Calculer le solde global : SUM(paidAmount) - SUM(quotePart)
-        // Négatif = doit de l'argent, Zéro = il ne doit pas d'argent
-        BigDecimal solde = chargeCallItemRepository
-                .calculateSoldeByCoOwnerAndSyndic(user.getId(), currentSyndic.getId());
-
-        // Construire le DTO avec tous les champs calculés
-        return CoOwnerListDTO.builder()
-                .id(user.getId())
-                .fullName(user.getFirstName() + " " + user.getLastName())
-                .photoUrl(user.getProfilePhotoUrl())
-                .email(user.getEmail())
-                .phone(user.getPhone())
-                .apartmentsCount((int) apartmentsCount)
-                .residencesCount((int) residencesCount)
-                .status(status)
-                .solde(solde)
-                .build();
     }
 
 

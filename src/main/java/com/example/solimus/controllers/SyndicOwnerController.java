@@ -131,7 +131,7 @@ public class SyndicOwnerController {
         return ResponseEntity.ok(syndicOwnerService.getResidencesWithVacantProperties(page, size));
     }
 
-    @Operation(summary = "Lister les copropriétaires (recherche + filtre résidence + statut + pagination)", tags = {"Syndic - Copropriétaires"})
+    @Operation(summary = "Lister les copropriétaires (recherche + filtre résidence + pagination)", tags = {"Syndic - Copropriétaires"})
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
                     content = @Content(schema = @Schema(implementation = CoOwnerListDTO.class)))
@@ -140,10 +140,9 @@ public class SyndicOwnerController {
     public ResponseEntity<Page<CoOwnerListDTO>> getCoOwners(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Long residenceId,
-            @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") Integer page,
             @RequestParam(defaultValue = "10") Integer size) {
-        return ResponseEntity.ok(syndicOwnerService.getCoOwners(search, residenceId, status, page, size));
+        return ResponseEntity.ok(syndicOwnerService.getCoOwners(search, residenceId, page, size));
     }
 
     @Operation(summary = "Détail d'un copropriétaire (en-tête + KPIs)", tags = {"Syndic - Copropriétaires"})

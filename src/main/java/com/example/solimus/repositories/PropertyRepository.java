@@ -23,11 +23,11 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
     // Récupère le bien loué par ce locataire — un locataire n'a jamais qu'un seul bien
     Optional<Property> findByTenantId(Long tenantId);
 
-    // Lots dont le propriétaire a au moins un ChargeCallItem impayé (PENDING/PARTIALLY_PAID) — utilisé
-    // par le job quotidien de rattrapage du displayStatus
+    // Lots dont le propriétaire a au moins un ChargeCallItem impayé (PENDING) — utilisé
+    // par le job quotidien de rattrapage du displayStatus. PARTIALLY_PAID supprimé.
     @Query("SELECT DISTINCT p FROM Property p, ChargeCallItem cci " +
            "WHERE p.owner = cci.coOwner AND p.residence = cci.chargeCall.budget.residence " +
-           "AND cci.status IN ('PENDING', 'PARTIALLY_PAID')")
+           "AND cci.status = 'PENDING'")
     List<Property> findPropertiesWithUnpaidCharges();
 
     // Lister les biens d'une résidence (paginé)
@@ -61,6 +61,13 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
     @Query("SELECT p.typeBien.id, p.typeBien.name, COUNT(p) FROM Property p " +
            "WHERE p.residence.id = :residenceId GROUP BY p.typeBien.id, p.typeBien.name")
     List<Object[]> countByResidenceIdGroupByPropertyType(@Param("residenceId") Long residenceId);
+
+    // Même répartition, paginée — LIMIT/OFFSET géré par la base sur les GROUPES de types (countQuery
+    // explicite car le nombre de "lignes" pertinent ici est le nombre de types distincts, pas de Property)
+    @Query(value = "SELECT p.typeBien.id, p.typeBien.name, COUNT(p) FROM Property p " +
+           "WHERE p.residence.id = :residenceId GROUP BY p.typeBien.id, p.typeBien.name",
+           countQuery = "SELECT COUNT(DISTINCT p.typeBien.id) FROM Property p WHERE p.residence.id = :residenceId")
+    Page<Object[]> countByResidenceIdGroupByPropertyType(@Param("residenceId") Long residenceId, Pageable pageable);
 
     // Lister tous les biens d'un propriétaire donné
     List<Property> findAllByOwnerId(Long ownerId);
@@ -131,12 +138,25 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
            "AND p.residence.syndic.id = :syndicId")
     long countResidencesByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
 
+    // Batch : nombre de lots + nombre de résidences distinctes, pour PLUSIEURS copropriétaires en une
+    // seule requête (évite le N+1 de countApartmentsByCoOwnerAndSyndic/countResidencesByCoOwnerAndSyndic
+    // appelées une par une pour chaque ligne d'une page) — chaque ligne retournée : [ownerId, apartmentsCount, residencesCount]
+    @Query("SELECT p.owner.id, COUNT(p), COUNT(DISTINCT p.residence.id) FROM Property p " +
+           "WHERE p.owner.id IN :coOwnerIds " +
+           "AND p.residence.syndic.id = :syndicId " +
+           "GROUP BY p.owner.id")
+    List<Object[]> countApartmentsAndResidencesByCoOwnerIdsAndSyndic(
+            @Param("coOwnerIds") List<Long> coOwnerIds, @Param("syndicId") Long syndicId);
+
     // Calculer la somme des superficies des lots d'une résidence
     @Query("SELECT COALESCE(SUM(p.area), 0) FROM Property p WHERE p.residence.id = :residenceId")
     java.math.BigDecimal sumAreaByResidenceId(@Param("residenceId") Long residenceId);
 
     // Lister les biens d'un propriétaire dans les résidences d'un syndic
     List<Property> findByOwnerIdAndResidenceSyndicId(Long ownerId, Long syndicId);
+
+    // Même filtre, paginé — LIMIT/OFFSET géré par la base (fiche copropriétaire, onglet "Biens")
+    Page<Property> findByOwnerIdAndResidenceSyndicId(Long ownerId, Long syndicId, Pageable pageable);
 
     // Récupérer les résidences distinctes d'un copropriétaire pour un syndic donné (paginé)
     // Cette requête utilise DISTINCT pour éviter les doublons quand un copropriétaire a plusieurs lots dans la même résidence

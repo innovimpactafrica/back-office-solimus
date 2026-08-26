@@ -50,14 +50,33 @@ BudgetRepository extends JpaRepository<Budget, Long> {
     @Query("SELECT b FROM Budget b WHERE b.residence.id = :residenceId ORDER BY b.annee DESC")
     Optional<Budget> findMostRecentByResidenceId(@Param("residenceId") Long residenceId);
 
-    // Pagine les budgets d'un syndic, triés selon le Pageable fourni (createdAt desc dans notre cas)
-    Page<Budget> findBySyndicId(Long syndicId, Pageable pageable);
+    // Pagine les budgets d'un syndic, avec filtres résidence et année tous les deux optionnels —
+    // pour /api/syndic/budget/budgets
+    @Query("SELECT b FROM Budget b WHERE b.syndic.id = :syndicId " +
+           "AND (:residenceId IS NULL OR b.residence.id = :residenceId) " +
+           "AND (:year IS NULL OR b.annee = :year) " +
+           "ORDER BY b.createdAt DESC")
+    Page<Budget> findBySyndicIdWithFilters(@Param("syndicId") Long syndicId,
+                                            @Param("residenceId") Long residenceId,
+                                            @Param("year") Integer year,
+                                            Pageable pageable);
 
-    // Compte le nombre total de budgets d'un syndic (toutes années, tous statuts)
-    Integer countBySyndicId(Long syndicId);
+    // Compte le nombre total de budgets d'un syndic, mêmes filtres optionnels que ci-dessus
+    @Query("SELECT COUNT(b) FROM Budget b WHERE b.syndic.id = :syndicId " +
+           "AND (:residenceId IS NULL OR b.residence.id = :residenceId) " +
+           "AND (:year IS NULL OR b.annee = :year)")
+    Integer countBySyndicIdWithFilters(@Param("syndicId") Long syndicId,
+                                        @Param("residenceId") Long residenceId,
+                                        @Param("year") Integer year);
 
-    // Compte le nombre de budgets d'un syndic ayant un statut précis (ex: ACTIVE)
-    Integer countBySyndicIdAndStatus(Long syndicId, BudgetStatus status);
+    // Compte le nombre de budgets ACTIVE d'un syndic, mêmes filtres optionnels
+    @Query("SELECT COUNT(b) FROM Budget b WHERE b.syndic.id = :syndicId AND b.status = :status " +
+           "AND (:residenceId IS NULL OR b.residence.id = :residenceId) " +
+           "AND (:year IS NULL OR b.annee = :year)")
+    Integer countBySyndicIdAndStatusWithFilters(@Param("syndicId") Long syndicId,
+                                                 @Param("status") BudgetStatus status,
+                                                 @Param("residenceId") Long residenceId,
+                                                 @Param("year") Integer year);
 
     // Somme du budget annuel de toutes les résidences d'un syndic, pour un statut donné (ACTIVE) —
     // utilisé pour le KPI "Budget total géré" de la fiche détail syndic (admin)

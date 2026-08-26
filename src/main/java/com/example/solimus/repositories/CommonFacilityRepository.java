@@ -53,4 +53,7 @@ public interface CommonFacilityRepository extends JpaRepository<CommonFacility, 
      * @return liste des équipements correspondants
      */
     List<CommonFacility> findByResidenceIdAndFacilityTypeNameContainingIgnoreCase(Long residenceId, String namePart);
+
+    // Même filtre, paginé — LIMIT/OFFSET géré par la base (recherche d'équipement commun avec suggestions)
+    Page<CommonFacility> findByResidenceIdAndFacilityTypeNameContainingIgnoreCase(Long residenceId, String namePart, Pageable pageable);
 }

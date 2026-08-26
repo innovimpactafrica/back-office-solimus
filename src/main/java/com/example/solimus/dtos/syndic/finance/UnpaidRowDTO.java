@@ -9,9 +9,12 @@ import java.time.LocalDate;
 public class UnpaidRowDTO {
     private Long chargeCallItemId;
     private String coOwnerName;
-    private String residenceName; // Ajouté — colonne "Résidence" séparée
-    private BigDecimal amountDue;
-    private LocalDate dueDate; // Ajouté — colonne "Échéance"
-    private Integer daysLate;
+    private String propertyLabel;
+    private String residenceName;
+    private String period; // ex. "T3" (trimestriel) ou "Jan" (mensuel)
+    private Integer year;
     private String status; // RETARD, IMPAYE
+    private BigDecimal amountDue;
+    private LocalDate dueDate; // colonne "Échéance" — spécifique au module Finances
+    private Integer daysLate;
 }

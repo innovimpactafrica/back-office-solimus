@@ -56,17 +56,10 @@ public interface WithdrawalRequestRepository extends JpaRepository<ProviderWithd
     // SOLDE CALCULÉ
     // ============================================================
 
-    // Somme des retraits PENDING ou COMPLETED d'un prestataire — montant "réservé", à soustraire du
-    // total encaissé pour obtenir le solde disponible.
-    // ATTENTION : ce principe (réserver les PENDING) a été volontairement abandonné côté syndic —
-    // voir SyndicTreasuryService.getAvailableBalance, qui ne déduit plus que les retraits COMPLETED —
-    // ce même correctif n'a pas encore été appliqué ici côté prestataire, à faire si besoin
-    @Query("SELECT COALESCE(SUM(w.amount), 0) FROM ProviderWithdrawalRequest w " +
-           "WHERE w.provider.id = :providerId " +
-           "AND w.status IN (com.example.solimus.enums.WithdrawalStatus.PENDING, com.example.solimus.enums.WithdrawalStatus.COMPLETED)")
-    BigDecimal sumPendingAndCompletedByProviderId(@Param("providerId") Long providerId);
-
-    // Somme des retraits encore PENDING d'un prestataire — "solde en attente de validation" affiché au prestataire
+    // Somme des retraits encore PENDING d'un prestataire — affichage uniquement (carte "En attente",
+    // WalletBalanceServiceImpl.getPendingBalance). Depuis l'alignement sur la logique syndic, ce montant
+    // n'est PLUS déduit du solde disponible (getCurrentBalance) : un retrait PENDING ne réserve rien,
+    // le contrôle anti-abus se fait à la validation admin (voir WithdrawalRequestServiceImpl.validateWithdrawalRequest)
     @Query("SELECT COALESCE(SUM(w.amount), 0) FROM ProviderWithdrawalRequest w " +
            "WHERE w.provider.id = :providerId AND w.status = 'PENDING'")
     BigDecimal sumPendingByProviderId(@Param("providerId") Long providerId);

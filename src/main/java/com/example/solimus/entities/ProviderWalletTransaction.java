@@ -14,8 +14,11 @@ import java.time.LocalDateTime;
 // ============================================================================
 // GRAND LIVRE DU WALLET PRESTATAIRE
 // ============================================================================
-// Le solde d'un ProviderWallet n'est jamais stocké : toujours recalculé en sommant ces lignes.
-// Seuls les crédits sont enregistrés ici — les retraits sont suivis via ProviderWithdrawalRequest.
+// Le solde d'un ProviderWallet n'est jamais stocké : toujours recalculé en sommant ces lignes
+// (WalletBalanceServiceImpl.getCurrentBalance). Catégories CREDIT (INTERVENTION_PAYMENT, TRAVAUX) en
+// montant positif, catégorie RETRAIT en montant négatif — un retrait ne crée cette ligne qu'une fois
+// validé COMPLETED (voir WithdrawalRequestServiceImpl.validateWithdrawalRequest) ; tant qu'il est
+// PENDING, il n'apparaît pas ici et reste réservé séparément (voir getCurrentBalance).
 // ============================================================================
 @Entity
 @Table(name = "provider_wallet_transactions")
@@ -37,7 +40,7 @@ public class ProviderWalletTransaction {
     @Column(nullable = false)
     private ProviderWalletTransactionCategory category;
 
-    // Toujours positif (crédits uniquement)
+    // Positif pour un crédit (INTERVENTION_PAYMENT, TRAVAUX), négatif pour un retrait (RETRAIT)
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal amount;
 

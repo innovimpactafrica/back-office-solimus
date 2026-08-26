@@ -10,6 +10,11 @@ import java.time.LocalDateTime;
 // Calcul centralisé de la "trésorerie disponible" d'un syndic — seule source de vérité, réutilisée
 // partout où ce chiffre est affiché (dashboards, wallet) ET là où il sert de garde-fou (validation
 // d'un retrait), pour qu'ils ne puissent jamais diverger.
+//
+// Logique unifiée avec le prestataire (voir WalletBalanceServiceImpl.getCurrentBalance, côté
+// services.provider.wallet) : même principe exact — une demande PENDING ne réserve rien, le contrôle
+// anti-abus se fait uniquement à la validation admin. Ce n'est PAS deux philosophies différentes,
+// volontairement alignées des deux côtés — si l'une évolue, penser à répercuter sur l'autre.
 @Component
 @RequiredArgsConstructor
 public class SyndicTreasuryService {
