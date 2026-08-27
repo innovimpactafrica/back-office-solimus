@@ -81,31 +81,32 @@ public class ChargeServiceImpl implements ChargeService {
         BigDecimal totalTantieme = BigDecimal.ZERO;
 
         for (Property property : properties) {
-            if (property.getOwner() != null) {
-                // 1.3.1 Calculer total tantième du propriétaire
-                BigDecimal tantieme = property.getShare() != null ? property.getShare() : BigDecimal.ZERO;
-                totalTantieme = totalTantieme.add(tantieme); //ici, on calcule le total des tantièmes de toute la résidence.
+            // Lot vacant → responsable = syndic de la résidence (voir resolveBillableOwner)
+            User billableOwner = resolveBillableOwner(property);
 
-                // 1.3.2 Vérifier si le copropriétaire est déjà dans la liste
-                CoOwnerTantiemePreviewDTO existingCoOwner = coOwners.stream()
-                        .filter(co -> co.getCoOwnerId().equals(property.getOwner().getId()))
-                        .findFirst()
-                        .orElse(null);
+            // 1.3.1 Calculer total tantième du propriétaire
+            BigDecimal tantieme = property.getShare() != null ? property.getShare() : BigDecimal.ZERO;
+            totalTantieme = totalTantieme.add(tantieme); //ici, on calcule le total des tantièmes de toute la résidence.
 
-                if (existingCoOwner != null) {
-                    // 1.3.3 Ajouter la référence de propriété au copropriétaire existant
-                    existingCoOwner.getPropertyReferences().add(property.getReference());
-                    existingCoOwner.setTantieme(existingCoOwner.getTantieme().add(tantieme));
-                } else {
-                    // 1.3.4 Créer un nouveau copropriétaire
-                    CoOwnerTantiemePreviewDTO newCoOwner = CoOwnerTantiemePreviewDTO.builder()
-                            .coOwnerId(property.getOwner().getId())
-                            .coOwnerName(property.getOwner().getFirstName() + " " + property.getOwner().getLastName())
-                            .tantieme(tantieme)
-                            .propertyReferences(new ArrayList<>(List.of(property.getReference())))
-                            .build();
-                    coOwners.add(newCoOwner);
-                }
+            // 1.3.2 Vérifier si le copropriétaire est déjà dans la liste
+            CoOwnerTantiemePreviewDTO existingCoOwner = coOwners.stream()
+                    .filter(co -> co.getCoOwnerId().equals(billableOwner.getId()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (existingCoOwner != null) {
+                // 1.3.3 Ajouter la référence de propriété au copropriétaire existant
+                existingCoOwner.getPropertyReferences().add(property.getReference());
+                existingCoOwner.setTantieme(existingCoOwner.getTantieme().add(tantieme));
+            } else {
+                // 1.3.4 Créer un nouveau copropriétaire
+                CoOwnerTantiemePreviewDTO newCoOwner = CoOwnerTantiemePreviewDTO.builder()
+                        .coOwnerId(billableOwner.getId())
+                        .coOwnerName(billableOwner.getFirstName() + " " + billableOwner.getLastName())
+                        .tantieme(tantieme)
+                        .propertyReferences(new ArrayList<>(List.of(property.getReference())))
+                        .build();
+                coOwners.add(newCoOwner);
             }
         }
 
@@ -161,10 +162,9 @@ public class ChargeServiceImpl implements ChargeService {
         Map<Long, List<Property>> propertiesByOwnerId = new LinkedHashMap<>();
         Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
         for (Property property : properties) {
-            if (property.getOwner() == null) continue;
-
-            Long ownerId = property.getOwner().getId();
-            ownerById.putIfAbsent(ownerId, property.getOwner());
+            User billableOwner = resolveBillableOwner(property);
+            Long ownerId = billableOwner.getId();
+            ownerById.putIfAbsent(ownerId, billableOwner);
             propertiesByOwnerId.computeIfAbsent(ownerId, k -> new ArrayList<>()).add(property);
             tantiemeByOwnerId.merge(
                     ownerId,
@@ -251,8 +251,21 @@ public class ChargeServiceImpl implements ChargeService {
                     throw new BadRequestException("Un budget existe déjà pour cette résidence et cette année");
                 });
 
+        // ------------------------------------------------------------
+        // ÉTAPE 2.3bis — Vérifier que la superficie des lots créés correspond EXACTEMENT à la
+        // superficie totale de la résidence : le tantième de chaque lot = superficie du lot /
+        // totalArea * 100 , donc SUM(tantièmes) ne fait 100% que si SUM(superficies des lots) = totalArea
+        // ------------------------------------------------------------
+        BigDecimal occupiedAreaAtCreation = propertyRepository.sumAreaByResidenceId(dto.getResidenceId());
+        if (occupiedAreaAtCreation.compareTo(residence.getTotalArea()) != 0) {
+            BigDecimal ecart = residence.getTotalArea().subtract(occupiedAreaAtCreation).abs();
+            throw new BadRequestException(
+                    "La superficie des appartements créés (" + occupiedAreaAtCreation + " m²) ne correspond pas "
+                            + "à la superficie totale de la résidence (" + residence.getTotalArea() + " m²). "
+                            + "Écart : " + ecart + " m².");
+        }
 
-        // ------------------------------------------------------------  
+        // ------------------------------------------------------------
         // ÉTAPE 2.4 — Créer l'entité Budget
         // ------------------------------------------------------------
         Budget budget = new Budget();
@@ -491,9 +504,7 @@ public class ChargeServiceImpl implements ChargeService {
         // Regroupe les propriétés par copropriétaire (un copropriétaire peut avoir plusieurs lots)
         Map<Long, List<Property>> propertiesByOwner = new HashMap<>();
         for (Property property : properties) {
-            if (property.getOwner() == null) continue; // ignore les lots vacants
-
-            Long ownerId = property.getOwner().getId();
+            Long ownerId = resolveBillableOwner(property).getId();
             propertiesByOwner.computeIfAbsent(ownerId, k -> new ArrayList<>()).add(property);
         }
 
@@ -516,7 +527,7 @@ public class ChargeServiceImpl implements ChargeService {
         for (Map.Entry<Long, List<Property>> entry : propertiesByOwner.entrySet()) {
             Long ownerId = entry.getKey();
             List<Property> ownerProperties = entry.getValue();
-            User owner = ownerProperties.get(0).getOwner();
+            User owner = resolveBillableOwner(ownerProperties.get(0));
 
             // Construit la liste des appartements séparés par virgules
             String propertiesLabel = ownerProperties.stream()
@@ -533,7 +544,12 @@ public class ChargeServiceImpl implements ChargeService {
             repartition.add(dto);
         }
 
-        // Pagination manuelle
+        // Pagination manuelle VOLONTAIRE, pas un raccourci à corriger : ChargeAllocationUtil.distributeByLargestRemainder
+        // (méthode du plus grand reste) doit connaître TOUS les copropriétaires de la résidence en même
+        // temps pour répartir correctement les FCFA arrondis restants. Paginer en base (LIMIT/OFFSET)
+        // ferait tourner l'algorithme sur un sous-ensemble à chaque page → quotePart faux et différent
+        // selon la page. Le dataset reste borné (copropriétaires d'UNE résidence), donc pas de vrai
+        // risque de perf.
         int totalElements = repartition.size();
         int fromIndex = Math.min(page * size, totalElements);
         int toIndex = Math.min(fromIndex + size, totalElements);
@@ -805,10 +821,9 @@ public class ChargeServiceImpl implements ChargeService {
         Map<Long, User> ownerById = new LinkedHashMap<>();
         Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
         for (Property property : properties) {
-            if (property.getOwner() == null) continue;
-
-            Long ownerId = property.getOwner().getId();
-            ownerById.putIfAbsent(ownerId, property.getOwner());
+            User billableOwner = resolveBillableOwner(property);
+            Long ownerId = billableOwner.getId();
+            ownerById.putIfAbsent(ownerId, billableOwner);
             tantiemeByOwnerId.merge(
                     ownerId,
                     property.getShare() != null ? property.getShare() : BigDecimal.ZERO,
@@ -877,10 +892,9 @@ public class ChargeServiceImpl implements ChargeService {
         Map<Long, User> ownerById = new LinkedHashMap<>();
         Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
         for (Property property : properties) {
-            if (property.getOwner() == null) continue;
-
-            Long ownerId = property.getOwner().getId();
-            ownerById.putIfAbsent(ownerId, property.getOwner());
+            User billableOwner = resolveBillableOwner(property);
+            Long ownerId = billableOwner.getId();
+            ownerById.putIfAbsent(ownerId, billableOwner);
             tantiemeByOwnerId.merge(
                     ownerId,
                     property.getShare() != null ? property.getShare() : BigDecimal.ZERO,
@@ -1012,9 +1026,10 @@ public class ChargeServiceImpl implements ChargeService {
                         .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
 
                 // Snapshotter le tantième même en mode personnalisé, pour affichage/référence uniquement
+                // (inclut les lots vacants dont le syndic est le responsable financier — resolveBillableOwner)
                 BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
                 for (Property p : properties) {
-                    if (p.getOwner() != null && p.getOwner().getId().equals(customAmount.getCoOwnerId())) {
+                    if (resolveBillableOwner(p).getId().equals(customAmount.getCoOwnerId())) {
                         tantiemeCoOwner = tantiemeCoOwner.add(p.getShare() != null ? p.getShare() : BigDecimal.ZERO);
                     }
                 }
@@ -1034,14 +1049,14 @@ public class ChargeServiceImpl implements ChargeService {
         } else {
             // Mode OWNERSHIP_SHARES — calcul automatique selon les tantièmes (customAmounts ignorés)
 
-            // Fusionne les lots par copropriétaire (un copropriétaire avec plusieurs lots = un seul tantième cumulé)
+            // Fusionne les lots par copropriétaire (un copropriétaire avec plusieurs lots = un seul
+            // tantième cumulé) — inclut le syndic pour les lots vacants (resolveBillableOwner)
             Map<Long, User> ownerById = new LinkedHashMap<>();
             Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
             for (Property property : properties) {
-                if (property.getOwner() == null) continue;
-
-                Long ownerId = property.getOwner().getId();
-                ownerById.putIfAbsent(ownerId, property.getOwner());
+                User billableOwner = resolveBillableOwner(property);
+                Long ownerId = billableOwner.getId();
+                ownerById.putIfAbsent(ownerId, billableOwner);
                 tantiemeByOwnerId.merge(
                         ownerId,
                         property.getShare() != null ? property.getShare() : BigDecimal.ZERO,
@@ -1478,9 +1493,10 @@ public class ChargeServiceImpl implements ChargeService {
                         .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
 
                 // Snapshotter le tantième même en mode personnalisé, pour affichage/référence uniquement
+                // (inclut les lots vacants dont le syndic est le responsable financier — resolveBillableOwner)
                 BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
                 for (Property p : properties) {
-                    if (p.getOwner() != null && p.getOwner().getId().equals(customAmount.getCoOwnerId())) {
+                    if (resolveBillableOwner(p).getId().equals(customAmount.getCoOwnerId())) {
                         tantiemeCoOwner = tantiemeCoOwner.add(p.getShare() != null ? p.getShare() : BigDecimal.ZERO);
                     }
                 }
@@ -1496,14 +1512,14 @@ public class ChargeServiceImpl implements ChargeService {
         } else {
             // Mode OWNERSHIP_SHARES — calcul automatique selon les tantièmes (customAmounts ignorés)
 
-            // Fusionne les lots par copropriétaire (un copropriétaire avec plusieurs lots = un seul tantième cumulé)
+            // Fusionne les lots par copropriétaire (un copropriétaire avec plusieurs lots = un seul
+            // tantième cumulé) — inclut le syndic pour les lots vacants (resolveBillableOwner)
             Map<Long, User> ownerById = new LinkedHashMap<>();
             Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
             for (Property property : properties) {
-                if (property.getOwner() == null) continue;
-
-                Long ownerId = property.getOwner().getId();
-                ownerById.putIfAbsent(ownerId, property.getOwner());
+                User billableOwner = resolveBillableOwner(property);
+                Long ownerId = billableOwner.getId();
+                ownerById.putIfAbsent(ownerId, billableOwner);
                 tantiemeByOwnerId.merge(
                         ownerId,
                         property.getShare() != null ? property.getShare() : BigDecimal.ZERO,
@@ -1775,9 +1791,10 @@ public class ChargeServiceImpl implements ChargeService {
         ExceptionalCallItemDetailDTO dto = new ExceptionalCallItemDetailDTO();
         dto.setCoOwnerName(item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName());
 
-        // Récupère tous les appartements de ce copropriétaire dans la résidence, séparés par virgules
+        // Récupère tous les appartements de ce copropriétaire dans la résidence (y compris les lots
+        // vacants dont le syndic est le responsable financier), séparés par virgules
         String propertiesLabel = properties.stream()
-                .filter(p -> p.getOwner() != null && p.getOwner().getId().equals(item.getCoOwner().getId()))
+                .filter(p -> resolveBillableOwner(p).getId().equals(item.getCoOwner().getId()))
                 .map(Property::getReference)
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("");
@@ -2637,9 +2654,10 @@ public class ChargeServiceImpl implements ChargeService {
         ChargeCallItemDetailDTO dto = new ChargeCallItemDetailDTO();
         dto.setCoOwnerName(item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName());
 
-        // Récupère tous les appartements de ce copropriétaire dans la résidence, joints par virgules
+        // Récupère tous les appartements de ce copropriétaire dans la résidence (y compris les lots
+        // vacants dont le syndic est le responsable financier), joints par virgules
         String propertiesLabel = properties.stream()
-                .filter(p -> p.getOwner() != null && p.getOwner().getId().equals(item.getCoOwner().getId()))
+                .filter(p -> resolveBillableOwner(p).getId().equals(item.getCoOwner().getId()))
                 .map(Property::getReference)
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("");
@@ -2905,6 +2923,16 @@ public class ChargeServiceImpl implements ChargeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
     }
 
+    // Retourne le responsable financier d'un lot pour la génération/répartition de charges : le
+    // propriétaire réel, ou le syndic de la résidence si le lot est vacant (aucun propriétaire
+    // assigné) — le syndic règle alors lui-même les appels de charges de ce lot, jusqu'à ce qu'un
+    // copropriétaire soit assigné. Évaluée à chaque génération : un appel déjà émis pendant que le
+    // lot était vacant reste au syndic pour toujours (jamais réattribué rétroactivement), seuls les
+    // appels générés après l'assignation vont au nouveau copropriétaire.
+    private User resolveBillableOwner(Property property) {
+        return property.getOwner() != null ? property.getOwner() : property.getResidence().getSyndic();
+    }
+
     // ============================================================
     //  HELPER — Fige la quote-part annuelle de chaque copropriétaire pour ce budget
     // ============================================================
@@ -2927,14 +2955,14 @@ public class ChargeServiceImpl implements ChargeService {
         // Récupère tous les lots de la résidence
         List<Property> properties = propertyRepository.findByResidenceId(budget.getResidence().getId());
 
-        // Fusionne les lots par copropriétaire (un copropriétaire avec plusieurs lots = un seul tantième cumulé)
+        // Fusionne les lots par copropriétaire (un copropriétaire avec plusieurs lots = un seul
+        // tantième cumulé) — inclut le syndic pour les lots vacants (resolveBillableOwner)
         Map<Long, User> ownerById = new LinkedHashMap<>();
         Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
         for (Property property : properties) {
-            if (property.getOwner() == null) continue;
-
-            Long ownerId = property.getOwner().getId();
-            ownerById.putIfAbsent(ownerId, property.getOwner());
+            User billableOwner = resolveBillableOwner(property);
+            Long ownerId = billableOwner.getId();
+            ownerById.putIfAbsent(ownerId, billableOwner);
             tantiemeByOwnerId.merge(
                     ownerId,
                     property.getShare() != null ? property.getShare() : BigDecimal.ZERO,
@@ -2985,11 +3013,9 @@ public class ChargeServiceImpl implements ChargeService {
         Map<User, List<Property>> proprietesParOwner =
                 properties.stream()
 
-                        // On ignore les lots vacants
-                        .filter(p -> p.getOwner() != null)
-
-                        // Un propriétaire -> tous ses lots
-                        .collect(Collectors.groupingBy(Property::getOwner));
+                        // Un responsable financier -> tous ses lots (le syndic pour les lots vacants,
+                        // voir resolveBillableOwner)
+                        .collect(Collectors.groupingBy(this::resolveBillableOwner));
 
 
         // ------------------------------------------------------------

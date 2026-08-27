@@ -417,10 +417,10 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalArea = existingArea.add(newArea);
         if (totalArea.compareTo(residence.getTotalArea()) > 0) {
+            BigDecimal remainingBeforeAdd = residence.getTotalArea().subtract(existingArea);
             throw new BadRequestException(
-                    "La superficie totale des lots dépasse la superficie de la résidence. "
-                            + "Actuel : " + existingArea + " m², nouveaux : " + newArea
-                            + " m², résidence : " + residence.getTotalArea() + " m²");
+                    "Impossible d'ajouter ce lot : superficie restante disponible = " + remainingBeforeAdd
+                            + " m², vous essayez d'ajouter " + newArea + " m².");
         }
 
         // Construit chaque lot (référence unique, tantième calculé, type de bien, propriétaire optionnel)
@@ -441,7 +441,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     // =========================================================================
     @Override
     @Transactional
-    public PropertyDTO updateProperty(Long residenceId, Long propertyId, UpdatePropertyDTO dto) {
+    public PropertyUpdateResult updateProperty(Long residenceId, Long propertyId, UpdatePropertyDTO dto) {
 
         // Récupérer la résidence
         Residence residence = getResidenceOrThrow(residenceId);
@@ -472,6 +472,10 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         if (dto.getFloor() != null) {
             property.setFloor(dto.getFloor());
         }
+        // Avertissement non bloquant (rempli seulement si la modification laisse un écart) — inclus
+        // dans la réponse, jamais dans une exception : cette modification reste autorisée
+        String areaWarning = null;
+
         if (dto.getArea() != null) {
             // Récupère la superficie actuelle de tous les lots de la résidence (inclut l'ancienne superficie de ce lot)
             BigDecimal currentSum = propertyRepository.sumAreaByResidenceId(residenceId);
@@ -479,11 +483,25 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             BigDecimal oldArea = property.getArea() != null ? property.getArea() : BigDecimal.ZERO;
             // Nouvelle somme = somme actuelle - ancienne superficie + nouvelle superficie
             BigDecimal newSum = currentSum.subtract(oldArea).add(dto.getArea());
+
             if (newSum.compareTo(residence.getTotalArea()) > 0) {
+                // Superficie encore disponible pour CE lot (sa propre superficie actuelle y est
+                // remise, puisqu'elle est libérée avant d'être réattribuée à la nouvelle valeur)
+                BigDecimal availableForThisLot = residence.getTotalArea().subtract(currentSum).add(oldArea);
+                BigDecimal excess = dto.getArea().subtract(availableForThisLot);
                 throw new BadRequestException(
-                    "La superficie totale des lots dépasse la superficie de la résidence. "
-                        + "Actuel : " + currentSum + " m², résidence : " + residence.getTotalArea() + " m²");
+                        "Impossible : superficie restante disponible = " + availableForThisLot + " m², "
+                                + "vous essayez d'ajouter " + excess + " m² en trop.");
             }
+
+            if (newSum.compareTo(residence.getTotalArea()) < 0) {
+                // Pas d'emoji ici : cette valeur part dans un header HTTP (X-Warning), qui doit
+                // rester en Latin-1 — l'icône est un choix d'affichage, laissé au front
+                BigDecimal manque = residence.getTotalArea().subtract(newSum);
+                areaWarning = "Cette modification laisse " + manque + " m² non attribués sur cette résidence. "
+                        + "Le prochain budget ne pourra pas être généré tant que cet écart n'est pas corrigé.";
+            }
+
             property.setArea(dto.getArea());
 
             // Recalcule le tantième proportionnel à la nouvelle superficie
@@ -503,7 +521,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         log.info("Lot '{}' modifié dans la résidence '{}'",
                 saved.getReference(), residence.getName());
 
-        return mapToPropertyDTO(saved);
+        return new PropertyUpdateResult(mapToPropertyDTO(saved), areaWarning);
     }
 
     // =========================================================================
@@ -542,6 +560,26 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
         log.info("Lot '{}' supprimé de la résidence '{}'",
                 property.getReference(), residence.getName());
+    }
+
+    // =========================================================================
+    // SUPERFICIE RESTANTE DISPONIBLE (formulaire d'ajout d'appartement, temps réel)
+    // =========================================================================
+    @Override
+    @Transactional(readOnly = true)
+    public RemainingAreaDTO getRemainingArea(Long residenceId) {
+
+        Residence residence = getResidenceOrThrow(residenceId);
+        verifyResidenceOwnership(residence);
+
+        BigDecimal occupiedArea = propertyRepository.sumAreaByResidenceId(residenceId);
+        BigDecimal remainingArea = residence.getTotalArea().subtract(occupiedArea);
+
+        return RemainingAreaDTO.builder()
+                .totalArea(residence.getTotalArea())
+                .occupiedArea(occupiedArea)
+                .remainingArea(remainingArea)
+                .build();
     }
 
     // =========================================================================

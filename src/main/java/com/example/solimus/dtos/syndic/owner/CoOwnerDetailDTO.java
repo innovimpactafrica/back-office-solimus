@@ -29,9 +29,6 @@ public class CoOwnerDetailDTO {
     // Nombre d'appartements (lots) du copropriétaire (restreint au syndic)
     private int apartmentsCount;
 
-    // Statut calculé : "A_JOUR", "RETARD", "IMPAYE"
-    private String status;
-
     // -------------------------------------------------------------------------
     // INFORMATIONS PERSONNELLES
     // -------------------------------------------------------------------------
@@ -53,15 +50,27 @@ public class CoOwnerDetailDTO {
     // 5 CARDS KPI
     // -------------------------------------------------------------------------
 
-    // Charges annuelles estimées (basées sur le budget annuel et tantièmes)
-    private BigDecimal annualCharges;
+    // Card 2 — Charges annuelles : part du copropriétaire dans le budget de l'année en cours,
+    // pour sa/ses résidence(s) chez ce syndic
+    private BigDecimal annualChargesAmount;
 
-    // Solde actuel cumulé historique (inclut toutes charges, même pas encore échues)
-    private BigDecimal currentBalance;
+    // Année utilisée pour le calcul ci-dessus (année en cours côté back, jamais codée en dur au front)
+    private Integer annualChargesYear;
 
-    // Paiements effectués cumulés historiques
-    private BigDecimal paymentsMade;
+    // Card 3 — Montant dû actuellement : SUM(totalDue - paidAmount) sur toutes les charges non
+    // soldées (status != PAID), toutes années/résidences chez ce syndic — inclut les charges pas
+    // encore échues (remplace l'ancien doublon Solde actuel / Impayés)
+    private BigDecimal currentAmountDue;
 
-    // Impayés (uniquement les charges dont la date d'échéance est dépassée)
-    private BigDecimal unpaidAmount;
+    // Part de currentAmountDue venant uniquement des pénalités de retard déjà appliquées — 0 si aucune
+    private BigDecimal currentPenaltyAmount;
+
+    // Card 4 — Retard : nombre de jours depuis l'échéance de la charge non soldée la plus ancienne —
+    // null si aucune charge en retard (afficher "À jour" côté front dans ce cas)
+    private Integer delayDays;
+
+    // Card 5 — Taux de paiement à échéance : % de charges soldées (status = PAID) payées avant/à
+    // l'échéance, sur le total des charges soldées — null si aucune charge n'a jamais été payée
+    // (pas d'historique, carte à masquer côté front)
+    private Integer onTimePaymentRate;
 }

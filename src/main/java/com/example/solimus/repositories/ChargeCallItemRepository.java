@@ -98,24 +98,10 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
            "AND cci.status != 'PAID'")
     long countLateItemsByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
 
-    /**
-     * Calculer le solde global d'un copropriétaire, restreint au syndic
-     * Solde = SUM(paidAmount) - SUM(totalDue), totalDue = quotePart + pénalité déjà appliquée —
-     * cohérent avec l'onglet Impayés (ChargeCallItem.getTotalDue() n'est pas un champ JPA mappé,
-     * donc recalculé ici explicitement à partir de quotePart + penaltyAmount)
-     */
-    @Query("SELECT COALESCE(SUM(cci.paidAmount), 0) - COALESCE(SUM(cci.quotePart + COALESCE(cci.penaltyAmount, 0)), 0) " +
-           "FROM ChargeCallItem cci " +
-           "JOIN cci.chargeCall cc " +
-           "JOIN cc.budget b " +
-           "WHERE cci.coOwner.id = :coOwnerId " +
-           "AND b.residence.syndic.id = :syndicId")
-    BigDecimal calculateSoldeByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
-
-    // Batch : même calcul de solde que ci-dessus, pour PLUSIEURS copropriétaires en une seule requête
-    // (évite le N+1 de calculateSoldeByCoOwnerAndSyndic appelée une par une pour chaque ligne d'une page)
-    // — chaque ligne retournée : [coOwnerId, solde]. Un copropriétaire sans aucun ChargeCallItem
-    // n'apparaît pas dans le résultat (solde à traiter comme 0 côté appelant).
+    // Batch : solde (paidAmount - totalDue) de PLUSIEURS copropriétaires en une seule requête, pour
+    // la liste des copropriétaires (évite le N+1 d'une requête par ligne de page) — chaque ligne
+    // retournée : [coOwnerId, solde]. Un copropriétaire sans aucun ChargeCallItem n'apparaît pas dans
+    // le résultat (solde à traiter comme 0 côté appelant).
     @Query("SELECT cci.coOwner.id, COALESCE(SUM(cci.paidAmount), 0) - COALESCE(SUM(cci.quotePart + COALESCE(cci.penaltyAmount, 0)), 0) " +
            "FROM ChargeCallItem cci " +
            "JOIN cci.chargeCall cc " +
@@ -129,29 +115,22 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     // ===== CALCULS POUR DÉTAIL COPROPRIÉTAIRE (KPIs) =====
 
     /**
-     * Somme des paiements effectués par un copropriétaire, restreint au syndic
+     * Card "Montant dû actuellement" (fiche détail copropriétaire) — une seule ligne : [currentAmountDue, currentPenaltyAmount]
+     * currentAmountDue = SUM(totalDue - paidAmount) sur TOUTES les charges non soldées (status != PAID),
+     * toutes années/résidences chez ce syndic — inclut les charges pas encore échues (pas seulement en retard)
+     * currentPenaltyAmount = part de currentAmountDue venant uniquement des pénalités déjà appliquées
+     * Remplace calculateSoldeByCoOwnerAndSyndic/sumPaymentsMadeByCoOwnerAndSyndic/sumUnpaidAmountByCoOwnerAndSyndic
+     * (doublon Solde/Impayés supprimé — un seul KPI de dette)
      */
-    @Query("SELECT COALESCE(SUM(cci.paidAmount), 0) " +
-           "FROM ChargeCallItem cci " +
-           "JOIN cci.chargeCall cc " +
-           "JOIN cc.budget b " +
-           "WHERE cci.coOwner.id = :coOwnerId " +
-           "AND b.residence.syndic.id = :syndicId")
-    BigDecimal sumPaymentsMadeByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
-
-    /**
-     * Somme des impayés (quotePart - paidAmount) pour les lignes en retard, restreint au syndic
-     * Retard = dueDate < aujourd'hui ET status != PAID
-     */
-    @Query("SELECT COALESCE(SUM(cci.quotePart - cci.paidAmount), 0) " +
+    @Query("SELECT COALESCE(SUM(cci.quotePart + COALESCE(cci.penaltyAmount, 0) - cci.paidAmount), 0), " +
+           "       COALESCE(SUM(COALESCE(cci.penaltyAmount, 0)), 0) " +
            "FROM ChargeCallItem cci " +
            "JOIN cci.chargeCall cc " +
            "JOIN cc.budget b " +
            "WHERE cci.coOwner.id = :coOwnerId " +
            "AND b.residence.syndic.id = :syndicId " +
-           "AND cc.dueDate < CURRENT_DATE " +
            "AND cci.status != 'PAID'")
-    BigDecimal sumUnpaidAmountByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
+    List<Object[]> sumCurrentAmountDueByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
 
     // ===== CALCULS PAR RÉSIDENCE POUR FINANCES COPROPRIÉTAIRE =====
 

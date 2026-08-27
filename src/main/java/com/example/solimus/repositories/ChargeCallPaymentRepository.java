@@ -104,4 +104,16 @@ public interface ChargeCallPaymentRepository extends JpaRepository<ChargeCallPay
     // Paiements COMPLETED d'un syndic, paginés directement en base
     Page<ChargeCallPayment> findByChargeCallItemChargeCallBudgetSyndicIdAndStatus(
             Long syndicId, PaymentStatus status, Pageable pageable);
+
+    // Card "Taux de paiement à échéance" (fiche détail copropriétaire) — une seule ligne :
+    // [nombre total de charges soldées, nombre de celles payées avant/à l'échéance]. Sans paiement
+    // partiel, chaque ChargeCallItem PAID a exactement un paiement COMPLETED associé — COUNT(p)
+    // équivaut donc au nombre de charges soldées.
+    @Query("SELECT COUNT(p), SUM(CASE WHEN p.paidAt <= p.chargeCallItem.chargeCall.dueDate THEN 1 ELSE 0 END) " +
+           "FROM ChargeCallPayment p " +
+           "WHERE p.chargeCallItem.coOwner.id = :coOwnerId " +
+           "AND p.chargeCallItem.chargeCall.budget.residence.syndic.id = :syndicId " +
+           "AND p.chargeCallItem.status = 'PAID' " +
+           "AND p.status = 'COMPLETED'")
+    List<Object[]> countOnTimePaymentsByCoOwnerAndSyndic(@Param("coOwnerId") Long coOwnerId, @Param("syndicId") Long syndicId);
 }

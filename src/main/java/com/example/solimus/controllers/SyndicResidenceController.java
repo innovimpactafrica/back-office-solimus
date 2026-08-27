@@ -298,12 +298,15 @@ public class SyndicResidenceController {
         return ResponseEntity.status(HttpStatus.CREATED).body(residenceService.addProperties(id, properties));
     }
 
-    @Operation(summary = "Modifier un lot/appartement (Étape 2)", tags = {"Syndic - Résidences"})
+    @Operation(summary = "Modifier un lot/appartement (Étape 2)",
+            description = "Si la modification laisse un écart de superficie non attribué sur la résidence (non "
+                    + "bloquant), un avertissement est renvoyé dans le header HTTP 'X-Warning', pas dans le corps de la réponse",
+            tags = {"Syndic - Résidences"})
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Lot modifié avec succès",
+            @ApiResponse(responseCode = "200", description = "Lot modifié avec succès — voir le header 'X-Warning' si présent",
                     content = @Content(schema = @Schema(implementation = PropertyDTO.class))),
-            @ApiResponse(responseCode = "400", description = "Données invalides (ex: nouvelle superficie dépassant la superficie de la "
-                    + "résidence, référence déjà utilisée, lot n'appartenant pas à cette résidence)",
+            @ApiResponse(responseCode = "400", description = "Données invalides (ex: nouvelle superficie dépassant la superficie "
+                    + "restante disponible, référence déjà utilisée, lot n'appartenant pas à cette résidence)",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Résidence, lot ou type de bien introuvable",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
@@ -313,7 +316,12 @@ public class SyndicResidenceController {
             @PathVariable Long id,
             @PathVariable Long propertyId,
             @RequestBody @Valid UpdatePropertyDTO dto) {
-        return ResponseEntity.ok(residenceService.updateProperty(id, propertyId, dto));
+        PropertyUpdateResult result = residenceService.updateProperty(id, propertyId, dto);
+        ResponseEntity.BodyBuilder response = ResponseEntity.ok();
+        if (result.areaWarning() != null) {
+            response.header("X-Warning", result.areaWarning());
+        }
+        return response.body(result.property());
     }
 
     @Operation(summary = "Supprimer un lot/appartement (Étape 2)", tags = {"Syndic - Résidences"})
@@ -332,6 +340,20 @@ public class SyndicResidenceController {
             @PathVariable Long propertyId) {
         residenceService.deleteProperty(id, propertyId);
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Superficie restante disponible", description = "Consommé en temps réel par le formulaire d'ajout d'appartement", tags = {"Syndic - Résidences"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Superficie renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = RemainingAreaDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette résidence",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @GetMapping("/residences/{id}/remaining-area")
+    public ResponseEntity<RemainingAreaDTO> getRemainingArea(@PathVariable Long id) {
+        return ResponseEntity.ok(residenceService.getRemainingArea(id));
     }
 
     @Operation(summary = "Lister les lots d'une résidence (paginé) (Étape 2)", tags = {"Syndic - Résidences"})

@@ -408,7 +408,11 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
         // 6. Trier par score décroissant → le meilleur en premier
         cards.sort(Comparator.comparingDouble(CoOwnerQuoteCardDTO::getScoreFinal).reversed());
 
-        // 7. Retourner la page avec les données triées
+        // 7. Retourner la page avec les données triées — pagination manuelle VOLONTAIRE, pas un
+        // raccourci à corriger : scoreFinal dépend de maxAmount (étape 3), lui-même calculé sur TOUS
+        // les devis de l'intervention. Paginer en base changerait maxAmount (et donc le score de
+        // chaque devis) selon la page consultée. Le volume par intervention reste minuscule (quelques
+        // devis maximum), donc pas de vrai risque de perf.
         Pageable pageable = PageRequest.of(page, size);
         int start = (int) pageable.getOffset();
         int end = Math.min(start + pageable.getPageSize(), cards.size());

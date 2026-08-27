@@ -19,7 +19,6 @@ import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.shared.StatusRecalculationService;
 import com.example.solimus.utils.PasswordGeneratorUtil;
-import com.example.solimus.utils.PaymentStatusUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -919,15 +918,14 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         // Calculer les métriques de base (réutilisées de la liste)
         long residencesCount = propertyRepository
                 .countResidencesByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
-        // Récupère le nombre de jours de retard le plus important parmi tous ses items impayés
-        Integer maxDaysLate = chargeCallItemRepository
+
+        // Card "Retard" : nombre de jours depuis l'échéance de la charge non soldée la plus ancienne
+        // — null si aucune charge en retard (affiché "À jour" côté front dans ce cas)
+        Integer delayDays = chargeCallItemRepository
                 .findMaxDaysLateByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
 
-        // Applique la même logique de statut que le reste de l'application (Paiements/Impayés)
-        String status = computeCoOwnerStatus(maxDaysLate);
-
-        // Calculer annualCharges (basé sur le budget annuel et tantièmes)
-        BigDecimal annualCharges = BigDecimal.ZERO;
+        // Card "Charges annuelles" (basé sur le budget de l'année en cours et les tantièmes)
+        BigDecimal annualChargesAmount = BigDecimal.ZERO;
         int currentYear = Year.now().getValue();
 
         // Récupérer toutes les résidences où ce copropriétaire a des lots
@@ -968,16 +966,25 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                         .orElse(BigDecimal.ZERO);
             }
 
-            annualCharges = annualCharges.add(partResidence);
+            annualChargesAmount = annualChargesAmount.add(partResidence);
         }
 
-        // Calculer les autres KPIs
-        BigDecimal currentBalance = chargeCallItemRepository
-                .calculateSoldeByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
-        BigDecimal paymentsMade = chargeCallItemRepository
-                .sumPaymentsMadeByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
-        BigDecimal unpaidAmount = chargeCallItemRepository
-                .sumUnpaidAmountByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
+        // Card "Montant dû actuellement" (remplace l'ancien doublon Solde actuel / Impayés) —
+        // une seule ligne : [currentAmountDue, currentPenaltyAmount]
+        Object[] amountDueRow = chargeCallItemRepository
+                .sumCurrentAmountDueByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId()).get(0);
+        BigDecimal currentAmountDue = (BigDecimal) amountDueRow[0];
+        BigDecimal currentPenaltyAmount = (BigDecimal) amountDueRow[1];
+
+        // Card "Taux de paiement à échéance" — null si aucune charge n'a jamais été payée
+        Object[] onTimeRow = chargeCallPaymentRepository
+                .countOnTimePaymentsByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId()).get(0);
+        long totalPaidCount = ((Number) onTimeRow[0]).longValue();
+        Integer onTimePaymentRate = null;
+        if (totalPaidCount > 0) {
+            long onTimeCount = onTimeRow[1] != null ? ((Number) onTimeRow[1]).longValue() : 0L;
+            onTimePaymentRate = (int) Math.round(onTimeCount * 100.0 / totalPaidCount);
+        }
 
         // Récupérer le profil pour l'adresse
         var profileOpt = coOwnerProfileRepository.findByUserId(coOwnerId);
@@ -994,17 +1001,18 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 .photoUrl(coOwner.getProfilePhotoUrl())
                 .residencesCount((int) residencesCount)
                 .apartmentsCount((int) apartmentsCount)
-                .status(status)
                 .lastName(coOwner.getLastName())
                 .firstName(coOwner.getFirstName())
                 .phone(coOwner.getPhone())
                 .email(coOwner.getEmail())
                 .address(address)
                 .acquisitionDate(acquisitionDate)
-                .annualCharges(annualCharges)
-                .currentBalance(currentBalance)
-                .paymentsMade(paymentsMade)
-                .unpaidAmount(unpaidAmount)
+                .annualChargesAmount(annualChargesAmount)
+                .annualChargesYear(currentYear)
+                .currentAmountDue(currentAmountDue)
+                .currentPenaltyAmount(currentPenaltyAmount)
+                .delayDays(delayDays)
+                .onTimePaymentRate(onTimePaymentRate)
                 .build();
     }
 
@@ -1387,14 +1395,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
-    }
-
-    // Statut d'un copropriétaire à partir de son plus grand retard — délègue à PaymentStatusUtils
-    // (seule source de vérité), jamais un seuil recalculé à la main
-    private String computeCoOwnerStatus(Integer maxDaysLate) {
-        PaymentDelayStatus delayStatus = PaymentStatusUtils.computeDelayStatusFromDaysLate(
-                maxDaysLate != null ? maxDaysLate : 0);
-        return PaymentStatusUtils.toLabel(delayStatus);
     }
 
     // Calculer la charge annuelle pour un seul lot

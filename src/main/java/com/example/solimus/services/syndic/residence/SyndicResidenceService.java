@@ -22,11 +22,16 @@ public interface SyndicResidenceService {
     // Étape 2 — Ajouter un ou plusieurs lots à une résidence déjà créée
     List<PropertyDTO> addProperties(Long residenceId, List<AddPropertyDTO> properties);
 
-    // Étape 2 — Modifier un lot/appartement
-    PropertyDTO updateProperty(Long residenceId, Long propertyId, UpdatePropertyDTO dto);
+    // Étape 2 — Modifier un lot/appartement — areaWarning non null si la modification laisse un
+    // écart de superficie (non bloquant, à afficher côté front via le header HTTP, voir le controller)
+    PropertyUpdateResult updateProperty(Long residenceId, Long propertyId, UpdatePropertyDTO dto);
 
     // Étape 2 — Supprimer un lot/appartement
     void deleteProperty(Long residenceId, Long propertyId);
+
+    // Superficie restante disponible pour ajouter des lots — consommé en temps réel par le
+    // formulaire d'ajout d'appartement
+    RemainingAreaDTO getRemainingArea(Long residenceId);
 
     // Étape 2 — Lister les lots d'une résidence (paginé)
     Page<PropertyListDTO> getPropertiesPaginated(Long residenceId, Integer page, Integer size);
