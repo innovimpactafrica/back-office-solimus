@@ -142,10 +142,11 @@ public class TenantTravauxServiceImpl implements TenantTravauxService {
         // Une intervention URGENT active peut faire passer la résidence en CRITIQUE
         statusRecalculationService.recalculateResidenceHealthStatus(residence);
 
-        // Notifie toujours le propriétaire
-        if (property.getOwner().isNotificationsEnabled()) {
-            notificationService.sendPush(property.getOwner().getId(), "Demande de travaux de votre locataire",
-                    currentTenant.getFirstName() + " a fait une demande : " + request.getTitle());
+        // Notifie le propriétaire uniquement si la demande est urgente — même règle que pour les
+        // signalements, pour ne pas le solliciter sur chaque demande mineure de son locataire
+        if (request.getUrgencyLevel() == UrgencyLevel.URGENT && property.getOwner().isNotificationsEnabled()) {
+            notificationService.sendPush(property.getOwner().getId(), "Demande de travaux urgente de votre locataire",
+                    currentTenant.getFirstName() + " a fait une demande urgente : " + request.getTitle());
         }
 
         // Notifie le syndic (push urgent + email systématique)

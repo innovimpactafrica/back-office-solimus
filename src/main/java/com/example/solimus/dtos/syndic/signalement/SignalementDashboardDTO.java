@@ -8,7 +8,7 @@ import lombok.Data;
 @Builder
 public class SignalementDashboardDTO {
     private long total;
-    private long inProgress;
+    private long convertedToWork;
     private long resolved;
     private long pending;
 }

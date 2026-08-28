@@ -23,9 +23,6 @@ public class CoOwnerMeetingsDTO {
     // Titre de la dernière AG
     private String lastMeetingTitle;
 
-    // Vote à la dernière AG (null pour l'instant, dépend de Vote)
-    private String lastMeetingVote;
-
     // Historique des AG
     private List<CoOwnerMeetingHistoryItemDTO> meetingHistory;
 }

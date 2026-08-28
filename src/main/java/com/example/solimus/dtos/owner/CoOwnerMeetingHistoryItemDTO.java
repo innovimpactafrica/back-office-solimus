@@ -22,9 +22,6 @@ public class CoOwnerMeetingHistoryItemDTO {
     // Quorum de cette AG (pourcentage pondéré par tantième)
     private Double quorumPercentage;
 
-    // Vote de ce copropriétaire (null pour l'instant, dépend de Vote)
-    private String vote;
-
     // Signature de présence de ce copropriétaire
     private Boolean hasSigned;
 }

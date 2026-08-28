@@ -47,14 +47,17 @@ public class SignalementServiceImpl implements SignalementService {
         User currentSyndic = getCurrentUser();
 
         // Compte les signalements par statut, restreints aux résidences de ce syndic
+        // IN_PROGRESS n'existe pas dans ce décompte : ce statut n'est jamais assigné nulle part
+        // dans le code (aucune étape intermédiaire "en cours" dans le workflow), il resterait
+        // toujours à 0 — remplacé par convertedToWork, qui lui reflète un vrai statut atteignable
         long total = signalementRepository.countByResidenceSyndicId(currentSyndic.getId());
-        long inProgress = signalementRepository.countByResidenceSyndicIdAndStatus(currentSyndic.getId(), SignalementStatus.IN_PROGRESS);
+        long convertedToWork = signalementRepository.countByResidenceSyndicIdAndStatus(currentSyndic.getId(), SignalementStatus.CONVERTED_TO_WORK);
         long resolved = signalementRepository.countByResidenceSyndicIdAndStatus(currentSyndic.getId(), SignalementStatus.RESOLVED);
         long pending = signalementRepository.countByResidenceSyndicIdAndStatus(currentSyndic.getId(), SignalementStatus.PENDING);
 
         return SignalementDashboardDTO.builder()
                 .total(total)
-                .inProgress(inProgress)
+                .convertedToWork(convertedToWork)
                 .resolved(resolved)
                 .pending(pending)
                 .build();
@@ -154,7 +157,7 @@ public class SignalementServiceImpl implements SignalementService {
 
         // Notifie le copropriétaire (et le locataire si c'est lui qui a déclaré), push + email
         notifyOwnerAndTenant(signalement, "Signalement résolu",
-                signalement.getTitle() + " a été traité par le syndic");
+                buildMessageWithNote(signalement.getTitle() + " a été traité par le syndic", dto.getClosingNote()));
     }
 
     // =========================================================================
@@ -234,7 +237,7 @@ public class SignalementServiceImpl implements SignalementService {
 
         // Notifie le copropriétaire (et le locataire si c'est lui qui a déclaré), push + email
         notifyOwnerAndTenant(signalement, "Signalement transformé en travaux",
-                signalement.getTitle() + " nécessite une intervention");
+                buildMessageWithNote(signalement.getTitle() + " nécessite une intervention", dto.getWorkDescription()));
 
         return savedIntervention.getId();
     }
@@ -243,13 +246,25 @@ public class SignalementServiceImpl implements SignalementService {
     // UTILITAIRES ET MAPPERS
     // =========================================================================
 
-    // Notifie le copropriétaire (toujours) et le locataire (uniquement s'il est à l'origine du
-    // signalement — Signalement.tenant), en push + email pour chacun, de façon non-bloquante
+    // Notifie le locataire (toujours, s'il est à l'origine du signalement — Signalement.tenant,
+    // il suit sa propre demande) et le copropriétaire :
+    // - toujours s'il est lui-même le déclarant (tenant == null, c'est SA demande qu'il suit)
+    // - sinon (signalement déclaré par son locataire) uniquement si URGENT, pour ne pas le
+    //   solliciter sur chaque mise à jour d'incidents mineurs qui relèvent de la gestion courante du syndic
+    // Push + email pour chacun, de façon non-bloquante
     private void notifyOwnerAndTenant(Signalement signalement, String title, String message) {
-        notifyUser(signalement.getOwner(), title, message);
-        if (signalement.getTenant() != null) {
+        boolean declaredByTenant = signalement.getTenant() != null;
+        if (!declaredByTenant || signalement.getUrgencyLevel() == UrgencyLevel.URGENT) {
+            notifyUser(signalement.getOwner(), title, message);
+        }
+        if (declaredByTenant) {
             notifyUser(signalement.getTenant(), title, message);
         }
+    }
+
+    // Complète un message de notification avec la note saisie par le syndic à cette étape, si fournie
+    private String buildMessageWithNote(String baseMessage, String note) {
+        return (note == null || note.isBlank()) ? baseMessage : baseMessage + " — " + note;
     }
 
     // Envoie une notification push (si activée) + un email (toujours) à un utilisateur donné,

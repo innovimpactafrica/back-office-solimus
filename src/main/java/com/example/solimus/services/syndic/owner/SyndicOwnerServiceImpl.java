@@ -5,6 +5,7 @@ import com.example.solimus.dtos.owner.CoOwnerInterventionsResponseDTO;
 import com.example.solimus.dtos.owner.CoOwnerMeetingsDTO;
 import com.example.solimus.dtos.owner.CoOwnerMeetingHistoryItemDTO;
 import com.example.solimus.dtos.owner.CoOwnerResidenceDTO;
+import com.example.solimus.dtos.shared.PdfFileDTO;
 import com.example.solimus.dtos.syndic.owner.*;
 import com.example.solimus.dtos.syndic.residence.ActivityLogItemDTO;
 import com.example.solimus.entities.*;
@@ -19,6 +20,7 @@ import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.shared.StatusRecalculationService;
 import com.example.solimus.utils.PasswordGeneratorUtil;
+import com.example.solimus.utils.PdfExportUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -36,12 +38,14 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 import java.sql.Timestamp;
+import java.text.Normalizer;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Year;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -233,7 +237,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                     .meetingDate(meeting.getMeetingDate())
                     .meetingTitle(meeting.getTitle())
                     .quorumPercentage(quorumPercentage)
-                    .vote(null) // null pour l'instant, dépend de Vote
                     .hasSigned(hasSigned)
                     .build();
             history.add(item);
@@ -267,7 +270,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 .votedCount(0) // 0 pour l'instant, sera rempli quand Vote existera
                 .totalMeetingsCount(totalMeetings)
                 .lastMeetingTitle(lastMeetingTitle)
-                .lastMeetingVote(null) // null pour l'instant, dépend de Vote
                 .meetingHistory(paginatedHistory)
                 .build();
     }
@@ -1091,6 +1093,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             ChargeCall chargeCall = payment.getChargeCallItem().getChargeCall();
 
             CoOwnerPaymentItemDTO dto = CoOwnerPaymentItemDTO.builder()
+                    .id(payment.getId())
                     .date(date)
                     .reference(payment.getReference())
                     .residenceName(chargeCall.getBudget().getResidence().getName())
@@ -1115,6 +1118,145 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         String[] mois = {"Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"};
         int index = chargeCall.getPeriodNumber() - 1;
         return (index >= 0 && index < mois.length) ? mois[index] : "P" + chargeCall.getPeriodNumber();
+    }
+
+    // ============================================================
+    // REÇU D'UN PAIEMENT (bouton "Reçu" sur une ligne de l'historique des paiements)
+    // ============================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public CoOwnerPaymentReceiptDTO getCoOwnerPaymentReceipt(Long coOwnerId, Long paymentId) {
+
+        User currentSyndic = getCurrentUser();
+
+        ChargeCallPayment payment = chargeCallPaymentRepository.findById(paymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Paiement introuvable"));
+
+        ChargeCallItem item = payment.getChargeCallItem();
+        if (!item.getCoOwner().getId().equals(coOwnerId)) {
+            throw new ForbiddenException("Ce paiement n'appartient pas à ce copropriétaire");
+        }
+        if (!item.getChargeCall().getBudget().getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à ce paiement");
+        }
+        if (payment.getStatus() != PaymentStatus.COMPLETED) {
+            throw new BadRequestException("Ce paiement n'est pas complété, aucun reçu disponible");
+        }
+
+        ChargeCall chargeCall = item.getChargeCall();
+
+        return CoOwnerPaymentReceiptDTO.builder()
+                .receiptReference(payment.getReference())
+                .coOwnerName(item.getCoOwner().getFirstName() + " " + item.getCoOwner().getLastName())
+                .residenceName(chargeCall.getBudget().getResidence().getName())
+                .period(buildSimplePeriodeLabel(chargeCall))
+                .year(chargeCall.getYear())
+                .paymentDate(payment.getPaidAt())
+                .paymentMethod(payment.getMethod() != null ? payment.getMethod().name() : null)
+                .amountPaid(payment.getAmount())
+                .build();
+    }
+
+    // ============================================================
+    // EXPORT PDF DE L'HISTORIQUE DES PAIEMENTS (mêmes filtres que getCoOwnerPayments, sans pagination)
+    // ============================================================
+
+    private static final String[] CO_OWNER_PAYMENTS_EXPORT_HEADERS =
+            {"Date", "Référence", "Résidence", "Période", "Montant", "Moyen de paiement", "Statut"};
+    private static final String CO_OWNER_PAYMENTS_HEADER_COLOR = "C8E6C9";
+
+    @Override
+    @Transactional(readOnly = true)
+    public PdfFileDTO exportCoOwnerPayments(Long coOwnerId, PaymentStatus status, Long residenceId, Integer year) {
+
+        User currentSyndic = getCurrentUser();
+
+        User coOwner = userRepository.findById(coOwnerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
+
+        long apartmentsCount = propertyRepository.countApartmentsByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
+        if (apartmentsCount == 0) {
+            throw new ForbiddenException("Ce copropriétaire n'a pas de lot dans vos résidences");
+        }
+
+        // Toutes les lignes filtrées, sans pagination, même tri que la liste paginée
+        List<ChargeCallPayment> payments = chargeCallPaymentRepository
+                .findByCoOwnerAndSyndicWithFilters(coOwnerId, currentSyndic.getId(), status, residenceId, year, Pageable.unpaged())
+                .getContent();
+
+        List<Object[]> rows = payments.stream()
+                .map(payment -> {
+                    ChargeCall chargeCall = payment.getChargeCallItem().getChargeCall();
+                    LocalDateTime date = payment.getPaidAt() != null ? payment.getPaidAt() : payment.getCreatedAt();
+                    return new Object[]{
+                            date,
+                            payment.getReference(),
+                            chargeCall.getBudget().getResidence().getName(),
+                            buildSimplePeriodeLabel(chargeCall) + " " + chargeCall.getYear(),
+                            payment.getAmount(),
+                            paymentMethodLabel(payment.getMethod()),
+                            paymentStatusLabel(payment.getStatus())
+                    };
+                })
+                .toList();
+
+        Residence residence = residenceId != null ? residenceRepository.findById(residenceId).orElse(null) : null;
+        String coOwnerName = coOwner.getFirstName() + " " + coOwner.getLastName();
+
+        byte[] content = PdfExportUtil.generate(
+                coOwnerName,
+                "Historique des paiements",
+                buildFiltersLine(status, residence, year),
+                CO_OWNER_PAYMENTS_EXPORT_HEADERS, rows, CO_OWNER_PAYMENTS_HEADER_COLOR, Set.of(4));
+
+        String fileName = "historique-paiements_" + slugify(coOwnerName) + "_"
+                + residenceSegment(residence) + "_" + yearSegment(year) + ".pdf";
+
+        return new PdfFileDTO(fileName, content);
+    }
+
+    // Libellé FR affiché dans le PDF (le JSON de /payments renvoie l'enum brut, traduit côté front —
+    // mais un PDF est un document final, il doit contenir directement le libellé lisible)
+    private String paymentStatusLabel(PaymentStatus status) {
+        if (status == null) return "";
+        return switch (status) {
+            case COMPLETED -> "Payé";
+            case PENDING -> "En attente";
+            case FAILED -> "Échoué";
+        };
+    }
+
+    private String paymentMethodLabel(ChargePaymentMethod method) {
+        if (method == null) return "";
+        return switch (method) {
+            case WAVE -> "Wave";
+            case ORANGE_MONEY -> "Orange Money";
+            case CARTE_BANCAIRE -> "Carte bancaire";
+        };
+    }
+
+    // Ligne d'info affichée sous le titre du PDF, résumant les filtres actifs — absente si aucun filtre
+    private String buildFiltersLine(PaymentStatus status, Residence residence, Integer year) {
+        List<String> parts = new ArrayList<>();
+        if (status != null) parts.add("Statut : " + paymentStatusLabel(status));
+        if (residence != null) parts.add("Résidence : " + residence.getName());
+        if (year != null) parts.add("Année : " + year);
+        return parts.isEmpty() ? null : "Filtres appliqués — " + String.join(" · ", parts);
+    }
+
+    private String residenceSegment(Residence residence) {
+        return residence != null ? slugify(residence.getName()) : "toutes-residences";
+    }
+
+    private String yearSegment(Integer year) {
+        return year != null ? year.toString() : "toutes-annees";
+    }
+
+    // Normalise un texte pour un nom de fichier : sans accents, sans espaces ni caractères spéciaux
+    private String slugify(String input) {
+        String withoutAccents = Normalizer.normalize(input, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        return withoutAccents.replaceAll("[^a-zA-Z0-9]+", "-").replaceAll("^-|-$", "");
     }
 
     @Override

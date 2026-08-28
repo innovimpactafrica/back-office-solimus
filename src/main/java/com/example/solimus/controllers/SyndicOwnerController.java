@@ -4,11 +4,13 @@ import com.example.solimus.dtos.auth.ErrorResponseDTO;
 import com.example.solimus.dtos.owner.CoOwnerInterventionsResponseDTO;
 import com.example.solimus.dtos.owner.CoOwnerMeetingsDTO;
 import com.example.solimus.dtos.owner.CoOwnerResidenceDTO;
+import com.example.solimus.dtos.shared.PdfFileDTO;
 import com.example.solimus.dtos.syndic.owner.*;
 import com.example.solimus.dtos.syndic.residence.ActivityLogItemDTO;
 import com.example.solimus.enums.Nationality;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.Title;
+import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.services.syndic.owner.SyndicOwnerService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,6 +24,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.data.domain.Page;
@@ -230,6 +234,57 @@ public class SyndicOwnerController {
             @RequestParam(defaultValue = "0") Integer page,
             @RequestParam(defaultValue = "10") Integer size) {
         return ResponseEntity.ok(syndicOwnerService.getCoOwnerPayments(coOwnerId, status, residenceId, year, page, size));
+    }
+
+    @Operation(summary = "Reçu d'un paiement (bouton \"Reçu\" sur une ligne de l'historique des paiements)",
+            description = "Disponible uniquement si le paiement est au statut COMPLETED (\"Payé\")",
+            tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Reçu renvoyé avec succès",
+                    content = @Content(schema = @Schema(implementation = CoOwnerPaymentReceiptDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Ce paiement n'est pas complété, aucun reçu disponible",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Ce paiement n'appartient pas à ce copropriétaire, ou vous n'êtes pas autorisé à y accéder",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Paiement introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @GetMapping("/co-owners/{coOwnerId}/payments/{paymentId}/receipt")
+    public ResponseEntity<CoOwnerPaymentReceiptDTO> getCoOwnerPaymentReceipt(
+            @PathVariable Long coOwnerId,
+            @PathVariable Long paymentId) {
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerPaymentReceipt(coOwnerId, paymentId));
+    }
+
+    @Operation(summary = "Export PDF de l'historique des paiements",
+            description = "Mêmes filtres que /payments — toutes les lignes filtrées, sans pagination",
+            tags = {"Syndic - Copropriétaires"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Fichier .pdf généré avec succès"),
+            @ApiResponse(responseCode = "400", description = "Format d'export non supporté",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Ce copropriétaire n'a pas de lot dans vos résidences",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Copropriétaire introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @GetMapping("/co-owners/{coOwnerId}/payments/export")
+    public ResponseEntity<byte[]> exportCoOwnerPayments(
+            @PathVariable Long coOwnerId,
+            @RequestParam(required = false) PaymentStatus status,
+            @Parameter(description = "Filtre optionnel sur une résidence précise — utile si le copropriétaire a des lots dans plusieurs résidences")
+            @RequestParam(required = false) Long residenceId,
+            @Parameter(description = "Filtre optionnel par année — absent = historique complet, toutes années", example = "2026")
+            @RequestParam(required = false) Integer year,
+            @RequestParam(defaultValue = "pdf") String format) {
+        if (format != null && !format.equalsIgnoreCase("pdf")) {
+            throw new BadRequestException("Seul le format d'export pdf est supporté actuellement");
+        }
+        PdfFileDTO file = syndicOwnerService.exportCoOwnerPayments(coOwnerId, status, residenceId, year);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDisposition(ContentDisposition.attachment().filename(file.getFileName()).build());
+        return ResponseEntity.ok().headers(headers).body(file.getContent());
     }
 
     @Operation(summary = "Assemblées Générales d'un copropriétaire (onglet AG du détail)", tags = {"Syndic - Copropriétaires"})

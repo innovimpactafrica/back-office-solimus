@@ -3,6 +3,7 @@ package com.example.solimus.services.syndic.owner;
 import com.example.solimus.dtos.owner.CoOwnerInterventionsResponseDTO;
 import com.example.solimus.dtos.owner.CoOwnerMeetingsDTO;
 import com.example.solimus.dtos.owner.CoOwnerResidenceDTO;
+import com.example.solimus.dtos.shared.PdfFileDTO;
 import com.example.solimus.dtos.syndic.owner.*;
 import com.example.solimus.dtos.syndic.residence.ActivityLogItemDTO;
 import com.example.solimus.enums.Nationality;
@@ -42,6 +43,12 @@ public interface SyndicOwnerService {
     /** Historique des paiements d'un copropriétaire (onglet Paiements du détail) — toutes résidences
      * et toutes années par défaut (historique complet), residenceId/year optionnels pour filtrer */
     Page<CoOwnerPaymentItemDTO> getCoOwnerPayments(Long coOwnerId, PaymentStatus status, Long residenceId, Integer year, Integer page, Integer size);
+
+    /** Reçu d'un paiement précis (bouton "Reçu" sur une ligne de l'historique des paiements) — uniquement si ce paiement est COMPLETED */
+    CoOwnerPaymentReceiptDTO getCoOwnerPaymentReceipt(Long coOwnerId, Long paymentId);
+
+    /** Export PDF de l'historique des paiements d'un copropriétaire — mêmes filtres que getCoOwnerPayments, sans pagination */
+    PdfFileDTO exportCoOwnerPayments(Long coOwnerId, PaymentStatus status, Long residenceId, Integer year);
 
     /** Assemblées Générales d'un copropriétaire (onglet AG du détail) */
     CoOwnerMeetingsDTO getCoOwnerMeetings(Long coOwnerId, Long residenceId, String type, Integer year, Integer page, Integer size);

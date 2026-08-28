@@ -95,12 +95,14 @@ public class TenantSignalementServiceImpl implements TenantSignalementService {
         // Sauvegarde le signalement en base
         signalementRepository.save(signalement);
 
-        // Notifie toujours le propriétaire (le bien reste le sien, même s'il ne l'occupe pas)
-        if (property.getOwner().isNotificationsEnabled()) {
+        // Notifie le propriétaire (le bien reste le sien, même s'il ne l'occupe pas) uniquement si
+        // le signalement est urgent — pour ne pas le solliciter sur des incidents mineurs qui
+        // relèvent normalement de la gestion du syndic
+        if (signalement.getUrgencyLevel() == UrgencyLevel.URGENT && property.getOwner().isNotificationsEnabled()) {
             notificationService.sendPush(
                     property.getOwner().getId(),
-                    "Signalement de votre locataire",
-                    currentTenant.getFirstName() + " a signalé : " + signalement.getTitle()
+                    "Signalement urgent de votre locataire",
+                    currentTenant.getFirstName() + " a signalé un problème urgent : " + signalement.getTitle()
             );
         }
 

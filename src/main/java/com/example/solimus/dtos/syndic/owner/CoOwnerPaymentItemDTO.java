@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class CoOwnerPaymentItemDTO {
 
+    private Long id; // id du ChargeCallPayment — utilisé pour appeler /payments/{id}/receipt
     private LocalDateTime date;
     private String reference;
     private String residenceName;

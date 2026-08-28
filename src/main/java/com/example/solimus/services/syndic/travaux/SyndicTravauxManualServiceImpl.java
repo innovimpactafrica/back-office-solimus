@@ -177,7 +177,7 @@ public class SyndicTravauxManualServiceImpl implements SyndicTravauxManualServic
         addNoteIfPresent(request, currentSyndic, note);
         interventionRequestRepository.save(request);
 
-        notifyRequesters(request, "Votre demande est prise en charge par le syndic");
+        notifyRequesters(request, buildMessageWithNote("Votre demande est prise en charge par le syndic", note));
     }
 
     @Override
@@ -195,7 +195,7 @@ public class SyndicTravauxManualServiceImpl implements SyndicTravauxManualServic
         addNoteIfPresent(request, currentSyndic, note);
         interventionRequestRepository.save(request);
 
-        notifyRequesters(request, "Les travaux de votre demande sont terminés");
+        notifyRequesters(request, buildMessageWithNote("Les travaux de votre demande sont terminés", note));
     }
 
     @Override
@@ -231,7 +231,7 @@ public class SyndicTravauxManualServiceImpl implements SyndicTravauxManualServic
         addNoteIfPresent(request, currentSyndic, closingNote);
         interventionRequestRepository.save(request);
 
-        notifyRequesters(request, "Votre demande a été clôturée par le syndic");
+        notifyRequesters(request, buildMessageWithNote("Votre demande a été clôturée par le syndic", closingNote));
     }
 
     // =========================================================================
@@ -287,16 +287,26 @@ public class SyndicTravauxManualServiceImpl implements SyndicTravauxManualServic
         request.getComments().add(comment);
     }
 
-    // Notifie le(s) demandeur(s) — copropriétaire et/ou locataire, selon qui est renseigné —
-    // en push (si activé) + email (toujours), à chaque changement de statut du flux manuel
+    // Notifie le(s) demandeur(s) à chaque changement de statut du flux manuel, en push (si activé) + email (toujours) :
+    // - le locataire, toujours, s'il est à l'origine de la demande (il suit sa propre demande)
+    // - le propriétaire : toujours s'il est lui-même le demandeur (tenant == null, c'est SA demande),
+    //   sinon (demande faite par son locataire) uniquement si URGENT — même règle que pour les signalements,
+    //   pour ne pas le solliciter sur chaque mise à jour de travaux mineurs qui relèvent de la gestion du syndic
     private void notifyRequesters(InterventionRequest request, String message) {
         String title = "Mise à jour de votre demande";
-        if (request.getOwner() != null) {
+        boolean declaredByTenant = request.getTenant() != null;
+
+        if (request.getOwner() != null && (!declaredByTenant || request.getUrgencyLevel() == UrgencyLevel.URGENT)) {
             notifyUser(request.getOwner(), title, message);
         }
-        if (request.getTenant() != null) {
+        if (declaredByTenant) {
             notifyUser(request.getTenant(), title, message);
         }
+    }
+
+    // Complète un message de notification avec la note saisie par le syndic à cette étape, si fournie
+    private String buildMessageWithNote(String baseMessage, String note) {
+        return (note == null || note.isBlank()) ? baseMessage : baseMessage + " — " + note;
     }
 
     // Envoie une notification push (si activée) + un email (toujours) à un utilisateur donné,
