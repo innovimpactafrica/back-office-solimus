@@ -15,16 +15,23 @@ import java.util.List;
 @NoArgsConstructor
 public class CoOwnerFinancesDTO {
 
-    // 5 cards KPI
-    private BigDecimal annualCharges;
-    private BigDecimal monthlyCharges;
-    private BigDecimal currentBalance;
-    private BigDecimal paymentsMade;
-    private Double paymentsPercentage;
-    private BigDecimal remainingToBill;
+    // Année en cours utilisée pour tous les calculs ci-dessous — à afficher dynamiquement par le
+    // front ("Montant restant — {year}"), jamais codée en dur. Toujours renvoyée, même si
+    // budgetExists est false, pour que le front sache quelle année afficher dans son message.
+    private Integer year;
 
-    // Répartition des charges (donut)
-    private List<ChargeBreakdownItemDTO> chargeBreakdown;
+    // true si un Budget existe pour (residenceId, year) — si false, tous les montants/taux ci-dessous
+    // sont null (pas 0) : le front affiche "Budget {year} non généré" plutôt qu'un chiffre trompeur
+    private Boolean budgetExists;
+
+    // 4 cards KPI — null si budgetExists est false
+    private BigDecimal monthlyChargeAmount;   // charges annuelles de l'année / 12
+    private BigDecimal quarterlyChargeAmount; // charges annuelles de l'année / 4
+    private BigDecimal remainingAmount;       // charges non soldées de l'année (totalDue - paidAmount), pénalité incluse
+    private BigDecimal remainingPenaltyAmount; // part de remainingAmount venant uniquement de la pénalité
+    private Integer settlementRate;           // paidCallsCount / totalCallsCount x 100
+    private Integer paidCallsCount;           // appels de charges de l'année déjà soldés (status = PAID)
+    private Integer totalCallsCount;          // appels de charges émis cette année, tous statuts
 
     // Historique des paiements (graphique mensuel)
     private List<MonthlyPaymentDTO> monthlyPayments;

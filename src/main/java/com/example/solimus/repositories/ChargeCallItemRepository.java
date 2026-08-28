@@ -135,28 +135,40 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     // ===== CALCULS PAR RÉSIDENCE POUR FINANCES COPROPRIÉTAIRE =====
 
     /**
-     * Solde d'un copropriétaire pour une résidence
-     * Solde = SUM(paidAmount) - SUM(quotePart)
+     * Card "Montant restant" (onglet Finances, fiche copropriétaire) — une seule ligne :
+     * [remainingAmount, remainingPenaltyAmount], restreint à l'année en cours pour cette résidence.
+     * remainingAmount = SUM(totalDue - paidAmount) sur les charges non soldées de l'année (pénalité
+     * incluse), remainingPenaltyAmount = part venant uniquement de la pénalité.
      */
-    @Query("SELECT COALESCE(SUM(cci.paidAmount), 0) - COALESCE(SUM(cci.quotePart), 0) " +
+    @Query("SELECT COALESCE(SUM(cci.quotePart + COALESCE(cci.penaltyAmount, 0) - cci.paidAmount), 0), " +
+           "       COALESCE(SUM(COALESCE(cci.penaltyAmount, 0)), 0) " +
            "FROM ChargeCallItem cci " +
            "JOIN cci.chargeCall cc " +
-           "JOIN cc.budget b " +
            "WHERE cci.coOwner.id = :coOwnerId " +
-           "AND b.residence.id = :residenceId")
-    BigDecimal calculateSoldeByCoOwnerAndResidence(@Param("coOwnerId") Long coOwnerId, @Param("residenceId") Long residenceId);
+           "AND cc.budget.residence.id = :residenceId " +
+           "AND cc.year = :year " +
+           "AND cci.status != 'PAID'")
+    List<Object[]> sumRemainingAmountByCoOwnerAndResidenceAndYear(
+            @Param("coOwnerId") Long coOwnerId, @Param("residenceId") Long residenceId, @Param("year") Integer year);
 
     /**
-     * Somme des paiements effectués par un copropriétaire pour une résidence et une année
+     * Card "Taux de règlement" (onglet Finances, fiche copropriétaire) — une seule ligne :
+     * [totalCallsCount, paidCallsCount], appels de charges émis cette année pour cette résidence où
+     * il y avait réellement quelque chose à payer (NO_AMOUNT_DUE exclu — une quote-part à 0 ne doit
+     * jamais faire baisser le taux de règlement), uniquement PAID pour le second.
+     * ATTENTION : totalCallsCount n'est PAS fixe sur l'année — il grandit à chaque nouvel appel de
+     * charges généré (T1 puis T2 puis T3...). Le taux reflète donc ce qui a déjà été appelé jusqu'à
+     * maintenant, jamais une projection sur l'année complète.
      */
-    @Query("SELECT COALESCE(SUM(cci.paidAmount), 0) " +
+    @Query("SELECT COUNT(cci), SUM(CASE WHEN cci.status = 'PAID' THEN 1 ELSE 0 END) " +
            "FROM ChargeCallItem cci " +
            "JOIN cci.chargeCall cc " +
-           "JOIN cc.budget b " +
            "WHERE cci.coOwner.id = :coOwnerId " +
-           "AND b.residence.id = :residenceId " +
-           "AND cc.year = :year")
-    BigDecimal sumPaymentsMadeByCoOwnerAndResidence(@Param("coOwnerId") Long coOwnerId, @Param("residenceId") Long residenceId, @Param("year") Integer year);
+           "AND cc.budget.residence.id = :residenceId " +
+           "AND cc.year = :year " +
+           "AND cci.status != 'NO_AMOUNT_DUE'")
+    List<Object[]> countCallsByCoOwnerAndResidenceAndYear(
+            @Param("coOwnerId") Long coOwnerId, @Param("residenceId") Long residenceId, @Param("year") Integer year);
 
     /**
      * Somme des quote-parts générées pour un copropriétaire, une résidence et une année

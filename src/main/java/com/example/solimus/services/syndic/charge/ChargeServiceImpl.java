@@ -1010,12 +1010,26 @@ public class ChargeServiceImpl implements ChargeService {
                 throw new BadRequestException("Saisissez un montant pour chaque copropriétaire en mode Personnalisée");
             }
 
-            // Validation : la somme des montants personnalisés doit être exactement égale au total de la période
+            // Somme soumise par le front pour les copropriétaires connus
             BigDecimal customTotal = dto.getCustomAmounts().stream()
                     .map(CustomCoOwnerAmountDTO::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-            if (customTotal.compareTo(totalAmount) != 0) {
+            // S'il existe des lots vacants, le back complète AUTOMATIQUEMENT avec le montant restant,
+            // dû par le syndic — le front n'a jamais à connaître/soumettre cette ligne. Sans lot
+            // vacant, le comportement est inchangé : le total soumis doit tomber exactement juste.
+            BigDecimal vacantTantieme = sumVacantTantieme(properties);
+            boolean hasVacantLots = vacantTantieme.compareTo(BigDecimal.ZERO) > 0;
+            BigDecimal syndicAmount = BigDecimal.ZERO;
+
+            if (hasVacantLots) {
+                syndicAmount = totalAmount.subtract(customTotal);
+                if (syndicAmount.compareTo(BigDecimal.ZERO) < 0) {
+                    throw new BadRequestException(
+                            "La somme des montants personnalisés (" + customTotal + " FCFA) dépasse déjà le total de "
+                                    + "la période (" + totalAmount + " FCFA), avant même la part des lots vacants.");
+                }
+            } else if (customTotal.compareTo(totalAmount) != 0) {
                 throw new BadRequestException(
                         "La somme des montants personnalisés (" + customTotal + " FCFA) doit être exactement égale au total de la période (" + totalAmount + " FCFA)"
                 );
@@ -1045,6 +1059,26 @@ public class ChargeServiceImpl implements ChargeService {
                 item.setPaidAmount(BigDecimal.ZERO);
 
                 items.add(item);
+            }
+
+            // Ligne "syndic" ajoutée automatiquement pour les lots vacants — une seule ligne pour
+            // toute la résidence, regroupant le tantième cumulé de tous ses lots vacants (même
+            // traitement qu'un copropriétaire normal avec plusieurs lots)
+            if (hasVacantLots) {
+                User syndic = budget.getResidence().getSyndic();
+                String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-" + budget.getId() + "-" + syndic.getId();
+
+                ChargeCallItem syndicItem = new ChargeCallItem();
+                syndicItem.setChargeCall(chargeCall);
+                syndicItem.setReference(referenceCCI);
+                syndicItem.setCoOwner(syndic);
+                syndicItem.setTantieme(vacantTantieme);
+                syndicItem.setQuotePart(syndicAmount);
+                syndicItem.setPaidAmount(BigDecimal.ZERO);
+                if (syndicAmount.compareTo(BigDecimal.ZERO) == 0) {
+                    syndicItem.setStatus(ChargeItemPaymentStatus.NO_AMOUNT_DUE);
+                }
+                items.add(syndicItem);
             }
         } else {
             // Mode OWNERSHIP_SHARES — calcul automatique selon les tantièmes (customAmounts ignorés)
@@ -1477,12 +1511,26 @@ public class ChargeServiceImpl implements ChargeService {
                 throw new BadRequestException("Saisissez un montant pour chaque copropriétaire en mode Personnalisée");
             }
 
-            // Validation : la somme des montants personnalisés doit être exactement égale au total de l'appel exceptionnel
+            // Somme soumise par le front pour les copropriétaires connus
             BigDecimal customTotal = dto.getCustomAmounts().stream()
                     .map(CustomCoOwnerAmountDTO::getAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-            if (customTotal.compareTo(dto.getTotalAmount()) != 0) {
+            // S'il existe des lots vacants, le back complète AUTOMATIQUEMENT avec le montant restant,
+            // dû par le syndic — le front n'a jamais à connaître/soumettre cette ligne. Sans lot
+            // vacant, le comportement est inchangé : le total soumis doit tomber exactement juste.
+            BigDecimal vacantTantieme = sumVacantTantieme(properties);
+            boolean hasVacantLots = vacantTantieme.compareTo(BigDecimal.ZERO) > 0;
+            BigDecimal syndicAmount = BigDecimal.ZERO;
+
+            if (hasVacantLots) {
+                syndicAmount = dto.getTotalAmount().subtract(customTotal);
+                if (syndicAmount.compareTo(BigDecimal.ZERO) < 0) {
+                    throw new BadRequestException(
+                            "La somme des montants personnalisés (" + customTotal + " FCFA) dépasse déjà le total de "
+                                    + "l'appel exceptionnel (" + dto.getTotalAmount() + " FCFA), avant même la part des lots vacants.");
+                }
+            } else if (customTotal.compareTo(dto.getTotalAmount()) != 0) {
                 throw new BadRequestException(
                         "La somme des montants personnalisés (" + customTotal + " FCFA) doit être exactement égale au total de l'appel exceptionnel (" + dto.getTotalAmount() + " FCFA)"
                 );
@@ -1508,6 +1556,22 @@ public class ChargeServiceImpl implements ChargeService {
                 item.setQuotePart(customAmount.getAmount()); // montant saisi manuellement, pas calculé
                 item.setReference("EXCI-" + exceptionalCall.getId() + "-" + coOwner.getId());
                 exceptionalCall.getItems().add(item);
+            }
+
+            // Ligne "syndic" ajoutée automatiquement pour les lots vacants — une seule ligne pour
+            // toute la résidence, regroupant le tantième cumulé de tous ses lots vacants
+            if (hasVacantLots) {
+                User syndic = exceptionalCall.getSyndic();
+                ExceptionalCallItem syndicItem = new ExceptionalCallItem();
+                syndicItem.setExceptionalCall(exceptionalCall);
+                syndicItem.setCoOwner(syndic);
+                syndicItem.setTantieme(vacantTantieme);
+                syndicItem.setQuotePart(syndicAmount);
+                syndicItem.setReference("EXCI-" + exceptionalCall.getId() + "-" + syndic.getId());
+                if (syndicAmount.compareTo(BigDecimal.ZERO) == 0) {
+                    syndicItem.setStatus(ChargeItemPaymentStatus.NO_AMOUNT_DUE);
+                }
+                exceptionalCall.getItems().add(syndicItem);
             }
         } else {
             // Mode OWNERSHIP_SHARES — calcul automatique selon les tantièmes (customAmounts ignorés)
@@ -2931,6 +2995,16 @@ public class ChargeServiceImpl implements ChargeService {
     // appels générés après l'assignation vont au nouveau copropriétaire.
     private User resolveBillableOwner(Property property) {
         return property.getOwner() != null ? property.getOwner() : property.getResidence().getSyndic();
+    }
+
+    // Tantième cumulé de tous les lots vacants (aucun propriétaire assigné) d'une liste de lots —
+    // sert à savoir, en mode CUSTOM, si une ligne "syndic" doit être ajoutée automatiquement pour
+    // couvrir leur quote-part (le front ne la soumet jamais, le back la calcule et la complète seul)
+    private BigDecimal sumVacantTantieme(List<Property> properties) {
+        return properties.stream()
+                .filter(p -> p.getOwner() == null)
+                .map(p -> p.getShare() != null ? p.getShare() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     // ============================================================

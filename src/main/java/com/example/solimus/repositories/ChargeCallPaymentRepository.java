@@ -73,17 +73,22 @@ public interface ChargeCallPaymentRepository extends JpaRepository<ChargeCallPay
             @Param("year") Integer year);
 
     /**
-     * Paginer les paiements d'un copropriétaire, restreint au syndic connecté, avec filtre de statut
+     * Paginer les paiements d'un copropriétaire, restreint au syndic connecté — historique complet,
+     * toutes résidences/années confondues par défaut. status/residenceId/year tous optionnels.
      */
     @Query("SELECT p FROM ChargeCallPayment p " +
            "WHERE p.chargeCallItem.coOwner.id = :coOwnerId " +
            "AND p.chargeCallItem.chargeCall.budget.residence.syndic.id = :syndicId " +
            "AND (:status IS NULL OR p.status = :status) " +
+           "AND (:residenceId IS NULL OR p.chargeCallItem.chargeCall.budget.residence.id = :residenceId) " +
+           "AND (:year IS NULL OR p.chargeCallItem.chargeCall.year = :year) " +
            "ORDER BY COALESCE(p.paidAt, p.createdAt) DESC")
-    Page<ChargeCallPayment> findByCoOwnerAndSyndicAndStatus(
+    Page<ChargeCallPayment> findByCoOwnerAndSyndicWithFilters(
             @Param("coOwnerId") Long coOwnerId,
             @Param("syndicId") Long syndicId,
-            @Param("status") String status,
+            @Param("status") PaymentStatus status,
+            @Param("residenceId") Long residenceId,
+            @Param("year") Integer year,
             Pageable pageable);
 
     // Somme des paiements de charges d'un syndic, reçus dans une période donnée

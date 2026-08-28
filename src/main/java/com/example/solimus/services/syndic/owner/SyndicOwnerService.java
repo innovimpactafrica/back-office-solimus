@@ -6,6 +6,7 @@ import com.example.solimus.dtos.owner.CoOwnerResidenceDTO;
 import com.example.solimus.dtos.syndic.owner.*;
 import com.example.solimus.dtos.syndic.residence.ActivityLogItemDTO;
 import com.example.solimus.enums.Nationality;
+import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.Title;
 import org.springframework.data.domain.Page;
 import org.springframework.web.multipart.MultipartFile;
@@ -38,8 +39,9 @@ public interface SyndicOwnerService {
     /** Finances d'un copropriétaire pour une résidence (onglet Finances du détail) */
     CoOwnerFinancesDTO getCoOwnerFinances(Long coOwnerId, Long residenceId);
 
-    /** Historique des paiements d'un copropriétaire (onglet Paiements du détail) */
-    Page<CoOwnerPaymentItemDTO> getCoOwnerPayments(Long coOwnerId, String status, Integer page, Integer size);
+    /** Historique des paiements d'un copropriétaire (onglet Paiements du détail) — toutes résidences
+     * et toutes années par défaut (historique complet), residenceId/year optionnels pour filtrer */
+    Page<CoOwnerPaymentItemDTO> getCoOwnerPayments(Long coOwnerId, PaymentStatus status, Long residenceId, Integer year, Integer page, Integer size);
 
     /** Assemblées Générales d'un copropriétaire (onglet AG du détail) */
     CoOwnerMeetingsDTO getCoOwnerMeetings(Long coOwnerId, Long residenceId, String type, Integer year, Integer page, Integer size);

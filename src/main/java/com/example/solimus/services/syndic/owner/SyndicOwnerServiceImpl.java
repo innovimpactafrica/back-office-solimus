@@ -1059,7 +1059,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<CoOwnerPaymentItemDTO> getCoOwnerPayments(Long coOwnerId, String status, Integer page, Integer size) {
+    public Page<CoOwnerPaymentItemDTO> getCoOwnerPayments(Long coOwnerId, PaymentStatus status, Long residenceId, Integer year, Integer page, Integer size) {
 
         // Récupérer le syndic connecté
         User currentSyndic = getCurrentUser();
@@ -1074,10 +1074,12 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             throw new ForbiddenException("Ce copropriétaire n'a pas de lot dans vos résidences");
         }
 
-        // Paginer les paiements
+        // Paginer les paiements — historique complet (toutes résidences/années) par défaut, filtres
+        // status/residenceId/year tous optionnels, pas de valeur par défaut sur year (contrairement
+        // aux autres endroits de l'app) puisque cet onglet EST l'historique complet
         Pageable pageable = PageRequest.of(page, size);
         Page<ChargeCallPayment> paymentPage = chargeCallPaymentRepository
-                .findByCoOwnerAndSyndicAndStatus(coOwnerId, currentSyndic.getId(), status, pageable);
+                .findByCoOwnerAndSyndicWithFilters(coOwnerId, currentSyndic.getId(), status, residenceId, year, pageable);
 
         // Mapper en DTOs
         ArrayList<CoOwnerPaymentItemDTO> dtos = new ArrayList<>();
@@ -1086,10 +1088,14 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             String paymentMethod = payment.getMethod() != null ? payment.getMethod().name() : null;
             String statusStr = payment.getStatus().name();
             Boolean receiptAvailable = payment.getStatus().name().equals("COMPLETED");
+            ChargeCall chargeCall = payment.getChargeCallItem().getChargeCall();
 
             CoOwnerPaymentItemDTO dto = CoOwnerPaymentItemDTO.builder()
                     .date(date)
                     .reference(payment.getReference())
+                    .residenceName(chargeCall.getBudget().getResidence().getName())
+                    .period(buildSimplePeriodeLabel(chargeCall))
+                    .year(chargeCall.getYear())
                     .amount(payment.getAmount())
                     .paymentMethod(paymentMethod)
                     .status(statusStr)
@@ -1099,6 +1105,16 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         }
 
         return new PageImpl<>(dtos, pageable, paymentPage.getTotalElements());
+    }
+
+    // Libellé court de la période d'un appel de charges, ex: "T3" (trimestriel) ou "Jan" (mensuel)
+    private String buildSimplePeriodeLabel(ChargeCall chargeCall) {
+        if (chargeCall.getFrequency() != null && chargeCall.getFrequency().name().equals("TRIMESTRIEL")) {
+            return "T" + chargeCall.getPeriodNumber();
+        }
+        String[] mois = {"Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"};
+        int index = chargeCall.getPeriodNumber() - 1;
+        return (index >= 0 && index < mois.length) ? mois[index] : "P" + chargeCall.getPeriodNumber();
     }
 
     @Override
@@ -1129,12 +1145,25 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
 
         int currentYear = Year.now().getValue();
 
-        // 1. Calculer annualCharges
-        BigDecimal annualCharges = BigDecimal.ZERO;
         var budgetOpt = budgetRepository.findByResidenceIdAndAnnee(residenceId, currentYear);
-        if (budgetOpt.isPresent()) {
+        boolean budgetExists = budgetOpt.isPresent();
+
+        // 1-5. Les 4 cards KPI — null si aucun budget n'existe pour l'année en cours (le front
+        // affiche "Budget {year} non généré" plutôt qu'un chiffre trompeur)
+        BigDecimal monthlyChargeAmount = null;
+        BigDecimal quarterlyChargeAmount = null;
+        BigDecimal remainingAmount = null;
+        BigDecimal remainingPenaltyAmount = null;
+        Integer settlementRate = null;
+        Integer paidCallsCount = null;
+        Integer totalCallsCount = null;
+
+        if (budgetExists) {
             var budget = budgetOpt.get();
 
+            // Charges annuelles de l'année en cours (calcul interne, pas exposé tel quel — seuls
+            // les montants mensuel/trimestriel dérivés sont renvoyés)
+            BigDecimal annualCharges;
             if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
                 // Mode CUSTOM : sommer les quoteParts des ChargeCallItem générés pour ce copropriétaire
                 annualCharges = chargeCallItemRepository.sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(
@@ -1147,52 +1176,27 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                         .map(BudgetCoOwnerAllocation::getAnnualQuotePart)
                         .orElse(BigDecimal.ZERO);
             }
-        }
 
-        // 2. Calculer monthlyCharges
-        BigDecimal monthlyCharges = annualCharges.divide(BigDecimal.valueOf(12), 4, RoundingMode.HALF_UP);
+            monthlyChargeAmount = annualCharges.divide(BigDecimal.valueOf(12), 4, RoundingMode.HALF_UP);
+            quarterlyChargeAmount = annualCharges.divide(BigDecimal.valueOf(4), 4, RoundingMode.HALF_UP);
 
-        // 3. Calculer currentBalance
-        BigDecimal currentBalance = chargeCallItemRepository
-                .calculateSoldeByCoOwnerAndResidence(coOwnerId, residenceId);
+            // Montant restant : charges non soldées de l'année, pénalité incluse
+            Object[] remainingRow = chargeCallItemRepository
+                    .sumRemainingAmountByCoOwnerAndResidenceAndYear(coOwnerId, residenceId, currentYear).get(0);
+            remainingAmount = (BigDecimal) remainingRow[0];
+            remainingPenaltyAmount = (BigDecimal) remainingRow[1];
 
-        // 4. Calculer paymentsMade et paymentsPercentage
-        BigDecimal paymentsMade = chargeCallItemRepository
-                .sumPaymentsMadeByCoOwnerAndResidence(coOwnerId, residenceId, currentYear);
-        Double paymentsPercentage = 0.0;
-        if (annualCharges.compareTo(BigDecimal.ZERO) > 0) {
-            paymentsPercentage = paymentsMade.divide(annualCharges, 4, java.math.RoundingMode.HALF_UP)
-                    .multiply(BigDecimal.valueOf(100))
-                    .setScale(2, java.math.RoundingMode.HALF_UP)
-                    .doubleValue();
-        }
-
-        // 5. Calculer remainingToBill (montant restant à facturer)
-        BigDecimal sumQuotePartGenerated = chargeCallItemRepository
-                .sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(coOwnerId, residenceId, currentYear);
-        BigDecimal remainingToBill = annualCharges.subtract(sumQuotePartGenerated);
-        if (remainingToBill.compareTo(BigDecimal.ZERO) < 0) {
-            remainingToBill = BigDecimal.ZERO;
-        }
-
-        // 6. Répartition des charges (donut)
-        ArrayList<ChargeBreakdownItemDTO> chargeBreakdown = new ArrayList<>();
-        if (budgetOpt.isPresent()) {
-            var budget = budgetOpt.get();
-            for (var item : budget.getItems()) {
-                Double percentage = 0.0;
-                if (budget.getBudgetTotal().compareTo(BigDecimal.ZERO) > 0) {
-                    percentage = item.getMontant().divide(budget.getBudgetTotal(), 4, java.math.RoundingMode.HALF_UP)
-                            .multiply(BigDecimal.valueOf(100))
-                            .setScale(2, java.math.RoundingMode.HALF_UP)
-                            .doubleValue();
-                }
-                ChargeBreakdownItemDTO dto = ChargeBreakdownItemDTO.builder()
-                        .label(item.getLibelle())
-                        .percentage(percentage)
-                        .amount(item.getMontant())
-                        .build();
-                chargeBreakdown.add(dto);
+            // Taux de règlement : appels soldés / appels émis cette année (NO_AMOUNT_DUE exclu des
+            // deux côtés — voir countCallsByCoOwnerAndResidenceAndYear). totalCallsCount grandit à
+            // chaque nouvel appel généré (T1 puis T2...), ce taux n'est jamais une projection annuelle.
+            Object[] callsRow = chargeCallItemRepository
+                    .countCallsByCoOwnerAndResidenceAndYear(coOwnerId, residenceId, currentYear).get(0);
+            long total = ((Number) callsRow[0]).longValue();
+            long paid = callsRow[1] != null ? ((Number) callsRow[1]).longValue() : 0L;
+            totalCallsCount = (int) total;
+            paidCallsCount = (int) paid;
+            if (total > 0) {
+                settlementRate = (int) Math.round(paid * 100.0 / total);
             }
         }
 
@@ -1248,13 +1252,15 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         }
 
         return CoOwnerFinancesDTO.builder()
-                .annualCharges(annualCharges)
-                .monthlyCharges(monthlyCharges)
-                .currentBalance(currentBalance)
-                .paymentsMade(paymentsMade)
-                .paymentsPercentage(paymentsPercentage)
-                .remainingToBill(remainingToBill)
-                .chargeBreakdown(chargeBreakdown)
+                .year(currentYear)
+                .budgetExists(budgetExists)
+                .monthlyChargeAmount(monthlyChargeAmount)
+                .quarterlyChargeAmount(quarterlyChargeAmount)
+                .remainingAmount(remainingAmount)
+                .remainingPenaltyAmount(remainingPenaltyAmount)
+                .settlementRate(settlementRate)
+                .paidCallsCount(paidCallsCount)
+                .totalCallsCount(totalCallsCount)
                 .monthlyPayments(monthlyPayments)
                 .chargeCalls(chargeCalls)
                 .build();

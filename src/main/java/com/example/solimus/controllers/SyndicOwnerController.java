@@ -7,6 +7,7 @@ import com.example.solimus.dtos.owner.CoOwnerResidenceDTO;
 import com.example.solimus.dtos.syndic.owner.*;
 import com.example.solimus.dtos.syndic.residence.ActivityLogItemDTO;
 import com.example.solimus.enums.Nationality;
+import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.Title;
 import com.example.solimus.services.syndic.owner.SyndicOwnerService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -207,7 +208,9 @@ public class SyndicOwnerController {
         return ResponseEntity.ok(syndicOwnerService.getCoOwnerFinances(coOwnerId, residenceId));
     }
 
-    @Operation(summary = "Historique des paiements d'un copropriétaire (onglet Paiements du détail)", tags = {"Syndic - Copropriétaires"})
+    @Operation(summary = "Historique des paiements d'un copropriétaire (onglet Paiements du détail)",
+            description = "Historique complet, toutes résidences et toutes années confondues par défaut — residenceId/year optionnels pour filtrer",
+            tags = {"Syndic - Copropriétaires"})
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Historique renvoyé avec succès",
                     content = @Content(schema = @Schema(implementation = CoOwnerPaymentItemDTO.class))),
@@ -219,10 +222,14 @@ public class SyndicOwnerController {
     @GetMapping("/co-owners/{coOwnerId}/payments")
     public ResponseEntity<Page<CoOwnerPaymentItemDTO>> getCoOwnerPayments(
             @PathVariable Long coOwnerId,
-            @RequestParam(required = false) String status,
+            @RequestParam(required = false) PaymentStatus status,
+            @Parameter(description = "Filtre optionnel sur une résidence précise — utile si le copropriétaire a des lots dans plusieurs résidences")
+            @RequestParam(required = false) Long residenceId,
+            @Parameter(description = "Filtre optionnel par année — absent = historique complet, toutes années", example = "2026")
+            @RequestParam(required = false) Integer year,
             @RequestParam(defaultValue = "0") Integer page,
             @RequestParam(defaultValue = "10") Integer size) {
-        return ResponseEntity.ok(syndicOwnerService.getCoOwnerPayments(coOwnerId, status, page, size));
+        return ResponseEntity.ok(syndicOwnerService.getCoOwnerPayments(coOwnerId, status, residenceId, year, page, size));
     }
 
     @Operation(summary = "Assemblées Générales d'un copropriétaire (onglet AG du détail)", tags = {"Syndic - Copropriétaires"})
