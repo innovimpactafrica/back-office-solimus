@@ -66,7 +66,7 @@ public class SwaggerConfig {
     public org.springdoc.core.customizers.OpenApiCustomizer forceHttpsCustomizer() {
         return openApi -> openApi.setServers(List.of(
                 // En production, on force l'URL absolue en HTTPS pour éviter les erreurs de sécurité
-                new Server().url("https://solimus.innovimpactdev.cloud").description("Serveur de Production (HTTPS)"),
+                new Server().url("https://api.solimus.sn").description("Serveur de Production (HTTPS)"),
                 // En local ou test, on utilise l'URL relative "/" pour s'adapter automatiquement au port utilisé
                 new Server().url("/").description("Serveur Relatif (Local/Auto)")
         ));
