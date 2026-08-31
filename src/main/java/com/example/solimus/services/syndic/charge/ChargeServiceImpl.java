@@ -3188,16 +3188,10 @@ public class ChargeServiceImpl implements ChargeService {
             tantiemeByOwnerId.put(entry.getKey().getId(), totalTantieme);
         }
 
-        // Quote-part par période de chaque copropriétaire : jamais une division indépendante de
-        // la quote-part annuelle par owner (qui pourrait diverger du vrai total de la période) —
-        // toujours une vraie redistribution du montant de la période via la méthode du plus grand
-        // reste, exactement comme le ferait previewChargeCallByResidence/generateChargeCall.
-        // Vide en mode CUSTOM : pas de quote-part théorique par période dans ce mode.
-        Map<Long, BigDecimal> quotePartPeriodeByOwnerId = new HashMap<>();
-        if (budget.getRepartitionMode() == RepartitionMode.OWNERSHIP_SHARES && !tantiemeByOwnerId.isEmpty()) {
-            BigDecimal periodTotal = budget.getBudgetTotal()
-                    .divide(BigDecimal.valueOf(diviseurPeriode), 2, RoundingMode.HALF_UP);
-            quotePartPeriodeByOwnerId = ChargeAllocationUtil.distributeByLargestRemainder(periodTotal, tantiemeByOwnerId);
+        // Liste "Total" par période, remplie au fil de la boucle ÉTAPE 4.5 ci-dessous
+        List<BigDecimal> totalQuotePartParPeriode = new ArrayList<>();
+        for (int i = 0; i < diviseurPeriode; i++) {
+            totalQuotePartParPeriode.add(BigDecimal.ZERO);
         }
 
         // ------------------------------------------------------------
@@ -3229,11 +3223,23 @@ public class ChargeServiceImpl implements ChargeService {
                     .orElse(BigDecimal.ZERO);
 
             // --------------------------------------------------------
-            // Lire le montant à payer par période
+            // Calculer le montant à payer pour CHAQUE période
             // --------------------------------------------------------
 
-            // Déjà calculé plus haut pour tous les copropriétaires d'un seul coup (voir ÉTAPE 4.4)
-            BigDecimal quotePartPeriode = quotePartPeriodeByOwnerId.getOrDefault(owner.getId(), BigDecimal.ZERO);
+            // Jamais une division indépendante de la quote-part annuelle par owner, ni un montant de
+            // période identique répété sur toutes les colonnes — chaque période est dérivée de la
+            // quote-part ANNUELLE déjà figée (quotePartAnnuelle ci-dessus), répartie sur les périodes
+            // via la méthode du plus grand reste, exactement comme generateChargeCall/
+            // previewChargeCallByResidence. Les périodes peuvent légitimement différer d'1 FCFA entre
+            // elles (ex: 4/4/4/3), c'est le prix pour que la somme des périodes retombe exactement sur
+            // quotePartAnnuelle. Vide en mode CUSTOM (quotePartAnnuelle = 0, toutes les périodes à 0).
+            List<BigDecimal> quotePartParPeriode = new ArrayList<>();
+            for (int period = 1; period <= diviseurPeriode; period++) {
+                BigDecimal montantPeriode = splitAnnualAmountForPeriod(quotePartAnnuelle, diviseurPeriode, period);
+                quotePartParPeriode.add(montantPeriode);
+                totalQuotePartParPeriode.set(period - 1, totalQuotePartParPeriode.get(period - 1).add(montantPeriode));
+            }
+            BigDecimal quotePartPeriode = quotePartParPeriode.get(0);
 
 
             // --------------------------------------------------------
@@ -3278,8 +3284,11 @@ public class ChargeServiceImpl implements ChargeService {
                             .quotePartAnnuelle(quotePartAnnuelle)
 
                             // Montant à payer selon la fréquence
-                            // (mensuelle ou trimestrielle).
+                            // (mensuelle ou trimestrielle) — période 1 uniquement, gardé pour compat.
                             .quotePartPeriode(quotePartPeriode)
+
+                            // Vraie valeur de chaque période (peut différer d'1 FCFA d'une période à l'autre)
+                            .quotePartParPeriode(quotePartParPeriode)
 
                             .build());
 
@@ -3333,6 +3342,7 @@ public class ChargeServiceImpl implements ChargeService {
                 // Totaux généraux
                 .totalTantieme(totalTantiemeGlobal)
                 .totalQuotePartPeriode(totalQuotePartPeriode)
+                .totalQuotePartParPeriode(totalQuotePartParPeriode)
 
                 .build();
 

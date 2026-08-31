@@ -22,5 +22,10 @@ public class CoOwnerQuotePartDTO {
     private List<String> typeBienNames;
     private BigDecimal totalTantieme;
     private BigDecimal quotePartAnnuelle;
-    private BigDecimal quotePartPeriode;
+    private BigDecimal quotePartPeriode; // = quotePartParPeriode.get(0), gardé pour compat ascendante
+
+    // Vraie valeur de CHAQUE période (index 0 = période 1, etc.) — dérivée de quotePartAnnuelle,
+    // jamais un quotePartPeriode répété identique sur toutes les colonnes (les périodes peuvent
+    // légitimement différer d'1 FCFA entre elles, cf. ChargeAllocationUtil.distributeByLargestRemainder)
+    private List<BigDecimal> quotePartParPeriode;
 }

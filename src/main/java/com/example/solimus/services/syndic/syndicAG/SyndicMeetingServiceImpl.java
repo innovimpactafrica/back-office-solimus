@@ -453,6 +453,7 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
                 .convoquesCount(convoquesCount)
                 .presentCount(presentCount)
                 .procurationsCount(procurationsCount)
+                .participatingCount(presentCount + procurationsCount)
                 .participationRate(participationRate)
                 .quorumStatus(calculateQuorumStatus(participationRate, meeting.getQuorumObjectivePercentage()))
                 .quorumObjectivePercentage(meeting.getQuorumObjectivePercentage())

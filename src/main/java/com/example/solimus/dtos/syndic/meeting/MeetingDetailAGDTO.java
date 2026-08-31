@@ -30,6 +30,9 @@ public class MeetingDetailAGDTO {
     private long convoquesCount;           // total participants convoqués
     private long presentCount;             // nombre présents physiquement (PRESENT)
     private long procurationsCount;        // nombre de procurations données (PROXY)
+    private long participatingCount;       // = presentCount + procurationsCount — numérateur à utiliser
+                                            // pour la tuile "Participation" (X/convoquesCount), cohérent
+                                            // avec participationRate qui compte déjà les deux
     private double participationRate;     // % tantième présent + procuration (réutilise pour Quorum)
     private QuorumStatus quorumStatus;                  // REACHED / NOT_REACHED, vs quorumObjectivePercentage
     private BigDecimal quorumObjectivePercentage;       // objectif fixé par le syndic à la création
