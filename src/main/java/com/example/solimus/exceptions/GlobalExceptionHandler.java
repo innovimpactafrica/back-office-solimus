@@ -2,6 +2,7 @@ package com.example.solimus.exceptions;
 
 import com.example.solimus.dtos.auth.ErrorResponseDTO;
 import com.example.solimus.dtos.syndic.owner.CoOwnerConflictResponseDTO;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -137,6 +138,24 @@ public class GlobalExceptionHandler {
         );
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
     }
+
+    // Validation sur des @RequestParam/@PathVariable individuels (nécessite @Validated sur le
+    // contrôleur) — distinct de MethodArgumentNotValidException, qui ne couvre que @Valid @RequestBody
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponseDTO> handleConstraintViolation(ConstraintViolationException ex) {
+        List<String> details = ex.getConstraintViolations().stream()
+                .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                .toList();
+
+        ErrorResponseDTO error = new ErrorResponseDTO(
+                "Erreurs de validation",
+                details,
+                LocalDateTime.now(),
+                HttpStatus.BAD_REQUEST.value()
+        );
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
     @ExceptionHandler(CoOwnerAlreadyExistsException.class)
     public ResponseEntity<CoOwnerConflictResponseDTO> handleCoOwnerAlreadyExists(CoOwnerAlreadyExistsException ex) {
         CoOwnerConflictResponseDTO error = new CoOwnerConflictResponseDTO(

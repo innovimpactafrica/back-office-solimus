@@ -473,7 +473,10 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             }
             property.setReference(dto.getReference());
         }
-        if (dto.getBloc() != null) {
+        // Une chaîne vide/blanche est traitée comme "champ non renseigné" (comme null), pas comme
+        // une demande explicite de vider le bloc — évite qu'un front qui envoie "" par défaut sur
+        // un champ non touché n'écrase silencieusement une valeur déjà enregistrée
+        if (dto.getBloc() != null && !dto.getBloc().isBlank()) {
             property.setBloc(dto.getBloc());
         }
         if (dto.getFloor() != null) {
