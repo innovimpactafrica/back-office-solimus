@@ -154,10 +154,17 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         int propertiesCount = dto.getProperties() != null ? dto.getProperties().size() : 0;
         planLimitGuard.assertCanAddApartments(currentSyndic, propertiesCount);
 
-        // Additionne la superficie de tous les lots demandés
+        // Additionne la superficie de tous les lots demandés — cette méthode reçoit propertiesJson
+        // parsé manuellement (multipart), donc @Valid/@NotNull/@Positive de AddPropertyDTO ne sont
+        // JAMAIS déclenchés ici contrairement à POST /residences/{id}/properties : on revalide donc
+        // explicitement chaque lot, sinon un lot avec area=null (NPE plus bas) ou area=0/négatif passe
         BigDecimal totalPropertiesArea = BigDecimal.ZERO;
         if (dto.getProperties() != null) {
             for (AddPropertyDTO propertyDto : dto.getProperties()) {
+                if (propertyDto.getArea() == null || propertyDto.getArea().compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new BadRequestException(
+                            "La superficie du lot '" + propertyDto.getReference() + "' doit être supérieure à 0");
+                }
                 totalPropertiesArea = totalPropertiesArea.add(propertyDto.getArea());
             }
         }
@@ -477,6 +484,11 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         String areaWarning = null;
 
         if (dto.getArea() != null) {
+            // UpdatePropertyDTO.area n'a pas de contrainte @Positive (champ optionnel de mise à jour
+            // partielle, @NotNull/@Positive s'appliqueraient même quand le champ est absent) — vérifié ici
+            if (dto.getArea().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BadRequestException("La superficie doit être supérieure à 0");
+            }
             // Récupère la superficie actuelle de tous les lots de la résidence (inclut l'ancienne superficie de ce lot)
             BigDecimal currentSum = propertyRepository.sumAreaByResidenceId(residenceId);
             // Ancienne superficie de ce lot avant modification (0 si jamais renseignée)

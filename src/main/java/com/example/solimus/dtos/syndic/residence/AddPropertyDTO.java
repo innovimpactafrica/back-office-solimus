@@ -2,6 +2,7 @@ package com.example.solimus.dtos.syndic.residence;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -68,6 +69,7 @@ public class AddPropertyDTO {
      * Superficie en m².
      */
     @NotNull(message = "La superficie est obligatoire")
+    @Positive(message = "La superficie doit être supérieure à 0")
     private BigDecimal area;
 
 
