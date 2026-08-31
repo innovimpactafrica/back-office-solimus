@@ -810,11 +810,7 @@ public class ChargeServiceImpl implements ChargeService {
         LocalDate sentDate = existingChargeCall.map(ChargeCall::getSentDate).orElse(null);
         LocalDate dueDate = existingChargeCall.map(ChargeCall::getDueDate).orElse(null);
 
-        // 6. Calculer le montant total de la période
-        BigDecimal totalAmount = budget.getBudgetTotal()
-                .divide(BigDecimal.valueOf(numberOfPeriods), 2, RoundingMode.HALF_UP);
-
-        // 7. Construire la répartition par copropriétaire (calcul automatique selon tantièmes)
+        // 6. Construire la répartition par copropriétaire (calcul automatique selon tantièmes)
         List<Property> properties = propertyRepository.findByResidenceId(residenceId);
 
         // Fusionne les lots par copropriétaire (un copropriétaire avec plusieurs lots = un seul tantième cumulé)
@@ -830,9 +826,20 @@ public class ChargeServiceImpl implements ChargeService {
                     BigDecimal::add);
         }
 
-        // Répartit le montant total entre tous les copropriétaires (méthode du plus grand reste —
-        // même logique que la génération réelle, pour que l'aperçu corresponde exactement)
-        Map<Long, BigDecimal> quotePartByOwnerId = ChargeAllocationUtil.distributeByLargestRemainder(totalAmount, tantiemeByOwnerId);
+        // Montant de CETTE période pour chaque copropriétaire : même logique que generateChargeCall —
+        // dérivé de sa quote-part ANNUELLE déjà figée (BudgetCoOwnerAllocation), répartie sur les
+        // périodes, jamais recalculée depuis budgetTotal/numberOfPeriods (cf. ce même correctif dans
+        // generateChargeCall). Indispensable ici : periodNumber est précis, cet aperçu doit annoncer
+        // exactement ce que "Générer & Envoyer" va produire, pas une simple estimation.
+        Map<Long, BigDecimal> quotePartByOwnerId = new LinkedHashMap<>();
+        for (Long ownerId : tantiemeByOwnerId.keySet()) {
+            BigDecimal annualQuotePart = budgetCoOwnerAllocationRepository
+                    .findByBudgetIdAndCoOwnerId(budget.getId(), ownerId)
+                    .map(BudgetCoOwnerAllocation::getAnnualQuotePart)
+                    .orElse(BigDecimal.ZERO);
+            quotePartByOwnerId.put(ownerId,
+                    splitAnnualAmountForPeriod(annualQuotePart, numberOfPeriods, periodNumber));
+        }
 
         List<CoOwnerQuotePartPreviewDTO> repartition = new ArrayList<>();
         BigDecimal totalTantieme = BigDecimal.ZERO;
@@ -852,13 +859,18 @@ public class ChargeServiceImpl implements ChargeService {
             totalTantieme = totalTantieme.add(tantiemeCoOwner);
         }
 
+        // totalAmount reflète désormais la vraie somme des quote-parts de cette période précise
+        // (peut différer de budgetTotal/numberOfPeriods, ex: 7 au lieu de 6 pour T1) — même correctif
+        // que sur chargeCall.totalAmount dans generateChargeCall, pour rester cohérent avec lui
+        BigDecimal realPeriodTotal = quotePartByOwnerId.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+
         return ChargeCallPreviewDTO.builder()
                 .budgetId(budget.getId())
                 .budgetReference("BUD-" + budget.getAnnee())
                 .residenceName(budget.getResidence().getName())
                 .year(budget.getAnnee())
                 .periodNumber(periodNumber)
-                .totalAmount(totalAmount)
+                .totalAmount(realPeriodTotal)
                 .sentDate(sentDate)
                 .dueDate(dueDate)
                 .repartition(repartition)
@@ -1097,10 +1109,25 @@ public class ChargeServiceImpl implements ChargeService {
                         BigDecimal::add);
             }
 
-            // Répartit le montant total entre tous les copropriétaires (méthode du plus grand reste —
-            // garantit que la somme des quote-parts est exactement égale au montant total, sans qu'un
-            // petit tantième ne disparaisse à 0 FCFA par simple arrondi)
-            Map<Long, BigDecimal> quotePartByOwnerId = ChargeAllocationUtil.distributeByLargestRemainder(totalAmount, tantiemeByOwnerId);
+            // Montant de CETTE période pour chaque copropriétaire : dérivé de sa quote-part ANNUELLE
+            // déjà figée à la création du budget (BudgetCoOwnerAllocation), jamais recalculé depuis
+            // le budget total à chaque génération de période. Sinon, comme distributeByLargestRemainder
+            // est déterministe (mêmes tantièmes, même montant de période à chaque fois), les mêmes
+            // copropriétaires gagnent/perdent systématiquement le même FCFA d'arrondi à CHAQUE période,
+            // et la somme réellement facturée sur l'année diverge de la quote-part annuelle et du
+            // budget total (ex: budget 23 FCFA, 4 trimestres → 24 FCFA collectés sur l'année, toujours
+            // les mêmes copropriétaires en trop/en moins). Répartir l'annuel déjà figé sur les périodes
+            // (même méthode plus grand reste, donc toujours en FCFA entiers, compatible Wave/InTouch)
+            // garantit que la somme des périodes d'un copropriétaire retombe exactement sur son annuel.
+            Map<Long, BigDecimal> quotePartByOwnerId = new LinkedHashMap<>();
+            for (Long ownerId : tantiemeByOwnerId.keySet()) {
+                BigDecimal annualQuotePart = budgetCoOwnerAllocationRepository
+                        .findByBudgetIdAndCoOwnerId(budget.getId(), ownerId)
+                        .map(BudgetCoOwnerAllocation::getAnnualQuotePart)
+                        .orElse(BigDecimal.ZERO);
+                quotePartByOwnerId.put(ownerId,
+                        splitAnnualAmountForPeriod(annualQuotePart, numberOfPeriods, dto.getPeriodNumber()));
+            }
 
             for (Long ownerId : tantiemeByOwnerId.keySet()) {
                 String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-" + budget.getId() + "-" + ownerId;
@@ -1123,6 +1150,16 @@ public class ChargeServiceImpl implements ChargeService {
 
                 items.add(item);
             }
+
+            // chargeCall.totalAmount avait été posé plus haut à budgetTotal/numberOfPeriods (utile tel
+            // quel pour le mode CUSTOM, où le syndic doit saisir exactement ce montant) — mais depuis
+            // que quotePartByOwnerId dérive de la quote-part annuelle figée (pas du budget/période), la
+            // somme réelle des lignes de CETTE période peut légèrement différer d'une période à l'autre
+            // (ex: 7/7/5/4 au lieu de 6 partout). On recale donc totalAmount sur la vraie somme des
+            // items, sinon le taux de collection ("payé / totalAmount") serait calculé sur un chiffre
+            // qui ne correspond plus à ce qui est réellement dû ce trimestre.
+            BigDecimal realPeriodTotal = quotePartByOwnerId.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+            chargeCall.setTotalAmount(realPeriodTotal);
         }
 
         chargeCall.setItems(items);
@@ -1163,6 +1200,20 @@ public class ChargeServiceImpl implements ChargeService {
                 System.err.println("Erreur envoi notification à " + item.getCoOwner().getId() + ": " + e.getMessage());
             }
         }
+    }
+
+    // Répartit un montant annuel déjà figé (quote-part d'UN copropriétaire) sur numberOfPeriods
+    // périodes de poids égal (même méthode du plus grand reste que la répartition entre
+    // copropriétaires), et renvoie la part de la période demandée. Garantit un résultat en FCFA
+    // entiers (compatible Wave/InTouch) et une somme exacte sur l'ensemble des périodes de l'année.
+    private BigDecimal splitAnnualAmountForPeriod(BigDecimal annualAmount, int numberOfPeriods, int periodNumber) {
+        Map<Long, BigDecimal> equalWeightByPeriod = new LinkedHashMap<>();
+        for (long p = 1; p <= numberOfPeriods; p++) {
+            equalWeightByPeriod.put(p, BigDecimal.ONE);
+        }
+        Map<Long, BigDecimal> amountByPeriod =
+                ChargeAllocationUtil.distributeByLargestRemainder(annualAmount, equalWeightByPeriod);
+        return amountByPeriod.getOrDefault((long) periodNumber, BigDecimal.ZERO);
     }
 
     // ============================================================
