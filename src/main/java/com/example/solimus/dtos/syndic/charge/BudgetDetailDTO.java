@@ -31,8 +31,6 @@ public class BudgetDetailDTO {
     private String periodeLabel;
 
     private BigDecimal totalTantieme;        // Doit toujours faire 100
-    private BigDecimal totalQuotePartPeriode; // = totalQuotePartParPeriode.get(0), gardé pour compat ascendante
-
     // Ligne "Total" pour CHAQUE période (même ordre/index que CoOwnerQuotePartDTO.quotePartParPeriode)
     private List<BigDecimal> totalQuotePartParPeriode;
 }

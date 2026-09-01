@@ -174,7 +174,10 @@ public class ChargeServiceImpl implements ChargeService {
 
         List<CoOwnerQuotePartDTO> repartition = new ArrayList<>();
         BigDecimal totalTantiemeGlobal = BigDecimal.ZERO;
-        BigDecimal totalQuotePartPeriode = BigDecimal.ZERO;
+        List<BigDecimal> totalQuotePartParPeriode = new ArrayList<>();
+        for (int i = 0; i < numberOfPeriods; i++) {
+            totalQuotePartParPeriode.add(BigDecimal.ZERO);
+        }
 
         // Rien à répartir en mode CUSTOM (pas de quote-part théorique), sans copropriétaire, ou
         // tant qu'aucun poste n'a encore été saisi
@@ -183,20 +186,24 @@ public class ChargeServiceImpl implements ChargeService {
                 && budgetTotal.compareTo(BigDecimal.ZERO) > 0;
 
         if (peutRepartir) {
-            // Même méthode que la génération réelle : plus grand reste, une fois pour l'année
-            // complète, une fois pour le montant de la période — jamais un calcul indépendant
+            // Même méthode que la génération réelle : plus grand reste pour l'année complète, puis
+            // chaque période dérivée de CETTE quote-part annuelle (jamais un calcul indépendant sur
+            // budgetTotal/numberOfPeriods) — cohérent avec generateChargeCall/buildBudgetDetailDTO/
+            // getBudgetRepartition, pour que ce preview annonce exactement ce que la création produira
             Map<Long, BigDecimal> quotePartAnnuelleByOwnerId =
                     ChargeAllocationUtil.distributeByLargestRemainder(budgetTotal, tantiemeByOwnerId);
-
-            BigDecimal periodTotal = budgetTotal.divide(BigDecimal.valueOf(numberOfPeriods), 2, RoundingMode.HALF_UP);
-            Map<Long, BigDecimal> quotePartPeriodeByOwnerId =
-                    ChargeAllocationUtil.distributeByLargestRemainder(periodTotal, tantiemeByOwnerId);
 
             for (Long ownerId : tantiemeByOwnerId.keySet()) {
                 User owner = ownerById.get(ownerId);
                 BigDecimal tantieme = tantiemeByOwnerId.get(ownerId);
                 BigDecimal quotePartAnnuelle = quotePartAnnuelleByOwnerId.get(ownerId);
-                BigDecimal quotePartPeriode = quotePartPeriodeByOwnerId.get(ownerId);
+
+                List<BigDecimal> quotePartParPeriode = new ArrayList<>();
+                for (int period = 1; period <= numberOfPeriods; period++) {
+                    BigDecimal montantPeriode = splitAnnualAmountForPeriod(quotePartAnnuelle, numberOfPeriods, period);
+                    quotePartParPeriode.add(montantPeriode);
+                    totalQuotePartParPeriode.set(period - 1, totalQuotePartParPeriode.get(period - 1).add(montantPeriode));
+                }
 
                 List<String> typeBienNames = propertiesByOwnerId.get(ownerId).stream()
                         .map(property -> property.getTypeBien() != null ? property.getTypeBien().getName() : null)
@@ -208,11 +215,10 @@ public class ChargeServiceImpl implements ChargeService {
                         .typeBienNames(typeBienNames)
                         .totalTantieme(tantieme)
                         .quotePartAnnuelle(quotePartAnnuelle)
-                        .quotePartPeriode(quotePartPeriode)
+                        .quotePartParPeriode(quotePartParPeriode)
                         .build());
 
                 totalTantiemeGlobal = totalTantiemeGlobal.add(tantieme);
-                totalQuotePartPeriode = totalQuotePartPeriode.add(quotePartPeriode);
             }
         }
 
@@ -220,7 +226,7 @@ public class ChargeServiceImpl implements ChargeService {
                 .budgetTotal(budgetTotal)
                 .periodeLabel(periodeLabel)
                 .totalTantieme(totalTantiemeGlobal)
-                .totalQuotePartPeriode(totalQuotePartPeriode)
+                .totalQuotePartParPeriode(totalQuotePartParPeriode)
                 .repartition(repartition)
                 .build();
     }
@@ -518,8 +524,12 @@ public class ChargeServiceImpl implements ChargeService {
             tantiemeByOwnerId.put(entry.getKey(), totalTantieme);
         }
 
-        // Répartit le budget total entre tous les copropriétaires (méthode du plus grand reste)
-        Map<Long, BigDecimal> quotePartByOwnerId = ChargeAllocationUtil.distributeByLargestRemainder(budget.getBudgetTotal(), tantiemeByOwnerId);
+        // Nombre de périodes selon la fréquence de charges du syndic — nécessaire pour répartir
+        // quotePart (l'annuelle) sur les périodes ci-dessous
+        ChargeFrequency frequency = syndicFinancialSettingsRepository.findBySyndicId(currentSyndic.getId())
+                .map(SyndicFinancialSettings::getChargeFrequency)
+                .orElse(ChargeFrequency.TRIMESTRIEL);
+        int diviseurPeriode = (frequency == ChargeFrequency.MENSUEL) ? 12 : 4;
 
         // Construit une ligne de répartition par copropriétaire
         List<BudgetRepartitionItemDTO> repartition = new ArrayList<>();
@@ -535,21 +545,37 @@ public class ChargeServiceImpl implements ChargeService {
                     .reduce((a, b) -> a + ", " + b)
                     .orElse("");
 
+            // Quote-part annuelle : lue depuis l'allocation déjà figée à la création du budget (jamais
+            // recalculée ici) — même source que buildBudgetDetailDTO, pour que les deux endpoints ne
+            // puissent jamais diverger si les tantièmes changent après coup (lot ajouté/modifié)
+            BigDecimal quotePartAnnuelle = budgetCoOwnerAllocationRepository
+                    .findByBudgetIdAndCoOwnerId(budget.getId(), ownerId)
+                    .map(BudgetCoOwnerAllocation::getAnnualQuotePart)
+                    .orElse(BigDecimal.ZERO);
+
+            // Vraie valeur de chaque période, dérivée de l'annuelle — jamais budgetTotal/diviseurPeriode
+            // recalculé indépendamment (même correctif que buildBudgetDetailDTO/generateChargeCall)
+            List<BigDecimal> quotePartParPeriode = new ArrayList<>();
+            for (int period = 1; period <= diviseurPeriode; period++) {
+                quotePartParPeriode.add(splitAnnualAmountForPeriod(quotePartAnnuelle, diviseurPeriode, period));
+            }
+
             BudgetRepartitionItemDTO dto = new BudgetRepartitionItemDTO();
             dto.setCoOwnerName(owner.getFirstName() + " " + owner.getLastName());
             dto.setProperties(propertiesLabel);
             dto.setTantieme(tantiemeByOwnerId.get(ownerId));
-            dto.setQuotePart(quotePartByOwnerId.get(ownerId));
+            dto.setQuotePart(quotePartAnnuelle);
+            dto.setQuotePartParPeriode(quotePartParPeriode);
 
             repartition.add(dto);
         }
 
-        // Pagination manuelle VOLONTAIRE, pas un raccourci à corriger : ChargeAllocationUtil.distributeByLargestRemainder
-        // (méthode du plus grand reste) doit connaître TOUS les copropriétaires de la résidence en même
-        // temps pour répartir correctement les FCFA arrondis restants. Paginer en base (LIMIT/OFFSET)
-        // ferait tourner l'algorithme sur un sous-ensemble à chaque page → quotePart faux et différent
-        // selon la page. Le dataset reste borné (copropriétaires d'UNE résidence), donc pas de vrai
-        // risque de perf.
+        // Pagination manuelle VOLONTAIRE, pas un raccourci à corriger : quotePartParPeriode est calculé
+        // par splitAnnualAmountForPeriod (méthode du plus grand reste) sur les PÉRIODES d'un même
+        // copropriétaire, indépendamment des autres lignes — paginer en base ne fausserait donc plus ce
+        // calcul-là comme avant. Gardé en LIMIT/OFFSET manuel simplement parce que le dataset reste
+        // borné (copropriétaires d'UNE résidence), pas de vrai risque de perf, et pour rester cohérent
+        // avec le reste du fichier.
         int totalElements = repartition.size();
         int fromIndex = Math.min(page * size, totalElements);
         int toIndex = Math.min(fromIndex + size, totalElements);
@@ -3176,8 +3202,6 @@ public class ChargeServiceImpl implements ChargeService {
 
         BigDecimal totalTantiemeGlobal = BigDecimal.ZERO;
 
-        BigDecimal totalQuotePartPeriode = BigDecimal.ZERO;
-
         // Tantième cumulé de chaque copropriétaire (réutilisé pour le calcul de période ci-dessous
         // ET affiché tel quel dans chaque ligne — jamais recalculé deux fois)
         Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
@@ -3239,8 +3263,6 @@ public class ChargeServiceImpl implements ChargeService {
                 quotePartParPeriode.add(montantPeriode);
                 totalQuotePartParPeriode.set(period - 1, totalQuotePartParPeriode.get(period - 1).add(montantPeriode));
             }
-            BigDecimal quotePartPeriode = quotePartParPeriode.get(0);
-
 
             // --------------------------------------------------------
             // Construire la liste des types de bien appartenant au copropriétaire
@@ -3283,10 +3305,6 @@ public class ChargeServiceImpl implements ChargeService {
                             // Montant annuel à payer.
                             .quotePartAnnuelle(quotePartAnnuelle)
 
-                            // Montant à payer selon la fréquence
-                            // (mensuelle ou trimestrielle) — période 1 uniquement, gardé pour compat.
-                            .quotePartPeriode(quotePartPeriode)
-
                             // Vraie valeur de chaque période (peut différer d'1 FCFA d'une période à l'autre)
                             .quotePartParPeriode(quotePartParPeriode)
 
@@ -3298,9 +3316,6 @@ public class ChargeServiceImpl implements ChargeService {
 
             // Additionner les tantièmes de tous les copropriétaires.
             totalTantiemeGlobal = totalTantiemeGlobal.add(totalTantieme);
-
-            // Additionner toutes les quotes-parts par période.
-            totalQuotePartPeriode = totalQuotePartPeriode.add(quotePartPeriode);
         }
 
         // ------------------------------------------------------------
@@ -3341,13 +3356,11 @@ public class ChargeServiceImpl implements ChargeService {
 
                 // Totaux généraux
                 .totalTantieme(totalTantiemeGlobal)
-                .totalQuotePartPeriode(totalQuotePartPeriode)
                 .totalQuotePartParPeriode(totalQuotePartParPeriode)
 
                 .build();
-
-
     }
+
     // Construit un DTO d'appel de charges lié à un budget
     private BudgetLinkedChargeCallDTO buildBudgetLinkedChargeCallDto(ChargeCall chargeCall) {
 

@@ -28,7 +28,8 @@ public class BudgetRepartitionPreviewDTO {
 
     private BigDecimal totalTantieme;
 
-    private BigDecimal totalQuotePartPeriode;
+    // Ligne "Total" pour CHAQUE période (même ordre/index que CoOwnerQuotePartDTO.quotePartParPeriode)
+    private List<BigDecimal> totalQuotePartParPeriode;
 
     private List<CoOwnerQuotePartDTO> repartition;
 }
