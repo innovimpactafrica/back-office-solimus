@@ -27,4 +27,18 @@ public class NotificationController {
         notificationService.saveFcmToken(fcmToken);
         return ResponseEntity.ok("Token FCM enregistré avec succès");
     }
+
+    // Marque UNE notification précise comme lue — n'importe quel rôle authentifié peut appeler cet
+    // endpoint pour SA PROPRE notification (vérifié côté service, 403 sinon)
+    @Operation(summary = "Marquer une notification comme lue")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Notification marquée comme lue avec succès"),
+            @ApiResponse(responseCode = "403", description = "Cette notification ne vous appartient pas"),
+            @ApiResponse(responseCode = "404", description = "Notification introuvable")
+    })
+    @PatchMapping("/{id}/read")
+    public ResponseEntity<String> markAsRead(@PathVariable Long id) {
+        notificationService.markAsRead(id);
+        return ResponseEntity.ok("Notification marquée comme lue avec succès");
+    }
 }

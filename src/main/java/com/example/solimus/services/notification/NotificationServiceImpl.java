@@ -4,6 +4,7 @@ import com.example.solimus.entities.Notification;
 import com.example.solimus.entities.SyndicProfile;
 import com.example.solimus.entities.User;
 import com.example.solimus.enums.DeviceType;
+import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.NotificationRepository;
 import com.example.solimus.repositories.SyndicProfileRepository;
@@ -218,6 +219,29 @@ public class NotificationServiceImpl implements NotificationService{
     }
 
 
+
+    // =========================================================================
+    // Marque UNE notification précise comme lue (pas toutes — cf. markAllAsReadByUser par rôle)
+    // =========================================================================
+    @Override
+    public void markAsRead(Long notificationId) {
+
+        User currentUser = getCurrentUser();
+
+        Notification notification = notificationRepository.findById(notificationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Notification introuvable"));
+
+        // Vérifie que cette notification appartient bien à l'utilisateur connecté
+        if (!notification.getUser().getId().equals(currentUser.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette notification");
+        }
+
+        // Idempotent : pas d'erreur si déjà lue, on ne fait juste rien de plus
+        if (!Boolean.TRUE.equals(notification.getRead())) {
+            notification.setRead(true);
+            notificationRepository.save(notification);
+        }
+    }
 
     //---------------------------------------------------
     // Méthodes utilitaires

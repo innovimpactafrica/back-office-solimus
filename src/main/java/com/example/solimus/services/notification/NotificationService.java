@@ -35,4 +35,9 @@ public interface NotificationService {
 
     // Envoie un push "Rappel AG" au syndic, si sa préférence est activée
     void sendAgReminderNotification(Long syndicUserId, String title, String body);
+
+    // Marque UNE notification précise comme lue — uniquement si elle appartient à l'utilisateur
+    // connecté. Contrairement à markAllAsReadByUser (déjà dupliqué par rôle), celle-ci est partagée,
+    // n'importe quel rôle authentifié peut marquer sa propre notification comme lue
+    void markAsRead(Long notificationId);
 }
