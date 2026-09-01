@@ -19,6 +19,9 @@ public interface SyndicMeetingService {
     // Publie une réunion en brouillon (DRAFT -> UPCOMING) et génère les participants
     void publishMeeting(Long meetingId);
 
+    // Annule une réunion à venir (UPCOMING -> CANCELLED) et prévient les copropriétaires convoqués
+    void cancelMeeting(Long meetingId);
+
     MeetingParticipantsTabResponseDTO getMeetingParticipants(Long meetingId, int page, int size);
 
     AgendaItemsTabResponseDTO getAgendaItems(Long meetingId);

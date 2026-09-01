@@ -58,4 +58,35 @@ public class MeetingConvocationSenderService {
             }
         }
     }
+
+    // Prévient les copropriétaires convoqués qu'une AG déjà publiée vient d'être annulée — mêmes
+    // canaux que la convocation (email/notification plateforme selon les préférences du syndic pour
+    // cette AG), même isolation par copropriétaire (un échec n'empêche pas les autres envois)
+    public void sendCancellationNotice(Meeting meeting) {
+
+        List<User> owners = propertyRepository.findDistinctOwnersByResidenceId(meeting.getResidence().getId());
+
+        String subject = "Assemblée générale annulée — " + meeting.getTitle();
+        String message = "L'assemblée générale \"" + meeting.getTitle() + "\" prévue le "
+                + meeting.getMeetingDate() + " a été annulée par le syndic.";
+
+        for (User owner : owners) {
+            if (Boolean.TRUE.equals(meeting.getSendByEmail())) {
+                try {
+                    emailService.sendEmail(owner.getEmail(), subject, message);
+                } catch (Exception e) {
+                    log.error("Échec envoi email annulation à {} (userId={}) : {}",
+                            owner.getEmail(), owner.getId(), e.getMessage());
+                }
+            }
+
+            if (Boolean.TRUE.equals(meeting.getSendByPlatformNotification())) {
+                try {
+                    notificationService.sendPush(owner.getId(), subject, message);
+                } catch (Exception e) {
+                    log.error("Échec envoi push annulation, userId={} : {}", owner.getId(), e.getMessage());
+                }
+            }
+        }
+    }
 }

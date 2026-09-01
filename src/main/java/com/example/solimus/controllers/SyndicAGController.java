@@ -180,6 +180,22 @@ public class SyndicAGController {
         return ResponseEntity.ok("Réunion publiée avec succès");
     }
 
+    @PostMapping("/{meetingId}/cancel")
+    @Operation(summary = "Annuler une assemblée générale à venir (UPCOMING -> CANCELLED)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Réunion annulée avec succès"),
+            @ApiResponse(responseCode = "400", description = "Seule une réunion à venir peut être annulée",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à annuler cette réunion",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Réunion introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    public ResponseEntity<String> cancelMeeting(@PathVariable Long meetingId) {
+        syndicMeetingService.cancelMeeting(meetingId);
+        return ResponseEntity.ok("Réunion annulée avec succès");
+    }
+
     @GetMapping("/{meetingId}/participants")
     @Operation(summary = "Liste des participants d'une assemblée générale (Onglet 2)")
     @ApiResponses({

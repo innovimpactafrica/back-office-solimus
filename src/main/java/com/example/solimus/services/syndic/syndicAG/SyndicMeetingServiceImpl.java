@@ -531,6 +531,51 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
     }
 
     // =========================================================================
+    // Annuler une réunion à venir (planifiée -> annulée)
+    // =========================================================================
+    @Override
+    @Transactional
+    public void cancelMeeting(Long meetingId) {
+
+        // Récupère la réunion, erreur si introuvable
+        Meeting meeting = meetingRepository.findById(meetingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Réunion introuvable"));
+
+        // Récupère le syndic actuellement connecté
+        User currentSyndic = getCurrentUser();
+
+        // Vérifie que le syndic connecté est bien celui de cette réunion
+        if (!meeting.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à annuler cette réunion");
+        }
+
+        // On ne peut annuler qu'une réunion à venir (pas un brouillon — utiliser deleteMeeting —
+        // ni une réunion déjà en cours, terminée ou déjà annulée)
+        if (meeting.getStatus() != MeetingStatus.UPCOMING) {
+            throw new BadRequestException("Seule une réunion à venir peut être annulée");
+        }
+
+        // Passe la réunion en statut "annulée"
+        meeting.setStatus(MeetingStatus.CANCELLED);
+        meetingRepository.save(meeting);
+
+        // Prévient les copropriétaires déjà convoqués, sur les mêmes canaux que la convocation
+        convocationSenderService.sendCancellationNotice(meeting);
+
+        // Trace l'événement dans l'historique de la résidence
+        ActivityLog activityLog = ActivityLog.builder()
+                .residence(meeting.getResidence())
+                .type(ActivityType.MEETING_CANCELLED)
+                .relatedEntityType("MEETING")
+                .relatedEntityId(meeting.getId())
+                .actor(currentSyndic)
+                .message("Assemblée générale annulée")
+                .detail(meeting.getTitle())
+                .build();
+        activityLogRepository.save(activityLog);
+    }
+
+    // =========================================================================
     // Liste des participants d'une réunion (onglet Participants de la modale) — la signature de
     // présence par le syndic a été retirée (voir OwnerMeetingServiceImpl.markPresent/giveProcuration) :
     // cette méthode ne fait plus que LIRE l'attendanceType déclaré par chaque copropriétaire

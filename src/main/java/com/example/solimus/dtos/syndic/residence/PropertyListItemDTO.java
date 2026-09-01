@@ -28,6 +28,12 @@ public class PropertyListItemDTO {
     // Étage (0 = RDC, conversion d'affichage côté front)
     private Integer floor;
 
+    // Bloc ou bâtiment (ex: "Bloc A"), null si non renseigné
+    private String bloc;
+
+    // Superficie en m²
+    private BigDecimal area;
+
     // Propriétaire du lot (null si vacant)
     private OwnerInfo owner;
 

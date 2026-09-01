@@ -1092,6 +1092,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                     .reference(property.getReference())
                     .propertyType(property.getTypeBien() != null ? property.getTypeBien().getName() : null)
                     .floor(property.getFloor())
+                    .bloc(property.getBloc())
+                    .area(property.getArea())
                     .owner(property.getOwner() != null
                             ? PropertyListItemDTO.OwnerInfo.builder()
                                     .fullName(property.getOwner().getFirstName() + " " + property.getOwner().getLastName())
