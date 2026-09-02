@@ -432,7 +432,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     // une seule ligne : [totalToPay, pendingCount, nextDueDate]
     @Query(value =
             "SELECT COALESCE(SUM(CASE WHEN remaining_amount > 0 THEN remaining_amount ELSE 0 END), 0) AS total_to_pay, " +
-            "       SUM(CASE WHEN remaining_amount > 0 THEN 1 ELSE 0 END) AS pending_count, " +
+            "       COALESCE(SUM(CASE WHEN remaining_amount > 0 THEN 1 ELSE 0 END), 0) AS pending_count, " +
             "       MIN(CASE WHEN remaining_amount > 0 THEN due_date ELSE NULL END) AS next_due_date " +
             "FROM (" + MY_CHARGES_CHARGE_BRANCH + " UNION ALL " + MY_CHARGES_EXCEPTIONAL_BRANCH + ") AS combined " +
             "WHERE (:search IS NULL OR :search = '' OR LOWER(search_title) LIKE LOWER(CONCAT('%', :search, '%')))",

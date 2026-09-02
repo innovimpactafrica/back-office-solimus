@@ -462,8 +462,10 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
     // [0]=totalToPay [1]=pendingCount [2]=nextDueDate
     private MyChargesSummaryDTO buildSummaryFromRow(Object[] row) {
         return MyChargesSummaryDTO.builder()
-                .totalToPay((BigDecimal) row[0])
-                .pendingCount(((Number) row[1]).intValue())
+                .totalToPay(row[0] != null ? (BigDecimal) row[0] : BigDecimal.ZERO)
+                // COALESCE(..., 0) côté SQL protège déjà le cas "aucune charge du tout" (SUM sur un
+                // ensemble vide renvoie NULL, pas 0) — vérifié ici aussi, en défense supplémentaire
+                .pendingCount(row[1] != null ? ((Number) row[1]).intValue() : 0)
                 .nextDueDate(toLocalDate(row[2]))
                 .build();
     }
