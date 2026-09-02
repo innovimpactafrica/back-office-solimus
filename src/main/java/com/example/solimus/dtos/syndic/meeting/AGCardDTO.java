@@ -34,6 +34,8 @@ public class AGCardDTO {
 
     private long presentCount;           // X : nombre de participants présents physiquement (PRESENT)
     private long procurationsCount;      // nombre de participants ayant donné procuration (PROXY)
+    private long participatingCount;     // = presentCount + procurationsCount — numérateur à utiliser
+                                          // pour la tuile "Participation" (X/totalParticipants)
     private long totalParticipants;      // Y : nombre total de participants convoqués à l'AG
     private double participationRate;   // % de tantième présent + procuration, calculé via tantièmeSnapshot
 
