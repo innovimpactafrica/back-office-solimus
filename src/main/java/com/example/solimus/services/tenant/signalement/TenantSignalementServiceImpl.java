@@ -20,6 +20,7 @@ import com.example.solimus.repositories.CommonFacilityRepository;
 import com.example.solimus.repositories.PropertyRepository;
 import com.example.solimus.repositories.SignalementRepository;
 import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -43,6 +44,7 @@ public class TenantSignalementServiceImpl implements TenantSignalementService {
     private final CommonFacilityRepository commonFacilityRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final EmailService emailService;
 
     // =========================================================================
     // CRÉER UN SIGNALEMENT
@@ -97,13 +99,21 @@ public class TenantSignalementServiceImpl implements TenantSignalementService {
 
         // Notifie le propriétaire (le bien reste le sien, même s'il ne l'occupe pas) uniquement si
         // le signalement est urgent — pour ne pas le solliciter sur des incidents mineurs qui
-        // relèvent normalement de la gestion du syndic
-        if (signalement.getUrgencyLevel() == UrgencyLevel.URGENT && property.getOwner().isNotificationsEnabled()) {
-            notificationService.sendPush(
-                    property.getOwner().getId(),
-                    "Signalement urgent de votre locataire",
-                    currentTenant.getFirstName() + " a signalé un problème urgent : " + signalement.getTitle()
-            );
+        // relèvent normalement de la gestion du syndic. Push (si sa préférence est activée) + email
+        // (systématique dès que c'est urgent).
+        if (signalement.getUrgencyLevel() == UrgencyLevel.URGENT) {
+            String subject = "Signalement urgent de votre locataire";
+            String message = currentTenant.getFirstName() + " a signalé un problème urgent : " + signalement.getTitle();
+
+            if (property.getOwner().isNotificationsEnabled()) {
+                notificationService.sendPush(property.getOwner().getId(), subject, message);
+            }
+            try {
+                emailService.sendEmail(property.getOwner().getEmail(), subject, message);
+            } catch (Exception e) {
+                System.err.println("Erreur envoi email signalement urgent au propriétaire "
+                        + property.getOwner().getEmail() + " : " + e.getMessage());
+            }
         }
 
         // Alerte le syndic si le signalement est urgent (respecte sa préférence "Incidents urgents")

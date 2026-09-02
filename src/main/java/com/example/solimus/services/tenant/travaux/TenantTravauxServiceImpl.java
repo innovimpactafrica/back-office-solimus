@@ -143,10 +143,22 @@ public class TenantTravauxServiceImpl implements TenantTravauxService {
         statusRecalculationService.recalculateResidenceHealthStatus(residence);
 
         // Notifie le propriétaire uniquement si la demande est urgente — même règle que pour les
-        // signalements, pour ne pas le solliciter sur chaque demande mineure de son locataire
-        if (request.getUrgencyLevel() == UrgencyLevel.URGENT && property.getOwner().isNotificationsEnabled()) {
-            notificationService.sendPush(property.getOwner().getId(), "Demande de travaux urgente de votre locataire",
-                    currentTenant.getFirstName() + " a fait une demande urgente : " + request.getTitle());
+        // signalements, pour ne pas le solliciter sur chaque demande mineure de son locataire.
+        // Push (si sa préférence est activée) + email (systématique dès que c'est urgent), comme
+        // pour le syndic ci-dessous.
+        if (request.getUrgencyLevel() == UrgencyLevel.URGENT) {
+            String subject = "Demande de travaux urgente de votre locataire";
+            String message = currentTenant.getFirstName() + " a fait une demande urgente : " + request.getTitle();
+
+            if (property.getOwner().isNotificationsEnabled()) {
+                notificationService.sendPush(property.getOwner().getId(), subject, message);
+            }
+            try {
+                emailService.sendEmail(property.getOwner().getEmail(), subject, message);
+            } catch (Exception e) {
+                System.err.println("Erreur envoi email demande de travaux urgente au propriétaire "
+                        + property.getOwner().getEmail() + " : " + e.getMessage());
+            }
         }
 
         // Notifie le syndic (push urgent + email systématique)

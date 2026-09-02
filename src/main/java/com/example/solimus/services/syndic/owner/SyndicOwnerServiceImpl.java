@@ -267,7 +267,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         // Construire et retourner la réponse
         return CoOwnerMeetingsDTO.builder()
                 .participationRate(participationRate)
-                .votedCount(0) // 0 pour l'instant, sera rempli quand Vote existera
+                .votedCount(presentOrProxyMeetings)
                 .totalMeetingsCount(totalMeetings)
                 .lastMeetingTitle(lastMeetingTitle)
                 .meetingHistory(paginatedHistory)

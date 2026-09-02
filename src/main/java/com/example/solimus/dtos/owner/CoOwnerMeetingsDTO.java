@@ -16,7 +16,7 @@ public class CoOwnerMeetingsDTO {
     // Taux de participation aux AG (pourcentage)
     private Double participationRate;
 
-    // Votes exprimés (0 pour l'instant, sera rempli quand Vote existera)
+    // Nombre d'AG où ce copropriétaire a signé sa présence (présent ou procuration)
     private Integer votedCount;
     private Integer totalMeetingsCount;
 
