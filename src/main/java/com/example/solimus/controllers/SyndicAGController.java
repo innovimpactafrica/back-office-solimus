@@ -196,6 +196,22 @@ public class SyndicAGController {
         return ResponseEntity.ok("Réunion annulée avec succès");
     }
 
+    @PostMapping("/{meetingId}/complete")
+    @Operation(summary = "Marquer une assemblée générale à venir comme terminée (UPCOMING -> COMPLETED)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Réunion marquée comme terminée avec succès"),
+            @ApiResponse(responseCode = "400", description = "Seule une réunion à venir peut être marquée comme terminée",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à clôturer cette réunion",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Réunion introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    public ResponseEntity<String> completeMeeting(@PathVariable Long meetingId) {
+        syndicMeetingService.completeMeeting(meetingId);
+        return ResponseEntity.ok("Réunion marquée comme terminée avec succès");
+    }
+
     @GetMapping("/{meetingId}/participants")
     @Operation(summary = "Liste des participants d'une assemblée générale (Onglet 2)")
     @ApiResponses({

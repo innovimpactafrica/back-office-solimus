@@ -13,6 +13,7 @@ public enum ActivityType {
     MEETING_CREATED,        // branché sur SyndicMeetingServiceImpl.createMeeting()
     MEETING_PUBLISHED,      // branché sur SyndicMeetingServiceImpl.publishMeeting()
     MEETING_CANCELLED,      // branché sur SyndicMeetingServiceImpl.cancelMeeting()
+    MEETING_COMPLETED,      // branché sur SyndicMeetingServiceImpl.completeMeeting()
     MEETING_DELETED,        // branché sur SyndicMeetingServiceImpl.deleteMeeting()
     MEETING_DOCUMENT_ADDED, // branché — service d'ajout de document AG existant
     BUDGET_CREATED,         // branché sur ChargeServiceImpl.createBudget()

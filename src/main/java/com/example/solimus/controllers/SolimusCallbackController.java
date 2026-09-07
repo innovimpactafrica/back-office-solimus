@@ -62,9 +62,7 @@ public class SolimusCallbackController {
     private final StatusRecalculationService statusRecalculationService;
     private final UserRepository userRepository;
 
-    // URL de la page "Paramètres" de l'app web Angular (espace syndic uniquement pour l'instant) —
-    // destination des paiements self-service (SYR-). Les autres références (mobile, ou web admin
-    // type SYN-/SYA- en attendant leur propre URL) continuent de rouvrir l'app via solimus://...
+    // URL de la page "Paramètres" de l'app web Angular
     @Value("${app.syndic-web-app-redirect-url}")
     private String syndicWebAppRedirectUrl;
 
@@ -74,11 +72,11 @@ public class SolimusCallbackController {
 
     // =========================================================================
     // Routes de redirection TouchPay — retour navigateur/WebView.
-    // Confirmation "best-effort" UNIQUEMENT si TouchPay a lui-même mis payment_status=200
+    // Confirmation "best-effort (pas fiable à 100%)" UNIQUEMENT si TouchPay a lui-même mis payment_status=200
     // =========================================================================
 
     @Operation(summary = "Page de retour navigateur/WebView après un paiement réussi côté TouchPay",
-            description = "Toujours 200 (page HTML passive). Ne confirme le paiement en base (best-effort) que si "
+            description = "Toujours 200 . Ne confirme le paiement en base (best-effort) que si "
                     + "payment_status ou errorCode vaut explicitement 200 dans l'URL de retour — la source de vérité "
                     + "reste le webhook POST /callback. Le chemin \"/payment-success\" est volontaire : la WebView "
                     + "mobile intercepte la navigation dès qu'elle reconnaît ce texte dans l'URL, avant même que "
@@ -87,6 +85,11 @@ public class SolimusCallbackController {
             @ApiResponse(responseCode = "200", description = "Page HTML de redirection renvoyée",
                     content = @Content(mediaType = "text/html"))
     })
+    // QUAND : le navigateur/WebView revient sur cette URL après un paiement TouchPay (TouchPay
+    // redirige l'utilisateur ici lui-même, ce n'est jamais nous qui appelons cette méthode).
+    // POURQUOI : confirmation "best-effort" — si TouchPay a mis payment_status/errorCode=200 dans
+    // l'URL de retour, on en profite pour confirmer tout de suite ; SINON on ne fait rien de plus,
+    // la vraie confirmation reste POST /callback ci-dessous.
     @GetMapping(value = "/payment-success", produces = "text/html")
     public String redirectPaymentSuccess(
             @RequestParam("num_command") String reference,
@@ -126,6 +129,9 @@ public class SolimusCallbackController {
             @ApiResponse(responseCode = "200", description = "Page HTML de redirection renvoyée",
                     content = @Content(mediaType = "text/html"))
     })
+    // QUAND : même chose que /payment-success mais côté échec — TouchPay redirige ici lui-même.
+    // POURQUOI : marquer l'échec best-effort si TouchPay le confirme explicitement dans l'URL —
+    // jamais juste parce que l'utilisateur est arrivé sur cette page.
     @GetMapping(value = "/payment-failed", produces = "text/html")
     public String redirectPaymentFailed(
             @RequestParam("num_command") String reference,
@@ -156,7 +162,14 @@ public class SolimusCallbackController {
     }
 
     // =========================================================================
-    // ENDPOINT PRINCIPAL — Appelé automatiquement par InTouch après paiement
+    // ENDPOINT PRINCIPAL
+    // QUAND : appelé automatiquement par le SERVEUR de TouchPay/InTouch (pas par un navigateur),
+    // dès qu'un paiement est réellement confirmé ou définitivement échoué côté opérateur mobile
+    // money. C'est TouchPay qui doit avoir CETTE URL exacte enregistrée dans son portail marchand
+    // (SOLI26685) — rien dans notre code ne la lui envoie.
+    // POURQUOI : c'est la SEULE source de vérité de toute l'application pour confirmer un paiement.
+    // Si cet endpoint n'est jamais appelé (mauvaise URL côté TouchPay), aucun paiement ne peut
+    // jamais être confirmé, quel que soit ce qui se passe côté navigateur/app.
     // =========================================================================
     @Operation(summary = "Webhook serveur-à-serveur InTouch — seule source de vérité pour la confirmation d'un paiement",
             description = "Réponse toujours au format {success, message}. 400 si la référence est manquante, "
@@ -193,9 +206,10 @@ public class SolimusCallbackController {
         return routeCallbackByPrefix(ref, succes);
     }
 
-    // Routing selon le préfixe de la référence — réutilisé par le webhook POST /callback
-    // (source de vérité) et, de façon best-effort, par les redirections GET quand TouchPay
-    // fournit un payment_status confirmé dans l'URL de retour.
+    // QUAND : appelé par les 3 points d'entrée ci-dessus (webhook /callback, redirections
+    // /payment-success et /payment-failed) dès qu'on a un résultat (succès ou échec) à traiter.
+    // POURQUOI : un seul routeur pour dispatcher vers le bon traitement selon le préfixe de la
+    // référence (PAY-, SUB-, SYN-...) — évite de dupliquer la logique de chaque cas 3 fois.
     private ResponseEntity<Map<String, Object>> routeCallbackByPrefix(String ref, boolean succes) {
 
         if (ref.startsWith("PAY-") || ref.startsWith("SOL-")) {
@@ -247,6 +261,10 @@ public class SolimusCallbackController {
 
     // =========================================================================
     // CAS 1 — Paiement intervention owner (PAY- = acompte, SOL- = solde)
+    // QUAND : référence commençant par PAY- ou SOL- — un copropriétaire paie l'acompte ou le
+    // solde d'une demande de travaux.
+    // POURQUOI : créditer le wallet du prestataire (argent externe reçu), mettre à jour les
+    // montants de l'intervention, et clôturer l'intervention si c'est le solde qui vient d'être payé.
     // =========================================================================
     private ResponseEntity<Map<String, Object>> handleOwnerInterventionPaymentCallback(
             String ref, boolean succes) {
@@ -347,6 +365,10 @@ public class SolimusCallbackController {
 
     // =========================================================================
     // CAS 2 — Paiement abonnement Premium (SUB-)
+    // QUAND : référence commençant par SUB- — un prestataire paie lui-même son abonnement
+    // (self-service).
+    // POURQUOI : activer l'abonnement, annuler tout ancien abonnement encore actif de ce
+    // prestataire, notifier les admins (ce paiement est du revenu plateforme).
     // =========================================================================
     private ResponseEntity<Map<String, Object>> handleSubscriptionCallback(String ref, boolean succes) {
 
@@ -423,6 +445,10 @@ public class SolimusCallbackController {
 
     // =========================================================================
     // CAS 2b — Paiement abonnement syndic à la création du compte (SYN-)
+    // QUAND : référence commençant par SYN- — un admin crée un nouveau compte syndic et paie
+    // son premier abonnement pour lui.
+    // POURQUOI : c'est le SEUL moment où le compte syndic devient réellement actif — génère son
+    // mot de passe temporaire, l'active, lui envoie ses identifiants par email, notifie les admins.
     // =========================================================================
     private ResponseEntity<Map<String, Object>> handleSyndicSubscriptionCallback(String ref, boolean succes) {
 
@@ -518,6 +544,10 @@ public class SolimusCallbackController {
 
     // =========================================================================
     // CAS 2c — Changement de formule syndic en self-service (SYR-)
+    // QUAND : référence commençant par SYR- — un syndic déjà actif change lui-même de formule
+    // d'abonnement (upgrade/downgrade).
+    // POURQUOI : activer la nouvelle formule, annuler l'ancienne, confirmer par simple email
+    // (contrairement à SYN-, le syndic est déjà actif — pas de nouveaux identifiants à envoyer).
     // =========================================================================
     private ResponseEntity<Map<String, Object>> handleSyndicPlanChangeCallback(String ref, boolean succes) {
 
@@ -608,6 +638,10 @@ public class SolimusCallbackController {
 
     // =========================================================================
     // CAS 2d — Renouvellement manuel d'un abonnement syndic par l'admin (SYA-)
+    // QUAND : référence commençant par SYA- — un admin renouvelle manuellement l'abonnement
+    // d'un syndic existant (ex: paiement reçu hors plateforme, renouvellement anticipé).
+    // POURQUOI : activer le renouvellement, puis notifier/facturer selon les 2 cases cochées par
+    // l'admin au moment de l'initiation (pas de comportement forcé, contrairement à SYN-/SYR-).
     // =========================================================================
     private ResponseEntity<Map<String, Object>> handleAdminSyndicRenewalCallback(String ref, boolean succes) {
 
@@ -705,6 +739,8 @@ public class SolimusCallbackController {
 
     // =========================================================================
     // CAS 2e — Renouvellement manuel d'un abonnement prestataire par l'admin (PRA-)
+    // QUAND : référence commençant par PRA- — même chose que SYA- mais côté prestataire.
+    // POURQUOI : idem SYA-, adapté au prestataire (push au lieu d'email pour la notification).
     // =========================================================================
     private ResponseEntity<Map<String, Object>> handleAdminProviderRenewalCallback(String ref, boolean succes) {
 
@@ -797,6 +833,10 @@ public class SolimusCallbackController {
 
     // =========================================================================
     // CAS 3 — Paiement charge courante copropriétaire (CPY-)
+    // QUAND : référence commençant par CPY- — un copropriétaire paie une charge courante
+    // (trimestrielle/mensuelle) générée par le syndic. C'est le cas de Daouda Diallo.
+    // POURQUOI : solder la charge (aucun paiement partiel autorisé), créditer le wallet du
+    // syndic, recalculer les statuts (lot, santé résidence), notifier le syndic.
     // =========================================================================
     private ResponseEntity<Map<String, Object>> handleChargePaymentCallback(
             String ref, boolean succes) {
@@ -912,6 +952,9 @@ public class SolimusCallbackController {
 
     // =========================================================================
     // CAS 4 — Paiement charge exceptionnelle copropriétaire (ECP-)
+    // QUAND : référence commençant par ECP- — un copropriétaire paie une charge exceptionnelle
+    // (travaux votés en AG, par exemple).
+    // POURQUOI : identique au CAS 3, adapté aux charges exceptionnelles.
     // =========================================================================
     private ResponseEntity<Map<String, Object>> handleExceptionalChargePaymentCallback(
             String ref, boolean succes) {
@@ -1019,10 +1062,9 @@ public class SolimusCallbackController {
     }
 
     // =========================================================================
-    // Diffuse l'événement admin PAYMENT_RECEIVED — réutilisé par tous les paiements
-    // d'abonnement (SUB-, SYN-, SYR-, SYA-, PRA-), qui seuls constituent du revenu
-    // pour la plateforme (contrairement aux paiements de charges CPY-/ECP-, qui ne
-    // font que transiter vers le wallet du syndic)
+    // QUAND : appelé par les 5 callbacks d'abonnement (SUB-, SYN-, SYR-, SYA-, PRA-) sur succès.
+    // POURQUOI : seuls ces paiements constituent du revenu pour la plateforme (contrairement aux
+    // paiements de charges CPY-/ECP-, qui ne font que transiter vers le wallet du syndic).
     // =========================================================================
     private void notifyAdminsPaymentReceived(String payerLabel, BigDecimal amount) {
         adminNotificationPreferenceService.notifyAdmins(
@@ -1031,9 +1073,8 @@ public class SolimusCallbackController {
                 payerLabel + " a payé " + amount + " FCFA.");
     }
 
-    // Même périmètre que notifyAdminsPaymentReceived (uniquement les paiements d'abonnement,
-    // seuls à constituer du revenu plateforme) — déclenché sur chaque branche "!succes" des mêmes
-    // 5 callbacks (SUB-, SYN-, SYR-, SYA-, PRA-)
+    // QUAND : appelé par les mêmes 5 callbacks d'abonnement, sur la branche "!succes".
+    // POURQUOI : même périmètre que notifyAdminsPaymentReceived (revenu plateforme uniquement).
     private void notifyAdminsPaymentFailed(String payerLabel, BigDecimal amount) {
         adminNotificationPreferenceService.notifyAdmins(
                 AdminNotificationEventType.PAYMENT_FAILED,

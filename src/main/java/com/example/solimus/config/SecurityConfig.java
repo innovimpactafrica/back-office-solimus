@@ -47,7 +47,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/payments/bridge/**", "/api/payments/intouch/**").permitAll()
-                        .requestMatchers("/touchpay-bridge.html", "/payment-success.html", "/payment-failed.html").permitAll()
+                        .requestMatchers("/touchpay-bridge.html").permitAll()
                         .requestMatchers("/api/files/**", "/uploads/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/actuator/**").permitAll()

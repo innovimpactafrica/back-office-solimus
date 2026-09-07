@@ -22,6 +22,9 @@ public interface SyndicMeetingService {
     // Annule une réunion à venir (UPCOMING -> CANCELLED) et prévient les copropriétaires convoqués
     void cancelMeeting(Long meetingId);
 
+    // Marque une réunion à venir comme terminée (UPCOMING -> COMPLETED), une fois qu'elle a eu lieu
+    void completeMeeting(Long meetingId);
+
     MeetingParticipantsTabResponseDTO getMeetingParticipants(Long meetingId, int page, int size);
 
     AgendaItemsTabResponseDTO getAgendaItems(Long meetingId);
