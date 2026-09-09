@@ -12,6 +12,7 @@ public enum ActivityType {
     CHARGE_CALL_GENERATED,  // branché sur ChargeServiceImpl.generateChargeCall()
     MEETING_CREATED,        // branché sur SyndicMeetingServiceImpl.createMeeting()
     MEETING_PUBLISHED,      // branché sur SyndicMeetingServiceImpl.publishMeeting()
+    MEETING_STARTED,        // branché sur SyndicMeetingServiceImpl.startMeeting()
     MEETING_CANCELLED,      // branché sur SyndicMeetingServiceImpl.cancelMeeting()
     MEETING_COMPLETED,      // branché sur SyndicMeetingServiceImpl.completeMeeting()
     MEETING_DELETED,        // branché sur SyndicMeetingServiceImpl.deleteMeeting()

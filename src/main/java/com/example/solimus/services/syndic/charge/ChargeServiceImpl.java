@@ -2376,9 +2376,14 @@ public class ChargeServiceImpl implements ChargeService {
         item.setPenaltyAppliedAt(LocalDateTime.now());
         chargeCallItemRepository.save(item);
 
+        // Message pédagogique : montre le montant dû initial, le taux appliqué et le résultat du
+        // calcul, plutôt qu'annoncer juste le montant final — reste clair même quand la pénalité
+        // arrondit à 0 FCFA sur un petit montant (le taux réellement appliqué n'en devient pas invisible)
+        String rateLabel = settings.getLatePenaltyRate().toPlainString().replace(".", ",");
         String title = "Pénalité de retard appliquée";
-        String body = "Une pénalité de " + formatMontantFcfa(penalty) + " FCFA a été appliquée. Vous devez maintenant "
-                + formatMontantFcfa(item.getTotalDue()) + " FCFA.";
+        String body = "Solimus — Vous deviez " + formatMontantFcfa(item.getQuotePart()) + " FCFA. Une pénalité de "
+                + "retard de " + rateLabel + "% a été appliquée, soit " + formatMontantFcfa(penalty)
+                + " FCFA. Vous devez donc payer " + formatMontantFcfa(item.getTotalDue()) + " FCFA au total.";
         notificationService.sendPush(item.getCoOwner().getId(), title, body);
         sendEmailSafe(item, title, body);
     }

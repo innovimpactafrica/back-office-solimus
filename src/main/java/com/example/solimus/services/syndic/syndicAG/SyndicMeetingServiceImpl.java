@@ -577,7 +577,49 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
     }
 
     // =========================================================================
-    // Marquer une réunion à venir comme terminée (une fois qu'elle a effectivement eu lieu)
+    // Démarrer une réunion à venir (le jour où elle a effectivement lieu)
+    // =========================================================================
+    @Override
+    @Transactional
+    public void startMeeting(Long meetingId) {
+
+        // Récupère la réunion, erreur si introuvable
+        Meeting meeting = meetingRepository.findById(meetingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Réunion introuvable"));
+
+        // Récupère le syndic actuellement connecté
+        User currentSyndic = getCurrentUser();
+
+        // Vérifie que le syndic connecté est bien celui de cette réunion
+        if (!meeting.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à démarrer cette réunion");
+        }
+
+        // On ne peut démarrer qu'une réunion à venir (pas un brouillon, ni une réunion déjà
+        // en cours, terminée ou annulée)
+        if (meeting.getStatus() != MeetingStatus.UPCOMING) {
+            throw new BadRequestException("Seule une réunion à venir peut être démarrée");
+        }
+
+        // Passe la réunion en statut "en cours"
+        meeting.setStatus(MeetingStatus.IN_PROGRESS);
+        meetingRepository.save(meeting);
+
+        // Trace l'événement dans l'historique de la résidence
+        ActivityLog startLog = ActivityLog.builder()
+                .residence(meeting.getResidence())
+                .type(ActivityType.MEETING_STARTED)
+                .relatedEntityType("MEETING")
+                .relatedEntityId(meeting.getId())
+                .actor(currentSyndic)
+                .message("Assemblée générale démarrée")
+                .detail(meeting.getTitle())
+                .build();
+        activityLogRepository.save(startLog);
+    }
+
+    // =========================================================================
+    // Marquer une réunion comme terminée (une fois qu'elle a effectivement eu lieu)
     // =========================================================================
     @Override
     @Transactional
@@ -595,10 +637,10 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
             throw new ForbiddenException("Vous n'êtes pas autorisé à clôturer cette réunion");
         }
 
-        // On ne peut clôturer qu'une réunion à venir (pas un brouillon, ni une réunion déjà
-        // terminée ou annulée)
-        if (meeting.getStatus() != MeetingStatus.UPCOMING) {
-            throw new BadRequestException("Seule une réunion à venir peut être marquée comme terminée");
+        // On ne peut clôturer qu'une réunion en cours — elle doit d'abord être démarrée via
+        // startMeeting, jamais un passage direct UPCOMING -> COMPLETED
+        if (meeting.getStatus() != MeetingStatus.IN_PROGRESS) {
+            throw new BadRequestException("Seule une réunion en cours peut être marquée comme terminée");
         }
 
         // Passe la réunion en statut "terminée"

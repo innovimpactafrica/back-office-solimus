@@ -196,11 +196,27 @@ public class SyndicAGController {
         return ResponseEntity.ok("Réunion annulée avec succès");
     }
 
+    @PostMapping("/{meetingId}/start")
+    @Operation(summary = "Démarrer une assemblée générale à venir (UPCOMING -> IN_PROGRESS)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Réunion démarrée avec succès"),
+            @ApiResponse(responseCode = "400", description = "Seule une réunion à venir peut être démarrée",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à démarrer cette réunion",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Réunion introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    public ResponseEntity<String> startMeeting(@PathVariable Long meetingId) {
+        syndicMeetingService.startMeeting(meetingId);
+        return ResponseEntity.ok("Réunion démarrée avec succès");
+    }
+
     @PostMapping("/{meetingId}/complete")
-    @Operation(summary = "Marquer une assemblée générale à venir comme terminée (UPCOMING -> COMPLETED)")
+    @Operation(summary = "Marquer une assemblée générale en cours comme terminée (IN_PROGRESS -> COMPLETED)")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Réunion marquée comme terminée avec succès"),
-            @ApiResponse(responseCode = "400", description = "Seule une réunion à venir peut être marquée comme terminée",
+            @ApiResponse(responseCode = "400", description = "Seule une réunion en cours peut être marquée comme terminée",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à clôturer cette réunion",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
