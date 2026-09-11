@@ -45,6 +45,11 @@ public interface ChargeService {
     Page<CommonFacilitySuggestionDTO> searchCommonFacilities(Long residenceId, String q, Integer page, Integer size);
 
     /**
+     * Enregistre une dépense libre sur un poste budgétaire (formulaire "Enregistrer une dépense")
+     */
+    CreateBudgetExpenseResultDTO createExpense(CreateBudgetExpenseDTO dto, MultipartFile justificatif);
+
+    /**
      * Retourne le budget en cours (ACTIVE) pour une résidence
      */
     CurrentBudgetDTO getCurrentBudget(Long residenceId);

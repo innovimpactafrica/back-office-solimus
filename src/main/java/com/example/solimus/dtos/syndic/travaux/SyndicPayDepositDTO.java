@@ -19,4 +19,9 @@ public class SyndicPayDepositDTO {
     @NotNull(message = "Le montant est obligatoire")
     @Positive(message = "Le montant doit être positif")
     private BigDecimal montant;
+
+    // Poste budgétaire choisi. Obligatoire seulement pour le tout premier paiement
+    // (acompte ou paiement unique). Pour les paiements suivants, ce champ est ignoré :
+    // le poste déjà choisi est repris automatiquement.
+    private Long budgetItemId;
 }

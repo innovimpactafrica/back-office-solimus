@@ -115,15 +115,15 @@ public class FinanceServiceImpl implements FinanceService {
                 : 0.0;
         dto.setUnpaidPercentOfTotal(unpaidPercent);
 
-        // --- Dépenses (mois calendaire en cours, catégorie TRAVAUX) ---
+        // --- Dépenses (mois calendaire en cours, catégorie BUDGET_EXPENSE) ---
 
         LocalDate startOfMonth = now.withDayOfMonth(1);
         LocalDate endOfMonth = startOfMonth.plusMonths(1);
 
-        // Somme les transactions de sortie (catégorie TRAVAUX) du mois en cours, en valeur absolue
+        // Somme les transactions de sortie (catégorie BUDGET_EXPENSE) du mois en cours, en valeur absolue
         BigDecimal expenses = walletId != null
                 ? syndicWalletTransactionRepository.sumByCategoryAndPeriod(
-                        walletId, WalletTransactionCategory.TRAVAUX, startOfMonth.atStartOfDay(), endOfMonth.atStartOfDay()).abs()
+                        walletId, WalletTransactionCategory.BUDGET_EXPENSE, startOfMonth.atStartOfDay(), endOfMonth.atStartOfDay()).abs()
                 : BigDecimal.ZERO;
         dto.setExpenses(expenses);
 

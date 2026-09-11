@@ -30,30 +30,15 @@ public class SyndicWalletController {
     @Operation(summary = "Créer une demande de retrait", description = "Crée une nouvelle demande de retrait de fonds par le syndic", tags = {"Syndic - Wallet"})
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Demande de retrait créée avec succès"),
-            @ApiResponse(responseCode = "400", description = "Ce poste budgétaire est lié à un bien commun (à gérer via le module Travaux), "
-                    + "ou n'appartient pas à la résidence spécifiée",
-                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à effectuer un retrait pour cette résidence",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Résidence ou poste budgétaire introuvable",
+            @ApiResponse(responseCode = "404", description = "Résidence introuvable",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
     })
     @PostMapping("/withdrawal-requests")
     public ResponseEntity<Void> createWithdrawalRequest(@Valid @RequestBody CreateWithdrawalRequestDTO dto) {
         walletService.createWithdrawalRequest(dto);
         return ResponseEntity.ok().build();
-    }
-
-
-    @Operation(summary = "Lister les postes budgétaires sans biens communs", description = "Récupère les postes budgétaires sans bien commun pour une résidence et l'année courante (id, libellé)", tags = {"Syndic - Wallet"})
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
-                    content = @Content(schema = @Schema(implementation = BudgetItemSimpleDTO.class)))
-    })
-    @GetMapping("/budget-items")
-    public ResponseEntity<List<BudgetItemSimpleDTO>> getBudgetItemsWithoutCommonFacility(
-            @RequestParam Long residenceId) {
-        return ResponseEntity.ok(walletService.getBudgetItemsWithoutCommonFacility(residenceId));
     }
 
 

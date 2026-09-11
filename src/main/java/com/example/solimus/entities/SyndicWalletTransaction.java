@@ -82,6 +82,16 @@ public class SyndicWalletTransaction {
     @JoinColumn(name = "intervention_request_id")
     private InterventionRequest interventionRequest;
 
+    // Poste budgétaire choisi (nullable — rempli uniquement pour la catégorie BUDGET_EXPENSE,
+    // qui couvre à la fois les paiements de travaux et les dépenses saisies via le formulaire)
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "budget_item_id")
+    private BudgetItem budgetItem;
+
+    // Justificatif de la dépense (nullable — rempli seulement si un fichier a été fourni)
+    @Column(name = "justificatif_url", length = 500)
+    private String justificatifUrl;
+
     // Date de création de l'enregistrement
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

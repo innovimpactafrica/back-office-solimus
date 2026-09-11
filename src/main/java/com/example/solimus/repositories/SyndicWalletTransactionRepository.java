@@ -42,34 +42,23 @@ public interface SyndicWalletTransactionRepository extends JpaRepository<SyndicW
     BigDecimal sumAllByResidenceId(@Param("residenceId") Long residenceId, @Param("asOfDate") LocalDateTime asOfDate);
 
     /**
-     * Récupérer les transactions de catégorie TRAVAUX pour une résidence et une année donnée
+     * Récupérer les transactions de catégorie BUDGET_EXPENSE pour une résidence et une année donnée
      * Utilisé pour calculer la répartition des vraies dépenses (graphique camembert)
      */
     @Query("SELECT t FROM SyndicWalletTransaction t " +
            "WHERE t.residence.id = :residenceId " +
-           "AND t.category = 'TRAVAUX' " +
+           "AND t.category = 'BUDGET_EXPENSE' " +
            "AND YEAR(t.transactionDate) = :year")
     List<SyndicWalletTransaction> findTravauxByResidenceAndYear(
             @Param("residenceId") Long residenceId,
             @Param("year") int year);
 
-    /**
-     *  Somme des transactions TRAVAUX d'un équipement commun précis, sur une période donnée.
-     *  Chaque CommonFacility appartient à une seule résidence (jamais partagé entre résidences,
-     *  même si son type comme "Ascenseur" est générique). Mais un même équipement reste identique
-     *  d'une année à l'autre, donc le filtre sur start/end (année du budget) reste indispensable.
-     *
-      */
+    // Additionne ce qui a déjà été dépensé pour un poste budgétaire précis
     @Query("SELECT COALESCE(SUM(ABS(t.amount)), 0) FROM SyndicWalletTransaction t " +
-            "WHERE t.interventionRequest.commonFacility.id = :facilityId " +
-            "AND t.category = 'TRAVAUX' " +
-            "AND t.transactionDate >= :start AND t.transactionDate < :end")
-    BigDecimal sumByCommonFacilityAndPeriod(
-            @Param("facilityId") Long facilityId,
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end);
+            "WHERE t.budgetItem.id = :budgetItemId")
+    BigDecimal sumByBudgetItemId(@Param("budgetItemId") Long budgetItemId);
 
-    // Somme les transactions d'une catégorie précise (ex: TRAVAUX), pour un wallet et une période donnés
+    // Somme les transactions d'une catégorie précise (ex: BUDGET_EXPENSE), pour un wallet et une période donnés
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM SyndicWalletTransaction t " +
            "WHERE t.wallet.id = :walletId AND t.category = :category " +
            "AND t.transactionDate >= :start AND t.transactionDate < :end")
@@ -94,7 +83,7 @@ public interface SyndicWalletTransactionRepository extends JpaRepository<SyndicW
                                             @Param("residenceId") Long residenceId);
 
     // Additionne les montants d'une catégorie, depuis toujours (aucune limite de période), optionnellement filtré par résidence
-    // Utilisée pour le KPI "Paiement prestataires" (catégorie TRAVAUX, pas de limite de date)
+    // Utilisée pour le KPI "Paiement prestataires" (catégorie BUDGET_EXPENSE, pas de limite de date)
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM SyndicWalletTransaction t " +
             "WHERE t.wallet.id = :walletId AND t.category = :category " +
             "AND (:residenceId IS NULL OR t.residence.id = :residenceId)")
@@ -104,7 +93,7 @@ public interface SyndicWalletTransactionRepository extends JpaRepository<SyndicW
 
 
     // Compte le nombre de transactions d'une catégorie, depuis toujours, optionnellement filtre par residence
-    // Utilisée pour le sous-texte "X facture" du KPI "Paiement prestataires" (catégorie TRAVAUX)
+    // Utilisée pour le sous-texte "X facture" du KPI "Paiement prestataires" (catégorie BUDGET_EXPENSE)
     @Query("SELECT COUNT(t) FROM SyndicWalletTransaction t " +
             "WHERE t.wallet.id = :walletId AND t.category = :category " +
             "AND (:residenceId IS NULL OR t.residence.id = :residenceId)")
@@ -150,18 +139,18 @@ public interface SyndicWalletTransactionRepository extends JpaRepository<SyndicW
                                         @Param("residenceId") Long residenceId);
 
 
-    // Transactions CHARGES et TRAVAUX uniquement (exclut RETRAIT), triées par date décroissante,
+    // Transactions CHARGES et BUDGET_EXPENSE uniquement (exclut WITHDRAWAL), triées par date décroissante,
     // optionnellement filtré par residence. Utilisée pour le tableau "Derniers flux"
     @Query("SELECT t FROM SyndicWalletTransaction t " +
             "WHERE t.wallet.id = :walletId " +
-            "AND t.category IN ('CHARGES', 'TRAVAUX') " +
+            "AND t.category IN ('CHARGES', 'BUDGET_EXPENSE') " +
             "AND (:residenceId IS NULL OR t.residence.id = :residenceId) " +
             "ORDER BY t.transactionDate DESC")
     Page<SyndicWalletTransaction> findFlowsByWallet(@Param("walletId") Long walletId,
                                                     @Param("residenceId") Long residenceId,
                                                     Pageable pageable);
 
-    // Historique paginé complet des transactions d'un wallet (toutes catégories, y compris RETRAIT),
+    // Historique paginé complet des transactions d'un wallet (toutes catégories, y compris WITHDRAWAL),
     // filtres category, année et résidence tous optionnels — pour "Voir l'historique complet" (module Finances)
     @Query("SELECT t FROM SyndicWalletTransaction t " +
             "WHERE t.wallet.id = :walletId " +

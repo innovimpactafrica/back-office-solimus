@@ -24,7 +24,6 @@ public class WithdrawalDetailDTO {
 
     private String accountNumber;
     private String residenceName;
-    private String budgetItemLabel; // libelle du poste budgetaire, peut etre null
 
     private WithdrawalStatus status;
     private String statusLabel;

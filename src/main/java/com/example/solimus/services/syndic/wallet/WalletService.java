@@ -7,7 +7,6 @@ import java.util.List;
 public interface WalletService {
     void createWithdrawalRequest(CreateWithdrawalRequestDTO dto);
     List<ResidenceSimpleDTO> getSyndicResidences();
-    List<BudgetItemSimpleDTO> getBudgetItemsWithoutCommonFacility(Long residenceId);
     WalletBalanceDTO getWalletBalance();
     WalletKpiDTO getWalletKpis(Long residenceId);
     WalletChartDTO getWalletChart(Long residenceId);

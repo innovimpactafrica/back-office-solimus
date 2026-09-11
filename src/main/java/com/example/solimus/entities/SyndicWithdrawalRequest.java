@@ -52,11 +52,6 @@ public class SyndicWithdrawalRequest {
     @JoinColumn(name = "residence_id")
     private Residence residence;
 
-    // Le poste budgétaire concerné par ce retrait (Uniquement pour les retraits liés à un poste sans bien commun)
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "budget_item_id")
-    private BudgetItem budgetItem;
-
     // Compte de réception (RIB ou numéro de téléphone)
     @Column(length = 255)
     private String accountNumber;

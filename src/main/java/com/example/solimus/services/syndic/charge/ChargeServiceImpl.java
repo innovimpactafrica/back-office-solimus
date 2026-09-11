@@ -11,6 +11,7 @@ import com.example.solimus.repositories.*;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
+import com.example.solimus.services.shared.SyndicTreasuryService;
 import com.example.solimus.utils.ChargeAllocationUtil;
 import com.example.solimus.utils.PaymentStatusUtils;
 import lombok.RequiredArgsConstructor;
@@ -48,8 +49,9 @@ public class ChargeServiceImpl implements ChargeService {
     private final CommonFacilityRepository commonFacilityRepository;
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
     private final BudgetItemRepository budgetItemRepository;
-    private final SyndicWithdrawalRequestRepository syndicWithdrawalRequestRepository;
     private final ActivityLogRepository activityLogRepository;
+    private final SyndicWalletRepository syndicWalletRepository;
+    private final SyndicTreasuryService syndicTreasuryService;
     private final ExceptionalCallItemRepository exceptionalCallItemRepository;
     private final ExceptionalCallPaymentRepository exceptionalCallPaymentRepository;
     private final ExceptionalCallDocumentRepository exceptionalCallDocumentRepository;
@@ -459,7 +461,7 @@ public class ChargeServiceImpl implements ChargeService {
         // annee → sert au calcul du montantReel (dépenses réelles de l'année pour cet équipement)
         // item → contient déjà son propre montant, pour calculer l'écart
         List<BudgetItemOverviewDTO> itemDtos = budget.getItems().stream()
-                .map(item -> buildItemOverview(item, budget.getBudgetTotal(), budget.getAnnee())) // transforme chaque poste en DTO
+                .map(item -> buildItemOverview(item, budget.getBudgetTotal())) // transforme chaque poste en DTO
                 .toList(); // rassemble les résultats dans une nouvelle liste
 
         dto.setItems(itemDtos);
@@ -2770,6 +2772,81 @@ public class ChargeServiceImpl implements ChargeService {
     }
 
     // ============================================================
+    // ENREGISTRER UNE DÉPENSE (formulaire "Enregistrer une dépense")
+    // ============================================================
+    @Override
+    @Transactional
+    public CreateBudgetExpenseResultDTO createExpense(CreateBudgetExpenseDTO dto, MultipartFile justificatif) {
+
+        User currentSyndic = getCurrentUser();
+
+        // Récupère le poste budgétaire, erreur si introuvable
+        BudgetItem budgetItem = budgetItemRepository.findById(dto.getBudgetItemId())
+                .orElseThrow(() -> new ResourceNotFoundException("Poste budgétaire introuvable"));
+
+        // La résidence n'est pas fournie dans le DTO : elle vient du poste budgétaire lui-même
+        Residence residence = budgetItem.getBudget().getResidence();
+
+        // Vérifie que ce poste appartient bien au syndic connecté
+        if (!residence.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Ce poste budgétaire ne vous appartient pas");
+        }
+
+        // Vérifie que ce poste appartient bien au budget actif de cette résidence
+        if (budgetItem.getBudget().getStatus() != BudgetStatus.ACTIVE) {
+            throw new BadRequestException("Ce poste budgétaire n'appartient pas au budget actif de cette résidence");
+        }
+
+        // Récupère (ou crée) le wallet du syndic
+        SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId())
+                .orElseGet(() -> syndicWalletRepository.save(SyndicWallet.builder().syndic(currentSyndic).build()));
+
+        // Seule vérification bloquante : le solde du wallet doit couvrir la dépense. Un poste peut,
+        // lui, légitimement dépasser son montant prévu — l'écart affiché devient simplement négatif
+        BigDecimal soldeDisponible = syndicTreasuryService.getAvailableBalance(wallet.getId(), null);
+        if (dto.getAmount().compareTo(soldeDisponible) > 0) {
+            throw new BadRequestException("Solde du wallet insuffisant");
+        }
+
+        // Stocke le justificatif si fourni, même mécanisme que les autres fichiers de l'app (factures, devis)
+        String justificatifUrl = null;
+        if (justificatif != null && !justificatif.isEmpty()) {
+            justificatifUrl = minioService.uploadFile(justificatif, "expenses");
+        }
+
+        // Enregistre la dépense comme une sortie du wallet, imputée à ce poste précis
+        SyndicWalletTransaction transaction = new SyndicWalletTransaction();
+        transaction.setWallet(wallet);
+        transaction.setResidence(residence);
+        transaction.setCategory(WalletTransactionCategory.BUDGET_EXPENSE);
+        transaction.setAmount(dto.getAmount().negate());
+        transaction.setBudgetItem(budgetItem);
+        transaction.setLabel(dto.getDescription());
+        transaction.setJustificatifUrl(justificatifUrl);
+        transaction.setTransactionDate(dto.getDate().atStartOfDay());
+        syndicWalletTransactionRepository.save(transaction);
+
+        // Trace l'événement dans l'historique du budget (onglet Historique)
+        ActivityLog activityLog = new ActivityLog();
+        activityLog.setResidence(residence);
+        activityLog.setType(ActivityType.EXPENSE_RECORDED);
+        activityLog.setRelatedEntityType("BUDGET");
+        activityLog.setRelatedEntityId(budgetItem.getBudget().getId());
+        activityLog.setActor(currentSyndic);
+        activityLog.setMessage("Dépense enregistrée — " + budgetItem.getLibelle() + " — " + dto.getDescription());
+        activityLogRepository.save(activityLog);
+
+        BigDecimal nouveauSolde = soldeDisponible.subtract(dto.getAmount());
+
+        return CreateBudgetExpenseResultDTO.builder()
+                .success(true)
+                .message("Dépense enregistrée avec succès")
+                .amountPaid(dto.getAmount())
+                .newWalletBalance(nouveauSolde)
+                .build();
+    }
+
+    // ============================================================
     // Méthodes Utilitaires
     // ============================================================
 
@@ -2878,22 +2955,14 @@ public class ChargeServiceImpl implements ChargeService {
     }
 
 
-    // Construit une ligne du tableau des postes : montant réel calculé via les interventions
-    // si le poste est lié à un bien commun, sinon via les demandes de retrait validées liées au poste
-    private BudgetItemOverviewDTO buildItemOverview(BudgetItem item, BigDecimal budgetTotal, Integer annee) {
+    // Construit une ligne du tableau des postes : montant réel = tout ce qui a déjà été
+    // payé sur ce poste précis, peu importe s'il est lié à un bien commun ou non
+    private BudgetItemOverviewDTO buildItemOverview(BudgetItem item, BigDecimal budgetTotal) {
         BudgetItemOverviewDTO itemDto = new BudgetItemOverviewDTO();
         itemDto.setLibelle(item.getLibelle());
         itemDto.setMontantPrevu(item.getMontant());
 
-        BigDecimal montantReel;
-
-        if (item.getCommonFacility() != null) {
-            // Poste lié à un bien commun : dépense réelle calculée via les interventions de cet équipement
-            montantReel = calculerDepensesReellesParEquipement(item.getCommonFacility(), annee);
-        } else {
-            // Poste sans bien commun : dépense réelle calculée via les demandes de retrait validées liées à ce poste
-            montantReel = syndicWithdrawalRequestRepository.sumCompletedByBudgetItem(item.getId());
-        }
+        BigDecimal montantReel = syndicWalletTransactionRepository.sumByBudgetItemId(item.getId());
 
         itemDto.setMontantReel(montantReel);
         itemDto.setEcart(item.getMontant().subtract(montantReel));
@@ -2902,16 +2971,6 @@ public class ChargeServiceImpl implements ChargeService {
         itemDto.setPercentage(calculatePercentage(item.getMontant(), budgetTotal));
 
         return itemDto;
-    }
-
-    // Calcule les dépenses réelles d'un équipement commun, pour une année donnée
-    private BigDecimal calculerDepensesReellesParEquipement(CommonFacility facility, Integer annee) {
-
-        LocalDateTime debutAnnee = LocalDateTime.of(annee, 1, 1, 0, 0);
-        LocalDateTime finAnnee = LocalDateTime.of(annee + 1, 1, 1, 0, 0);
-
-        return syndicWalletTransactionRepository
-                .sumByCommonFacilityAndPeriod(facility.getId(), debutAnnee, finAnnee);
     }
 
 

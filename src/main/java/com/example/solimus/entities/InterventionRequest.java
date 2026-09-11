@@ -136,6 +136,12 @@ public class InterventionRequest {
     @Column(name = "closing_note", columnDefinition = "TEXT")
     private String closingNote;
 
+    // Poste budgétaire choisi au premier paiement (acompte ou paiement unique).
+    // Réutilisé automatiquement pour le paiement du solde suivant.
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "budget_item_id")
+    private BudgetItem budgetItem;
+
     @Column(name = "quote_accepted_at")
     private LocalDateTime quoteAcceptedAt; // Date d'acceptation du devis
 

@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.Year;
 import java.util.List;
 
@@ -579,6 +580,35 @@ public class SyndicBudgetController {
     public ResponseEntity<Void> closeExceptionalCall(@PathVariable Long id) {
         chargeService.closeExceptionalCall(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Enregistrer une dépense", description = "Enregistre une sortie d'argent catégorisée sur un poste budgétaire, avec ou sans dossier Travaux associé", tags = {"Syndic - Charges"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Dépense enregistrée avec succès",
+                    content = @Content(schema = @Schema(implementation = CreateBudgetExpenseResultDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Ce poste budgétaire n'appartient pas au budget actif de cette résidence, ou solde du wallet insuffisant",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Ce poste budgétaire ne vous appartient pas",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Poste budgétaire introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @PostMapping(value = "/expenses", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> createExpense(
+            @RequestParam BigDecimal amount,
+            @RequestParam Long budgetItemId,
+            @RequestParam String description,
+            @RequestParam LocalDate date,
+            @RequestParam(required = false) MultipartFile justificatif
+    ) {
+        CreateBudgetExpenseDTO dto = CreateBudgetExpenseDTO.builder()
+                .amount(amount)
+                .budgetItemId(budgetItemId)
+                .description(description)
+                .date(date)
+                .build();
+
+        return ResponseEntity.ok(chargeService.createExpense(dto, justificatif));
     }
 
     @Operation(summary = "Recherche d'équipements communs pour autocomplétion des postes budgétaires", tags = {"Syndic - Charges"})

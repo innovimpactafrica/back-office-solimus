@@ -51,8 +51,8 @@ public class WalletTransactionPresenter {
                     .orElse(null);
         }
 
-        // TRAVAUX : lot concerné via l'intervention liée, "Partie commune" si pas de lot précis
-        if (tw.getCategory() == WalletTransactionCategory.TRAVAUX && tw.getInterventionRequest() != null) {
+        // BUDGET_EXPENSE : lot concerné via l'intervention liée, "Partie commune" si pas de lot précis
+        if (tw.getCategory() == WalletTransactionCategory.BUDGET_EXPENSE && tw.getInterventionRequest() != null) {
             propertyReference = (tw.getInterventionRequest().getProperty() != null)
                     ? tw.getInterventionRequest().getProperty().getReference()
                     : "Partie commune";

@@ -10,6 +10,7 @@ import com.example.solimus.dtos.syndic.travaux.SyndicDepositSummaryDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicPayDepositDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicBalancePaymentSummaryDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicPaymentResultDTO;
+import com.example.solimus.dtos.syndic.travaux.TravauxBudgetItemOptionDTO;
 import com.example.solimus.dtos.syndic.travaux.UpdateInterventionRequestDTO;
 
 import org.springframework.data.domain.Page;
@@ -89,6 +90,12 @@ public interface SyndicTravauxService {
      * Retourne le récapitulatif à afficher dans le modal "Acompte" après validation du devis.
      */
     SyndicDepositSummaryDTO getDepositSummary(Long interventionId);
+
+    /**
+     * Liste les postes budgétaires du budget actif de la résidence de cette intervention,
+     * pour remplir le menu "Poste budgétaire" du modal de paiement.
+     */
+    List<TravauxBudgetItemOptionDTO> getBudgetItemOptions(Long interventionId);
 
     /**
      * Verse un acompte au prestataire depuis le wallet du syndic.

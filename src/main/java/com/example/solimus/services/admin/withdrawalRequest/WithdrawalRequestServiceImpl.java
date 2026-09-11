@@ -392,15 +392,15 @@ public class WithdrawalRequestServiceImpl implements WithdrawalRequestService {
             request.setAdminComment(comment);
             SyndicWithdrawalRequest saved = syndicWithdrawalRequestRepository.save(request);
 
-            // Trace ce retrait dans l'historique financier unifié (catégorie RETRAIT, montant négatif) —
+            // Trace ce retrait dans l'historique financier unifié (catégorie WITHDRAWAL, montant négatif) —
             // SyndicTreasuryService se base désormais uniquement sur cette table, plus sur une soustraction séparée
             SyndicWalletTransaction retraitTransaction = new SyndicWalletTransaction();
             retraitTransaction.setWallet(saved.getWallet());
             retraitTransaction.setResidence(saved.getResidence());
-            retraitTransaction.setCategory(WalletTransactionCategory.RETRAIT);
+            retraitTransaction.setCategory(WalletTransactionCategory.WITHDRAWAL);
             retraitTransaction.setAmount(saved.getAmount().negate());
             retraitTransaction.setLabel("Retrait — " + (saved.getReason() != null ? saved.getReason() : saved.getMode().getLabel()));
-            // beneficiaryName reste null pour RETRAIT (réservé à CHARGES/TRAVAUX, voir entité)
+            // beneficiaryName reste null pour WITHDRAWAL (réservé à CHARGES/BUDGET_EXPENSE, voir entité)
             retraitTransaction.setMode(saved.getMode() != null ? saved.getMode().name() : null);
             retraitTransaction.setTransactionDate(saved.getProcessedAt());
             retraitTransaction.setReference("RETRAIT-" + saved.getId());

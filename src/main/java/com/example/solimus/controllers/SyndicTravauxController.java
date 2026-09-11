@@ -259,11 +259,26 @@ public class SyndicTravauxController {
         return ResponseEntity.ok(syndicTravauxService.getDepositSummary(id));
     }
 
+    @Operation(summary = "Postes budgétaires disponibles pour le paiement",
+            description = "Liste les postes du budget en cours de la résidence, pour remplir le menu \"Poste budgétaire\" du modal de paiement")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
+                    content = @Content(schema = @Schema(implementation = TravauxBudgetItemOptionDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à accéder à cette intervention",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Intervention introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @GetMapping("/interventions/{id}/budget-items")
+    public ResponseEntity<List<TravauxBudgetItemOptionDTO>> getBudgetItemOptions(@PathVariable Long id) {
+        return ResponseEntity.ok(syndicTravauxService.getBudgetItemOptions(id));
+    }
+
     @Operation(summary = "Payer un acompte")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Acompte payé avec succès",
                     content = @Content(schema = @Schema(implementation = SyndicPaymentResultDTO.class))),
-            @ApiResponse(responseCode = "400", description = "Aucun prestataire sélectionné, acompte déjà versé, ou solde du wallet insuffisant",
+            @ApiResponse(responseCode = "400", description = "Aucun prestataire sélectionné, acompte déjà versé, solde du wallet insuffisant, ou poste budgétaire manquant/invalide",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à effectuer ce paiement",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
@@ -296,7 +311,7 @@ public class SyndicTravauxController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Solde payé et intervention clôturée avec succès",
                     content = @Content(schema = @Schema(implementation = SyndicPaymentResultDTO.class))),
-            @ApiResponse(responseCode = "400", description = "Travaux non terminés, budget déjà clôturé, aucun solde restant, ou solde du wallet insuffisant",
+            @ApiResponse(responseCode = "400", description = "Travaux non terminés, budget déjà clôturé, aucun solde restant, solde du wallet insuffisant, ou poste budgétaire manquant/invalide",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à effectuer ce paiement",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),

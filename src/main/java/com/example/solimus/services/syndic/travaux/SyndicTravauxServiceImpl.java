@@ -10,9 +10,11 @@ import com.example.solimus.dtos.syndic.travaux.SyndicDepositSummaryDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicPayDepositDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicBalancePaymentSummaryDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicPaymentResultDTO;
+import com.example.solimus.dtos.syndic.travaux.TravauxBudgetItemOptionDTO;
 import com.example.solimus.dtos.syndic.travaux.UpdateInterventionRequestDTO;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.ActivityType;
+import com.example.solimus.enums.BudgetStatus;
 import com.example.solimus.enums.IncidentLocationType;
 import com.example.solimus.enums.InitiatedBy;
 import com.example.solimus.enums.InterventionManagementMode;
@@ -72,6 +74,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     private final ProviderWalletTransactionRepository providerWalletTransactionRepository;
     private final PaymentRepository paymentRepository;
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
+    private final BudgetItemRepository budgetItemRepository;
 
     @Value("${solimus.geolocation.search-radius-km:30.0}")
     private double searchRadiusKm;//Rayon de recherche des prestataires
@@ -474,7 +477,75 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                 .totalAmount(request.getTotalAmount())
                 .emisLe(request.getQuoteAcceptedAt())
                 .walletBalanceAvailable(soldeDisponible)
+                .budgetItemRequired(request.getBudgetItem() == null)
+                .budgetItemLibelle(request.getBudgetItem() != null ? request.getBudgetItem().getLibelle() : null)
                 .build();
+    }
+
+    // =========================================================================
+    // LISTER LES POSTES BUDGÉTAIRES POUR LE MENU DÉROULANT DU MODAL DE PAIEMENT
+    // =========================================================================
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TravauxBudgetItemOptionDTO> getBudgetItemOptions(Long interventionId) {
+
+        User currentSyndic = getCurrentUser();
+
+        InterventionRequest request = interventionRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
+
+        if (!request.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à accéder à cette intervention");
+        }
+
+        // On ne prend que les postes du budget en cours (ACTIVE) de cette résidence
+        List<BudgetItem> items = budgetItemRepository.findByResidenceIdAndBudgetStatus(
+                request.getResidence().getId(), BudgetStatus.ACTIVE);
+
+        return items.stream()
+                .map(item -> TravauxBudgetItemOptionDTO.builder()
+                        .id(item.getId())
+                        .libelle(item.getLibelle())
+                        .montantPrevu(item.getMontant())
+                        .montantReel(calculerMontantReelDuPoste(item))
+                        .build())
+                .toList();
+    }
+
+    // Calcule ce qui a déjà été dépensé pour un poste budgétaire
+    private BigDecimal calculerMontantReelDuPoste(BudgetItem item) {
+        return syndicWalletTransactionRepository.sumByBudgetItemId(item.getId());
+    }
+
+    // Trouve le poste budgétaire à utiliser pour ce paiement :
+    // - si un poste a déjà été choisi avant pour ces travaux, on le réutilise (le champ est ignoré)
+    // - sinon, c'est le premier paiement : le poste est obligatoire, on le vérifie et on le mémorise
+    private BudgetItem resolveBudgetItemForPayment(InterventionRequest request, Long budgetItemId) {
+
+        if (request.getBudgetItem() != null) {
+            return request.getBudgetItem();
+        }
+
+        if (budgetItemId == null) {
+            throw new BadRequestException("Le poste budgétaire est obligatoire pour ce premier paiement");
+        }
+
+        BudgetItem budgetItem = budgetItemRepository.findById(budgetItemId)
+                .orElseThrow(() -> new ResourceNotFoundException("Poste budgétaire introuvable"));
+
+        if (!budgetItem.getBudget().getResidence().getId().equals(request.getResidence().getId())) {
+            throw new BadRequestException("Ce poste budgétaire n'appartient pas à la résidence de ces travaux");
+        }
+
+        if (budgetItem.getBudget().getStatus() != BudgetStatus.ACTIVE) {
+            throw new BadRequestException("Ce poste budgétaire n'appartient pas au budget en cours");
+        }
+
+        // Mémorise le choix sur les travaux, pour que le prochain paiement le réutilise automatiquement
+        request.setBudgetItem(budgetItem);
+
+        return budgetItem;
     }
 
     // =========================================================================
@@ -518,11 +589,14 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             throw new BadRequestException("Solde du wallet insuffisant pour verser cet acompte");
         }
 
-        // Débite le wallet syndic (transaction négative, catégorie TRAVAUX)
+        // C'est le premier paiement de ces travaux : le poste budgétaire choisi ici est obligatoire
+        BudgetItem budgetItem = resolveBudgetItemForPayment(request, dto.getBudgetItemId());
+
+        // Débite le wallet syndic (transaction négative, catégorie BUDGET_EXPENSE)
         SyndicWalletTransaction transaction = new SyndicWalletTransaction();
         transaction.setWallet(wallet);
         transaction.setResidence(request.getResidence());
-        transaction.setCategory(WalletTransactionCategory.TRAVAUX);
+        transaction.setCategory(WalletTransactionCategory.BUDGET_EXPENSE);
         transaction.setAmount(dto.getMontant().negate());
         transaction.setLabel("Acompte — " + request.getTitle());
         transaction.setBeneficiaryName(
@@ -530,6 +604,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                         ? request.getSelectedProvider().getFirstName() + " " + request.getSelectedProvider().getLastName()
                         : "Prestataire");
         transaction.setInterventionRequest(request);
+        transaction.setBudgetItem(budgetItem);
         transaction.setTransactionDate(LocalDateTime.now());
         syndicWalletTransactionRepository.save(transaction);
 
@@ -602,6 +677,8 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                 .acompteVerse(request.getDepositAmount() != null ? request.getDepositAmount() : BigDecimal.ZERO)
                 .soldeRestant(request.getRemainingAmount() != null ? request.getRemainingAmount() : BigDecimal.ZERO)
                 .walletBalanceAvailable(soldeDisponible)
+                .budgetItemRequired(request.getBudgetItem() == null)
+                .budgetItemLibelle(request.getBudgetItem() != null ? request.getBudgetItem().getLibelle() : null)
                 .build();
     }
 
@@ -651,11 +728,15 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             throw new BadRequestException("Solde du wallet insuffisant pour payer le solde restant");
         }
 
+        // Si un poste a déjà été choisi à l'acompte, on le reprend. Sinon (paiement unique,
+        // aucun acompte n'a jamais été versé), le poste est obligatoire ici.
+        BudgetItem budgetItem = resolveBudgetItemForPayment(request, dto.getBudgetItemId());
+
         // Débite le wallet syndic
         SyndicWalletTransaction transaction = new SyndicWalletTransaction();
         transaction.setWallet(wallet);
         transaction.setResidence(request.getResidence());
-        transaction.setCategory(WalletTransactionCategory.TRAVAUX);
+        transaction.setCategory(WalletTransactionCategory.BUDGET_EXPENSE);
         transaction.setAmount(solde.negate());
         transaction.setLabel("Solde final — " + request.getTitle());
         transaction.setBeneficiaryName(
@@ -663,6 +744,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                         ? request.getSelectedProvider().getFirstName() + " " + request.getSelectedProvider().getLastName()
                         : "Prestataire");
         transaction.setInterventionRequest(request);
+        transaction.setBudgetItem(budgetItem);
         transaction.setTransactionDate(LocalDateTime.now());
         syndicWalletTransactionRepository.save(transaction);
 

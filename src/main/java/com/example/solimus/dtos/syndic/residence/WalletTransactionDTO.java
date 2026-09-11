@@ -23,7 +23,7 @@ public class WalletTransactionDTO {
     // sans filtre residenceId). Null uniquement si la transaction n'a aucune résidence rattachée.
     private String residenceName;
 
-    // Copropriétaire payeur (CHARGES) ou prestataire payé (TRAVAUX) — null pour RETRAIT
+    // Copropriétaire payeur (CHARGES) ou prestataire payé (BUDGET_EXPENSE) — null pour WITHDRAWAL
     private String payerOrPayeeName;
 
     // Lot(s) concerné(s), séparés par virgule — uniquement pour CHARGES, null sinon

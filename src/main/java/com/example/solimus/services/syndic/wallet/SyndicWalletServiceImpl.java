@@ -35,7 +35,6 @@ import java.util.stream.Collectors;
 public class SyndicWalletServiceImpl implements WalletService {
 
     private final ResidenceRepository residenceRepository;
-    private final BudgetItemRepository budgetItemRepository;
     private final UserRepository userRepository;
     private final SyndicWalletRepository syndicWalletRepository;
     private final SyndicWithdrawalRequestRepository syndicWithdrawalRequestRepository;
@@ -67,32 +66,12 @@ public class SyndicWalletServiceImpl implements WalletService {
             throw new ForbiddenException("Vous n'êtes pas autorisé à effectuer un retrait pour cette résidence");
         }
 
-        // Si budgetItemId est fourni, récupérer et vérifier le poste budgétaire
-        BudgetItem budgetItem = null;
-        if (dto.getBudgetItemId() != null) {
-            budgetItem = budgetItemRepository.findById(dto.getBudgetItemId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Poste budgétaire non trouvé"));
-
-            // Vérifier que le poste n'est pas lié à un bien commun
-            // Les postes liés à des équipements (ex: Ascenseur, Jardin) doivent être gérés via le module Travaux
-            // Les demandes de retrait ne sont autorisées que pour les postes libres (ex: Assurance, Nettoyage)
-            if (budgetItem.getCommonFacility() != null) {
-                throw new BadRequestException("Ce poste budgétaire est lié à un bien commun. Utilisez le module Travaux pour les dépenses liées aux équipements.");
-            }
-
-            // Vérifier que le poste appartient à la résidence spécifiée
-            if (!budgetItem.getBudget().getResidence().getId().equals(dto.getResidenceId())) {
-                throw new BadRequestException("Ce poste budgétaire n'appartient pas à la résidence spécifiée");
-            }
-        }
-
-        // Créer la demande de retrait
+        // Créer la demande de retrait — plus aucun poste budgétaire lié, un retrait n'est jamais rattaché à un poste
         SyndicWithdrawalRequest request = SyndicWithdrawalRequest.builder()
                 .wallet(wallet)
                 .amount(dto.getAmount())
                 .mode(dto.getMode())
                 .residence(residence)
-                .budgetItem(budgetItem)
                 .accountNumber(dto.getAccountNumber())
                 .reason(dto.getReason())
                 .status(WithdrawalStatus.PENDING)
@@ -114,20 +93,6 @@ public class SyndicWalletServiceImpl implements WalletService {
                         .build())
                 .collect(Collectors.toList());
     }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<BudgetItemSimpleDTO> getBudgetItemsWithoutCommonFacility(Long residenceId) {
-        int currentYear = LocalDate.now().getYear();
-        List<BudgetItem> budgetItems = budgetItemRepository.findByResidenceIdAndYearAndCommonFacilityIsNull(residenceId, currentYear);
-        return budgetItems.stream()
-                .map(item -> BudgetItemSimpleDTO.builder()
-                        .id(item.getId())
-                        .libelle(item.getLibelle())
-                        .build())
-                .collect(Collectors.toList());
-    }
-
 
     @Override
     @Transactional(readOnly = true)
@@ -219,14 +184,14 @@ public class SyndicWalletServiceImpl implements WalletService {
 
         // ===== 3. PAIEMENT PRESTATAIRES (depuis toujours, pas de limite de période) =====
 
-        // Additionne toutes les transactions de catégorie TRAVAUX, sans limite de date
+        // Additionne toutes les transactions de catégorie BUDGET_EXPENSE, sans limite de date
         // .abs() car ces montants sont stockés en négatif (dépense), on veut afficher une valeur positive
         BigDecimal paiementPrestataires = syndicWalletTransactionRepository.sumAmountByCategory(
-                wallet.getId(), WalletTransactionCategory.TRAVAUX, residenceId).abs();
+                wallet.getId(), WalletTransactionCategory.BUDGET_EXPENSE, residenceId).abs();
 
-        // Compte le nombre total de transactions TRAVAUX, pour le sous-texte "X facture"
+        // Compte le nombre total de transactions BUDGET_EXPENSE, pour le sous-texte "X facture"
         long paiementPrestatairesCount = syndicWalletTransactionRepository.countByCategory(
-                wallet.getId(), WalletTransactionCategory.TRAVAUX, residenceId);
+                wallet.getId(), WalletTransactionCategory.BUDGET_EXPENSE, residenceId);
 
         // ===== 4. RETRAITS EN ATTENTE (mois en cours) =====
 
@@ -273,13 +238,13 @@ public class SyndicWalletServiceImpl implements WalletService {
         List<Object[]> chargesRows = syndicWalletTransactionRepository.sumMonthlyByCategory(
                 wallet.getId(), "CHARGES", startDate, residenceId);
 
-        // Récupère les sommes mensuelles pour TRAVAUX
+        // Récupère les sommes mensuelles pour BUDGET_EXPENSE
         List<Object[]> travauxRows = syndicWalletTransactionRepository.sumMonthlyByCategory(
-                wallet.getId(), "TRAVAUX", startDate, residenceId);
+                wallet.getId(), "BUDGET_EXPENSE", startDate, residenceId);
 
-        // Récupère les sommes mensuelles pour RETRAIT
+        // Récupère les sommes mensuelles pour WITHDRAWAL
         List<Object[]> retraitRows = syndicWalletTransactionRepository.sumMonthlyByCategory(
-                wallet.getId(), "RETRAIT", startDate, residenceId);
+                wallet.getId(), "WITHDRAWAL", startDate, residenceId);
 
         // Construit la liste des 6 mois glissants, avec leur clé "yyyy-MM" et leur libellé affiché
         List<WalletChartPeriodDTO> periods = new ArrayList<>();
@@ -297,7 +262,7 @@ public class SyndicWalletServiceImpl implements WalletService {
             // Cherche la somme CHARGES correspondant à ce mois précis
             BigDecimal recettesCharges = findAmountForPeriod(chargesRows, periodKey);
 
-            // Cherche les sommes TRAVAUX et RETRAIT pour ce même mois, puis les additionne ensemble
+            // Cherche les sommes BUDGET_EXPENSE et WITHDRAWAL pour ce même mois, puis les additionne ensemble
             BigDecimal depensesTravaux = findAmountForPeriod(travauxRows, periodKey);
             BigDecimal depensesRetrait = findAmountForPeriod(retraitRows, periodKey);
             // Valeur absolue car ces montants sont stockés en négatif (dépenses)
@@ -345,13 +310,13 @@ public class SyndicWalletServiceImpl implements WalletService {
         List<Object[]> chargesRows = syndicWalletTransactionRepository.sumQuarterlyByCategory(
                 wallet.getId(), "CHARGES", startDate, residenceId);
 
-        // Récupère les sommes trimestrielles pour TRAVAUX
+        // Récupère les sommes trimestrielles pour BUDGET_EXPENSE
         List<Object[]> travauxRows = syndicWalletTransactionRepository.sumQuarterlyByCategory(
-                wallet.getId(), "TRAVAUX", startDate, residenceId);
+                wallet.getId(), "BUDGET_EXPENSE", startDate, residenceId);
 
-        // Récupère les sommes trimestrielles pour RETRAIT
+        // Récupère les sommes trimestrielles pour WITHDRAWAL
         List<Object[]> retraitRows = syndicWalletTransactionRepository.sumQuarterlyByCategory(
-                wallet.getId(), "RETRAIT", startDate, residenceId);
+                wallet.getId(), "WITHDRAWAL", startDate, residenceId);
 
         // Construit toujours les 4 trimestres de l'année en cours, même ceux pas encore arrivés
         List<WalletChartPeriodDTO> periods = new ArrayList<>();
@@ -367,7 +332,7 @@ public class SyndicWalletServiceImpl implements WalletService {
             // Cherche la somme CHARGES correspondant à ce trimestre précis
             BigDecimal recettesCharges = findAmountForPeriod(chargesRows, periodKey);
 
-            // Cherche les sommes TRAVAUX et RETRAIT pour ce même trimestre, puis les additionne ensemble
+            // Cherche les sommes BUDGET_EXPENSE et WITHDRAWAL pour ce même trimestre, puis les additionne ensemble
             BigDecimal depensesTravaux = findAmountForPeriod(travauxRows, periodKey);
             BigDecimal depensesRetrait = findAmountForPeriod(retraitRows, periodKey);
             // Valeur absolue car ces montants sont stockés en négatif (dépenses)
@@ -455,7 +420,7 @@ public class SyndicWalletServiceImpl implements WalletService {
     }
 
     // =========================================================================
-   // Aperçu "Derniers flux" (5 dernières transactions CHARGES + TRAVAUX, Vue d'ensemble)
+   // Aperçu "Derniers flux" (5 dernières transactions CHARGES + BUDGET_EXPENSE, Vue d'ensemble)
    // =========================================================================
     @Override
     @Transactional(readOnly = true)
@@ -471,7 +436,7 @@ public class SyndicWalletServiceImpl implements WalletService {
                 });
 
         // Limite à 5 résultats via la pagination (page 0, taille 5)
-        // Transactions CHARGES et TRAVAUX uniquement (exclut RETRAIT), triées par date décroissante,
+        // Transactions CHARGES et BUDGET_EXPENSE uniquement (exclut WITHDRAWAL), triées par date décroissante,
         // optionnellement filtré par residence. Utilisée pour le tableau "Derniers flux"
         Pageable pageable = PageRequest.of(0, 5);
         Page<SyndicWalletTransaction> transactionPage = syndicWalletTransactionRepository.findFlowsByWallet(
@@ -482,7 +447,7 @@ public class SyndicWalletServiceImpl implements WalletService {
         for (SyndicWalletTransaction transaction : transactionPage.getContent()) {
 
             String statut = transaction.getAmount().compareTo(BigDecimal.ZERO) < 0 ? "PAYÉ" : "REÇU";
-            String categoryLabel = transaction.getCategory() == WalletTransactionCategory.CHARGES ? "Charges" : "Travaux";
+            String categoryLabel = transaction.getCategory().getLabel();
 
             rows.add(WalletFlowRowDTO.builder()
                     .date(transaction.getTransactionDate())
@@ -525,7 +490,7 @@ public class SyndicWalletServiceImpl implements WalletService {
         for (SyndicWalletTransaction transaction : transactionPage.getContent()) {
 
             String statut = transaction.getAmount().compareTo(BigDecimal.ZERO) < 0 ? "PAYÉ" : "REÇU";
-            String categoryLabel = transaction.getCategory() == WalletTransactionCategory.CHARGES ? "Charges" : "Travaux";
+            String categoryLabel = transaction.getCategory().getLabel();
 
             rows.add(WalletFlowRowDTO.builder()
                     .date(transaction.getTransactionDate())
@@ -657,7 +622,6 @@ public class SyndicWalletServiceImpl implements WalletService {
                 .modeLabel(getModeLabel(withdrawal.getMode()))
                 .accountNumber(withdrawal.getAccountNumber())
                 .residenceName(withdrawal.getResidence() != null ? withdrawal.getResidence().getName() : null)
-                .budgetItemLabel(withdrawal.getBudgetItem() != null ? withdrawal.getBudgetItem().getLibelle() : null)
                 .status(withdrawal.getStatus())
                 .statusLabel(getStatusLabel(withdrawal.getStatus()))
                 .progressSteps(buildProgressSteps(withdrawal))

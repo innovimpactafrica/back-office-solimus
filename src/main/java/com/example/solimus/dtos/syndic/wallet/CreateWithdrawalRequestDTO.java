@@ -29,8 +29,6 @@ public class CreateWithdrawalRequestDTO {
     @NotNull(message = "La résidence est obligatoire")
     private Long residenceId;
 
-    private Long budgetItemId; // Optionnel : poste budgétaire concerné (uniquement pour les postes sans bien commun)
-
     @NotBlank(message = "Le compte de réception est obligatoire")
     private String accountNumber; // RIB ou numéro de téléphone
 

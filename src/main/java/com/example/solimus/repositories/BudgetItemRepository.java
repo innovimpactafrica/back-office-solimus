@@ -1,6 +1,7 @@
 package com.example.solimus.repositories;
 
 import com.example.solimus.entities.BudgetItem;
+import com.example.solimus.enums.BudgetStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -22,7 +23,8 @@ public interface BudgetItemRepository extends JpaRepository<BudgetItem, Long> {
     // Supprime tous les postes budgétaires d'un budget donné
     void deleteByBudgetId(Long budgetId);
 
-    // Récupère les postes budgétaires sans bien commun pour une résidence et une année
-    @Query("SELECT bi FROM BudgetItem bi WHERE bi.budget.residence.id = :residenceId AND bi.budget.annee = :year AND bi.commonFacility IS NULL")
-    List<BudgetItem> findByResidenceIdAndYearAndCommonFacilityIsNull(@Param("residenceId") Long residenceId, @Param("year") Integer year);
+    // Récupère tous les postes budgétaires du budget d'une résidence ayant un statut donné (ex: ACTIVE)
+    // Utilisé pour remplir le menu "Poste budgétaire" du modal de paiement travaux
+    @Query("SELECT bi FROM BudgetItem bi WHERE bi.budget.residence.id = :residenceId AND bi.budget.status = :status")
+    List<BudgetItem> findByResidenceIdAndBudgetStatus(@Param("residenceId") Long residenceId, @Param("status") BudgetStatus status);
 }
