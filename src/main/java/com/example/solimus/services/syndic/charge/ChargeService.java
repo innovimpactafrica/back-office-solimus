@@ -50,6 +50,12 @@ public interface ChargeService {
     CreateBudgetExpenseResultDTO createExpense(CreateBudgetExpenseDTO dto, MultipartFile justificatif);
 
     /**
+     * Supprime une dépense enregistrée par erreur (annulation). Une trace de l'annulation
+     * reste visible dans l'historique du budget — l'entrée d'origine n'est pas effacée.
+     */
+    void deleteExpense(Long transactionId);
+
+    /**
      * Retourne le budget en cours (ACTIVE) pour une résidence
      */
     CurrentBudgetDTO getCurrentBudget(Long residenceId);

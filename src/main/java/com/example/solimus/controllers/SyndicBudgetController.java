@@ -599,6 +599,7 @@ public class SyndicBudgetController {
             @RequestParam Long budgetItemId,
             @RequestParam String description,
             @RequestParam LocalDate date,
+            @RequestParam(required = false) String beneficiaryName,
             @RequestParam(required = false) MultipartFile justificatif
     ) {
         CreateBudgetExpenseDTO dto = CreateBudgetExpenseDTO.builder()
@@ -606,9 +607,26 @@ public class SyndicBudgetController {
                 .budgetItemId(budgetItemId)
                 .description(description)
                 .date(date)
+                .beneficiaryName(beneficiaryName)
                 .build();
 
         return ResponseEntity.ok(chargeService.createExpense(dto, justificatif));
+    }
+
+    @Operation(summary = "Supprimer une dépense", description = "Annule une dépense enregistrée par erreur. Une trace de l'annulation reste visible dans l'historique du budget", tags = {"Syndic - Charges"})
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Dépense supprimée avec succès"),
+            @ApiResponse(responseCode = "400", description = "Cette transaction n'est pas une dépense",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Cette dépense ne vous appartient pas",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Dépense introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @DeleteMapping("/expenses/{id}")
+    public ResponseEntity<Void> deleteExpense(@PathVariable Long id) {
+        chargeService.deleteExpense(id);
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "Recherche d'équipements communs pour autocomplétion des postes budgétaires", tags = {"Syndic - Charges"})

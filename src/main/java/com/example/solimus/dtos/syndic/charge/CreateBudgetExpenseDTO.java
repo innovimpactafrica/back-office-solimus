@@ -30,4 +30,8 @@ public class CreateBudgetExpenseDTO {
 
     @NotNull(message = "La date est obligatoire")
     private LocalDate date;
+
+    // Nom du bénéficiaire (optionnel) — texte libre, ex: "Quincaillerie Fall". Affiché dans la
+    // colonne "Payeur/Bénéficiaire" de l'historique des transactions.
+    private String beneficiaryName;
 }

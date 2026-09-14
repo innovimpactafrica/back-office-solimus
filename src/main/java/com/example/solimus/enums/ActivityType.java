@@ -29,5 +29,6 @@ public enum ActivityType {
     MEETING_DOCUMENT_UPDATED,    // branché sur updateMeetingDocument()
     MEETING_DOCUMENT_DELETED,    // branché sur deleteMeetingDocument()
     EXPENSE_RECORDED,            // branché sur ChargeServiceImpl.createExpense()
+    EXPENSE_DELETED,             // branché sur ChargeServiceImpl.deleteExpense()
 
 }

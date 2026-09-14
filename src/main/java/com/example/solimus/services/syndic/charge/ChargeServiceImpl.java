@@ -2822,6 +2822,7 @@ public class ChargeServiceImpl implements ChargeService {
         transaction.setAmount(dto.getAmount().negate());
         transaction.setBudgetItem(budgetItem);
         transaction.setLabel(dto.getDescription());
+        transaction.setBeneficiaryName(dto.getBeneficiaryName());
         transaction.setJustificatifUrl(justificatifUrl);
         transaction.setTransactionDate(dto.getDate().atStartOfDay());
         syndicWalletTransactionRepository.save(transaction);
@@ -2844,6 +2845,47 @@ public class ChargeServiceImpl implements ChargeService {
                 .amountPaid(dto.getAmount())
                 .newWalletBalance(nouveauSolde)
                 .build();
+    }
+
+    // ============================================================
+    // SUPPRIMER UNE DÉPENSE (annulation d'une erreur de saisie)
+    // ============================================================
+    @Override
+    @Transactional
+    public void deleteExpense(Long transactionId) {
+
+        User currentSyndic = getCurrentUser();
+
+        SyndicWalletTransaction transaction = syndicWalletTransactionRepository.findById(transactionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Dépense introuvable"));
+
+        // Seules les dépenses (catégorie BUDGET_EXPENSE) peuvent être supprimées par ce endpoint —
+        // pas les charges reçues, ni les retraits
+        if (transaction.getCategory() != WalletTransactionCategory.BUDGET_EXPENSE) {
+            throw new BadRequestException("Cette transaction n'est pas une dépense");
+        }
+
+        // Vérifie que cette transaction (dépense) appartient bien au syndic connecté
+        if (!transaction.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Cette dépense ne vous appartient pas");
+        }
+
+        BudgetItem budgetItem = transaction.getBudgetItem();
+
+        syndicWalletTransactionRepository.delete(transaction);
+
+        // Garde une trace de l'annulation dans l'historique du budget — l'entrée d'origine
+        // "Dépense enregistrée" n'est pas effacée, on voit qu'une dépense a existé puis a été annulée
+        if (budgetItem != null) {
+            ActivityLog activityLog = new ActivityLog();
+            activityLog.setResidence(transaction.getResidence());
+            activityLog.setType(ActivityType.EXPENSE_DELETED);
+            activityLog.setRelatedEntityType("BUDGET");
+            activityLog.setRelatedEntityId(budgetItem.getBudget().getId());
+            activityLog.setActor(currentSyndic);
+            activityLog.setMessage("Dépense annulée — " + budgetItem.getLibelle() + " — " + transaction.getLabel());
+            activityLogRepository.save(activityLog);
+        }
     }
 
     // ============================================================

@@ -63,7 +63,7 @@ public class ActivityLogPresenter {
             case MEETING_DOCUMENT_ADDED, MEETING_DOCUMENT_DOWNLOADED, MEETING_DOCUMENT_VIEWED, MEETING_DOCUMENT_UPDATED, MEETING_DOCUMENT_DELETED -> "Document";
             case COMMENT_ADDED -> "Commentaire";
             case BUDGET_CREATED, BUDGET_CLOSED, BUDGET_REOPENED, BUDGET_DELETED -> "Budget";
-            case EXPENSE_RECORDED -> "Dépense";
+            case EXPENSE_RECORDED, EXPENSE_DELETED -> "Dépense";
             case EXCEPTIONAL_CALL_CREATED, EXCEPTIONAL_CALL_ACTIVATED, EXCEPTIONAL_CALL_CLOSED -> "Appel exceptionnel";
         };
     }
