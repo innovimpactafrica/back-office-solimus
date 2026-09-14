@@ -2824,7 +2824,13 @@ public class ChargeServiceImpl implements ChargeService {
         transaction.setLabel(dto.getDescription());
         transaction.setBeneficiaryName(dto.getBeneficiaryName());
         transaction.setJustificatifUrl(justificatifUrl);
+        // Le formulaire ne demande qu'une date, pas une heure — on stocke donc minuit (00h00),
+        // c'est au front de ne pas afficher d'heure pour ce type de transaction
         transaction.setTransactionDate(dto.getDate().atStartOfDay());
+        syndicWalletTransactionRepository.save(transaction);
+
+        // Généré après enregistrement
+        transaction.setReference("DEP-" + transaction.getId());
         syndicWalletTransactionRepository.save(transaction);
 
         // Trace l'événement dans l'historique du budget (onglet Historique)
