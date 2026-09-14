@@ -7,12 +7,13 @@ import java.math.BigDecimal;
 @Data
 public class BudgetItemOverviewDTO {
 
+    private Long id; // Id du poste (BudgetItem.id) — à renvoyer pour choisir ce poste dans le formulaire "Enregistrer une dépense"
+
     private String libelle; // Nom du poste, ex: "Ascenseurs"
 
     private BigDecimal montantPrevu; // Montant prévu pour ce poste (BudgetItem.montant)
 
-    // Montant réellement dépensé : calculé via les interventions si poste lié à un bien commun,
-    // sinon via les demandes de retrait validées liées à ce poste
+    // Montant réellement dépensé : somme des transactions du wallet imputées à ce poste précis
     private BigDecimal montantReel;
 
     // Écart = montantPrevu - montantReel

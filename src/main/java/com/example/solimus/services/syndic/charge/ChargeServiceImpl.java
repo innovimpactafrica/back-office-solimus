@@ -2959,6 +2959,7 @@ public class ChargeServiceImpl implements ChargeService {
     // payé sur ce poste précis, peu importe s'il est lié à un bien commun ou non
     private BudgetItemOverviewDTO buildItemOverview(BudgetItem item, BigDecimal budgetTotal) {
         BudgetItemOverviewDTO itemDto = new BudgetItemOverviewDTO();
+        itemDto.setId(item.getId());
         itemDto.setLibelle(item.getLibelle());
         itemDto.setMontantPrevu(item.getMontant());
 
