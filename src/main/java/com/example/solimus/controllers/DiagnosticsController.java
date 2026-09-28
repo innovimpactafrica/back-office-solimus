@@ -2,42 +2,33 @@ package com.example.solimus.controllers;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-// Endpoint TEMPORAIRE de diagnostic réseau — à supprimer une fois le problème d'envoi de mail résolu
+// Endpoint TEMPORAIRE de diagnostic — vérifie si le mot de passe mail arrive entier ou coupé.
+// Ne renvoie jamais le mot de passe complet. À supprimer une fois le problème résolu.
 @RestController
-@Tag(name = "Diagnostic (temporaire)", description = "Test réseau vers OVH — à supprimer après usage")
+@Tag(name = "Diagnostic (temporaire)", description = "Vérifie la longueur du mot de passe mail reçu — à supprimer après usage")
 public class DiagnosticsController {
 
-    @Operation(summary = "Teste si ce serveur arrive à joindre ssl0.ovh.net sur le port 587")
-    @GetMapping("/api/diagnostics/mail-connectivity")
-    public ResponseEntity<Map<String, Object>> checkMailConnectivity() {
+    @Value("${spring.mail.password:}")
+    private String mailPassword;
 
-        String host = "ssl0.ovh.net";
-        int port = 587;
-        int timeoutMs = 5000;
+    @Operation(summary = "Vérifie si le mot de passe mail est arrivé complet (longueur + 2 premiers/derniers caractères, jamais le mot de passe entier)")
+    @GetMapping("/api/diagnostics/mail-password-check")
+    public ResponseEntity<Map<String, Object>> checkMailPassword() {
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("host", host);
-        result.put("port", port);
 
-        long start = System.currentTimeMillis();
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(host, port), timeoutMs);
-            result.put("success", true);
-            result.put("message", "Connexion réussie — le port n'est pas bloqué");
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("message", e.getClass().getSimpleName() + " : " + e.getMessage());
-        }
-        result.put("durationMs", System.currentTimeMillis() - start);
+        int length = mailPassword == null ? 0 : mailPassword.length();
+        result.put("length", length);
+        result.put("startsWith", length >= 2 ? mailPassword.substring(0, 2) : mailPassword);
+        result.put("endsWith", length >= 2 ? mailPassword.substring(length - 2) : mailPassword);
 
         return ResponseEntity.ok(result);
     }
