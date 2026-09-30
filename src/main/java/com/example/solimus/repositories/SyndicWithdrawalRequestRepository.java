@@ -42,7 +42,7 @@ public interface SyndicWithdrawalRequestRepository extends JpaRepository<SyndicW
     BigDecimal sumCompletedAmount(@Param("walletId") Long walletId, @Param("residenceId") Long residenceId);
 
     // sumCompletedAmountUpTo supprimée — SyndicTreasuryService se base désormais uniquement sur
-    // SyndicWalletTransaction (catégorie RETRAIT), plus sur une soustraction séparée ici
+    // SyndicWalletTransaction (catégorie WITHDRAWAL), plus sur une soustraction séparée ici
 
     // Historique paginé des demandes de retrait, triées par date décroissante, optionnellement filtré par résidence
     @Query("SELECT w FROM SyndicWithdrawalRequest w " +

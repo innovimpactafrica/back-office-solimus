@@ -17,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -25,25 +24,22 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-public class DasboardServiceImpl implements DashboardService {
+public class DashboardServiceImpl implements DashboardService {
 
     private final UserRepository userRepository;
     private final ResidenceRepository residenceRepository;
     private final PropertyRepository propertyRepository;
     private final SyndicWalletRepository syndicWalletRepository;
-    private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
-    private final ChargeCallRepository chargeCallRepository;
     private final ChargeCallItemRepository chargeCallItemRepository;
     private final InterventionRequestRepository interventionRequestRepository;
     private final MeetingRepository meetingRepository;
     private final ActivityLogRepository activityLogRepository;
-    private final ExceptionalCallRepository exceptionalCallRepository;
     private final SignalementRepository signalementRepository;
     private final ActivityLogPresenter activityLogPresenter;
     private final SyndicTreasuryService syndicTreasuryService;
 
     // =========================================================================
-    // TABLEAU DE BORD PRINCIPAL (KPIs, résidence optionnelle avec repli automatique)
+    // TABLEAU DE BORD PRINCIPAL (KPIs, résidence optionnelle)
     // =========================================================================
 
     @Override
@@ -64,29 +60,8 @@ public class DasboardServiceImpl implements DashboardService {
 
         // --- Trésorerie Totale (globale ou filtrée par résidence) ---
 
-        // Solde brut, utilisé plus bas pour l'évolution vs mois dernier (flux de transactions seuls)
-        BigDecimal treasuryBrute = (resolvedResidenceId != null)
-                ? syndicWalletTransactionRepository.sumAllByResidenceId(resolvedResidenceId, LocalDateTime.now())
-                : calculerSoldeADate(walletId, LocalDateTime.now());
-
-        // Trésorerie disponible = source unique (SyndicTreasuryService), ne soustrait que les retraits
-        // réellement COMPLETED — jamais les PENDING (voir WithdrawalRequestServiceImpl pour le blocage
-        // au moment de la validation, plus à la création de la demande)
+        // Trésorerie disponible, calculée par SyndicTreasuryService (source unique pour ce calcul)
         dto.setTreasuryTotal(syndicTreasuryService.getAvailableBalance(walletId, resolvedResidenceId));
-
-        // Calcule la date de fin du mois précédent (= début du mois actuel)
-        LocalDateTime finMoisPrecedent = LocalDate.now().withDayOfMonth(1).atStartOfDay();
-
-        // Calcule le solde qu'il y avait à cette date-là (global ou filtré)
-        BigDecimal treasuryMoisPrecedent;
-        if (resolvedResidenceId != null) {
-            treasuryMoisPrecedent = syndicWalletTransactionRepository.sumAllByResidenceId(resolvedResidenceId, finMoisPrecedent);
-        } else {
-            treasuryMoisPrecedent = calculerSoldeADate(walletId, finMoisPrecedent);
-        }
-
-        // Calcule la variation en pourcentage (uniquement sur les flux de transactions, sans les retraits réservés)
-        dto.setTreasuryEvolutionPercent(calculerVariation(treasuryBrute, treasuryMoisPrecedent).doubleValue());
 
         // --- Taux de Recouvrement + Impayés (globaux ou filtrés par résidence) ---
 
@@ -97,8 +72,7 @@ public class DasboardServiceImpl implements DashboardService {
             allItems = chargeCallItemRepository.findAllByBudgetSyndicId(currentSyndic.getId());
         }
 
-        // Additionne tous les montants dus (quote-part + pénalité si déjà appliquée) — cohérent
-        // avec les autres écrans financiers (Paiements, Impayés) qui utilisent aussi getTotalDue()
+        // Total dû, pénalité incluse
         BigDecimal totalDue = allItems.stream().map(item -> item.getTotalDue()).reduce(BigDecimal.ZERO, BigDecimal::add);
         // Additionne tous les montants déjà payés
         BigDecimal totalPaid = allItems.stream().map(ChargeCallItem::getPaidAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -114,14 +88,6 @@ public class DasboardServiceImpl implements DashboardService {
         dto.setRecoveryRate(recoveryRate);
         dto.setUnpaidAmount(totalUnpaid);
 
-        // Évolution du taux de recouvrement : pas calculée pour l'instant, en attente de décider la
-        // bonne formule (le calcul actuel — charges créées le mois dernier × paidAmount d'aujourd'hui —
-        // donne un chiffre qui bouge rétroactivement, à revoir) // à définir
-        dto.setRecoveryRateEvolutionPercent(null);
-        // Même souci que recoveryRateEvolutionPercent ci-dessus (charges créées le mois dernier ×
-        // remainingAmount d'aujourd'hui, chiffre pas stable dans le temps) — désactivée en attendant // à définir
-        dto.setUnpaidEvolutionPercent(null);
-
         // --- Résidences Gérées (TOUJOURS global syndic, indépendant de la résidence sélectionnée) ---
 
         // Récupère TOUTES les résidences du syndic, pas juste celle sélectionnée
@@ -136,11 +102,7 @@ public class DasboardServiceImpl implements DashboardService {
 
         // --- Incidents Ouverts (globaux ou filtrés par résidence) ---
 
-        // Liste des statuts considérés comme "ouverts" (tout sauf clôturé ou annulé)
-        List<InterventionStatus> openStatuses = List.of(
-                InterventionStatus.PENDING, InterventionStatus.SYNDIC_ASSIGNED,
-                InterventionStatus.QUOTE_VALIDATED, InterventionStatus.STARTED, InterventionStatus.FINISHED
-        );
+        List<InterventionStatus> openStatuses = getOpenInterventionStatuses();
 
         long openIncidentsCount;
         long urgentIncidentsCount;
@@ -185,8 +147,7 @@ public class DasboardServiceImpl implements DashboardService {
     }
 
     // =========================================================================
-    // ALERTES IMPORTANTES (AG à venir + paiements en retard + intervention urgente)
-    // Vue résumée, toutes résidences confondues (max 3 alertes)
+    // ALERTES IMPORTANTES — toutes résidences confondues, max 4 alertes (une par type)
     // =========================================================================
 
     @Override
@@ -236,11 +197,7 @@ public class DasboardServiceImpl implements DashboardService {
 
         // --- Travaux non résolus (nombre total, tous niveaux d'urgence confondus) ---
 
-        // Même liste de statuts "ouverts" que le KPI "Incidents ouverts" du dashboard principal
-        List<InterventionStatus> openStatuses = List.of(
-                InterventionStatus.PENDING, InterventionStatus.SYNDIC_ASSIGNED,
-                InterventionStatus.QUOTE_VALIDATED, InterventionStatus.STARTED, InterventionStatus.FINISHED
-        );
+        List<InterventionStatus> openStatuses = getOpenInterventionStatuses();
         long openInterventionsCount = interventionRequestRepository
                 .countByResidenceSyndicIdAndStatusIn(currentSyndic.getId(), openStatuses);
 
@@ -351,10 +308,8 @@ public class DasboardServiceImpl implements DashboardService {
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
     }
 
-    // Valide un residenceId fourni explicitement par l'appelant : vérifie qu'il existe et qu'il
-    // appartient bien au syndic connecté. N'est jamais appelée avec un residenceId null — quand
-    // aucune résidence n'est précisée, getMainDashboard reste volontairement en mode global
-    // (toutes résidences confondues), il n'y a pas de repli automatique sur une résidence précise.
+    // Vérifie qu'une résidence donnée existe et appartient bien au syndic connecté.
+    // Jamais appelée avec null — sans résidence précisée, le dashboard reste en mode global.
     private Long resolveResidenceId(Long residenceId, User currentSyndic) {
 
         // Récupère la résidence, erreur si elle n'existe pas
@@ -369,27 +324,14 @@ public class DasboardServiceImpl implements DashboardService {
         return residence.getId();
     }
 
-    // Calcule le solde du wallet à une date donnée
-    private BigDecimal calculerSoldeADate(Long walletId, LocalDateTime asOfDate) {
-        // Si aucun wallet n'existe, le solde est considéré comme zéro
-        if (walletId == null) return BigDecimal.ZERO;
-        // Somme toutes les transactions du wallet jusqu'à cette date
-        return syndicWalletTransactionRepository.sumTransactionsUpTo(walletId, asOfDate);
+    // Statuts considérés comme "ouverts" pour un InterventionRequest (tout sauf clôturé ou annulé) —
+    // utilisée à la fois par le KPI "Travaux Ouverts" et l'alerte "Travaux non résolus"
+    private List<InterventionStatus> getOpenInterventionStatuses() {
+        return List.of(
+                InterventionStatus.PENDING, InterventionStatus.SYNDIC_ASSIGNED,
+                InterventionStatus.QUOTE_VALIDATED, InterventionStatus.STARTED, InterventionStatus.FINISHED
+        );
     }
-
-    // Calcule la variation en pourcentage entre deux montants
-    private BigDecimal calculerVariation(BigDecimal actuel, BigDecimal precedent) {
-        // Évite une division par zéro si le montant précédent était nul
-        if (precedent.compareTo(BigDecimal.ZERO) == 0) {
-            return BigDecimal.ZERO;
-        }
-        // Calcule (actuel - précédent) / précédent * 100
-        return actuel.subtract(precedent)
-                .divide(precedent, 4, RoundingMode.HALF_UP)
-                .multiply(BigDecimal.valueOf(100))
-                .setScale(2, RoundingMode.HALF_UP);
-    }
-
 
     // Construit une ligne du tableau "Incidents Récents"
     private RecentIncidentDTO buildRecentIncidentDto(InterventionRequest intervention) {
@@ -398,7 +340,6 @@ public class DasboardServiceImpl implements DashboardService {
         dto.setId(intervention.getId());
         dto.setTitle(intervention.getTitle());
         dto.setResidenceName(intervention.getResidence().getName());
-        // Statut brut de l'intervention, tel qu'il est stocké — aucune déduction ni regroupement
         dto.setStatus(intervention.getStatus().getLabel());
         dto.setUrgencyLevel(intervention.getUrgencyLevel() != null ? intervention.getUrgencyLevel().name() : null);
         dto.setCreatedAt(intervention.getCreatedAt());

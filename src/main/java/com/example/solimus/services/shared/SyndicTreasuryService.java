@@ -8,24 +8,18 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 // Calcul centralisé de la "trésorerie disponible" d'un syndic — seule source de vérité, réutilisée
-// partout où ce chiffre est affiché (dashboards, wallet) ET là où il sert de garde-fou (validation
-// d'un retrait), pour qu'ils ne puissent jamais diverger.
-//
-// Logique unifiée avec le prestataire (voir WalletBalanceServiceImpl.getCurrentBalance, côté
-// services.provider.wallet) : même principe exact — une demande PENDING ne réserve rien, le contrôle
-// anti-abus se fait uniquement à la validation admin. Ce n'est PAS deux philosophies différentes,
-// volontairement alignées des deux côtés — si l'une évolue, penser à répercuter sur l'autre.
+// partout où ce chiffre est affiché (dashboards, wallet) et où il sert de garde-fou (validation d'un
+// retrait). Même principe côté prestataire (WalletBalanceServiceImpl.getCurrentBalance) : si l'un
+// des deux évolue, penser à répercuter sur l'autre.
 @Component
 @RequiredArgsConstructor
 public class SyndicTreasuryService {
 
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
 
-    // Trésorerie disponible À AUJOURD'HUI = somme de toutes les SyndicWalletTransaction du wallet
-    // jusqu'à maintenant (CHARGES et TRAVAUX en positif/négatif, RETRAIT en négatif dès qu'un retrait
-    // est validé COMPLETED — voir WithdrawalRequestServiceImpl.validateWithdrawalRequest). Les retraits
-    // encore PENDING ne créent aucune transaction, donc ne réservent rien : le blocage se fait au
-    // moment de la validation, pas à la création de la demande.
+    // Trésorerie disponible à aujourd'hui = somme des SyndicWalletTransaction du wallet (CHARGES et
+    // BUDGET_EXPENSE en positif/négatif, WITHDRAWAL en négatif une fois le retrait validé COMPLETED).
+    // Un retrait encore PENDING ne crée aucune transaction, donc ne réserve rien.
     public BigDecimal getAvailableBalance(Long walletId, Long residenceId) {
         return getAvailableBalanceAsOf(walletId, residenceId, LocalDateTime.now());
     }

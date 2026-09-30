@@ -22,8 +22,7 @@ public class BudgetOverviewDTO {
     private BigDecimal budgetTotal;
 
     // --- KPI 2 : Dépenses réelles GLOBALES ---
-    // Calculées à partir des SyndicWalletTransaction (catégorie TRAVAUX, résidence + année du budget).
-    // C'est la SEULE vraie donnée calculée de la page — tout le reste des "réels" par poste est provisoire (voir BudgetItemOverviewDTO).
+    // Calculées à partir des SyndicWalletTransaction (catégorie BUDGET_EXPENSE, résidence + année du budget).
     private BigDecimal depensesReellesGlobal;
 
     // --- KPI 3 : Écart budgétaire = budgetTotal - depensesReellesGlobal ---

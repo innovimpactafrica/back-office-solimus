@@ -18,7 +18,7 @@ import java.util.List;
 
 // ============================================================
 // InterventionRequest
-// Représente une demande de travaux créé par le Syndic ou le copropriétaire 
+// Représente une demande de travaux
 // ============================================================
 @Entity
 @Table(name = "intervention_requests")

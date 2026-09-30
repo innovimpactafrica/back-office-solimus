@@ -43,13 +43,6 @@ BudgetRepository extends JpaRepository<Budget, Long> {
      */
     List<Budget> findByResidenceId(Long residenceId);
 
-    /**
-     * Trouver le budget le plus récent pour une résidence
-     * (trié par année décroissante)
-     */
-    @Query("SELECT b FROM Budget b WHERE b.residence.id = :residenceId ORDER BY b.annee DESC")
-    Optional<Budget> findMostRecentByResidenceId(@Param("residenceId") Long residenceId);
-
     // Pagine les budgets d'un syndic, avec filtres résidence et année tous les deux optionnels —
     // pour /api/syndic/budget/budgets
     @Query("SELECT b FROM Budget b WHERE b.syndic.id = :syndicId " +

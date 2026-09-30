@@ -101,6 +101,12 @@ public interface ChargeCallPaymentRepository extends JpaRepository<ChargeCallPay
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
+    // Somme de tous les paiements de charges d'un syndic, depuis toujours (aucune limite de période)
+    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM ChargeCallPayment p " +
+            "WHERE p.chargeCallItem.chargeCall.budget.syndic.id = :syndicId " +
+            "AND p.status = 'COMPLETED'")
+    BigDecimal sumByBudgetSyndicId(@Param("syndicId") Long syndicId);
+
     // Supprimer tous les paiements liés à un appel de charges
     @Modifying
     @Query("DELETE FROM ChargeCallPayment p WHERE p.chargeCallItem.chargeCall.id = :chargeCallId")

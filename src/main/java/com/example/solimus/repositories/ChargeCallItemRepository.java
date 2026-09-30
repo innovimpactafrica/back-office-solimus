@@ -33,25 +33,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
            "ORDER BY cc.year DESC, cc.periodNumber DESC")
     Page<ChargeCallItem> findByResidenceId(@Param("residenceId") Long residenceId, Pageable pageable);
 
-    /**
-     * Compter les lignes d'appel de charges pour un copropriétaire et une résidence.
-     */
-    @Query("SELECT COUNT(cci) FROM ChargeCallItem cci " +
-           "JOIN cci.chargeCall cc " +
-           "JOIN cc.budget b " +
-           "WHERE b.residence.id = :residenceId AND cci.coOwner.id = :coOwnerId")
-    long countByCoOwnerIdAndResidenceId(@Param("coOwnerId") Long coOwnerId, @Param("residenceId") Long residenceId);
-
     // ===== DASHBOARD SYNDIC - STATS GLOBALES =====
-
-    /**
-     * Somme des montants payés pour un syndic (trésorerie globale)
-     */
-    @Query("SELECT COALESCE(SUM(cci.paidAmount), 0) FROM ChargeCallItem cci " +
-           "JOIN cci.chargeCall cc " +
-           "JOIN cc.budget b " +
-           "WHERE b.residence.syndic = :syndic")
-    BigDecimal sumPaidAmountBySyndic(@Param("syndic") User syndic);
 
     /**
      * Compter les résidences avec au moins un impayé pour un syndic
@@ -73,6 +55,17 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
            "JOIN cc.budget b " +
            "WHERE b.residence.id = :residenceId")
     BigDecimal sumQuotePartByResidenceId(@Param("residenceId") Long residenceId);
+
+    /**
+     * Somme de ce qui est réellement dû pour une résidence (quote-part + pénalité) —
+     * à utiliser à la place de sumQuotePartByResidenceId partout où "montant dû" doit
+     * inclure la pénalité, cohérent avec ChargeCallItem.getTotalDue()
+     */
+    @Query("SELECT COALESCE(SUM(cci.quotePart + COALESCE(cci.penaltyAmount, 0)), 0) FROM ChargeCallItem cci " +
+           "JOIN cci.chargeCall cc " +
+           "JOIN cc.budget b " +
+           "WHERE b.residence.id = :residenceId")
+    BigDecimal sumTotalDueByResidenceId(@Param("residenceId") Long residenceId);
 
     /**
      * Somme des montants payés pour une résidence (trésorerie)

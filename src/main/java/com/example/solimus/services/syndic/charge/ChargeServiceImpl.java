@@ -2475,13 +2475,9 @@ public class ChargeServiceImpl implements ChargeService {
         dto.setChargeCallsCount(allChargeCalls.size());
         dto.setTotalCalledEvolutionPercent(calculateChargeCallsEvolution(currentSyndic.getId()));
 
-        // --- Total Encaissé ---
+        // --- Total Encaissé (depuis toujours, toutes années — cohérent avec Total Appelé et Impayés) ---
 
-        LocalDateTime finMoisCourant = LocalDate.now().plusDays(1).atStartOfDay();
-        LocalDateTime debutAnnee = LocalDate.now().withDayOfYear(1).atStartOfDay();
-
-        BigDecimal totalCollected = chargeCallPaymentRepository
-                .sumByBudgetSyndicIdAndPaidAtBetween(currentSyndic.getId(), debutAnnee, finMoisCourant);
+        BigDecimal totalCollected = chargeCallPaymentRepository.sumByBudgetSyndicId(currentSyndic.getId());
         dto.setTotalCollected(totalCollected);
         dto.setTotalCollectedEvolutionPercent(calculateCollectedEvolution(currentSyndic.getId()));
 

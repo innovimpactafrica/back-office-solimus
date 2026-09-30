@@ -8,13 +8,10 @@ import java.math.BigDecimal;
 public class MainDashboardDTO {
 
     private BigDecimal treasuryTotal; // Trésorerie disponible (via wallet)
-    private Double treasuryEvolutionPercent; // Évolution vs mois dernier
 
     private Double recoveryRate; // Taux de recouvrement en %
-    private Double recoveryRateEvolutionPercent; // Évolution vs mois dernier (en points de %)
 
     private BigDecimal unpaidAmount; // Montant total impayé pour cette résidence
-    private Double unpaidEvolutionPercent; // Évolution vs mois dernier
 
     private Integer managedResidencesCount; // Nombre de résidences gérées (global syndic, pas filtré)
     private Integer totalLotsCount; // Nombre total de lots (global syndic, pas filtré)

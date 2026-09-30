@@ -8,9 +8,9 @@ import java.util.List;
 public interface DashboardService {
 
     /**
-     * Retourne les 6 KPIs principaux du tableau de bord.
+     * Retourne les KPIs principaux du tableau de bord.
      * residenceId est OPTIONNEL : si fourni, filtre sur cette résidence ;
-     * si absent, utilise automatiquement la résidence la plus récemment créée par le syndic.
+     * si absent, calcule sur toutes les résidences du syndic.
      */
     MainDashboardDTO getMainDashboard(Long residenceId);
 

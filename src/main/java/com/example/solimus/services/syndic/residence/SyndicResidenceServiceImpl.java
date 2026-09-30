@@ -559,16 +559,10 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
             throw new BadRequestException("Ce bien n'appartient pas à cette résidence");
         }
 
-        // Vérifier si le bien a un historique financier (ChargeCallItem)
-        // On vérifie via le propriétaire actuel du lot et les appels de charges générés pour cette résidence
-        // Si le propriétaire a des ChargeCallItem liés à des ChargeCall de cette résidence, on refuse la suppression
+        // Suppression autorisée uniquement si le lot est vacant (aucun propriétaire assigné)
         if (property.getOwner() != null) {
-            long chargeCallItemCount = chargeCallItemRepository.countByCoOwnerIdAndResidenceId(
-                    property.getOwner().getId(), residenceId);
-            if (chargeCallItemCount > 0) {
-                throw new BadRequestException(
-                    "Impossible de supprimer ce lot car il est lié à un historique financier (charges).");
-            }
+            throw new BadRequestException(
+                "Impossible de supprimer un lot ayant un propriétaire — libérez-le d'abord (VACANT).");
         }
 
         propertyRepository.delete(property);
@@ -840,7 +834,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         return residencePage.map(residence -> {
 
             // Calcule le taux d'impayés pour affichage (purement informatif, indépendant du filtre)
-            BigDecimal amountDue = chargeCallItemRepository.sumQuotePartByResidenceId(residence.getId());
+            // amountDue inclut la pénalité, cohérent avec le reste du module Charges
+            BigDecimal amountDue = chargeCallItemRepository.sumTotalDueByResidenceId(residence.getId());
             BigDecimal amountPaid = chargeCallItemRepository.sumPaidAmountByResidenceId(residence.getId());
 
             double tauxImpayes = 0.0;
@@ -898,8 +893,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         // 2. Nombre de propriétaires distincts
         long coOwnersCount = propertyRepository.countDistinctOwnersByResidenceId(residenceId);
 
-        // 3. Budget annuel (budgetTotal du Budget le plus récent)
-        BigDecimal annualBudget = budgetRepository.findMostRecentByResidenceId(residenceId)
+        // 3. Budget annuel (budgetTotal du budget ACTIF de la résidence — null si aucun)
+        BigDecimal annualBudget = budgetRepository.findByResidenceIdAndStatus(residenceId, BudgetStatus.ACTIVE)
                 .map(Budget::getBudgetTotal)
                 .orElse(null);
 
@@ -2062,8 +2057,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     private ResidenceDTO mapToResidenceDTO(Residence res) {
         String presignedPhotoUrl = res.getPhotoUrl();
 
-        // Récupère le budget le plus récent de la résidence
-        BigDecimal annualBudget = budgetRepository.findMostRecentByResidenceId(res.getId())
+        // Récupère le budget ACTIF de la résidence (null si aucun)
+        BigDecimal annualBudget = budgetRepository.findByResidenceIdAndStatus(res.getId(), BudgetStatus.ACTIVE)
                 .map(Budget::getBudgetTotal)
                 .orElse(null);
 

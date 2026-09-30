@@ -49,7 +49,6 @@ public class SecurityConfig {
                         .requestMatchers("/api/payments/bridge/**", "/api/payments/intouch/**").permitAll()
                         .requestMatchers("/touchpay-bridge.html").permitAll()
                         .requestMatchers("/api/files/**", "/uploads/**").permitAll()
-                        .requestMatchers("/api/diagnostics/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN")
