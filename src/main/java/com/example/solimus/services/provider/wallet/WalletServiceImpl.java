@@ -118,7 +118,6 @@ public class WalletServiceImpl implements WalletService {
 
         // Créer la demande de versement (retrait)
         ProviderWithdrawalRequest retrait = ProviderWithdrawalRequest.builder()
-                .reference(generateReference("WIT"))                     // Référence unique (ex: WIT-987654)
                 .provider(currentProvider)                              // Prestataire effectuant la demande
                 .amount(dto.getAmount())                                // Montant du retrait
                 .method(dto.getMethod())                                 // Moyen de retrait (WAVE, ORANGE_MONEY)
@@ -126,7 +125,11 @@ public class WalletServiceImpl implements WalletService {
                 .status(WithdrawalStatus.PENDING)                        // Nouveau retrait toujours PENDING
                 .build();
 
-        withdrawalRequestRepository.save(retrait);
+        retrait = withdrawalRequestRepository.save(retrait);
+
+        // Référence fixée à partir de l'id auto-généré (garanti unique par la base)
+        retrait.setReference("WIT-" + String.format("%06d", retrait.getId()));
+        retrait = withdrawalRequestRepository.save(retrait);
 
         // 3. Notifier le prestataire (push + email) si notifications activées
         if (currentProvider.isNotificationsEnabled()) {
@@ -167,13 +170,6 @@ public class WalletServiceImpl implements WalletService {
         return ProviderWallet.builder()
                 .provider(provider)
                 .build();
-    }
-
-    /**
-     * Génère une référence unique pour un retrait.
-     */
-    private String generateReference(String prefix) {
-        return prefix + "-" + (int)(Math.random() * 900000 + 100000);
     }
 
     /**

@@ -52,7 +52,7 @@ public class ProviderServiceImpl implements ProviderService {
     private final MinioService minioService;
     private final WalletBalanceService walletBalanceService;
     private final WithdrawalRequestRepository withdrawalRequestRepository;
-    private final PaymentRepository paymentRepository;
+    private final ProviderWalletTransactionRepository providerWalletTransactionRepository;
     private final PasswordEncoder passwordEncoder;
     private final ProviderProfileRepository providerProfileRepository;
     private final NotificationRepository notificationRepository;
@@ -92,7 +92,7 @@ public class ProviderServiceImpl implements ProviderService {
         int validatedCount = interventionRepository.countBySelectedProviderIdAndStatus(providerId, InterventionStatus.FINAL_VALIDATION);
 
         // Étape 4 : Calculer les missions en attente et les encours financiers
-        // - pendingMissionsCount : Dévis accepté et travaux non démarrés (statut SYNDIC_VALIDATED)
+        // - pendingMissionsCount : Devis accepté et travaux non démarrés (statut QUOTE_VALIDATED)
         int pendingMissionsCount = interventionRepository.countBySelectedProviderIdAndStatus(providerId, InterventionStatus.QUOTE_VALIDATED);
 
         // - pendingPaymentsAmount : Tout l'argent que les syndics doivent encore au prestataire pour toutes les interventions acceptées (remainingAmount > 0)
@@ -157,12 +157,12 @@ public class ProviderServiceImpl implements ProviderService {
         // Total des gains récoltés sur les 7 derniers jours glissants (semaine en cours)
         BigDecimal totalCetteSemaine = totalSemaine;
 
-        // Somme des paiements validés reçus sur les 7 jours précédents (semaine précédente, du jour J-14 à J-7)
-        // Note : On utilise ici une approche de fenêtre glissante (rolling window) de 7 jours pour la comparaison
-        BigDecimal totalSemaineDerniere = paymentRepository.sumByProviderIdBetween(
+        // Somme des crédits reçus sur les 7 jours précédents (semaine précédente, du jour J-14 à J-7),
+        // toutes sources confondues — fenêtre glissante de 7 jours pour la comparaison
+        BigDecimal totalSemaineDerniere = providerWalletTransactionRepository.sumCreditsByProviderIdBetween(
                 providerId,
-                LocalDate.now().minusDays(14),
-                LocalDate.now().minusDays(7)
+                LocalDate.now().minusDays(14).atStartOfDay(),
+                LocalDate.now().minusDays(7).atStartOfDay()
         );
 
         // Calcul de la variation en pourcentage entre cette semaine et la semaine dernière
@@ -279,8 +279,11 @@ public class ProviderServiceImpl implements ProviderService {
             // Calcul du jour glissant de la semaine
             LocalDate jour = today.minusDays(6 - i);
 
-            // Somme de tous les paiements complétés et validés ce jour-là
-            BigDecimal montant = paymentRepository.sumByProviderIdAndDate(providerId, jour);
+            // Somme des crédits reçus ce jour-là, toutes sources confondues (copropriétaire Mobile
+            // Money OU syndic en interne) — jamais via paymentRepository, qui ne voit que les
+            // paiements Mobile Money et raterait les paiements syndic
+            BigDecimal montant = providerWalletTransactionRepository.sumCreditsByProviderIdAndDate(
+                    providerId, jour.atStartOfDay(), jour.plusDays(1).atStartOfDay());
 
             return DailyRevenueDTO.builder()
                 .jour(jours.get(jour.getDayOfWeek().getValue() - 1))

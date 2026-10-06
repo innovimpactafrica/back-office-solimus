@@ -29,7 +29,8 @@ public class Quote {
     private Long id;
 
     // --- Identification ---
-    @Column(nullable = false, unique = true)
+    // Fixée après le premier save, à partir de l'id auto-généré (garanti unique) — voir createQuote()
+    @Column(unique = true)
     private String reference;
 
     // --- Totaux ---

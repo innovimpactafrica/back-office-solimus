@@ -28,8 +28,8 @@ public class ExceptionalCallPayment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Référence unique : ECP-123456
-    @Column(unique = true, nullable = false)
+    // Référence unique, fixée après le 1er save à partir de l'id auto-généré : ECP-000123
+    @Column(unique = true)
     private String reference;
 
     // La ligne d'appel exceptionnel concernée

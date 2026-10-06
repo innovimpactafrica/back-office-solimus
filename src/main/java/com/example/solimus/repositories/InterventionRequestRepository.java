@@ -22,6 +22,9 @@ import java.util.Optional;
 @Repository
 public interface InterventionRequestRepository extends JpaRepository<InterventionRequest, Long> {
 
+    // Nombre d'interventions liées à cette spécialité — bloque sa suppression si > 0
+    long countBySpecialtyId(Long specialtyId);
+
     /**
      * Récupérer les 4 interventions les plus récentes pour un bien commun
      * Triées par date de création décroissante

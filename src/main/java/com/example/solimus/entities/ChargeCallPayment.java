@@ -28,8 +28,8 @@ public class ChargeCallPayment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Référence unique : CCP-123456
-    @Column(unique = true, nullable = false)
+    // Référence unique, fixée après le 1er save à partir de l'id auto-généré : CPY-000123
+    @Column(unique = true)
     private String reference;
 
     // La ligne d'appel de charges concernée

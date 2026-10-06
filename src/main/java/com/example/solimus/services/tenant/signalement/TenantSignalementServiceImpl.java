@@ -61,7 +61,6 @@ public class TenantSignalementServiceImpl implements TenantSignalementService {
 
         // Crée le nouveau signalement et remplit ses informations générales
         Signalement signalement = new Signalement();
-        signalement.setReference(genererReference());
         signalement.setTitle(dto.getTitle());
         signalement.setDescription(dto.getDescription());
         signalement.setResidence(residence);
@@ -95,7 +94,11 @@ public class TenantSignalementServiceImpl implements TenantSignalementService {
         signalement.addStatusHistory(SignalementStatus.PENDING, currentTenant, "Signalement envoyé");
 
         // Sauvegarde le signalement en base
-        signalementRepository.save(signalement);
+        Signalement saved = signalementRepository.save(signalement);
+
+        // Référence fixée à partir de l'id auto-généré (garanti unique par la base)
+        saved.setReference("SIG-" + LocalDate.now().getYear() + "-" + String.format("%06d", saved.getId()));
+        signalement = signalementRepository.save(saved);
 
         // Notifie le propriétaire (le bien reste le sien, même s'il ne l'occupe pas) uniquement si
         // le signalement est urgent — pour ne pas le solliciter sur des incidents mineurs qui
@@ -263,10 +266,4 @@ public class TenantSignalementServiceImpl implements TenantSignalementService {
                 .build();
     }
 
-    // Génère une référence unique de type SIG-2026-001
-    private String genererReference() {
-        long totalExistant = signalementRepository.count();
-        long prochainNumero = totalExistant + 1;
-        return String.format("SIG-%d-%03d", LocalDate.now().getYear(), prochainNumero);
-    }
 }

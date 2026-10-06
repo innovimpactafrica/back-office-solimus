@@ -67,14 +67,9 @@ public class AdminFinanceServiceImpl implements AdminFinanceService {
                 .add(sumValidatedRevenue(providerSubscriptionRepository, startOfPreviousMonth, startOfMonth));
         Double monthlyRevenueVariation = calculatePercentage(monthlyRevenue.subtract(previousMonthRevenue), previousMonthRevenue);
 
-        // --- Revenus de l'année + % d'avancement de l'objectif (prévision annuelle) ---
+        // --- Revenus de l'année ---
         BigDecimal annualRevenue = sumValidatedRevenue(syndicSubscriptionRepository, startOfYear, now)
                 .add(sumValidatedRevenue(providerSubscriptionRepository, startOfYear, now));
-        int monthsElapsed = now.getMonthValue();
-        BigDecimal annualForecast = annualRevenue.compareTo(BigDecimal.ZERO) > 0
-                ? annualRevenue.divide(BigDecimal.valueOf(monthsElapsed), 2, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(12))
-                : BigDecimal.ZERO;
-        Double annualGoalPercentage = calculatePercentage(annualRevenue, annualForecast);
 
         // --- Paiements reçus (nombre) du mois ---
         long paymentsReceivedCount = syndicSubscriptionRepository.countByPaymentStatusAndCreatedAtBetween(PaymentStatus.COMPLETED, startOfMonth, now)
@@ -109,7 +104,6 @@ public class AdminFinanceServiceImpl implements AdminFinanceService {
                 .monthlyRevenue(monthlyRevenue)
                 .monthlyRevenueVariation(monthlyRevenueVariation)
                 .annualRevenue(annualRevenue)
-                .annualGoalPercentage(annualGoalPercentage)
                 .paymentsReceivedCount(paymentsReceivedCount)
                 .syndicRevenue(syndicMonthlyRevenue)
                 .syndicRevenueShare(syndicRevenueShare)

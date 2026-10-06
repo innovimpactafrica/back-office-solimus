@@ -1,6 +1,5 @@
 package com.example.solimus.dtos.syndic.charge;
 
-import com.example.solimus.enums.RepartitionMode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -24,9 +23,6 @@ public class CreateBudgetDTO {
 
     @NotNull(message = "L'année budgétaire est obligatoire")
     private Integer annee;
-
-    @NotNull(message = "Le mode de répartition est obligatoire")
-    private RepartitionMode repartitionMode;
 
     @NotEmpty(message = "Au moins un poste budgétaire est requis")
     @Valid

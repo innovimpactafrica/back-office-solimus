@@ -73,8 +73,10 @@ public interface ProviderSubscriptionRepository extends JpaRepository<ProviderSu
     @Query("SELECT COUNT(s) FROM ProviderSubscription s WHERE s.status = 'ACTIVE' AND s.endDate > :now")
     long countCurrentlyActive(@Param("now") LocalDateTime now);
 
-    // Exclut ceux ayant déjà un nouvel abonnement actif
-    @Query("SELECT COUNT(s) FROM ProviderSubscription s " +
+    // Compte les PRESTATAIRES (pas les lignes) ayant au moins un abonnement expiré et aucun
+    // abonnement actif actuellement — un prestataire ayant expiré plusieurs fois au fil des cycles
+    // ne compte qu'une seule fois, jamais une fois par ligne EXPIRED accumulée dans son historique
+    @Query("SELECT COUNT(DISTINCT s.provider.id) FROM ProviderSubscription s " +
            "WHERE s.status = 'EXPIRED' " +
            "AND NOT EXISTS (" +
            "  SELECT 1 FROM ProviderSubscription s2 " +
@@ -98,8 +100,10 @@ public interface ProviderSubscriptionRepository extends JpaRepository<ProviderSu
                                                                           @Param("start") LocalDateTime start,
                                                                           @Param("end") LocalDateTime end);
 
-    // Somme de tous les montants payés, sans limite de période — "Revenus" du dashboard Admin > Prestataires
-    @Query("SELECT COALESCE(SUM(s.amountPaid), 0) FROM ProviderSubscription s")
+    // Somme des montants réellement encaissés (paymentStatus=COMPLETED), sans limite de période —
+    // "Revenus" du dashboard Admin > Prestataires. Exclut PENDING/FAILED, qui ne sont jamais de
+    // l'argent réellement reçu même si amountPaid est renseigné dès l'initiation.
+    @Query("SELECT COALESCE(SUM(s.amountPaid), 0) FROM ProviderSubscription s WHERE s.paymentStatus = 'COMPLETED'")
     java.math.BigDecimal sumAmountPaidTotal();
 
     // Nombre d'abonnements arrivés à échéance sur une période
@@ -124,7 +128,10 @@ public interface ProviderSubscriptionRepository extends JpaRepository<ProviderSu
     long countActiveAsOf(@Param("asOfDate") LocalDateTime asOfDate);
 
     // Compte combien étaient expirés sans renouvellement à une date précise dans le passé
-    @Query("SELECT COUNT(s) FROM ProviderSubscription s " +
+    // Compte les PRESTATAIRES (pas les lignes) qui étaient expirés sans renouvellement à une date
+    // précise dans le passé — même raisonnement que countCurrentlyExpiredWithoutRenewal, nécessaire
+    // pour que la comparaison "vs il y a 30 jours" compare bien deux chiffres mesurés de la même façon
+    @Query("SELECT COUNT(DISTINCT s.provider.id) FROM ProviderSubscription s " +
            "WHERE s.endDate <= :asOfDate " +
            "AND NOT EXISTS (" +
            "  SELECT 1 FROM ProviderSubscription s2 " +
@@ -138,9 +145,11 @@ public interface ProviderSubscriptionRepository extends JpaRepository<ProviderSu
     // prestataires confondus — utilisé pour assembler le flux "Activité récente" du dashboard admin
     List<ProviderSubscription> findByPaymentStatusOrderByCreatedAtDesc(PaymentStatus paymentStatus, Pageable pageable);
 
-    // Vérifie si ce prestataire avait déjà un abonnement avant celui-ci — permet de distinguer une
-    // souscription initiale d'un renouvellement
-    boolean existsByProviderIdAndCreatedAtBefore(Long providerId, LocalDateTime before);
+    // Vérifie si ce prestataire avait déjà un abonnement RÉELLEMENT payé avant celui-ci — permet de
+    // distinguer une souscription initiale d'un renouvellement. Filtré sur paymentStatus=COMPLETED
+    // pour ne jamais compter une tentative échouée antérieure comme un abonnement précédent.
+    boolean existsByProviderIdAndPaymentStatusAndCreatedAtBefore(
+            Long providerId, PaymentStatus paymentStatus, LocalDateTime before);
 
     // ============================================================
     // ADMIN — FINANCES

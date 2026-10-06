@@ -195,32 +195,18 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         for (MeetingParticipant participant : syndicParticipants) {
             Meeting meeting = participant.getMeeting();
 
-            // Calculer le quorum de cette AG
+            // Calculer le quorum de cette AG — par tête (présents + procurations / convoqués),
+            // même méthode que côté syndic (SyndicMeetingServiceImpl), jamais par tantième
             List<MeetingPresence> allPresences = meetingPresenceRepository.findByMeetingParticipantMeetingId(
                     meeting.getId());
 
-            BigDecimal sumTantiemePresentOrRepresented = BigDecimal.ZERO;
-            for (MeetingPresence presence : allPresences) {
-                if (presence.getAttendanceType() != AttendanceType.ABSENT) {
-                    if (presence.getTantiemeSnapshot() != null) {
-                        sumTantiemePresentOrRepresented = sumTantiemePresentOrRepresented.add(presence.getTantiemeSnapshot());
-                    }
-                }
-            }
-
-            BigDecimal sumTantiemeTotal = java.math.BigDecimal.ZERO;
-            for (MeetingPresence presence : allPresences) {
-                if (presence.getTantiemeSnapshot() != null) {
-                    sumTantiemeTotal = sumTantiemeTotal.add(presence.getTantiemeSnapshot());
-                }
-            }
+            long presentOrRepresentedCount = allPresences.stream()
+                    .filter(presence -> presence.getAttendanceType() != AttendanceType.ABSENT)
+                    .count();
 
             Double quorumPercentage = 0.0;
-            if (sumTantiemeTotal.compareTo(BigDecimal.ZERO) > 0) {
-                quorumPercentage = sumTantiemePresentOrRepresented
-                        .divide(sumTantiemeTotal, 4, RoundingMode.HALF_UP)
-                        .multiply(BigDecimal.valueOf(100))
-                        .doubleValue();
+            if (!allPresences.isEmpty()) {
+                quorumPercentage = (double) presentOrRepresentedCount / allPresences.size() * 100.0;
             }
 
             // Trouver la présence de ce copropriétaire (compte Présent ET Procuration comme "signé")
@@ -427,37 +413,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
 
 
     /**
-     * Convertir l'enum en label affichable
-     */
-    private String getCategoryLabel(CoOwnerDocumentCategory category) {
-        return category.getDescription();
-    }
-
-    /**
-     * Déduire le type de fichier depuis l'extension
-     */
-    private String getFileType(String fileName) {
-        if (fileName == null) {
-            return null;
-        }
-        String extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
-        switch (extension) {
-            case "pdf":
-                return "PDF";
-            case "jpg":
-            case "jpeg":
-                return "JPG";
-            case "png":
-                return "PNG";
-            case "doc":
-            case "docx":
-                return "DOC";
-            default:
-                return extension.toUpperCase();
-        }
-    }
-
-    /**
      * Activité récente d'un copropriétaire (panneau Activité Récente du détail)
      */
     @Override
@@ -630,7 +585,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             );
         });
 
-       // on vérifie si le téléphone existe déjà — même logique
+        // on vérifie si le téléphone existe déjà — même logique
         userRepository.findByPhone(dto.getPhone()).ifPresent(existing -> {
             throw new CoOwnerAlreadyExistsException(
                     "Un copropriétaire avec ce téléphone existe déjà", // message clair
@@ -783,13 +738,9 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         // Récupérer le syndic connecté
         User currentSyndic = getCurrentUser();
 
-        // Récupérer toutes les résidences qui ont des biens vacants géré par le syndic connecté
+        // Récupérer les résidences du syndic connecté qui ont des biens vacants (filtré en SQL)
         List<Residence> allResidences = residenceRepository
-                .findResidencesWithVacantProperties()
-                .stream()
-                // Filtrer pour ne garder que les résidences du syndic connecté
-                .filter(r -> r.getSyndic() != null && r.getSyndic().getId().equals(currentSyndic.getId()))
-                .toList();
+                .findResidencesWithVacantProperties(currentSyndic.getId());
 
         // Pagination manuelle
         int totalElements = allResidences.size();
@@ -945,8 +896,8 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
 
         // Pour chaque résidence, calculer la part du copropriétaire
         for (Long residenceId : residenceIds) {
-            // Récupérer le budget de l'année en cours
-            var budgetOpt = budgetRepository.findByResidenceIdAndAnnee(residenceId, currentYear);
+            // Récupérer le budget ACTIVE de l'année en cours
+            var budgetOpt = budgetRepository.findByResidenceIdAndAnneeAndStatus(residenceId, currentYear, BudgetStatus.ACTIVE);
             if (budgetOpt.isEmpty()) {
                 // Pas de budget pour cette année, ignorer cette résidence
                 continue;
@@ -954,19 +905,12 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
 
             var budget = budgetOpt.get();
 
-            BigDecimal partResidence;
-            if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
-                // Mode CUSTOM : sommer les quoteParts des ChargeCallItem générés pour ce copropriétaire
-                partResidence = chargeCallItemRepository.sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(
-                        coOwnerId, residenceId, currentYear);
-            } else {
-                // Mode OWNERSHIP_SHARES : lit la quote-part annuelle déjà figée à la création du
-                // budget (ChargeAllocationUtil.distributeByLargestRemainder) — plus aucun recalcul ici
-                partResidence = budgetCoOwnerAllocationRepository
-                        .findByBudgetIdAndCoOwnerId(budget.getId(), coOwnerId)
-                        .map(BudgetCoOwnerAllocation::getAnnualQuotePart)
-                        .orElse(BigDecimal.ZERO);
-            }
+            // Lit la quote-part annuelle déjà figée à la création du budget
+            // (ChargeAllocationUtil.distributeByLargestRemainder) — plus aucun recalcul ici
+            BigDecimal partResidence = budgetCoOwnerAllocationRepository
+                    .findByBudgetIdAndCoOwnerId(budget.getId(), coOwnerId)
+                    .map(BudgetCoOwnerAllocation::getAnnualQuotePart)
+                    .orElse(BigDecimal.ZERO);
 
             annualChargesAmount = annualChargesAmount.add(partResidence);
         }
@@ -1038,25 +982,18 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
 
         // Récupère directement la page demandée des lots du copropriétaire, restreints à ce syndic —
         // LIMIT/OFFSET géré par la base, pas de chargement complet en mémoire
-        int currentYear = Year.now().getValue();
         Pageable pageable = PageRequest.of(page, size);
         Page<Property> propertyPage = propertyRepository
                 .findByOwnerIdAndResidenceSyndicId(coOwnerId, currentSyndic.getId(), pageable);
 
-        Page<CoOwnerPropertyItemDTO> result = propertyPage.map(p -> {
-            BigDecimal annualCharge = calculateAnnualChargeForProperty(p, currentYear);
-            return CoOwnerPropertyItemDTO.builder()
-                    .reference(p.getReference())
-                    .bloc(p.getBloc())
-                    .floor(p.getFloor())
-                    .area(p.getArea())
-                    .share(p.getShare())
-                    .residenceName(p.getResidence().getName())
-                    .annualCharge(annualCharge)
-                    .build();
-        });
-
-        return result;
+        return propertyPage.map(p -> CoOwnerPropertyItemDTO.builder()
+                .reference(p.getReference())
+                .bloc(p.getBloc())
+                .floor(p.getFloor())
+                .area(p.getArea())
+                .share(p.getShare())
+                .residenceName(p.getResidence().getName())
+                .build());
     }
 
     @Override
@@ -1267,7 +1204,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         User currentSyndic = getCurrentUser();
 
         // Récupérer le copropriétaire
-        User coOwner = userRepository.findById(coOwnerId)
+        userRepository.findById(coOwnerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
 
         // Récupérer la résidence
@@ -1287,10 +1224,10 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
 
         int currentYear = Year.now().getValue();
 
-        var budgetOpt = budgetRepository.findByResidenceIdAndAnnee(residenceId, currentYear);
+        var budgetOpt = budgetRepository.findByResidenceIdAndAnneeAndStatus(residenceId, currentYear, BudgetStatus.ACTIVE);
         boolean budgetExists = budgetOpt.isPresent();
 
-        // 1-5. Les 4 cards KPI — null si aucun budget n'existe pour l'année en cours (le front
+        // Les 4 cards KPI — null si aucun budget n'existe pour l'année en cours (le front
         // affiche "Budget {year} non généré" plutôt qu'un chiffre trompeur)
         BigDecimal monthlyChargeAmount = null;
         BigDecimal quarterlyChargeAmount = null;
@@ -1303,21 +1240,12 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         if (budgetExists) {
             var budget = budgetOpt.get();
 
-            // Charges annuelles de l'année en cours (calcul interne, pas exposé tel quel — seuls
-            // les montants mensuel/trimestriel dérivés sont renvoyés)
-            BigDecimal annualCharges;
-            if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
-                // Mode CUSTOM : sommer les quoteParts des ChargeCallItem générés pour ce copropriétaire
-                annualCharges = chargeCallItemRepository.sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(
-                        coOwnerId, residenceId, currentYear);
-            } else {
-                // Mode OWNERSHIP_SHARES : lit la quote-part annuelle déjà figée à la création du
-                // budget (ChargeAllocationUtil.distributeByLargestRemainder) — plus aucun recalcul ici
-                annualCharges = budgetCoOwnerAllocationRepository
-                        .findByBudgetIdAndCoOwnerId(budget.getId(), coOwnerId)
-                        .map(BudgetCoOwnerAllocation::getAnnualQuotePart)
-                        .orElse(BigDecimal.ZERO);
-            }
+            // Lit la quote-part annuelle déjà figée à la création du budget
+            // (ChargeAllocationUtil.distributeByLargestRemainder) — plus aucun recalcul ici
+            BigDecimal annualCharges = budgetCoOwnerAllocationRepository
+                    .findByBudgetIdAndCoOwnerId(budget.getId(), coOwnerId)
+                    .map(BudgetCoOwnerAllocation::getAnnualQuotePart)
+                    .orElse(BigDecimal.ZERO);
 
             monthlyChargeAmount = annualCharges.divide(BigDecimal.valueOf(12), 4, RoundingMode.HALF_UP);
             quarterlyChargeAmount = annualCharges.divide(BigDecimal.valueOf(4), 4, RoundingMode.HALF_UP);
@@ -1342,7 +1270,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             }
         }
 
-        // 7. Historique des paiements mensuels
+        // Historique des paiements mensuels
         ArrayList<MonthlyPaymentDTO> monthlyPayments = new ArrayList<>();
         List<Object[]> paymentData = chargeCallPaymentRepository
                 .sumCompletedPaymentsByMonthForCoOwner(coOwnerId, residenceId, currentYear);
@@ -1362,7 +1290,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
             monthlyPayments.add(dto);
         }
 
-        // 8. Tableau des appels de charges
+        // Tableau des appels de charges
         ArrayList<ChargeCallRowDTO> chargeCalls = new ArrayList<>();
         List<ChargeCall> chargeCallList = chargeCallRepository.findByResidenceIdAndYear(residenceId, currentYear);
         for (ChargeCall cc : chargeCallList) {
@@ -1378,7 +1306,7 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 String status;
                 if (item.getStatus().name().equals("PAID")) {
                     status = "PAYE";
-                } else if (java.time.LocalDate.now().isBefore(cc.getDueDate())) {
+                } else if (LocalDate.now().isBefore(cc.getDueDate())) {
                     status = "A_VENIR";
                 } else {
                     status = "EN_RETARD";
@@ -1464,55 +1392,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         userRepository.save(coOwner);
     }
 
-    @Override
-    @Transactional
-    public void deleteCoOwner(Long coOwnerId) {
-        User currentSyndic = getCurrentUser();
-
-        User coOwner = userRepository.findById(coOwnerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
-
-        // Vérifier que le copropriétaire a au moins un lot chez le syndic
-        long apartmentsCount = propertyRepository.countApartmentsByCoOwnerAndSyndic(coOwnerId, currentSyndic.getId());
-        if (apartmentsCount == 0) {
-            throw new ForbiddenException("Ce copropriétaire n'a pas de lot dans vos résidences");
-        }
-
-        // Libérer tous les lots du copropriétaire (mettre owner à null et status à VACANT)
-        List<Property> properties = propertyRepository.findByOwnerIdAndResidenceSyndicId(coOwnerId, currentSyndic.getId());
-        for (Property property : properties) {
-            property.setOwner(null);
-            property.setStatus(PropertyStatus.VACANT);
-            // Recalcule et persiste displayStatus (champ réellement lu par le listing des lots)
-            statusRecalculationService.recalculatePropertyDisplayStatus(property);
-        }
-
-        // Supprimer le profil du copropriétaire
-        CoOwnerProfile profile = coOwnerProfileRepository.findByUserId(coOwnerId)
-                .orElse(null);
-        if (profile != null) {
-            coOwnerProfileRepository.delete(profile);
-        }
-
-        // Supprimer uniquement la relation avec CE syndic (le copropriétaire peut être lié à
-        // d'autres syndics via linkCoOwner — on ne touche pas à leurs relations)
-        List<SyndicOwnerRelation> relations = syndicCoOwnerRelationRepository.findAllBySyndicId(currentSyndic.getId(), Pageable.unpaged()).getContent();
-        relations.stream()
-                .filter(r -> r.getCoOwner().getId().equals(coOwnerId))
-                .forEach(syndicCoOwnerRelationRepository::delete);
-
-        // Ne supprimer le compte User que s'il n'est plus lié à aucun autre syndic et ne possède
-        // plus aucun lot ailleurs — sinon on se contente d'avoir libéré ses lots et son lien avec ce syndic
-        boolean stillLinkedElsewhere = syndicCoOwnerRelationRepository.countByCoOwnerId(coOwnerId) > 0;
-        boolean stillOwnsPropertiesElsewhere = propertyRepository.countByOwnerId(coOwnerId) > 0;
-        if (!stillLinkedElsewhere && !stillOwnsPropertiesElsewhere) {
-            userRepository.delete(coOwner);
-        }
-    }
-
-    //------------------------------------------
-    //Les méthodes utilitaires
-    //------------------------------------------
     private PropertySummaryDTO mapToPropertySummaryDTO(Property property) {
         return PropertySummaryDTO.builder()
                 .id(property.getId())
@@ -1526,7 +1405,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
                 .name(residence.getName())
                 .build();
     }
-
 
     // Extrait l'extension d'un nom de fichier en majuscules (ex: "PV.pdf" -> "PDF")
     // Retourne null si le nom de fichier est vide ou n'a pas d'extension
@@ -1543,50 +1421,6 @@ public class SyndicOwnerServiceImpl implements SyndicOwnerService {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
-    }
-
-    // Calculer la charge annuelle pour un seul lot
-    private BigDecimal calculateAnnualChargeForProperty(Property property, int currentYear) {
-        var budgetOpt = budgetRepository.findByResidenceIdAndAnnee(property.getResidence().getId(), currentYear);
-        if (budgetOpt.isEmpty()) {
-            return BigDecimal.ZERO;
-        }
-        var budget = budgetOpt.get();
-
-        if (property.getOwner() == null) {
-            return BigDecimal.ZERO;
-        }
-
-        if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
-            // Mode CUSTOM : sommer les quoteParts des ChargeCallItem générés pour le propriétaire de ce lot
-            return chargeCallItemRepository.sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(
-                    property.getOwner().getId(), property.getResidence().getId(), currentYear);
-        }
-
-        // Mode OWNERSHIP_SHARES : lit la quote-part annuelle du copropriétaire déjà figée à la
-        // création du budget (ChargeAllocationUtil.distributeByLargestRemainder), puis la répartit
-        // au prorata des lots de ce copropriétaire dans la résidence — plus aucun recalcul depuis budgetTotal
-        BudgetCoOwnerAllocation allocation = budgetCoOwnerAllocationRepository
-                .findByBudgetIdAndCoOwnerId(budget.getId(), property.getOwner().getId())
-                .orElse(null);
-        if (allocation == null || property.getShare() == null) {
-            return BigDecimal.ZERO;
-        }
-
-        BigDecimal totalTantiemeOwner = propertyRepository
-                .findByOwnerIdAndResidenceId(property.getOwner().getId(), property.getResidence().getId())
-                .stream()
-                .map(Property::getShare)
-                .filter(java.util.Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        if (totalTantiemeOwner.compareTo(BigDecimal.ZERO) == 0) {
-            return BigDecimal.ZERO;
-        }
-
-        return allocation.getAnnualQuotePart()
-                .multiply(property.getShare())
-                .divide(totalTantiemeOwner, 2, RoundingMode.HALF_UP);
     }
 
     /**

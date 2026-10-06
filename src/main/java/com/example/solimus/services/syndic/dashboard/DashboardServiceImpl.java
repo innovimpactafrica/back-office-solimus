@@ -102,7 +102,7 @@ public class DashboardServiceImpl implements DashboardService {
 
         // --- Incidents Ouverts (globaux ou filtrés par résidence) ---
 
-        List<InterventionStatus> openStatuses = getOpenInterventionStatuses();
+        List<InterventionStatus> openStatuses = InterventionStatus.openStatuses();
 
         long openIncidentsCount;
         long urgentIncidentsCount;
@@ -197,7 +197,7 @@ public class DashboardServiceImpl implements DashboardService {
 
         // --- Travaux non résolus (nombre total, tous niveaux d'urgence confondus) ---
 
-        List<InterventionStatus> openStatuses = getOpenInterventionStatuses();
+        List<InterventionStatus> openStatuses = InterventionStatus.openStatuses();
         long openInterventionsCount = interventionRequestRepository
                 .countByResidenceSyndicIdAndStatusIn(currentSyndic.getId(), openStatuses);
 
@@ -322,15 +322,6 @@ public class DashboardServiceImpl implements DashboardService {
         }
         // Retourne l'ID de cette résidence
         return residence.getId();
-    }
-
-    // Statuts considérés comme "ouverts" pour un InterventionRequest (tout sauf clôturé ou annulé) —
-    // utilisée à la fois par le KPI "Travaux Ouverts" et l'alerte "Travaux non résolus"
-    private List<InterventionStatus> getOpenInterventionStatuses() {
-        return List.of(
-                InterventionStatus.PENDING, InterventionStatus.SYNDIC_ASSIGNED,
-                InterventionStatus.QUOTE_VALIDATED, InterventionStatus.STARTED, InterventionStatus.FINISHED
-        );
     }
 
     // Construit une ligne du tableau "Incidents Récents"

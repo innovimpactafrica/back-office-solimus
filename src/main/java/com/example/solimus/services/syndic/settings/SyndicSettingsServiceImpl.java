@@ -9,6 +9,7 @@ import com.example.solimus.enums.ChargeFrequency;
 import com.example.solimus.enums.Currency;
 import com.example.solimus.enums.FacilityCategory;
 import com.example.solimus.exceptions.BadRequestException;
+import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.minio.MinioService;
@@ -42,6 +43,8 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     private final ResidenceRepository residenceRepository;
     private final SyndicFinancialSettingsRepository syndicFinancialSettingsRepository;
     private final UserRepository userRepository;
+    private final ProviderProfileRepository providerProfileRepository;
+    private final InterventionRequestRepository interventionRequestRepository;
     private final PasswordEncoder passwordEncoder;
     private final MinioService minioService;
     private final SyndicProfileRepository syndicProfileRepository;
@@ -209,6 +212,22 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
         if (!specialtyRepository.existsById(id)) {
             throw new ResourceNotFoundException("Spécialité non trouvée");
         }
+
+        // Bloque la suppression si des prestataires ou des interventions utilisent encore cette
+        // spécialité — catalogue partagé entre tous les syndics, une suppression impacterait tout le monde
+        long providersCount = providerProfileRepository.countBySpecialtyId(id);
+        if (providersCount > 0) {
+            throw new BadRequestException(
+                    "Impossible de supprimer cette spécialité car elle est utilisée par " +
+                    providersCount + " prestataire(s)");
+        }
+        long interventionsCount = interventionRequestRepository.countBySpecialtyId(id);
+        if (interventionsCount > 0) {
+            throw new BadRequestException(
+                    "Impossible de supprimer cette spécialité car elle est utilisée par " +
+                    interventionsCount + " intervention(s)");
+        }
+
         specialtyRepository.deleteById(id);
         log.info("Spécialité supprimée : id={}", id);
     }
@@ -285,8 +304,9 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     @Override
     @Transactional(readOnly = true)
     public Page<SecurityFeatureDTO> getAllSecurityFeatures(int page, int size) {
+        User currentSyndic = getCurrentUser();
         Pageable pageable = PageRequest.of(page, size, Sort.by("label").ascending());
-        return securityFeatureRepository.findAll(pageable)
+        return securityFeatureRepository.findBySyndicId(currentSyndic.getId(), pageable)
                 .map(sf -> SecurityFeatureDTO.builder()
                         .id(sf.getId())
                         .label(sf.getLabel())
@@ -299,12 +319,15 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     @Override
     @Transactional
     public void createSecurityFeature(String label, String description, Boolean isActive, MultipartFile icon) {
-        // Vérifier que le label n'existe pas déjà (insensible à la casse)
-        if (securityFeatureRepository.existsByLabelIgnoreCase(label)) {
+        User currentSyndic = getCurrentUser();
+
+        // Vérifier que le label n'existe pas déjà chez ce syndic (insensible à la casse)
+        if (securityFeatureRepository.existsByLabelIgnoreCaseAndSyndicId(label, currentSyndic.getId())) {
             throw new BadRequestException("Une option de sécurité avec ce label existe déjà");
         }
 
         SecurityFeature securityFeature = new SecurityFeature();
+        securityFeature.setSyndic(currentSyndic);
         securityFeature.setLabel(label);
         securityFeature.setDescription(description);
         securityFeature.setActive(isActive != null ? isActive : true);
@@ -322,14 +345,20 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     @Override
     @Transactional
     public void updateSecurityFeature(Long id, String label, String description, Boolean isActive, MultipartFile icon) {
+        User currentSyndic = getCurrentUser();
+
         SecurityFeature securityFeature = securityFeatureRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Option de sécurité introuvable"));
 
+        if (!securityFeature.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à modifier cette option de sécurité");
+        }
+
         // Mise à jour partielle des champs
         if (label != null) {
-            // Vérifier que le nouveau label n'existe pas déjà (insensible à la casse)
+            // Vérifier que le nouveau label n'existe pas déjà chez ce syndic (insensible à la casse)
             if (!label.equalsIgnoreCase(securityFeature.getLabel()) &&
-                securityFeatureRepository.existsByLabelIgnoreCase(label)) {
+                securityFeatureRepository.existsByLabelIgnoreCaseAndSyndicId(label, currentSyndic.getId())) {
                 throw new BadRequestException("Une option de sécurité avec ce label existe déjà");
             }
             securityFeature.setLabel(label);
@@ -354,8 +383,14 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     @Override
     @Transactional
     public void deleteSecurityFeature(Long id) {
+        User currentSyndic = getCurrentUser();
+
         SecurityFeature securityFeature = securityFeatureRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Option de sécurité introuvable"));
+
+        if (!securityFeature.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à supprimer cette option de sécurité");
+        }
 
         // Vérifier si des résidences utilisent cette option de sécurité
         long residenceCount = residenceRepository.countBySecurityFeatureId(id);
@@ -376,7 +411,8 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     @Override
     @Transactional(readOnly = true)
     public List<EstimatedDelayDTO> getAllEstimatedDelays() {
-        return estimatedDelayRepository.findAll().stream()
+        User currentSyndic = getCurrentUser();
+        return estimatedDelayRepository.findBySyndicId(currentSyndic.getId()).stream()
                 .map(d -> new EstimatedDelayDTO(d.getId(), d.getLabel(), d.getDays()))
                 .collect(Collectors.toList());
     }
@@ -384,11 +420,14 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     @Override
     @Transactional
     public EstimatedDelayDTO createEstimatedDelay(String label, Integer days) {
-        if (estimatedDelayRepository.existsByLabelIgnoreCase(label)) {
+        User currentSyndic = getCurrentUser();
+
+        if (estimatedDelayRepository.existsByLabelIgnoreCaseAndSyndicId(label, currentSyndic.getId())) {
             throw new BadRequestException("Un délai estimé avec ce label existe déjà");
         }
 
         EstimatedDelay delay = EstimatedDelay.builder()
+                .syndic(currentSyndic)
                 .label(label)
                 .days(days)
                 .build();
@@ -400,8 +439,15 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     @Override
     @Transactional
     public void deleteEstimatedDelay(Long id) {
+        User currentSyndic = getCurrentUser();
+
         EstimatedDelay delay = estimatedDelayRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Délai estimé introuvable"));
+
+        if (!delay.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à supprimer ce délai estimé");
+        }
+
         estimatedDelayRepository.delete(delay);
         log.info("Délai estimé supprimé : id={}", id);
     }
@@ -533,8 +579,8 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
             throw new BadRequestException("Le mot de passe actuel est incorrect");
         }
 
-        // Vérifier que confirmPassword correspond à newPassword si fourni
-        if (dto.getConfirmPassword() != null && !dto.getConfirmPassword().equals(dto.getNewPassword())) {
+        // Vérifier que confirmPassword correspond à newPassword
+        if (!dto.getConfirmPassword().equals(dto.getNewPassword())) {
             throw new BadRequestException("La confirmation du mot de passe ne correspond pas");
         }
 

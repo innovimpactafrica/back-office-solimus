@@ -164,7 +164,7 @@ public class ProviderTravauxServiceImpl implements ProviderTravauxService {
         request.setFinishedAt(LocalDateTime.now());
         interventionRequestRepository.save(request);
 
-        // ⬇️ AJOUT — Trace la résolution dans le journal d'activité
+        // Trace la résolution dans le journal d'activité
         ActivityLog log = new ActivityLog();
         log.setResidence(request.getResidence());
         log.setType(ActivityType.INTERVENTION_RESOLVED);

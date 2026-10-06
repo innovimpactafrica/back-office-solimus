@@ -38,6 +38,9 @@ BudgetRepository extends JpaRepository<Budget, Long> {
 
     List<Budget> findBySyndicIdAndStatus(Long syndicId, BudgetStatus status);
 
+    // Budgets actifs d'une année précise — pour la carte "Budget Annuel" du dashboard (pas toutes années confondues)
+    List<Budget> findBySyndicIdAndStatusAndAnnee(Long syndicId, BudgetStatus status, Integer annee);
+
     /**
      * Lister tous les budgets d'une résidence.
      */

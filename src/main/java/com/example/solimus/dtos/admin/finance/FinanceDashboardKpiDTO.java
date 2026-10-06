@@ -17,8 +17,6 @@ public class FinanceDashboardKpiDTO {
     private Double monthlyRevenueVariation;
 
     private BigDecimal annualRevenue;
-    // (Revenus de l'année / Prévision annuelle) x 100 — 0% si la prévision vaut 0
-    private Double annualGoalPercentage;
 
     // Nombre de paiements validés (Syndic + Prestataire) du mois en cours
     private long paymentsReceivedCount;

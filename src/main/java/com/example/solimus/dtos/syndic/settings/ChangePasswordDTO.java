@@ -20,5 +20,6 @@ public class ChangePasswordDTO {
     @Size(min = 6, message = "Le nouveau mot de passe doit contenir au moins 6 caractères")
     private String newPassword;
     
+    @NotBlank(message = "La confirmation du mot de passe est requise")
     private String confirmPassword;
 }

@@ -22,5 +22,8 @@ public interface ProviderProfileRepository extends JpaRepository<ProviderProfile
             "WHERE p.specialty.id = :specialtyId " +
             "AND p.user.status = 'ACTIVE'")
     List<ProviderProfile> findActiveProvidersBySpecialty(@Param("specialtyId") Long specialtyId);
+
+    // Nombre de prestataires ayant choisi cette spécialité — bloque sa suppression si > 0
+    long countBySpecialtyId(Long specialtyId);
 }
 

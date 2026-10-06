@@ -24,7 +24,7 @@ import java.time.LocalDateTime;
 //
 // =============================================================================
 @Entity
-@Table(name = "security_features")
+@Table(name = "security_features", uniqueConstraints = @UniqueConstraint(columnNames = {"label", "syndic_id"}))
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -38,6 +38,13 @@ public class SecurityFeature {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /**
+     * Syndic propriétaire de cette option — chaque syndic gère sa propre liste,
+     * jamais partagée ni modifiable par un autre syndic.
+     */
+    @ManyToOne
+    @JoinColumn(name = "syndic_id", nullable = false)
+    private User syndic;
 
     // =========================================================================
     // INFORMATIONS
@@ -46,9 +53,9 @@ public class SecurityFeature {
     /**
      * Label affiché dans le formulaire et le dashboard.
      * Exemple : "Vidéosurveillance", "Gardiens 24/7"
-     * Doit être unique — pas deux options identiques.
+     * Doit être unique pour un syndic donné — pas deux options identiques chez le même syndic.
      */
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String label;
 
     /**

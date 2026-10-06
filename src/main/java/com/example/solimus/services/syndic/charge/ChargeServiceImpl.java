@@ -26,6 +26,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.Year;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -155,9 +156,6 @@ public class ChargeServiceImpl implements ChargeService {
         int numberOfPeriods = (frequency == ChargeFrequency.TRIMESTRIEL) ? 4 : 12;
         String periodeLabel = (frequency == ChargeFrequency.MENSUEL) ? "PAR MOIS" : "PAR TRIMESTRE";
 
-        RepartitionMode repartitionMode = dto.getRepartitionMode() != null
-                ? dto.getRepartitionMode() : RepartitionMode.OWNERSHIP_SHARES;
-
         // Regroupe les lots de la résidence par copropriétaire
         List<Property> properties = propertyRepository.findByResidenceId(residenceId);
         Map<Long, User> ownerById = new LinkedHashMap<>();
@@ -181,10 +179,8 @@ public class ChargeServiceImpl implements ChargeService {
             totalQuotePartParPeriode.add(BigDecimal.ZERO);
         }
 
-        // Rien à répartir en mode CUSTOM (pas de quote-part théorique), sans copropriétaire, ou
-        // tant qu'aucun poste n'a encore été saisi
-        boolean peutRepartir = repartitionMode == RepartitionMode.OWNERSHIP_SHARES
-                && !tantiemeByOwnerId.isEmpty()
+        // Rien à répartir sans copropriétaire, ou tant qu'aucun poste n'a encore été saisi
+        boolean peutRepartir = !tantiemeByOwnerId.isEmpty()
                 && budgetTotal.compareTo(BigDecimal.ZERO) > 0;
 
         if (peutRepartir) {
@@ -279,14 +275,10 @@ public class ChargeServiceImpl implements ChargeService {
         Budget budget = new Budget();
         budget.setResidence(residence);
         budget.setAnnee(dto.getAnnee());
-        budget.setRepartitionMode(dto.getRepartitionMode());
+        budget.setRepartitionMode(RepartitionMode.OWNERSHIP_SHARES);
         budget.setSyndic(currentSyndic);
         budget.setBudgetTotal(BigDecimal.ZERO);
         budget.setStatus(BudgetStatus.ACTIVE);
-
-        // Générer la référence unique du budget (ex: BUD-2026-123456)
-        String reference = "BUD-" + dto.getAnnee() + "-" + (int)(Math.random() * 900000 + 100000);
-        budget.setReference(reference);
 
         // ------------------------------------------------------------
         // ÉTAPE 2.5 — Créer les postes budgétaires
@@ -333,12 +325,16 @@ public class ChargeServiceImpl implements ChargeService {
         // ------------------------------------------------------------
         Budget savedBudget = budgetRepository.save(budget);
 
+        // Référence fixée à partir de l'id auto-généré (garanti unique par la base)
+        savedBudget.setReference("BUD-" + dto.getAnnee() + "-" + String.format("%06d", savedBudget.getId()));
+        savedBudget = budgetRepository.save(savedBudget);
+
         // ------------------------------------------------------------
         // ÉTAPE 2.6bis — Figer la quote-part annuelle de chaque copropriétaire
         // ------------------------------------------------------------
         figerAllocationsAnnuelles(savedBudget);
 
-        // ⬇️ AJOUT — Trace la création dans le journal d'activité
+        // Trace la création dans le journal d'activité
         ActivityLog log = new ActivityLog();
         log.setResidence(residence);
         log.setType(ActivityType.BUDGET_CREATED);
@@ -626,7 +622,7 @@ public class ChargeServiceImpl implements ChargeService {
         budget.setStatus(BudgetStatus.CLOSED);
         budgetRepository.save(budget);
 
-        // ⬇️ AJOUT — Trace la clôture dans le journal d'activité
+        // Trace la clôture dans le journal d'activité
         ActivityLog log = new ActivityLog();
         log.setResidence(budget.getResidence());
         log.setType(ActivityType.BUDGET_CLOSED);
@@ -1043,152 +1039,72 @@ public class ChargeServiceImpl implements ChargeService {
         List<Property> properties = propertyRepository.findByResidenceId(budget.getResidence().getId());
         List<ChargeCallItem> items = new ArrayList<>();
 
-        // Approche stricte : respecter le mode de répartition du budget
-        if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
-            // Mode CUSTOM du budget — les customAmounts sont obligatoires
-            if (dto.getCustomAmounts() == null || dto.getCustomAmounts().isEmpty()) {
-                throw new BadRequestException("Saisissez un montant pour chaque copropriétaire en mode Personnalisée");
-            }
+        // Calcul automatique selon les tantièmes — seul mode possible pour un budget
 
-            // Somme soumise par le front pour les copropriétaires connus
-            BigDecimal customTotal = dto.getCustomAmounts().stream()
-                    .map(CustomCoOwnerAmountDTO::getAmount)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            // S'il existe des lots vacants, le back complète AUTOMATIQUEMENT avec le montant restant,
-            // dû par le syndic — le front n'a jamais à connaître/soumettre cette ligne. Sans lot
-            // vacant, le comportement est inchangé : le total soumis doit tomber exactement juste.
-            BigDecimal vacantTantieme = sumVacantTantieme(properties);
-            boolean hasVacantLots = vacantTantieme.compareTo(BigDecimal.ZERO) > 0;
-            BigDecimal syndicAmount = BigDecimal.ZERO;
-
-            if (hasVacantLots) {
-                syndicAmount = totalAmount.subtract(customTotal);
-                if (syndicAmount.compareTo(BigDecimal.ZERO) < 0) {
-                    throw new BadRequestException(
-                            "La somme des montants personnalisés (" + customTotal + " FCFA) dépasse déjà le total de "
-                                    + "la période (" + totalAmount + " FCFA), avant même la part des lots vacants.");
-                }
-            } else if (customTotal.compareTo(totalAmount) != 0) {
-                throw new BadRequestException(
-                        "La somme des montants personnalisés (" + customTotal + " FCFA) doit être exactement égale au total de la période (" + totalAmount + " FCFA)"
-                );
-            }
-
-            for (CustomCoOwnerAmountDTO customAmount : dto.getCustomAmounts()) {
-                User coOwner = userRepository.findById(customAmount.getCoOwnerId())
-                        .orElseThrow(() -> new ResourceNotFoundException("Copropriétaire introuvable"));
-
-                // Snapshotter le tantième même en mode personnalisé, pour affichage/référence uniquement
-                // (inclut les lots vacants dont le syndic est le responsable financier — resolveBillableOwner)
-                BigDecimal tantiemeCoOwner = BigDecimal.ZERO;
-                for (Property p : properties) {
-                    if (resolveBillableOwner(p).getId().equals(customAmount.getCoOwnerId())) {
-                        tantiemeCoOwner = tantiemeCoOwner.add(p.getShare() != null ? p.getShare() : BigDecimal.ZERO);
-                    }
-                }
-
-                String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-" + budget.getId() + "-" + coOwner.getId();
-
-                ChargeCallItem item = new ChargeCallItem();
-                item.setChargeCall(chargeCall);
-                item.setReference(referenceCCI);
-                item.setCoOwner(coOwner);
-                item.setTantieme(tantiemeCoOwner);
-                item.setQuotePart(customAmount.getAmount()); // montant saisi manuellement, pas calculé
-                item.setPaidAmount(BigDecimal.ZERO);
-
-                items.add(item);
-            }
-
-            // Ligne "syndic" ajoutée automatiquement pour les lots vacants — une seule ligne pour
-            // toute la résidence, regroupant le tantième cumulé de tous ses lots vacants (même
-            // traitement qu'un copropriétaire normal avec plusieurs lots)
-            if (hasVacantLots) {
-                User syndic = budget.getResidence().getSyndic();
-                String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-" + budget.getId() + "-" + syndic.getId();
-
-                ChargeCallItem syndicItem = new ChargeCallItem();
-                syndicItem.setChargeCall(chargeCall);
-                syndicItem.setReference(referenceCCI);
-                syndicItem.setCoOwner(syndic);
-                syndicItem.setTantieme(vacantTantieme);
-                syndicItem.setQuotePart(syndicAmount);
-                syndicItem.setPaidAmount(BigDecimal.ZERO);
-                if (syndicAmount.compareTo(BigDecimal.ZERO) == 0) {
-                    syndicItem.setStatus(ChargeItemPaymentStatus.NO_AMOUNT_DUE);
-                }
-                items.add(syndicItem);
-            }
-        } else {
-            // Mode OWNERSHIP_SHARES — calcul automatique selon les tantièmes (customAmounts ignorés)
-
-            // Fusionne les lots par copropriétaire (un copropriétaire avec plusieurs lots = un seul
-            // tantième cumulé) — inclut le syndic pour les lots vacants (resolveBillableOwner)
-            Map<Long, User> ownerById = new LinkedHashMap<>();
-            Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
-            for (Property property : properties) {
-                User billableOwner = resolveBillableOwner(property);
-                Long ownerId = billableOwner.getId();
-                ownerById.putIfAbsent(ownerId, billableOwner);
-                tantiemeByOwnerId.merge(
-                        ownerId,
-                        property.getShare() != null ? property.getShare() : BigDecimal.ZERO,
-                        BigDecimal::add);
-            }
-
-            // Montant de CETTE période pour chaque copropriétaire : dérivé de sa quote-part ANNUELLE
-            // déjà figée à la création du budget (BudgetCoOwnerAllocation), jamais recalculé depuis
-            // le budget total à chaque génération de période. Sinon, comme distributeByLargestRemainder
-            // est déterministe (mêmes tantièmes, même montant de période à chaque fois), les mêmes
-            // copropriétaires gagnent/perdent systématiquement le même FCFA d'arrondi à CHAQUE période,
-            // et la somme réellement facturée sur l'année diverge de la quote-part annuelle et du
-            // budget total (ex: budget 23 FCFA, 4 trimestres → 24 FCFA collectés sur l'année, toujours
-            // les mêmes copropriétaires en trop/en moins). Répartir l'annuel déjà figé sur les périodes
-            // (même méthode plus grand reste, donc toujours en FCFA entiers, compatible Wave/InTouch)
-            // garantit que la somme des périodes d'un copropriétaire retombe exactement sur son annuel.
-            Map<Long, BigDecimal> quotePartByOwnerId = new LinkedHashMap<>();
-            for (Long ownerId : tantiemeByOwnerId.keySet()) {
-                BigDecimal annualQuotePart = budgetCoOwnerAllocationRepository
-                        .findByBudgetIdAndCoOwnerId(budget.getId(), ownerId)
-                        .map(BudgetCoOwnerAllocation::getAnnualQuotePart)
-                        .orElse(BigDecimal.ZERO);
-                quotePartByOwnerId.put(ownerId,
-                        splitAnnualAmountForPeriod(annualQuotePart, numberOfPeriods, dto.getPeriodNumber()));
-            }
-
-            for (Long ownerId : tantiemeByOwnerId.keySet()) {
-                String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-" + budget.getId() + "-" + ownerId;
-
-                BigDecimal quotePart = quotePartByOwnerId.get(ownerId);
-
-                ChargeCallItem item = new ChargeCallItem();
-                item.setChargeCall(chargeCall);
-                item.setReference(referenceCCI);
-                item.setCoOwner(ownerById.get(ownerId));
-                item.setTantieme(tantiemeByOwnerId.get(ownerId));
-                item.setQuotePart(quotePart);
-                item.setPaidAmount(BigDecimal.ZERO);
-
-                // Posé une seule fois ici, dès qu'on sait avec certitude que cette part vaut 0 —
-                // évite d'afficher "En attente" à un copropriétaire qui ne doit rien
-                if (quotePart.compareTo(BigDecimal.ZERO) == 0) {
-                    item.setStatus(ChargeItemPaymentStatus.NO_AMOUNT_DUE);
-                }
-
-                items.add(item);
-            }
-
-            // chargeCall.totalAmount avait été posé plus haut à budgetTotal/numberOfPeriods (utile tel
-            // quel pour le mode CUSTOM, où le syndic doit saisir exactement ce montant) — mais depuis
-            // que quotePartByOwnerId dérive de la quote-part annuelle figée (pas du budget/période), la
-            // somme réelle des lignes de CETTE période peut légèrement différer d'une période à l'autre
-            // (ex: 7/7/5/4 au lieu de 6 partout). On recale donc totalAmount sur la vraie somme des
-            // items, sinon le taux de collection ("payé / totalAmount") serait calculé sur un chiffre
-            // qui ne correspond plus à ce qui est réellement dû ce trimestre.
-            BigDecimal realPeriodTotal = quotePartByOwnerId.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
-            chargeCall.setTotalAmount(realPeriodTotal);
+        // Fusionne les lots par copropriétaire (un copropriétaire avec plusieurs lots = un seul
+        // tantième cumulé) — inclut le syndic pour les lots vacants (resolveBillableOwner)
+        Map<Long, User> ownerById = new LinkedHashMap<>();
+        Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
+        for (Property property : properties) {
+            User billableOwner = resolveBillableOwner(property);
+            Long ownerId = billableOwner.getId();
+            ownerById.putIfAbsent(ownerId, billableOwner);
+            tantiemeByOwnerId.merge(
+                    ownerId,
+                    property.getShare() != null ? property.getShare() : BigDecimal.ZERO,
+                    BigDecimal::add);
         }
+
+        // Montant de CETTE période pour chaque copropriétaire : dérivé de sa quote-part ANNUELLE
+        // déjà figée à la création du budget (BudgetCoOwnerAllocation), jamais recalculé depuis
+        // le budget total à chaque génération de période. Sinon, comme distributeByLargestRemainder
+        // est déterministe (mêmes tantièmes, même montant de période à chaque fois), les mêmes
+        // copropriétaires gagnent/perdent systématiquement le même FCFA d'arrondi à CHAQUE période,
+        // et la somme réellement facturée sur l'année diverge de la quote-part annuelle et du
+        // budget total (ex: budget 23 FCFA, 4 trimestres → 24 FCFA collectés sur l'année, toujours
+        // les mêmes copropriétaires en trop/en moins). Répartir l'annuel déjà figé sur les périodes
+        // (même méthode plus grand reste, donc toujours en FCFA entiers, compatible Wave/InTouch)
+        // garantit que la somme des périodes d'un copropriétaire retombe exactement sur son annuel.
+        Map<Long, BigDecimal> quotePartByOwnerId = new LinkedHashMap<>();
+        for (Long ownerId : tantiemeByOwnerId.keySet()) {
+            BigDecimal annualQuotePart = budgetCoOwnerAllocationRepository
+                    .findByBudgetIdAndCoOwnerId(budget.getId(), ownerId)
+                    .map(BudgetCoOwnerAllocation::getAnnualQuotePart)
+                    .orElse(BigDecimal.ZERO);
+            quotePartByOwnerId.put(ownerId,
+                    splitAnnualAmountForPeriod(annualQuotePart, numberOfPeriods, dto.getPeriodNumber()));
+        }
+
+        for (Long ownerId : tantiemeByOwnerId.keySet()) {
+            String referenceCCI = "APPI-" + dto.getPeriodNumber() + budget.getAnnee() + "-" + budget.getId() + "-" + ownerId;
+
+            BigDecimal quotePart = quotePartByOwnerId.get(ownerId);
+
+            ChargeCallItem item = new ChargeCallItem();
+            item.setChargeCall(chargeCall);
+            item.setReference(referenceCCI);
+            item.setCoOwner(ownerById.get(ownerId));
+            item.setTantieme(tantiemeByOwnerId.get(ownerId));
+            item.setQuotePart(quotePart);
+            item.setPaidAmount(BigDecimal.ZERO);
+
+            // Posé une seule fois ici, dès qu'on sait avec certitude que cette part vaut 0 —
+            // évite d'afficher "En attente" à un copropriétaire qui ne doit rien
+            if (quotePart.compareTo(BigDecimal.ZERO) == 0) {
+                item.setStatus(ChargeItemPaymentStatus.NO_AMOUNT_DUE);
+            }
+
+            items.add(item);
+        }
+
+        // chargeCall.totalAmount avait été posé plus haut à budgetTotal/numberOfPeriods, mais depuis
+        // que quotePartByOwnerId dérive de la quote-part annuelle figée (pas du budget/période), la
+        // somme réelle des lignes de CETTE période peut légèrement différer d'une période à l'autre
+        // (ex: 7/7/5/4 au lieu de 6 partout). On recale donc totalAmount sur la vraie somme des
+        // items, sinon le taux de collection ("payé / totalAmount") serait calculé sur un chiffre
+        // qui ne correspond plus à ce qui est réellement dû ce trimestre.
+        BigDecimal realPeriodTotal = quotePartByOwnerId.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        chargeCall.setTotalAmount(realPeriodTotal);
 
         chargeCall.setItems(items);
         ChargeCall savedChargeCall = chargeCallRepository.save(chargeCall);
@@ -2455,8 +2371,11 @@ public class ChargeServiceImpl implements ChargeService {
 
         // --- Budget Annuel + Résidences Actives ---
 
-        // Récupère tous les budgets ACTIVE du syndic, toutes résidences confondues
-        List<Budget> activeBudgets = budgetRepository.findBySyndicIdAndStatus(currentSyndic.getId(), BudgetStatus.ACTIVE);
+        // Récupère les budgets ACTIVE de l'année en cours — une résidence dont le budget n'a pas
+        // encore été renouvelé pour cette année n'est pas comptée ici (son ancien budget est d'une autre année)
+        int currentYear = Year.now().getValue();
+        List<Budget> activeBudgets = budgetRepository.findBySyndicIdAndStatusAndAnnee(
+                currentSyndic.getId(), BudgetStatus.ACTIVE, currentYear);
 
         BigDecimal annualBudget = activeBudgets.stream()
                 .map(Budget::getBudgetTotal)
@@ -2615,6 +2534,7 @@ public class ChargeServiceImpl implements ChargeService {
     }
 
     // Construit le camembert "Répartition des postes" pour une résidence et l'année en cours
+    // (uniquement si son budget de cette année est ACTIVE)
     private BudgetPostesRepartitionDTO buildPostesRepartition(Long residenceId) {
 
         BudgetPostesRepartitionDTO dto = new BudgetPostesRepartitionDTO();
@@ -2626,7 +2546,7 @@ public class ChargeServiceImpl implements ChargeService {
 
         int currentYear = LocalDate.now().getYear();
 
-        Budget budget = budgetRepository.findByResidenceIdAndAnnee(residenceId, currentYear).orElse(null);
+        Budget budget = budgetRepository.findByResidenceIdAndAnneeAndStatus(residenceId, currentYear, BudgetStatus.ACTIVE).orElse(null);
 
         if (budget == null) {
             dto.setPostes(List.of());
@@ -3200,17 +3120,10 @@ public class ChargeServiceImpl implements ChargeService {
     // ensuite (résidence, année, mode de répartition et montant/postes ne sont plus jamais
     // modifiables), donc cette quote-part figée reste toujours exacte, sans jamais avoir à
     // être recalculée après coup.
-    // Ne concerne que le mode OWNERSHIP_SHARES : en CUSTOM, chaque appel a son propre montant
-    // saisi manuellement, il n'existe pas de quote-part théorique annuelle à figer.
     private void figerAllocationsAnnuelles(Budget budget) {
 
         // Supprime les allocations existantes : toujours un recalcul complet, jamais partiel
         budgetCoOwnerAllocationRepository.deleteByBudgetId(budget.getId());
-
-        // Rien à figer en mode CUSTOM
-        if (budget.getRepartitionMode() != RepartitionMode.OWNERSHIP_SHARES) {
-            return;
-        }
 
         // Récupère tous les lots de la résidence
         List<Property> properties = propertyRepository.findByResidenceId(budget.getResidence().getId());

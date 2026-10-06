@@ -27,12 +27,6 @@ public class SyndicTravauxDashboardServiceImpl implements SyndicTravauxDashboard
     private final QuoteRepository quoteRepository;
     private final ProviderProfileRepository providerProfileRepository;
 
-    // Statuts considérés comme "ouverts" (tout sauf clôturé/annulé)
-    private static final List<InterventionStatus> OPEN_STATUSES = List.of(
-            InterventionStatus.PENDING, InterventionStatus.SYNDIC_ASSIGNED,
-            InterventionStatus.QUOTE_VALIDATED, InterventionStatus.STARTED, InterventionStatus.FINISHED
-    );
-
     // =========================================================================
     // DASHBOARD (6 KPIs)
     // =========================================================================
@@ -45,9 +39,9 @@ public class SyndicTravauxDashboardServiceImpl implements SyndicTravauxDashboard
         User currentSyndic = getCurrentUser();
 
         return TravauxDashboardDTO.builder()
-                .ouverts(interventionRequestRepository.countByResidenceSyndicIdAndStatusIn(currentSyndic.getId(), OPEN_STATUSES))
+                .ouverts(interventionRequestRepository.countByResidenceSyndicIdAndStatusIn(currentSyndic.getId(), InterventionStatus.openStatuses()))
                 .urgents(interventionRequestRepository.countByResidenceSyndicIdAndStatusInAndUrgencyLevel(
-                        currentSyndic.getId(), OPEN_STATUSES, UrgencyLevel.URGENT))
+                        currentSyndic.getId(), InterventionStatus.openStatuses(), UrgencyLevel.URGENT))
                 .enAttenteDevis(interventionRequestRepository.countByResidenceSyndicIdAndStatus(currentSyndic.getId(), InterventionStatus.PENDING))
                 .enCours(interventionRequestRepository.countByResidenceSyndicIdAndStatus(currentSyndic.getId(), InterventionStatus.STARTED))
                 .resolus(interventionRequestRepository.countByResidenceSyndicIdAndStatus(currentSyndic.getId(), InterventionStatus.FINISHED))

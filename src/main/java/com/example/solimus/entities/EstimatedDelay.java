@@ -21,9 +21,14 @@ public class EstimatedDelay {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    // Syndic propriétaire de cette option — chaque syndic gère sa propre liste
+    @ManyToOne
+    @JoinColumn(name = "syndic_id", nullable = false)
+    private User syndic;
+
+    @Column(nullable = false)
     private String label; // Ex: "Moins de 2h", "Dans la journée", etc.
 
-    @Column(nullable = false, name = "days_equivalent", unique = true)
+    @Column(nullable = false, name = "days_equivalent")
     private Integer days; // Équivalent en jours pour les calculs de score (ex: 1, 3, 7)
 }

@@ -94,8 +94,9 @@ public class ProviderRequestController {
                     content = @Content(schema = @Schema(implementation = EstimatedDelayDTO.class)))
     })
     @GetMapping("quote/estimated-delays")
-    public ResponseEntity<List<EstimatedDelayDTO>> getEstimatedDelays() {
-        return ResponseEntity.ok(providerRequestService.getEstimatedDelays());
+    public ResponseEntity<List<EstimatedDelayDTO>> getEstimatedDelays(
+            @RequestParam Long interventionRequestId) {
+        return ResponseEntity.ok(providerRequestService.getEstimatedDelays(interventionRequestId));
     }
 
     @Operation(summary = "Mettre à jour partiellement un devis (uniquement si pas encore accepté)")

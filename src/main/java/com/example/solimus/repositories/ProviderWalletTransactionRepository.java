@@ -21,4 +21,22 @@ public interface ProviderWalletTransactionRepository extends JpaRepository<Provi
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM ProviderWalletTransaction t " +
            "WHERE t.wallet.id = :walletId AND t.transactionDate BETWEEN :start AND :end")
     BigDecimal sumInPeriod(@Param("walletId") Long walletId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    // Revenus (crédits uniquement, jamais les retraits) d'un prestataire sur une journée précise —
+    // toutes sources confondues (paiement copropriétaire Mobile Money OU paiement syndic interne),
+    // contrairement à PaymentRepository qui ne voit que les paiements Mobile Money
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM ProviderWalletTransaction t " +
+           "WHERE t.wallet.provider.id = :providerId AND t.amount > 0 " +
+           "AND t.transactionDate >= :startOfDay AND t.transactionDate < :endOfDay")
+    BigDecimal sumCreditsByProviderIdAndDate(@Param("providerId") Long providerId,
+                                              @Param("startOfDay") LocalDateTime startOfDay,
+                                              @Param("endOfDay") LocalDateTime endOfDay);
+
+    // Même chose sur une période libre — "Total semaine dernière"
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM ProviderWalletTransaction t " +
+           "WHERE t.wallet.provider.id = :providerId AND t.amount > 0 " +
+           "AND t.transactionDate >= :start AND t.transactionDate < :end")
+    BigDecimal sumCreditsByProviderIdBetween(@Param("providerId") Long providerId,
+                                              @Param("start") LocalDateTime start,
+                                              @Param("end") LocalDateTime end);
 }

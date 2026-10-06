@@ -72,7 +72,4 @@ public interface SyndicOwnerService {
     /** Met à jour partiellement un copropriétaire (seuls les champs fournis sont modifiés) */
     void updateCoOwner(Long coOwnerId, String firstName, String lastName, String email, String phone,
                        Title title, LocalDate birthDate, Nationality nationality, String secondaryPhone, String address);
-
-    /** Supprime un copropriétaire et libère ses lots (statut VACANT) */
-    void deleteCoOwner(Long coOwnerId);
 }

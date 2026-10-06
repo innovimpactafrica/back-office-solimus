@@ -14,8 +14,8 @@ import com.example.solimus.entities.Notification;
 import com.example.solimus.entities.Property;
 import com.example.solimus.entities.Residence;
 import com.example.solimus.entities.User;
+import com.example.solimus.enums.BudgetStatus;
 import com.example.solimus.enums.ChargeFrequency;
-import com.example.solimus.enums.RepartitionMode;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
@@ -165,34 +165,29 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
 
         // ===== 1. CHARGE ANNUELLE =====
         BigDecimal annualCharge = BigDecimal.ZERO;
-        var budgetOpt = budgetRepository.findByResidenceIdAndAnnee(residenceId, currentYear);
+        var budgetOpt = budgetRepository.findByResidenceIdAndAnneeAndStatus(
+                residenceId, currentYear, BudgetStatus.ACTIVE);
 
         if (budgetOpt.isPresent()) {
             var budget = budgetOpt.get();
 
-            if (budget.getRepartitionMode() == RepartitionMode.CUSTOM) {
-                // Mode CUSTOM : sommer les quoteParts des ChargeCallItem générés pour ce copropriétaire
-                annualCharge = chargeCallItemRepository.sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(
-                        currentUser.getId(), residenceId, currentYear);
-            } else {
-                // Mode OWNERSHIP_SHARES : même répartition (plus grand reste) que celle utilisée pour
-                // générer/prévisualiser les charges — garantit que ce KPI affiche exactement ce que
-                // paiera réellement ce copropriétaire, sans recalcul isolé ni risque d'arrondi à 0
-                Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
-                List<Property> residenceProperties = propertyRepository.findByResidenceId(residenceId);
-                for (Property p : residenceProperties) {
-                    if (p.getOwner() == null) continue;
-                    tantiemeByOwnerId.merge(
-                            p.getOwner().getId(),
-                            p.getShare() != null ? p.getShare() : BigDecimal.ZERO,
-                            BigDecimal::add);
-                }
-
-                Map<Long, BigDecimal> quotePartByOwnerId = ChargeAllocationUtil.distributeByLargestRemainder(
-                        budget.getBudgetTotal(), tantiemeByOwnerId);
-
-                annualCharge = quotePartByOwnerId.getOrDefault(currentUser.getId(), BigDecimal.ZERO);
+            // Même répartition (plus grand reste) que celle utilisée pour générer/prévisualiser les
+            // charges — garantit que ce KPI affiche exactement ce que paiera réellement ce
+            // copropriétaire, sans recalcul isolé ni risque d'arrondi à 0
+            Map<Long, BigDecimal> tantiemeByOwnerId = new LinkedHashMap<>();
+            List<Property> residenceProperties = propertyRepository.findByResidenceId(residenceId);
+            for (Property p : residenceProperties) {
+                if (p.getOwner() == null) continue;
+                tantiemeByOwnerId.merge(
+                        p.getOwner().getId(),
+                        p.getShare() != null ? p.getShare() : BigDecimal.ZERO,
+                        BigDecimal::add);
             }
+
+            Map<Long, BigDecimal> quotePartByOwnerId = ChargeAllocationUtil.distributeByLargestRemainder(
+                    budget.getBudgetTotal(), tantiemeByOwnerId);
+
+            annualCharge = quotePartByOwnerId.getOrDefault(currentUser.getId(), BigDecimal.ZERO);
         }
 
         // ===== 2. RESTANT À PAYER =====

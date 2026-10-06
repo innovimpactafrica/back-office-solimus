@@ -10,7 +10,7 @@ public class ExceptionalCallCardDTO {
     private Long id; // Identifiant de l'appel
     private String reference; // Ex: EXC-2025-001
     private String title; // Ex: "Réfection toiture terrasse"
-    private String status; // BROUILLON, ACTIVE, TERMINE
+    private String status; // DRAFT, ACTIVE, CLOSED
     private String residenceName; // Nom de la résidence
     private BigDecimal totalAmount; // Montant total demandé
     private BigDecimal collectedAmount; // Montant déjà collecté

@@ -13,34 +13,31 @@ import java.util.List;
 
 public interface SyndicResidenceService {
 
-    // Étape 1 — Créer une résidence (infos générales uniquement, sans lots ni équipements)
-    ResidenceDTO createResidence(CreateResidenceDTO dto, MultipartFile photo);
-
     // Création en un seul appel : infos générales + lots + équipements + sécurité, en une transaction
     ResidenceDTO createResidenceFull(CreateResidenceFullDTO dto, MultipartFile photo);
 
-    // Étape 2 — Ajouter un ou plusieurs lots à une résidence déjà créée
+    // Ajouter un ou plusieurs lots à une résidence déjà créée
     List<PropertyDTO> addProperties(Long residenceId, List<AddPropertyDTO> properties);
 
-    // Étape 2 — Modifier un lot/appartement — areaWarning non null si la modification laisse un
+    // Modifier un lot/appartement — areaWarning non null si la modification laisse un
     // écart de superficie (non bloquant, à afficher côté front via le header HTTP, voir le controller)
     PropertyUpdateResult updateProperty(Long residenceId, Long propertyId, UpdatePropertyDTO dto);
 
-    // Étape 2 — Supprimer un lot/appartement
+    // Supprimer un lot/appartement
     void deleteProperty(Long residenceId, Long propertyId);
 
     // Superficie restante disponible pour ajouter des lots — consommé en temps réel par le
     // formulaire d'ajout d'appartement
     RemainingAreaDTO getRemainingArea(Long residenceId);
 
-    // Étape 2 — Lister les lots d'une résidence (paginé)
+    // Lister les lots d'une résidence (paginé)
     Page<PropertyListDTO> getPropertiesPaginated(Long residenceId, Integer page, Integer size);
 
-    // Étape 2 — Lister les lots d'une résidence avec filtres (paginé, pour onglet Appartements)
+    // Lister les lots d'une résidence avec filtres (paginé, pour onglet Appartements)
     Page<PropertyListItemDTO> getPropertiesPaginatedWithFilters(
             Long residenceId, String search, Integer floor, PropertyRentalStatus status, Integer page, Integer size);
 
-    // Étape 2 — Ajouter un locataire à un lot déjà attribué à un propriétaire
+    // Ajouter un locataire à un lot déjà attribué à un propriétaire
     PropertyDTO addTenant(Long residenceId, Long propertyId, String firstName, String lastName,
                           String email, String phone, MultipartFile photo);
 
@@ -72,17 +69,14 @@ public interface SyndicResidenceService {
     // Modifier les informations générales d'une résidence (mise à jour partielle)
     void updateResidence(Long residenceId, CreateResidenceDTO dto, MultipartFile photo);
 
-    //Étape 2 _ Lister tous les types de biens (pour dropdown lors de la création d'un lot)
+    // Lister tous les types de biens (pour dropdown lors de la création d'un lot)
     Page<PropertyTypeDTO> getAllPropertyTypes(int page, int size);
 
-    //  Étape 2 — Lister les copropriétaires pour l'affectation d'un lot
+    // Lister les copropriétaires pour l'affectation d'un lot
     List<CoOwnerSelectionDTO> searchCoOwnersForSelection(String search);
 
     //  Étape 3 — Lister les types d'équipement avec leurs champs
     Page<FacilityTypeDTO> getFacilityTypes(int page, int size);
-
-    // Étape 3 — Ajouter des équipements communs + définir les options de sécurité (résidence déjà créée)
-    ResidenceDTO saveStep3(Long residenceId, Step3DTO dto);
 
     //  Étape 3 — Mettre à jour les options de sécurité d'une résidence
     void updateSecurityFeatures(Long residenceId, UpdateSecurityFeaturesDTO dto);

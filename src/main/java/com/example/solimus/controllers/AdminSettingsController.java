@@ -4,11 +4,8 @@ import com.example.solimus.dtos.admin.notification.AdminNotificationPreferenceDT
 import com.example.solimus.dtos.admin.notification.UpdateAdminNotificationPreferenceDTO;
 import com.example.solimus.dtos.admin.settings.PlatformSettingsDTO;
 import com.example.solimus.dtos.admin.settings.UpdatePlatformSettingsDTO;
-import com.example.solimus.dtos.admin.settings.UpdateWithdrawalSettingsDTO;
-import com.example.solimus.dtos.admin.settings.WithdrawalSettingsDTO;
 import com.example.solimus.services.admin.notification.AdminNotificationPreferenceService;
 import com.example.solimus.services.admin.settings.PlatformSettingsService;
-import com.example.solimus.services.admin.settings.WithdrawalSettingsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -31,30 +28,8 @@ import java.util.List;
 @Tag(name = "Administration - Réglages")
 public class AdminSettingsController {
 
-    private final WithdrawalSettingsService withdrawalSettingsService;
     private final PlatformSettingsService platformSettingsService;
     private final AdminNotificationPreferenceService adminNotificationPreferenceService;
-
-    @Operation(summary = "Limite mensuelle de retrait actuellement configurée")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Limite renvoyée avec succès",
-                    content = @Content(schema = @Schema(implementation = WithdrawalSettingsDTO.class)))
-    })
-    @GetMapping("/withdrawal-settings")
-    public ResponseEntity<WithdrawalSettingsDTO> getMonthlyLimit() {
-        return ResponseEntity.ok(withdrawalSettingsService.getMonthlyLimit());
-    }
-
-    @Operation(summary = "Modifier la limite mensuelle de retrait")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Limite modifiée avec succès",
-                    content = @Content(schema = @Schema(implementation = WithdrawalSettingsDTO.class)))
-    })
-    @PutMapping("/withdrawal-settings")
-    public ResponseEntity<WithdrawalSettingsDTO> updateMonthlyLimit(
-            @Valid @RequestBody UpdateWithdrawalSettingsDTO dto) {
-        return ResponseEntity.ok(withdrawalSettingsService.updateMonthlyLimit(dto));
-    }
 
     // ===== BLOC 2 — INFORMATIONS PLATEFORME =====
 

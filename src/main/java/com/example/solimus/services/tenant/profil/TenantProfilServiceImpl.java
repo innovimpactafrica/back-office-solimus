@@ -134,8 +134,8 @@ public class TenantProfilServiceImpl implements TenantProfilService {
             throw new BadRequestException("Le mot de passe actuel est incorrect");
         }
 
-        // Vérifier que confirmPassword correspond à newPassword si fourni
-        if (dto.getConfirmPassword() != null && !dto.getConfirmPassword().equals(dto.getNewPassword())) {
+        // Vérifier que confirmPassword correspond à newPassword
+        if (!dto.getConfirmPassword().equals(dto.getNewPassword())) {
             throw new BadRequestException("La confirmation du mot de passe ne correspond pas");
         }
 

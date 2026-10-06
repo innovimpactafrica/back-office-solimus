@@ -443,8 +443,9 @@ public class SyndicServiceImpl implements SyndicService {
         long occupiedLots = propertyRepository.countByResidenceIdAndStatus(residenceId, PropertyStatus.OCCUPIED);
         Double occupancyRate = totalLots > 0 ? (double) occupiedLots / totalLots * 100 : null;
 
-        // Taux d'encaissement = montant encaissé / montant facturé
-        BigDecimal totalDue = chargeCallItemRepository.sumQuotePartByResidenceId(residenceId);
+        // Taux d'encaissement = montant encaissé / montant facturé (pénalité incluse dans le dû,
+        // cohérent avec ChargeCallItem.getTotalDue() et le calcul côté syndic)
+        BigDecimal totalDue = chargeCallItemRepository.sumTotalDueByResidenceId(residenceId);
         BigDecimal totalPaid = chargeCallItemRepository.sumPaidAmountByResidenceId(residenceId);
         Double collectionRate = totalDue.compareTo(BigDecimal.ZERO) > 0
                 ? totalPaid.divide(totalDue, 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100)).doubleValue()

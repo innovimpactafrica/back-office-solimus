@@ -131,7 +131,6 @@ public class OwnerTravauxManualServiceImpl implements OwnerTravauxManualService 
                 .orElseThrow(() -> new ResourceNotFoundException("Spécialité introuvable"));
 
         InterventionRequest request = new InterventionRequest();
-        request.setReference(genererReference());
         request.setTitle(dto.getTitle());
         request.setDescription(dto.getDescription());
         request.addStatusHistory(InterventionStatus.PENDING, currentOwner);
@@ -179,7 +178,11 @@ public class OwnerTravauxManualServiceImpl implements OwnerTravauxManualService 
             request.setCommonFacility(null);
         }
 
-        interventionRequestRepository.save(request);
+        InterventionRequest saved = interventionRequestRepository.save(request);
+
+        // Référence fixée à partir de l'id auto-généré (garanti unique par la base)
+        saved.setReference("TRV-" + String.format("%06d", saved.getId()));
+        request = interventionRequestRepository.save(saved);
 
         // Une intervention URGENT active peut faire passer la résidence en CRITIQUE
         statusRecalculationService.recalculateResidenceHealthStatus(residence);
@@ -245,12 +248,6 @@ public class OwnerTravauxManualServiceImpl implements OwnerTravauxManualService 
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
-    }
-
-    private String genererReference() {
-        long totalExistant = interventionRequestRepository.count();
-        long prochainNumero = totalExistant + 1;
-        return String.format("TRV-%03d", prochainNumero);
     }
 
     /**

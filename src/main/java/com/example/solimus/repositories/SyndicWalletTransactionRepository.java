@@ -70,18 +70,6 @@ public interface SyndicWalletTransactionRepository extends JpaRepository<SyndicW
     List<SyndicWalletTransaction> findTopByWalletIdAndCategoryOrderByTransactionDateDesc(
             Long walletId, WalletTransactionCategory category, Pageable pageable);
 
-    // Additionne les montants d'une catégorie sur une période donnee, optionnellement filtré par résidence
-   // Utilisée pour le KPI "Charges Collectées" (catégorie CHARGES, période = trimestre en cours)
-    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM SyndicWalletTransaction t " +
-            "WHERE t.wallet.id = :walletId AND t.category = :category " +
-            "AND t.transactionDate BETWEEN :startDate AND :endDate " +
-            "AND (:residenceId IS NULL OR t.residence.id = :residenceId)")
-    BigDecimal sumAmountByCategoryAndPeriod(@Param("walletId") Long walletId,
-                                            @Param("category") WalletTransactionCategory category,
-                                            @Param("startDate") LocalDateTime startDate,
-                                            @Param("endDate") LocalDateTime endDate,
-                                            @Param("residenceId") Long residenceId);
-
     // Additionne les montants d'une catégorie, depuis toujours (aucune limite de période), optionnellement filtré par résidence
     // Utilisée pour le KPI "Paiement prestataires" (catégorie BUDGET_EXPENSE, pas de limite de date)
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM SyndicWalletTransaction t " +
@@ -139,11 +127,11 @@ public interface SyndicWalletTransactionRepository extends JpaRepository<SyndicW
                                         @Param("residenceId") Long residenceId);
 
 
-    // Transactions CHARGES et BUDGET_EXPENSE uniquement (exclut WITHDRAWAL), triées par date décroissante,
+    // Toutes catégories confondues (CHARGES, BUDGET_EXPENSE, WITHDRAWAL), triées par date décroissante,
     // optionnellement filtré par residence. Utilisée pour le tableau "Derniers flux"
     @Query("SELECT t FROM SyndicWalletTransaction t " +
             "WHERE t.wallet.id = :walletId " +
-            "AND t.category IN ('CHARGES', 'BUDGET_EXPENSE') " +
+            "AND t.category IN ('CHARGES', 'BUDGET_EXPENSE', 'WITHDRAWAL') " +
             "AND (:residenceId IS NULL OR t.residence.id = :residenceId) " +
             "ORDER BY t.transactionDate DESC")
     Page<SyndicWalletTransaction> findFlowsByWallet(@Param("walletId") Long walletId,

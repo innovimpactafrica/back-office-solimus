@@ -283,16 +283,17 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                     throw new BadRequestException("Un paiement est déjà en cours pour cette charge");
                 });
 
-        String transactionRef = genererReference("CPY");
-
         ChargeCallPayment newPayment = new ChargeCallPayment();
-        newPayment.setReference(transactionRef);
         newPayment.setChargeCallItem(item);
         newPayment.setOwner(currentOwner);
         newPayment.setAmount(remainingAmount);
         newPayment.setMethod(dto.getMethod());
         newPayment.setStatus(PaymentStatus.PENDING);
-        chargeCallPaymentRepository.save(newPayment);
+        newPayment = chargeCallPaymentRepository.save(newPayment);
+
+        // Référence fixée à partir de l'id auto-généré (garanti unique par la base)
+        newPayment.setReference("CPY-" + String.format("%06d", newPayment.getId()));
+        newPayment = chargeCallPaymentRepository.save(newPayment);
 
         String bridgeUrl = String.format(touchPayBridgeUrlTemplate, newPayment.getReference());
 
@@ -331,17 +332,18 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                     throw new BadRequestException("Un paiement est déjà en cours pour cette charge");
                 });
 
-        // Préfixe différent pour distinguer dans le callback/routing (ECP au lieu de CPY)
-        String transactionRef = genererReference("ECP");
-
         ExceptionalCallPayment newPayment = new ExceptionalCallPayment();
-        newPayment.setReference(transactionRef);
         newPayment.setExceptionalCallItem(item);
         newPayment.setOwner(currentOwner);
         newPayment.setAmount(remainingAmount);
         newPayment.setMethod(dto.getMethod());
         newPayment.setStatus(PaymentStatus.PENDING);
-        exceptionalCallPaymentRepository.save(newPayment);
+        newPayment = exceptionalCallPaymentRepository.save(newPayment);
+
+        // Référence fixée à partir de l'id auto-généré (garanti unique par la base) —
+        // préfixe différent pour distinguer dans le callback/routing (ECP au lieu de CPY)
+        newPayment.setReference("ECP-" + String.format("%06d", newPayment.getId()));
+        newPayment = exceptionalCallPaymentRepository.save(newPayment);
 
         String bridgeUrl = String.format(touchPayBridgeUrlTemplate, newPayment.getReference());
 
@@ -607,11 +609,5 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
         String quarterLabel = (index >= 0 && index < quarterLabels.length) ? quarterLabels[index] : "";
         return "T" + periodNumber + " " + year + " (" + quarterLabel + ")";
     }
-
-    // Génère une référence unique avec un préfixe (ex: CPY-123456 ou ECP-123456)
-    private String genererReference(String prefix) {
-        return prefix + "-" + (int)(Math.random() * 900000 + 100000);
-    }
-
 
 }

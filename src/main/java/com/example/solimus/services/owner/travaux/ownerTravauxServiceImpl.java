@@ -163,7 +163,6 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
 
         // Créer la demande d'intervention
         InterventionRequest request = new InterventionRequest();
-        request.setReference(genererReference());
         request.setTitle(dto.getTitle());
         request.setDescription(dto.getDescription());
         request.addStatusHistory(InterventionStatus.PENDING, currentOwner);
@@ -229,7 +228,11 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
         }
 
         // Sauvegarder la demande d'intervention
-        interventionRequestRepository.save(request);
+        InterventionRequest saved = interventionRequestRepository.save(request);
+
+        // Référence fixée à partir de l'id auto-généré (garanti unique par la base)
+        saved.setReference("TRV-" + String.format("%06d", saved.getId()));
+        interventionRequestRepository.save(saved);
 
         // Une intervention URGENT active peut faire passer la résidence en CRITIQUE
         statusRecalculationService.recalculateResidenceHealthStatus(residence);
@@ -626,22 +629,20 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
             throw new BadRequestException("Aucun prestataire n'est sélectionné pour cette demande.");
         }
 
-        // 5. Générer une référence unique de transaction
-        String transactionRef = genererReference("PAY");
-
-        // 6. Créer ou réinitialiser le paiement
+        // 5. Créer ou réinitialiser le paiement
         PaymentProvider payment;
         if (existingPayment.isPresent() && existingPayment.get().getStatus() == PaymentStatus.FAILED) {
-            // Paiement FAILED → réinitialiser pour une nouvelle tentative
+            // Paiement FAILED → réinitialiser pour une nouvelle tentative, référence déjà fixée
+            // depuis la 1ère tentative (son id ne change pas), inutile d'en regénérer une
             payment = existingPayment.get();
-            payment.setReference(transactionRef);
             payment.setMethod(dto.getMethode());
             payment.setStatus(PaymentStatus.PENDING);
             payment.setPaidAt(null); //le paiement n'est pas encore complété
+            paymentRepository.save(payment);
         } else {
-            // Nouveau paiement
+            // Nouveau paiement — sauvegardé une 1ère fois pour obtenir l'id auto-généré,
+            // puis la référence en est dérivée (garantie unique par la base)
             payment = PaymentProvider.builder()
-                    .reference(transactionRef)
                     .interventionRequest(request)
                     .provider(request.getSelectedProvider())
                     .paymentInitiator(currentOwner)
@@ -650,9 +651,12 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
                     .method(dto.getMethode())
                     .status(PaymentStatus.PENDING)
                     .build();
+            payment = paymentRepository.save(payment);
+            payment.setReference("PAY-" + String.format("%06d", payment.getId()));
+            payment = paymentRepository.save(payment);
         }
 
-        paymentRepository.save(payment);
+        String transactionRef = payment.getReference();
 
         // 7. Construire l'URL de redirection TouchPay
         String bridgeUrl = String.format(touchPayBridgeUrlTemplate, transactionRef);
@@ -743,22 +747,20 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
             // Si le paiement est FAILED, on permet de réinitier (réinitialisation plus bas)
         }
 
-        // 6. Générer une référence unique de transaction
-        String transactionRef = genererReference("SOL");
-
-        // 7. Créer ou réinitialiser le paiement
+        // 6. Créer ou réinitialiser le paiement
         PaymentProvider payment;
         if (existingPayment.isPresent() && existingPayment.get().getStatus() == PaymentStatus.FAILED) {
-            // Paiement FAILED → réinitialiser pour une nouvelle tentative
+            // Paiement FAILED → réinitialiser pour une nouvelle tentative, référence déjà fixée
+            // depuis la 1ère tentative (son id ne change pas), inutile d'en regénérer une
             payment = existingPayment.get();
-            payment.setReference(transactionRef);
             payment.setMethod(dto.getMethode());
             payment.setStatus(PaymentStatus.PENDING);
             payment.setPaidAt(null);
+            paymentRepository.save(payment);
         } else {
-            // Nouveau paiement
+            // Nouveau paiement — sauvegardé une 1ère fois pour obtenir l'id auto-généré,
+            // puis la référence en est dérivée (garantie unique par la base)
             payment = PaymentProvider.builder()
-                    .reference(transactionRef)
                     .interventionRequest(request)
                     .provider(request.getSelectedProvider())
                     .paymentInitiator(currentOwner)
@@ -767,9 +769,12 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
                     .method(dto.getMethode())
                     .status(PaymentStatus.PENDING)
                     .build();
+            payment = paymentRepository.save(payment);
+            payment.setReference("SOL-" + String.format("%06d", payment.getId()));
+            payment = paymentRepository.save(payment);
         }
 
-        paymentRepository.save(payment);
+        String transactionRef = payment.getReference();
 
         // 7. Construire l'URL de redirection TouchPay
         String bridgeUrl = String.format(touchPayBridgeUrlTemplate, transactionRef);
@@ -796,10 +801,6 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable"));
     }
 
-    //Génération Référence pour le paiement
-    private String genererReference(String prefix) {
-        return prefix + "-" + (int)(Math.random() * 900000 + 100000);
-    }
 
 
     // Met à jour le rating et le reviewCount du prestataire après création d'un avis.
@@ -882,19 +883,6 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
 
     }
 
-
-        /**
-         * Génère une référence unique pour la demande d'intervention.
-         * Format : TRV-XXX (ex: TRV-001, TRV-010, TRV-1000)
-         */
-    private String genererReference() {
-        // On compte le nombre total de demandes déjà existantes en base
-        long totalExistant = interventionRequestRepository.count();
-        // On ajoute 1 pour obtenir le numéro de la prochaine demande
-        long prochainNumero = totalExistant + 1;
-        // On formate en "TRV-" suivi d'au minimum 3 chiffres (ex: TRV-001, TRV-010, TRV-1000)
-        return String.format("TRV-%03d", prochainNumero);
-    }
 
     private ResidenceDTO mapToResidenceDTO(Residence residence) {
         return ResidenceDTO.builder()

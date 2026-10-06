@@ -420,19 +420,4 @@ public class SyndicOwnerController {
         syndicOwnerService.updateCoOwner(id, firstName, lastName, email, phone, title, birthDate, nationality, secondaryPhone, address);
         return ResponseEntity.ok().build();
     }
-
-    @Operation(summary = "Supprimer un copropriétaire et libérer ses lots", tags = {"Syndic - Copropriétaires"},
-            description = "Le compte User n'est réellement supprimé que s'il n'est lié à aucun autre syndic et ne possède plus de lot ailleurs ; sinon, seuls le lien avec ce syndic et ses lots dans vos résidences sont libérés")
-    @ApiResponses({
-            @ApiResponse(responseCode = "204", description = "Copropriétaire supprimé (ou délié) avec succès"),
-            @ApiResponse(responseCode = "403", description = "Ce copropriétaire n'a pas de lot dans vos résidences",
-                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
-            @ApiResponse(responseCode = "404", description = "Copropriétaire introuvable",
-                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
-    })
-    @DeleteMapping("/co-owners/{id}")
-    public ResponseEntity<Void> deleteCoOwner(@PathVariable Long id) {
-        syndicOwnerService.deleteCoOwner(id);
-        return ResponseEntity.noContent().build();
-    }
 }

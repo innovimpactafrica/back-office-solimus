@@ -16,5 +16,4 @@ public class WithdrawalFinancialAnalysisDTO {
     // Évolution vs solde de fin du mois précédent, 0% si le mois précédent vaut 0 =
     private Double evolutionPercentage;
     private BigDecimal withdrawnThisMonth;
-    private BigDecimal monthlyLimit;
 }

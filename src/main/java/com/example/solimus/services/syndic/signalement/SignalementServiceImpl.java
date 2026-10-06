@@ -194,7 +194,6 @@ public class SignalementServiceImpl implements SignalementService {
 
         // Crée la nouvelle demande d'intervention, en reprenant les infos du signalement
         InterventionRequest request = new InterventionRequest();
-        request.setReference(generateInterventionReference());
         request.setTitle(signalement.getTitle());
         request.setDescription(dto.getWorkDescription());
         request.addStatusHistory(InterventionStatus.PENDING, currentSyndic);
@@ -224,6 +223,11 @@ public class SignalementServiceImpl implements SignalementService {
         }
 
         InterventionRequest savedIntervention = interventionRequestRepository.save(request);
+
+        // Référence basée sur l'id auto-généré (garanti unique par la base), jamais sur un comptage
+        // — évite toute collision entre deux interventions créées en même temps par des chemins différents
+        savedIntervention.setReference("TRV-" + String.format("%03d", savedIntervention.getId()));
+        savedIntervention = interventionRequestRepository.save(savedIntervention);
 
         // Une intervention URGENT active peut faire passer la résidence en CRITIQUE
         statusRecalculationService.recalculateResidenceHealthStatus(signalement.getResidence());
@@ -349,9 +353,4 @@ public class SignalementServiceImpl implements SignalementService {
                 .build();
     }
 
-    // Génère une référence unique pour une intervention créée depuis un signalement
-    private String generateInterventionReference() {
-        long total = interventionRequestRepository.count();
-        return String.format("TRV-%03d", total + 1);
-    }
 }

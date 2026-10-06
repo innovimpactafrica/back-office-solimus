@@ -27,9 +27,9 @@ public interface ResidenceRepository extends JpaRepository<Residence, Long> {
     // Compter les résidences par syndic
     long countBySyndicId(Long syndicId);
 
-    /** Récupérer sans doublon les résidences qui ont au moins un bien vacant */
-    @Query("SELECT DISTINCT r FROM Residence r JOIN r.properties p WHERE p.status = 'VACANT'")
-    List<Residence> findResidencesWithVacantProperties();
+    /** Résidences d'un syndic précis ayant au moins un bien vacant (sans doublon) */
+    @Query("SELECT DISTINCT r FROM Residence r JOIN r.properties p WHERE p.status = 'VACANT' AND r.syndic.id = :syndicId")
+    List<Residence> findResidencesWithVacantProperties(@Param("syndicId") Long syndicId);
 
     /** Compter le nombre de résidences utilisant une option de sécurité */
     @Query("SELECT COUNT(r) FROM Residence r JOIN r.securityFeatures sf WHERE sf.id = :securityFeatureId")
@@ -66,13 +66,4 @@ public interface ResidenceRepository extends JpaRepository<Residence, Long> {
     // Récupère la résidence la plus récemment créée pour ce syndic (basé sur createdAt)
     Optional<Residence> findFirstBySyndicIdOrderByCreatedAtDesc(Long syndicId);
 
-    // Récupère les résidences de ce syndic, triées de la plus récemment active
-    // à la moins récemment active, en se basant sur la date de leur DERNIÈRE
-    // transaction wallet (via une sous-requête qui calcule MAX(transactionDate)
-    // pour chaque résidence). Utilisée pour le widget "Résidences actives"
-    // de la Vue d'ensemble du portefeuille financier.
-    @Query("SELECT r FROM Residence r " +
-           "WHERE r.syndic.id = :syndicId " +
-           "ORDER BY (SELECT MAX(t.transactionDate) FROM SyndicWalletTransaction t WHERE t.residence.id = r.id) DESC")
-    List<Residence> findMostRecentlyActiveResidences(@Param("syndicId") Long syndicId, Pageable pageable);
 }

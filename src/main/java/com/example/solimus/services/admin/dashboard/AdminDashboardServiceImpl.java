@@ -151,7 +151,8 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
                 .findByPaymentStatusOrderByCreatedAtDesc(PaymentStatus.COMPLETED, PageRequest.of(0, limit));
         for (SyndicSubscription subscription : completedSyndicPayments) {
             boolean isRenewal = syndicSubscriptionRepository
-                    .existsBySyndicIdAndCreatedAtBefore(subscription.getSyndic().getId(), subscription.getCreatedAt());
+                    .existsBySyndicIdAndPaymentStatusAndCreatedAtBefore(
+                            subscription.getSyndic().getId(), PaymentStatus.COMPLETED, subscription.getCreatedAt());
             String clientName = resolveSyndicDisplayName(subscription.getSyndic());
 
             if (isRenewal) {
@@ -171,7 +172,8 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
                 .findByPaymentStatusOrderByCreatedAtDesc(PaymentStatus.COMPLETED, PageRequest.of(0, limit));
         for (ProviderSubscription subscription : completedProviderPayments) {
             boolean isRenewal = providerSubscriptionRepository
-                    .existsByProviderIdAndCreatedAtBefore(subscription.getProvider().getId(), subscription.getCreatedAt());
+                    .existsByProviderIdAndPaymentStatusAndCreatedAtBefore(
+                            subscription.getProvider().getId(), PaymentStatus.COMPLETED, subscription.getCreatedAt());
             String clientName = resolveProviderDisplayName(subscription.getProvider());
 
             if (isRenewal) {

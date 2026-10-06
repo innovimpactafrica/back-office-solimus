@@ -25,6 +25,4 @@ public class CoOwnerPropertyItemDTO {
     private BigDecimal share;
 
     private String residenceName;
-
-    private BigDecimal annualCharge;
 }

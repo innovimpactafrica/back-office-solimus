@@ -222,7 +222,6 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
         // Créer la demande d'intervention
         InterventionRequest request = new InterventionRequest();
-        request.setReference(genererReference()); //Générer et assigner une référence unique (ex: TRV-001) à la demande
         request.setTitle(dto.getTitle()); // Définir le titre
         request.setDescription(dto.getDescription()); // Définir la description
         request.addStatusHistory(InterventionStatus.PENDING, currentSyndic); // Ajouter l'historique de statut
@@ -273,7 +272,11 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         }
 
         // Sauvegarder la demande pour obtenir un ID valide avant le log d'activité
-        interventionRepository.save(request);
+        InterventionRequest saved = interventionRepository.save(request);
+
+        // Référence fixée à partir de l'id auto-généré (garanti unique par la base)
+        saved.setReference("TRV-" + String.format("%06d", saved.getId()));
+        request = interventionRepository.save(saved);
 
         // Une intervention URGENT active peut faire passer la résidence en CRITIQUE
         statusRecalculationService.recalculateResidenceHealthStatus(residence);
@@ -703,10 +706,6 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             throw new BadRequestException("Les travaux ne sont pas encore terminés");
         }
 
-        if (request.getStatus() == InterventionStatus.FINAL_VALIDATION) {
-            throw new BadRequestException("Budget déjà clôturé");
-        }
-
         BigDecimal solde = request.getRemainingAmount() != null ? request.getRemainingAmount() : BigDecimal.ZERO;
 
         if (solde.compareTo(BigDecimal.ZERO) <= 0) {
@@ -783,7 +782,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
         BigDecimal nouveauSolde = soldeDisponible.subtract(solde);
 
-        // ⬇️ AJOUT — Trace la clôture dans le journal d'activité
+        // Trace la clôture dans le journal d'activité
         ActivityLog log = new ActivityLog();
         log.setResidence(request.getResidence());
         log.setType(ActivityType.INTERVENTION_RESOLVED);
@@ -1018,19 +1017,6 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         providerProfileRepository.save(profile);
     }
 
-
-    /**
-     * Génère une référence unique de type TRV-001 etc
-     * On compte le nombre total de demandes en base, on ajoute 1, puis on formate.
-     */
-    private String genererReference() {
-        // On compte le nombre total de demandes déjà existantes en base
-        long totalExistant = interventionRepository.count();
-        // On ajoute 1 pour obtenir le numéro de la prochaine demande
-        long prochainNumero = totalExistant + 1;
-        // On formate en "TRV-" suivi d'au minimum 3 chiffres (ex: TRV-001, TRV-010, TRV-1000)
-        return String.format("TRV-%03d", prochainNumero);
-    }
 
     /**
      * Récupère l'utilisateur actuellement authentifié via le SecurityContext.

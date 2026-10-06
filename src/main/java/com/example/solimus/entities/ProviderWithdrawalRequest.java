@@ -25,9 +25,9 @@ public class ProviderWithdrawalRequest {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Référence unique
-    @Column(unique = true, nullable = false)
-    private String reference; // "WIT-2026-001"
+    // Référence unique — fixée après le premier save, à partir de l'id auto-généré
+    @Column(unique = true)
+    private String reference; // "WIT-000123"
 
     // Le prestataire qui demande le versement
     @ManyToOne(fetch = FetchType.EAGER)

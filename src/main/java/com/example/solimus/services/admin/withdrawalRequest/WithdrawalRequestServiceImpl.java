@@ -26,11 +26,11 @@ import com.example.solimus.repositories.ProviderProfileRepository;
 import com.example.solimus.repositories.ProviderWalletRepository;
 import com.example.solimus.repositories.ProviderWalletTransactionRepository;
 import com.example.solimus.repositories.SyndicProfileRepository;
+import com.example.solimus.repositories.SyndicWalletRepository;
 import com.example.solimus.repositories.SyndicWalletTransactionRepository;
 import com.example.solimus.repositories.SyndicWithdrawalRequestRepository;
 import com.example.solimus.repositories.UserRepository;
 import com.example.solimus.repositories.WithdrawalRequestRepository;
-import com.example.solimus.services.admin.settings.WithdrawalSettingsService;
 import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.services.notification.NotificationService;
 import com.example.solimus.services.minio.MinioService;
@@ -61,13 +61,13 @@ public class WithdrawalRequestServiceImpl implements WithdrawalRequestService {
     private final WithdrawalRequestRepository providerWithdrawalRequestRepository;
     private final AdminWithdrawalRequestRepository adminWithdrawalRequestRepository;
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
+    private final SyndicWalletRepository syndicWalletRepository;
     private final ProviderWalletRepository providerWalletRepository;
     private final ProviderWalletTransactionRepository providerWalletTransactionRepository;
     private final WalletBalanceService providerWalletBalanceService;
     private final SyndicProfileRepository syndicProfileRepository;
     private final ProviderProfileRepository providerProfileRepository;
     private final UserRepository userRepository;
-    private final WithdrawalSettingsService withdrawalSettingsService;
     private final NotificationRepository notificationRepository;
     private final NotificationService notificationService;
     private final EmailService emailService;
@@ -219,13 +219,11 @@ public class WithdrawalRequestServiceImpl implements WithdrawalRequestService {
         Double evolutionPercentage = calculatePercentage(currentBalance.subtract(soldeFinMoisPrecedent), soldeFinMoisPrecedent);
 
         BigDecimal withdrawnThisMonth = syndicWithdrawalRequestRepository.sumCompletedAmountInPeriod(walletId, startOfMonth, now);
-        BigDecimal monthlyLimit = withdrawalSettingsService.getMonthlyLimit().getMonthlyLimit();
 
         WithdrawalFinancialAnalysisDTO financialAnalysis = WithdrawalFinancialAnalysisDTO.builder()
                 .currentBalance(currentBalance)
                 .evolutionPercentage(evolutionPercentage)
                 .withdrawnThisMonth(withdrawnThisMonth)
-                .monthlyLimit(monthlyLimit)
                 .build();
 
         List<SyndicWithdrawalRequest> recent = syndicWithdrawalRequestRepository
@@ -289,13 +287,11 @@ public class WithdrawalRequestServiceImpl implements WithdrawalRequestService {
         Double evolutionPercentage = calculatePercentage(currentBalance.subtract(soldeFinMoisPrecedent), soldeFinMoisPrecedent);
 
         BigDecimal withdrawnThisMonth = providerWalletBalanceService.getWithdrawnThisMonth(provider.getId());
-        BigDecimal monthlyLimit = withdrawalSettingsService.getMonthlyLimit().getMonthlyLimit();
 
         WithdrawalFinancialAnalysisDTO financialAnalysis = WithdrawalFinancialAnalysisDTO.builder()
                 .currentBalance(currentBalance)
                 .evolutionPercentage(evolutionPercentage)
                 .withdrawnThisMonth(withdrawnThisMonth)
-                .monthlyLimit(monthlyLimit)
                 .build();
 
         List<ProviderWithdrawalRequest> recent = providerWithdrawalRequestRepository
@@ -374,6 +370,16 @@ public class WithdrawalRequestServiceImpl implements WithdrawalRequestService {
                 throw new ConflictException("Cette demande a déjà été traitée");
             }
 
+            // Verrouille le wallet le temps de la transaction : empêche deux validations concurrentes
+            // sur le même wallet de lire le même solde avant que l'une des deux ait fini. Timeout
+            // court pour échouer vite avec un message clair plutôt que de bloquer l'admin longtemps.
+            try {
+                syndicWalletRepository.findByIdForUpdate(request.getWallet().getId());
+            } catch (org.springframework.dao.PessimisticLockingFailureException e) {
+                throw new ConflictException(
+                        "Une autre validation est en cours sur le compte de ce syndic. Veuillez réessayer dans quelques instants.");
+            }
+
             // Vérifie que le solde actuel (retraits COMPLETED uniquement, même calcul que le dashboard)
             // couvre bien le montant demandé — seul moment où le blocage se fait, pas à la création de
             // la demande. Si plusieurs demandes PENDING existent pour le même wallet, valider la première
@@ -421,6 +427,15 @@ public class WithdrawalRequestServiceImpl implements WithdrawalRequestService {
 
         if (request.getStatus() != WithdrawalStatus.PENDING) {
             throw new ConflictException("Cette demande a déjà été traitée");
+        }
+
+        // Verrouille le wallet le temps de la transaction — même raisonnement que la branche SYNDIC
+        // ci-dessus (empêche deux validations concurrentes de lire le même solde)
+        try {
+            providerWalletRepository.findByProviderIdForUpdate(request.getProvider().getId());
+        } catch (org.springframework.dao.PessimisticLockingFailureException e) {
+            throw new ConflictException(
+                    "Une autre validation est en cours sur le compte de ce prestataire. Veuillez réessayer dans quelques instants.");
         }
 
         // Vérifie que le solde actuel (retraits COMPLETED uniquement, même calcul que le wallet

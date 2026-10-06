@@ -46,7 +46,7 @@ services:
       SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.MySQL8Dialect
 
       # Clé JWT
-      JWT_SECRET: ${JWT_SECRET:-solimus-secret-key-256-bits-minimum-required-for-security-2026}
+      JWT_SECRET: ${JWT_SECRET:-your-jwt-secret-example}
 
       # Configuration Email
       MAIL_HOST: ${MAIL_HOST}

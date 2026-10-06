@@ -91,6 +91,16 @@ public interface ChargeCallPaymentRepository extends JpaRepository<ChargeCallPay
             @Param("year") Integer year,
             Pageable pageable);
 
+    // Somme des paiements COMPLETED d'une résidence pour une année précise — sert au "% Collecte"
+    // (widget Wallet "Résidences actives"), ne compte que les charges courantes, jamais les appels exceptionnels
+    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM ChargeCallPayment p " +
+            "WHERE p.status = 'COMPLETED' " +
+            "AND YEAR(p.paidAt) = :year " +
+            "AND p.chargeCallItem.chargeCall.budget.residence.id = :residenceId")
+    BigDecimal sumCompletedByResidenceAndYear(
+            @Param("residenceId") Long residenceId,
+            @Param("year") Integer year);
+
     // Somme des paiements de charges d'un syndic, reçus dans une période donnée
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM ChargeCallPayment p " +
             "WHERE p.chargeCallItem.chargeCall.budget.syndic.id = :syndicId " +
@@ -98,6 +108,19 @@ public interface ChargeCallPaymentRepository extends JpaRepository<ChargeCallPay
             "AND p.paidAt >= :start AND p.paidAt < :end")
     BigDecimal sumByBudgetSyndicIdAndPaidAtBetween(
             @Param("syndicId") Long syndicId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
+
+    // Même somme, filtrée en plus sur une résidence précise si fournie — sert à "Charges Collectées"
+    // (KPIs Wallet), ne compte que les charges courantes, jamais les appels exceptionnels
+    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM ChargeCallPayment p " +
+            "WHERE p.chargeCallItem.chargeCall.budget.syndic.id = :syndicId " +
+            "AND (:residenceId IS NULL OR p.chargeCallItem.chargeCall.budget.residence.id = :residenceId) " +
+            "AND p.status = 'COMPLETED' " +
+            "AND p.paidAt >= :start AND p.paidAt < :end")
+    BigDecimal sumBySyndicIdAndResidenceIdAndPaidAtBetween(
+            @Param("syndicId") Long syndicId,
+            @Param("residenceId") Long residenceId,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 

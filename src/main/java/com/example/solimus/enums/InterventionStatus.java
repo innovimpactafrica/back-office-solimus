@@ -1,5 +1,7 @@
 package com.example.solimus.enums;
 
+import java.util.List;
+
 /**
  * Statuts possibles d'une demande d'intervention dans le workflow Solimus.
  */
@@ -20,5 +22,10 @@ public enum InterventionStatus {
 
     public String getLabel() {
         return label;
+    }
+
+    // Statuts "ouverts" (tout sauf clôturé/annulé) — source unique, ne pas recopier cette liste ailleurs
+    public static List<InterventionStatus> openStatuses() {
+        return List.of(PENDING, SYNDIC_ASSIGNED, QUOTE_VALIDATED, STARTED, FINISHED);
     }
 }

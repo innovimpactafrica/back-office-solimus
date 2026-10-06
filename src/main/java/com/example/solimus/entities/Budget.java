@@ -36,8 +36,9 @@ public class Budget {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
-    private String reference; // Référence unique du budget (ex: BUD-2026-123456)
+    // Fixée après le premier save, à partir de l'id auto-généré (garanti unique) — voir createBudget()
+    @Column(unique = true)
+    private String reference; // Référence unique du budget (ex: BUD-2026-000123)
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "residence_id", nullable = false)

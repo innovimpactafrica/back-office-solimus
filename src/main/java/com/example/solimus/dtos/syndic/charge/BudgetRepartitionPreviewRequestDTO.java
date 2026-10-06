@@ -1,6 +1,5 @@
 package com.example.solimus.dtos.syndic.charge;
 
-import com.example.solimus.enums.RepartitionMode;
 import jakarta.validation.Valid;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -21,8 +20,4 @@ public class BudgetRepartitionPreviewRequestDTO {
 
     @Valid
     private List<BudgetItemInputDTO> items;
-
-    // Optionnel — si absent ou CUSTOM, aucune répartition automatique n'a de sens (chaque appel
-    // aura son propre montant saisi manuellement), la répartition renvoyée sera vide
-    private RepartitionMode repartitionMode;
 }

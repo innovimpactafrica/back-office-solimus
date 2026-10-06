@@ -163,17 +163,6 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     List<Object[]> countCallsByCoOwnerAndResidenceAndYear(
             @Param("coOwnerId") Long coOwnerId, @Param("residenceId") Long residenceId, @Param("year") Integer year);
 
-    /**
-     * Somme des quote-parts générées pour un copropriétaire, une résidence et une année
-     */
-    @Query("SELECT COALESCE(SUM(cci.quotePart), 0) " +
-           "FROM ChargeCallItem cci " +
-           "JOIN cci.chargeCall cc " +
-           "JOIN cc.budget b " +
-           "WHERE cci.coOwner.id = :coOwnerId " +
-           "AND b.residence.id = :residenceId " +
-           "AND cc.year = :year")
-    BigDecimal sumQuotePartGeneratedByCoOwnerAndResidenceAndYear(@Param("coOwnerId") Long coOwnerId, @Param("residenceId") Long residenceId, @Param("year") Integer year);
 
     // ===== MÉTHODES SUPPLÉMENTAIRES =====
 
@@ -291,8 +280,10 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
 
     // Additionne tout ce qui reste à payer pour ce copropriétaire, dans cette résidence,
     // toutes périodes de charge confondues (peu importe le statut de chaque ChargeCall) — le montant
-    // restant se calcule (quotePart - paidAmount), mais seuls les items encore PENDING sont inclus
-    @Query("SELECT COALESCE(SUM(item.quotePart - item.paidAmount), 0) FROM ChargeCallItem item " +
+    // restant se calcule (quotePart + pénalité - paidAmount), mais seuls les items encore PENDING
+    // sont inclus. Même formule que ChargeCallItem.getRemainingAmount(), pour rester cohérent avec
+    // la liste "Charges en attente" du dashboard.
+    @Query("SELECT COALESCE(SUM(item.quotePart + COALESCE(item.penaltyAmount, 0) - item.paidAmount), 0) FROM ChargeCallItem item " +
            "WHERE item.coOwner.id = :coOwnerId " +
            "AND item.chargeCall.budget.residence.id = :residenceId " +
            "AND item.status = 'PENDING'")

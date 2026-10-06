@@ -176,7 +176,6 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
 
         // 6. Initialisation de l'entité Quote
         Quote quote = new Quote();
-        quote.setReference("DEV-" + (int)(Math.random() * 900000 + 100000)); // Exemple: DEV-584729
         quote.setProvider(provider);
         quote.setInterventionRequest(request);
         quote.setEstimatedDelay(delay);
@@ -204,7 +203,11 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
         }
 
         // 9. Sauvegarde finale (Hibernate calculera les totaux via @PrePersist)
-        quoteRepository.save(quote);
+        Quote saved = quoteRepository.save(quote);
+
+        // 10. Référence fixée à partir de l'id auto-généré (garanti unique par la base)
+        saved.setReference("DEV-" + String.format("%06d", saved.getId()));
+        quoteRepository.save(saved);
     }
 
     // =========================================================================
@@ -288,8 +291,14 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
 
     @Override
     @Transactional(readOnly = true)
-    public List<EstimatedDelayDTO> getEstimatedDelays() {
-        return estimatedDelayRepository.findAll().stream()
+    public List<EstimatedDelayDTO> getEstimatedDelays(Long interventionRequestId) {
+        // Les délais estimés sont propres à chaque syndic — on résout le syndic via la
+        // résidence de l'intervention pour laquelle ce devis est soumis
+        InterventionRequest request = interventionRequestRepository.findById(interventionRequestId)
+                .orElseThrow(() -> new ResourceNotFoundException("Demande introuvable"));
+        Long syndicId = request.getResidence().getSyndic().getId();
+
+        return estimatedDelayRepository.findBySyndicId(syndicId).stream()
                 .map(delay -> EstimatedDelayDTO.builder()
                         .id(delay.getId())
                         .label(delay.getLabel())

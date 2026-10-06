@@ -25,8 +25,8 @@ public class PaymentProvider {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Référence unique du paiement (ex: PAY-2026-001)
-    @Column(unique = true, nullable = false)
+    // Référence unique du paiement — fixée après le 1er save, à partir de l'id auto-généré (ex: PAY-000123)
+    @Column(unique = true)
     private String reference;
 
     // La demande d'intervention concernée

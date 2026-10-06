@@ -72,67 +72,6 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     private final WalletTransactionPresenter walletTransactionPresenter;
 
     // =========================================================================
-    // ÉTAPE 1 — CRÉER UNE RÉSIDENCE (infos générales uniquement)
-    // =========================================================================
-    @Override
-    @Transactional
-    public ResidenceDTO createResidence(CreateResidenceDTO dto, MultipartFile photo) {
-
-        // Récupère le syndic connecté
-        User currentSyndic = getCurrentUser();
-
-        // Vérifie que la superficie totale de la résidence est fournie
-        if (dto.getTotalArea() == null) {
-            throw new BadRequestException("La superficie totale de la résidence est obligatoire");
-        }
-
-        // Bloque la création si la limite de résidences de sa formule est déjà atteinte
-        planLimitGuard.assertCanAddResidence(currentSyndic);
-
-        // Construit l'adresse complète
-        String adresseComplete = dto.getFullAddress() + ", " + dto.getCity() + ", " + dto.getCountry();
-
-        // Crée et sauvegarde l'entité Residence
-        Residence residence = new Residence();
-        residence.setName(dto.getName());
-        residence.setDescription(dto.getDescription());
-        residence.setFullAddress(adresseComplete);
-        residence.setCity(dto.getCity());
-        residence.setCountry(dto.getCountry());
-        residence.setLatitude(dto.getLatitude());
-        residence.setLongitude(dto.getLongitude());
-        residence.setConstructionDate(dto.getConstructionDate());
-        residence.setRenovationDate(dto.getRenovationDate());
-        residence.setTotalArea(dto.getTotalArea());
-        residence.setHealthStatus(ResidenceHealthStatus.EXCELLENT);
-        residence.setSyndic(currentSyndic);
-
-        Residence saved = residenceRepository.save(residence);
-
-        // Uploade la photo vers MinIO et l'associe à la résidence
-        String photoUrl = minioService.uploadFile(photo, "residences");
-        saved.setPhotoUrl(photoUrl);
-        saved = residenceRepository.save(saved);
-
-        // Crée les contacts liés à cette résidence, si fournis
-        if (dto.getContacts() != null) {
-            assertNoDuplicatePhonesInBatch(dto.getContacts());
-            for (ContactInputDTO contactDto : dto.getContacts()) {
-                ResidenceContact contact = new ResidenceContact();
-                contact.setFullName(contactDto.getFullName());
-                contact.setPhone(contactDto.getPhone());
-                contact.setResidence(saved);
-                contactRepository.save(contact);
-            }
-        }
-
-        log.info("Résidence '{}' créée (Étape 1 — infos générales) par le syndic {}", saved.getName(), currentSyndic.getEmail());
-
-        // Retourne la résidence créée — lots/équipements/sécurité ajoutés séparément (Étapes 2 et 3)
-        return mapToResidenceDTO(saved);
-    }
-
-    // =========================================================================
     // CRÉATION EN UN SEUL APPEL — infos générales + lots + équipements + sécurité
     // =========================================================================
     @Override
@@ -618,7 +557,8 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
     @Override
     @Transactional(readOnly = true)
     public List<SecurityFeatureLabelDTO> getSecurityFeatures() {
-        List<SecurityFeature> features = securityFeatureRepository.findByActiveTrue();
+        User currentSyndic = getCurrentUser();
+        List<SecurityFeature> features = securityFeatureRepository.findBySyndicIdAndActiveTrue(currentSyndic.getId());
         List<SecurityFeatureLabelDTO> result = new ArrayList<>();
         for (SecurityFeature feature : features) {
             SecurityFeatureLabelDTO dto = SecurityFeatureLabelDTO.builder()
@@ -645,62 +585,6 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                         .name(type.getName())
                         .icon(type.getIcon())
                         .build());
-    }
-
-    // =========================================================================
-    // ÉTAPE 3 — ÉQUIPEMENTS COMMUNS + OPTIONS DE SÉCURITÉ (résidence déjà créée)
-    // =========================================================================
-    @Override
-    @Transactional
-    public ResidenceDTO saveStep3(Long residenceId, Step3DTO dto) {
-
-        // Vérifie l'appartenance de la résidence au syndic connecté
-        Residence residence = getResidenceOrThrow(residenceId);
-        verifyResidenceOwnership(residence);
-        User currentSyndic = getCurrentUser();
-
-        // Crée ou met à jour chaque équipement fourni (un seul par type de facility pour la résidence)
-        if (dto.getFacilities() != null) {
-            for (AddFacilityDTO facilityDto : dto.getFacilities()) {
-                upsertFacility(residence, currentSyndic, facilityDto);
-            }
-        }
-
-        // Remplace la liste complète des options de sécurité, si fournie (même comportement
-        // que updateSecurityFeatures — pas de fusion, remplacement intégral)
-        if (dto.getSecurityFeatureIds() != null) {
-            List<SecurityFeature> securityFeatures = securityFeatureRepository.findAllById(dto.getSecurityFeatureIds());
-            residence.setSecurityFeatures(securityFeatures);
-            residence = residenceRepository.save(residence);
-        }
-
-        log.info("Étape 3 enregistrée pour la résidence '{}' par le syndic {} ({} équipement(s), {} option(s) de sécurité)",
-                residence.getName(), currentSyndic.getEmail(),
-                dto.getFacilities() != null ? dto.getFacilities().size() : 0,
-                residence.getSecurityFeatures() != null ? residence.getSecurityFeatures().size() : 0);
-
-        // Construit la réponse : résidence + ensemble à jour des équipements + options de sécurité
-        List<CommonFacility> allFacilities = facilityRepository.findByResidenceId(residenceId);
-        ResidenceDTO result = mapToResidenceDTO(residence);
-        result.setFacilities(allFacilities.stream()
-                .map(facility -> CommonFacilityListItemDTO.builder()
-                        .id(facility.getId())
-                        .name(facility.getFacilityType() != null ? facility.getFacilityType().getName() : null)
-                        .icon(facility.getFacilityType() != null ? facility.getFacilityType().getIcon() : null)
-                        .status(calculateFacilityStatus(List.of()))
-                        .build())
-                .toList());
-        result.setSecurityFeatures(residence.getSecurityFeatures() != null
-                ? residence.getSecurityFeatures().stream()
-                        .map(feature -> SecurityFeatureLabelDTO.builder()
-                                .id(feature.getId())
-                                .label(feature.getLabel())
-                                .icon(feature.getIcon())
-                                .build())
-                        .toList()
-                : List.of());
-
-        return result;
     }
 
     // =========================================================================
@@ -784,10 +668,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
         // 5. Travaux ouverts (non clôturés ni annulés) + urgents parmi eux — carte "Travaux Ouverts"
         long interventionsOuvertes = interventionRequestRepository.countOpenBySyndic(currentSyndic);
-        List<InterventionStatus> openStatuses = List.of(
-                InterventionStatus.PENDING, InterventionStatus.SYNDIC_ASSIGNED,
-                InterventionStatus.QUOTE_VALIDATED, InterventionStatus.STARTED, InterventionStatus.FINISHED
-        );
+        List<InterventionStatus> openStatuses = InterventionStatus.openStatuses();
         long urgentInterventionsOuvertes = interventionRequestRepository
                 .countByResidenceSyndicIdAndStatusInAndUrgencyLevel(currentSyndic.getId(), openStatuses, UrgencyLevel.URGENT);
 
@@ -900,10 +781,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
         // 4. Travaux ouverts (non clôturés ni annulés) de cette résidence + urgents parmi eux
         long openWorksCount = interventionRequestRepository.countOpenByResidenceId(residenceId);
-        List<InterventionStatus> openStatuses = List.of(
-                InterventionStatus.PENDING, InterventionStatus.SYNDIC_ASSIGNED,
-                InterventionStatus.QUOTE_VALIDATED, InterventionStatus.STARTED, InterventionStatus.FINISHED
-        );
+        List<InterventionStatus> openStatuses = InterventionStatus.openStatuses();
         long urgentWorksCount = interventionRequestRepository
                 .countByResidenceIdAndStatusInAndUrgencyLevel(residenceId, openStatuses, UrgencyLevel.URGENT);
 
@@ -1388,7 +1266,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
 
     // =========================================================================
     // RÉPARTITION DES VRAIES DÉPENSES PAR CATÉGORIE (ONGLET FINANCES)
-    // Basé sur les transactions Wallet (TRAVAUX) et non sur le budget prévisionnel
+    // Basé sur les transactions Wallet (BUDGET_EXPENSE) et non sur le budget prévisionnel
     // =========================================================================
     @Override
     @Transactional(readOnly = true)
@@ -1401,7 +1279,7 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
         // Année courante par défaut si non fournie
         int targetYear = (year != null) ? year : Year.now().getValue();
 
-        // Récupérer toutes les transactions TRAVAUX de cette résidence pour l'année demandée
+        // Récupérer toutes les transactions BUDGET_EXPENSE de cette résidence pour l'année demandée
         List<SyndicWalletTransaction> transactions = syndicWalletTransactionRepository
                 .findTravauxByResidenceAndYear(residenceId, targetYear);
 
@@ -1413,13 +1291,12 @@ public class SyndicResidenceServiceImpl implements SyndicResidenceService {
                     .build();
         }
         //Sinon
-        // Regrouper les transactions par label et calculer les montants
-        // Les montants TRAVAUX sont négatifs, on utilise la valeur absolue pour afficher des dépenses positives
+        // Regroupe par poste budgétaire ("Non catégorisé" si absent)
         Map<String, BigDecimal> groupedAmounts = new HashMap<>();
 
         for (SyndicWalletTransaction tx : transactions) {
-            String label = tx.getLabel();
-            // Valeur absolue car les dépenses TRAVAUX sont stockées négatives
+            String label = (tx.getBudgetItem() != null) ? tx.getBudgetItem().getLibelle() : "Non catégorisé";
+            // Valeur absolue car les dépenses sont stockées négatives
             BigDecimal amount = tx.getAmount().abs();
 
             if (groupedAmounts.containsKey(label)) {

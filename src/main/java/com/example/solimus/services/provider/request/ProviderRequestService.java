@@ -39,6 +39,6 @@ public interface ProviderRequestService {
     /** Supprimer un devis (uniquement si pas encore accepté) */
     void deleteQuote(Long quoteId);
 
-    /** Lister les délais d'estimation disponibles*/
-    List<EstimatedDelayDTO> getEstimatedDelays();
+    /** Lister les délais d'estimation disponibles, propres au syndic de cette intervention */
+    List<EstimatedDelayDTO> getEstimatedDelays(Long interventionRequestId);
 }

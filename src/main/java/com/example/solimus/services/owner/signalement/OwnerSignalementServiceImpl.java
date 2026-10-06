@@ -51,7 +51,6 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
 
         // Crée le nouveau signalement et remplit ses informations générales
         Signalement signalement = new Signalement();
-        signalement.setReference(genererReference());
         signalement.setTitle(dto.getTitle());
         signalement.setDescription(dto.getDescription());
         signalement.setResidence(residence);
@@ -92,7 +91,11 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
         signalement.addStatusHistory(SignalementStatus.PENDING, currentOwner, "Signalement envoyé");
 
         // Sauvegarde le signalement en base
-        signalementRepository.save(signalement);
+        Signalement saved = signalementRepository.save(signalement);
+
+        // Référence fixée à partir de l'id auto-généré (garanti unique par la base)
+        saved.setReference("SIG-" + LocalDate.now().getYear() + "-" + String.format("%06d", saved.getId()));
+        signalement = signalementRepository.save(saved);
 
         // Alerte le syndic si le signalement est urgent (respecte sa préférence "Incidents urgents")
         if (signalement.getUrgencyLevel() == UrgencyLevel.URGENT && residence.getSyndic() != null) {
@@ -233,15 +236,6 @@ public class OwnerSignalementServiceImpl implements OwnerSignalementService {
                 .build();
     }
 
-    // Génère une référence unique de type SIG-2026-001
-    private String genererReference() {
-        // Compte le nombre total de signalements déjà existants en base
-        long totalExistant = signalementRepository.count();
-        // Ajoute 1 pour obtenir le numéro du prochain signalement
-        long prochainNumero = totalExistant + 1;
-        // Formate avec l'année en cours + le numéro sur 3 chiffres minimum
-        return String.format("SIG-%d-%03d", LocalDate.now().getYear(), prochainNumero);
-    }
 }
 
 

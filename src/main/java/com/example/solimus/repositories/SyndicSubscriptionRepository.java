@@ -78,8 +78,10 @@ public interface SyndicSubscriptionRepository extends JpaRepository<SyndicSubscr
     @Query("SELECT COUNT(s) FROM SyndicSubscription s WHERE s.status = 'ACTIVE' AND s.endDate > :now")
     long countCurrentlyActive(@Param("now") LocalDateTime now);
 
-    // Exclut ceux ayant déjà un nouvel abonnement actif
-    @Query("SELECT COUNT(s) FROM SyndicSubscription s " +
+    // Compte les SYNDICS (pas les lignes) ayant au moins un abonnement expiré et aucun abonnement
+    // actif actuellement — un syndic ayant expiré plusieurs fois au fil des cycles ne compte qu'une
+    // seule fois, jamais une fois par ligne EXPIRED accumulée dans son historique
+    @Query("SELECT COUNT(DISTINCT s.syndic.id) FROM SyndicSubscription s " +
            "WHERE s.status = 'EXPIRED' " +
            "AND NOT EXISTS (" +
            "  SELECT 1 FROM SyndicSubscription s2 " +
@@ -124,8 +126,10 @@ public interface SyndicSubscriptionRepository extends JpaRepository<SyndicSubscr
            "AND s.endDate > :asOfDate")
     long countActiveAsOf(@Param("asOfDate") LocalDateTime asOfDate);
 
-    // Compte combien étaient expirés sans renouvellement à une date précise dans le passé
-    @Query("SELECT COUNT(s) FROM SyndicSubscription s " +
+    // Compte les SYNDICS (pas les lignes) qui étaient expirés sans renouvellement à une date précise
+    // dans le passé — même raisonnement que countCurrentlyExpiredWithoutRenewal, nécessaire pour que
+    // la comparaison "vs il y a 30 jours" compare bien deux chiffres mesurés de la même façon
+    @Query("SELECT COUNT(DISTINCT s.syndic.id) FROM SyndicSubscription s " +
            "WHERE s.endDate <= :asOfDate " +
            "AND NOT EXISTS (" +
            "  SELECT 1 FROM SyndicSubscription s2 " +
@@ -139,9 +143,12 @@ public interface SyndicSubscriptionRepository extends JpaRepository<SyndicSubscr
     // syndics confondus — utilisé pour assembler le flux "Activité récente" du dashboard admin
     List<SyndicSubscription> findByPaymentStatusOrderByCreatedAtDesc(PaymentStatus paymentStatus, Pageable pageable);
 
-    // Vérifie si ce syndic avait déjà un abonnement avant celui-ci — permet de distinguer une
-    // souscription initiale ("Nouveau syndic enregistré") d'un renouvellement ("Abonnement renouvelé")
-    boolean existsBySyndicIdAndCreatedAtBefore(Long syndicId, LocalDateTime before);
+    // Vérifie si ce syndic avait déjà un abonnement RÉELLEMENT payé avant celui-ci — permet de
+    // distinguer une souscription initiale ("Nouveau syndic enregistré") d'un renouvellement
+    // ("Abonnement renouvelé"). Filtré sur paymentStatus=COMPLETED pour ne jamais compter une
+    // tentative échouée antérieure comme un abonnement précédent.
+    boolean existsBySyndicIdAndPaymentStatusAndCreatedAtBefore(
+            Long syndicId, PaymentStatus paymentStatus, LocalDateTime before);
 
     // ============================================================
     // ADMIN — FINANCES
