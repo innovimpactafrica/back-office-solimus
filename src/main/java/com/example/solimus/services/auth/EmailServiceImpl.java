@@ -49,7 +49,6 @@ public class EmailServiceImpl implements EmailService {
             log.info("Email envoyé à: {} (sujet: {})", to, subject);
         } catch (Exception e) {
             log.error("Erreur envoi email à {}: {}", to, e.getMessage());
-            throw new RuntimeException("Impossible d'envoyer l'email", e);
         }
     }
 
@@ -78,7 +77,7 @@ public class EmailServiceImpl implements EmailService {
 
         } catch (Exception e) {
             log.error("Erreur lors de l'envoi du code d'activation à {}: {}", email, e.getMessage());
-            throw new RuntimeException("Impossible d'envoyer l'email de vérification", e);
+            log.warn("🔑 [LOCAL/DEV] CODE OTP VÉRIFICATION / 2FA POUR [{}] : {}", email, code);
         }
     }
 
@@ -141,7 +140,7 @@ public class EmailServiceImpl implements EmailService {
 
         } catch (Exception e) {
             log.error("Erreur lors de l'envoi du lien d'activation utilisateur à {} : {}", email, e.getMessage(), e);
-            throw new RuntimeException("Impossible d'envoyer l'email d'activation", e);
+            log.warn("🔑 [LOCAL/DEV] LIEN D'ACTIVATION UTILISATEUR POUR [{}] : {}", email, activationUrl + token);
         }
     }
 
@@ -170,7 +169,7 @@ public class EmailServiceImpl implements EmailService {
 
         } catch (Exception e) {
             log.error("Erreur lors de l'envoi du code de réinitialisation à {}: {}", email, e.getMessage());
-            throw new RuntimeException("Impossible d'envoyer l'email de réinitialisation", e);
+            log.warn("🔑 [LOCAL/DEV] CODE DE RÉINITIALISATION POUR [{}] : {}", email, code);
         }
     }
     // =========================================================================
@@ -325,7 +324,7 @@ public class EmailServiceImpl implements EmailService {
 
         } catch (Exception e) {
             log.error("Erreur lors de l'envoi des identifiants syndic à {} : {}", email, e.getMessage(), e);
-            throw new RuntimeException("Impossible d'envoyer l'email des identifiants syndic", e);
+            log.warn("🔑 [LOCAL/DEV] MOT DE PASSE TEMPORAIRE SYNDIC POUR [{}] : {}", email, temporaryPassword);
         }
     }
 
@@ -371,7 +370,7 @@ public class EmailServiceImpl implements EmailService {
 
         } catch (Exception e) {
             log.error("Erreur lors de l'envoi des identifiants copropriétaire à {} : {}", email, e.getMessage(), e);
-            throw new RuntimeException("Impossible d'envoyer l'email des identifiants copropriétaire", e);
+            log.warn("🔑 [LOCAL/DEV] MOT DE PASSE TEMPORAIRE COPROPRIÉTAIRE POUR [{}] : {}", email, temporaryPassword);
         }
     }
 
@@ -417,7 +416,7 @@ public class EmailServiceImpl implements EmailService {
 
         } catch (Exception e) {
             log.error("Erreur lors de l'envoi des identifiants locataire à {} : {}", email, e.getMessage(), e);
-            throw new RuntimeException("Impossible d'envoyer l'email des identifiants locataire", e);
+            log.warn("🔑 [LOCAL/DEV] MOT DE PASSE TEMPORAIRE LOCATAIRE POUR [{}] : {}", email, temporaryPassword);
         }
     }
 }

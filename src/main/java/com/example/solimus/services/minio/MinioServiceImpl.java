@@ -1,8 +1,8 @@
 package com.example.solimus.services.minio;
 
 import io.minio.*;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -14,17 +14,29 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class MinioServiceImpl implements MinioService {
 
-    private final MinioClient minioClient;
+    /**
+     * Peut être null si MinIO n'est pas configuré (pas de clés en dev local).
+     * Toutes les méthodes doivent vérifier minioClient != null avant utilisation.
+     */
+    @Autowired(required = false)
+    private MinioClient minioClient;
 
-    @Value("${minio.bucket}")
+    @Value("${minio.bucket:solimus}")
     private String bucket;
 
-    @Value("${minio.url}")
+    @Value("${minio.url:http://localhost:9000}")
     private String minioUrl;
+
+    /** Vérifie que MinIO est disponible, lève une exception explicite sinon. */
+    private void requireMinio(String operation) {
+        if (minioClient == null) {
+            throw new RuntimeException("MinIO n'est pas configuré (MINIO_ACCESS_KEY / MINIO_SECRET_KEY vides). "
+                    + "Opération '" + operation + "' impossible.");
+        }
+    }
 
 //-----------------------------------UPLOAD d'un fichier unique-----------------------------------
     @Override
@@ -33,6 +45,7 @@ public class MinioServiceImpl implements MinioService {
         if (file == null || file.isEmpty()) {
             return null;
         }
+        requireMinio("uploadFile");
         try {
             boolean found = minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucket).build());
             if (!found) {
@@ -55,6 +68,8 @@ public class MinioServiceImpl implements MinioService {
                             .build());
 
             return objectKey;
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error uploading file to Minio", e);
             throw new RuntimeException("Erreur lors de l'upload du fichier : " + e.getMessage());
@@ -98,6 +113,7 @@ public class MinioServiceImpl implements MinioService {
         if (fileName == null || fileName.isBlank()) {
             throw new RuntimeException("Chemin fichier vide");
         }
+        requireMinio("getFile");
         String objectKey = toObjectKey(fileName);
         try {
             return minioClient.getObject(
@@ -115,6 +131,7 @@ public class MinioServiceImpl implements MinioService {
     //-----------------------------------DELETE un fichier-----------------------------------
     @Override
     public void deleteFile(String fileName) {
+        requireMinio("deleteFile");
         String objectKey = toObjectKey(fileName);
         try {
             minioClient.removeObject(

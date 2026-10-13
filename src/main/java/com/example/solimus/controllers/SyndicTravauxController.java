@@ -201,6 +201,21 @@ public class SyndicTravauxController {
         return ResponseEntity.ok("Demande envoyée aux prestataires avec succès");
     }
 
+    @Operation(summary = "Vérifier le statut d'envoi aux prestataires d'une intervention",
+            description = "Indique si la demande a déjà été envoyée aux prestataires, le nombre de prestataires notifiés, et si elle peut l'être (pour le bouton frontend)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Statut d'envoi récupéré avec succès",
+                    content = @Content(schema = @Schema(implementation = SendToProvidersStatusDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Vous n'êtes pas autorisé à consulter cette demande",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Demande introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @GetMapping("/interventions/{interventionId}/send-to-providers-status")
+    public ResponseEntity<SendToProvidersStatusDTO> getSendToProvidersStatus(@PathVariable Long interventionId) {
+        return ResponseEntity.ok(syndicTravauxService.getSendToProvidersStatus(interventionId));
+    }
+
     // =========================================================================
     // CRÉATION AVIS
     // =========================================================================

@@ -5,6 +5,7 @@ import com.example.solimus.dtos.syndic.residence.PropertyDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
 import com.example.solimus.dtos.syndic.travaux.CreateInterventionRequestDTO;
 import com.example.solimus.dtos.syndic.travaux.CreateReviewDTO;
+import com.example.solimus.dtos.syndic.travaux.SendToProvidersStatusDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicResidenceDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicDepositSummaryDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicPayDepositDTO;
@@ -332,6 +333,47 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
         // Diffuser la demande aux prestataires proches
         notifyNearbyProviders(request, request.getResidence(), request.getSpecialty());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SendToProvidersStatusDTO getSendToProvidersStatus(Long interventionId) {
+        User currentSyndic = getCurrentUser();
+
+        InterventionRequest request = interventionRepository.findById(interventionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Demande introuvable"));
+
+        if (!request.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à consulter cette demande");
+        }
+
+        boolean isPartieCommuneSyndic = request.getLocationType() == IncidentLocationType.PARTIE_COMMUNE
+                && request.getManagementMode() == InterventionManagementMode.SYNDIC;
+
+        boolean isPending = request.getStatus() == InterventionStatus.PENDING;
+        boolean alreadySent = request.getNotifiedProviders() != null && !request.getNotifiedProviders().isEmpty();
+        int count = request.getNotifiedProviders() != null ? request.getNotifiedProviders().size() : 0;
+
+        boolean canSend = isPartieCommuneSyndic && isPending && !alreadySent;
+
+        String message;
+        if (alreadySent) {
+            message = "La demande a déjà été envoyée à " + count + " prestataire(s).";
+        } else if (!isPartieCommuneSyndic) {
+            message = "Cette demande n'est pas une demande de partie commune gérée par le syndic.";
+        } else if (!isPending) {
+            message = "Cette demande n'est plus en attente de prestataires (statut actuel: " + request.getStatus() + ").";
+        } else {
+            message = "La demande peut être envoyée aux prestataires.";
+        }
+
+        return SendToProvidersStatusDTO.builder()
+                .interventionId(interventionId)
+                .sentToProviders(alreadySent)
+                .notifiedProvidersCount(count)
+                .canSend(canSend)
+                .message(message)
+                .build();
     }
 
     // =========================================================================

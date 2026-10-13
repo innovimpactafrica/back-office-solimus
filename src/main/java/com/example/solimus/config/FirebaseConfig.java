@@ -39,24 +39,38 @@ public class FirebaseConfig {
     private static final String ENV_VAR_NAME = "FIREBASE_SERVICE_ACCOUNT_JSON";
 
     @PostConstruct
-    public void init() throws IOException {
+    public void init() {
 
         // Évite de réinitialiser Firebase si l'app redémarre en hot-reload (dev)
         if (!FirebaseApp.getApps().isEmpty()) {
             return;
         }
 
-        try (InputStream credentialsStream = loadCredentialsStream()) {
-            FirebaseOptions options = FirebaseOptions.builder()
-                    .setCredentials(GoogleCredentials.fromStream(credentialsStream))
-                    .build();
-
-            FirebaseApp.initializeApp(options);
-            log.info("Firebase Admin SDK initialisé avec succès");
+        try {
+            InputStream credentialsStream = loadCredentialsStream();
+            if (credentialsStream == null) {
+                // Pas de credentials disponibles — Firebase désactivé, mais l'app démarre quand même
+                log.warn("⚠️  Firebase Admin SDK NON initialisé : aucun credential trouvé. "
+                        + "Les notifications push ne fonctionneront pas. "
+                        + "Fournissez firebase-service-account.json (classpath) "
+                        + "ou la variable d'environnement FIREBASE_SERVICE_ACCOUNT_JSON.");
+                return;
+            }
+            try (credentialsStream) {
+                FirebaseOptions options = FirebaseOptions.builder()
+                        .setCredentials(GoogleCredentials.fromStream(credentialsStream))
+                        .build();
+                FirebaseApp.initializeApp(options);
+                log.info("Firebase Admin SDK initialisé avec succès");
+            }
+        } catch (IOException e) {
+            log.warn("⚠️  Firebase Admin SDK NON initialisé (erreur d'I/O) : {}. "
+                    + "Les notifications push ne fonctionneront pas.", e.getMessage());
         }
     }
 
     // Cherche d'abord le fichier du classpath (dev local), puis la variable d'environnement (prod/CI-CD)
+    // Retourne null si aucune source n'est disponible (ne lève plus d'exception).
     private InputStream loadCredentialsStream() throws IOException {
 
         ClassPathResource fileResource = new ClassPathResource("firebase-service-account.json");
@@ -71,10 +85,6 @@ public class FirebaseConfig {
             return new ByteArrayInputStream(jsonFromEnv.getBytes(StandardCharsets.UTF_8));
         }
 
-        // Ni l'un ni l'autre : erreur explicite plutôt qu'un NullPointerException ou un
-        // "FirebaseApp with name [DEFAULT] doesn't exist" incompréhensible plus tard à l'usage
-        throw new IOException("Aucun credential Firebase trouvé : ni firebase-service-account.json sur le "
-                + "classpath, ni variable d'environnement " + ENV_VAR_NAME + ". Les notifications push ne "
-                + "fonctionneront pas tant que l'un des deux n'est pas fourni.");
+        return null; // Pas de credentials disponibles — appelant gère le cas gracieusement
     }
 }

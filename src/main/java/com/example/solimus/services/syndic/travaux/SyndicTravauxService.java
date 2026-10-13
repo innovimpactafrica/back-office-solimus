@@ -34,6 +34,11 @@ public interface SyndicTravauxService {
      */
     void sendToProviders(Long interventionId);
 
+    /**
+     * Vérifie si la demande a déjà été envoyée aux prestataires et si elle peut l'être.
+     */
+    com.example.solimus.dtos.syndic.travaux.SendToProvidersStatusDTO getSendToProvidersStatus(Long interventionId);
+
     // =========================================================================
     // LISTER LES RÉSIDENCES DU SYNDIC
     // =========================================================================
