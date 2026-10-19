@@ -42,6 +42,9 @@ public interface SyndicSubscriptionRepository extends JpaRepository<SyndicSubscr
     // (features, limites) ou afficher l'abonnement en cours.
     Optional<SyndicSubscription> findFirstBySyndicIdAndStatus(Long syndicId, SubscriptionStatus status);
 
+    // Dernier abonnement réellement payé (actif, expiré ou remplacé) — base du renouvellement self-service
+    Optional<SyndicSubscription> findFirstBySyndicIdAndPaymentStatusOrderByEndDateDesc(Long syndicId, PaymentStatus paymentStatus);
+
     // Vérifie si le syndic a déjà une tentative de paiement PENDING en cours — utilisé pour bloquer
     // l'initiation d'un nouveau paiement tant que l'ancien n'a pas expiré (5 min) ou été confirmé
     boolean existsBySyndicIdAndStatus(Long syndicId, SubscriptionStatus status);

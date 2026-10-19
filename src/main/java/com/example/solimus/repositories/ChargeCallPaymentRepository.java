@@ -22,6 +22,9 @@ public interface ChargeCallPaymentRepository extends JpaRepository<ChargeCallPay
 
     Optional<ChargeCallPayment> findByChargeCallItemId(Long chargeCallItemId);
 
+    // Quittances d'une ligne : tous ses paiements confirmés, du plus récent au plus ancien
+    List<ChargeCallPayment> findByChargeCallItemIdAndStatusOrderByPaidAtDesc(Long chargeCallItemId, PaymentStatus status);
+
     Optional<ChargeCallPayment> findFirstByChargeCallItemIdOrderByPaidAtDesc(Long chargeCallItemId);
 
     /**

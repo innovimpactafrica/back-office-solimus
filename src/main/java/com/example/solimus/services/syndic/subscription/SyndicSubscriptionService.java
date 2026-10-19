@@ -1,6 +1,7 @@
 package com.example.solimus.services.syndic.subscription;
 
 import com.example.solimus.dtos.syndic.subscription.InitiateSyndicPlanChangeDTO;
+import com.example.solimus.dtos.syndic.subscription.RenewSyndicSubscriptionDTO;
 import com.example.solimus.dtos.syndic.subscription.MySyndicSubscriptionDTO;
 import com.example.solimus.dtos.syndic.subscription.SyndicPlanChangeResponseDTO;
 import com.example.solimus.dtos.syndic.subscription.SyndicPlanOptionDTO;
@@ -31,4 +32,11 @@ public interface SyndicSubscriptionService {
      * et retourne l'URL du pont de paiement TouchPay.
      */
     SyndicPlanChangeResponseDTO initiateChangePlan(InitiateSyndicPlanChangeDTO dto);
+
+    /**
+     * Initie le paiement self-service du renouvellement de la formule actuelle (même flux, même
+     * réponse que le changement de formule) : abonnement PENDING prolongeant la période en cours,
+     * activé uniquement au callback TouchPay confirmé.
+     */
+    SyndicPlanChangeResponseDTO initiateRenewal(RenewSyndicSubscriptionDTO dto);
 }

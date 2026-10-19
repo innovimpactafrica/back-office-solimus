@@ -524,6 +524,10 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                 .walletBalanceAvailable(soldeDisponible)
                 .budgetItemRequired(request.getBudgetItem() == null)
                 .budgetItemLibelle(request.getBudgetItem() != null ? request.getBudgetItem().getLibelle() : null)
+                .acompteVerse(request.getDepositAmount() != null ? request.getDepositAmount() : BigDecimal.ZERO)
+                .soldeRestant(request.getRemainingAmount() != null ? request.getRemainingAmount() : BigDecimal.ZERO)
+                .depositAlreadyPaid(request.getDepositAmount() != null
+                        && request.getDepositAmount().compareTo(BigDecimal.ZERO) > 0)
                 .build();
     }
 
@@ -603,7 +607,9 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
         User currentSyndic = getCurrentUser();
 
-        InterventionRequest request = interventionRepository.findById(interventionId)
+        // Verrou en écriture sur l'intervention jusqu'à la fin de la transaction : deux clics / deux
+        // onglets simultanés ne peuvent pas passer tous les deux le contrôle "déjà payé" (double débit)
+        InterventionRequest request = interventionRepository.findByIdForUpdate(interventionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
 
         if (!request.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
@@ -619,6 +625,15 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             throw new BadRequestException("Un acompte a déjà été versé pour cette intervention");
         }
 
+        // L'acompte se calcule sur le TTC du devis accepté (HT + TVA 18 %) et ne peut pas le dépasser
+        if (request.getTotalAmount() == null || request.getTotalAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Aucun devis accepté pour cette intervention");
+        }
+        if (dto.getMontant().compareTo(request.getTotalAmount()) > 0) {
+            throw new BadRequestException("L'acompte ne peut pas dépasser le montant TTC du devis ("
+                    + request.getTotalAmount() + " FCFA)");
+        }
+
         // Wallet SOLIMUS → débit interne synchrone + crédit direct du wallet prestataire
         SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId())
                 .orElseGet(() -> {
@@ -627,6 +642,9 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                             .build();
                     return syndicWalletRepository.save(newWallet);
                 });
+        // Verrou sur le wallet : le contrôle de solde et le débit sont atomiques vis-à-vis des autres
+        // débits concurrents (autre paiement de travaux, validation de retrait) — jamais de solde négatif
+        syndicWalletRepository.findByIdForUpdate(wallet.getId());
 
         // Vérifie que le solde est suffisant
         BigDecimal soldeDisponible = syndicWalletTransactionRepository.sumTransactionsUpTo(wallet.getId(), LocalDateTime.now());
@@ -655,8 +673,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
         // Crédite le wallet du prestataire avec ce même montant — enregistré dans son grand livre,
         // le solde n'est plus jamais stocké directement sur ProviderWallet
-        ProviderWallet providerWallet = providerWalletRepository.findByProviderId(request.getSelectedProvider().getId())
-                .orElseThrow(() -> new BadRequestException("Le prestataire n'a pas de wallet"));
+        ProviderWallet providerWallet = getOrCreateProviderWalletForUpdate(request.getSelectedProvider());
 
         ProviderWalletTransaction providerTransaction = new ProviderWalletTransaction();
         providerTransaction.setWallet(providerWallet);
@@ -691,6 +708,14 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                 .nouveauSoldeWallet(nouveauSolde)
                 .build();
     }
+    // Wallet du prestataire, verrouillé le temps de la transaction. Créé à la volée s'il n'existe pas
+    // encore (le prestataire n'a jamais ouvert sa page Wallet) — avant, l'acompte échouait avec
+    // "Le prestataire n'a pas de wallet" et rien n'était versé. Même règle que WalletServiceImpl.creditWallet.
+    private ProviderWallet getOrCreateProviderWalletForUpdate(User provider) {
+        return providerWalletRepository.findByProviderIdForUpdate(provider.getId())
+                .orElseGet(() -> providerWalletRepository.save(ProviderWallet.builder().provider(provider).build()));
+    }
+
     // =========================================================================
     // RÉSUMÉ POUR LE MODAL PAIEMENT FINAL
     // =========================================================================
@@ -737,7 +762,9 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
 
         User currentSyndic = getCurrentUser();
 
-        InterventionRequest request = interventionRepository.findById(interventionId)
+        // Verrou en écriture sur l'intervention jusqu'à la fin de la transaction : deux clics / deux
+        // onglets simultanés ne peuvent pas passer tous les deux le contrôle "déjà payé" (double débit)
+        InterventionRequest request = interventionRepository.findByIdForUpdate(interventionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
 
         if (!request.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
@@ -762,6 +789,9 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                             .build();
                     return syndicWalletRepository.save(newWallet);
                 });
+        // Verrou sur le wallet : le contrôle de solde et le débit sont atomiques vis-à-vis des autres
+        // débits concurrents (autre paiement de travaux, validation de retrait) — jamais de solde négatif
+        syndicWalletRepository.findByIdForUpdate(wallet.getId());
 
         // Vérifie que le solde du wallet est suffisant
         BigDecimal soldeDisponible = syndicWalletTransactionRepository.sumTransactionsUpTo(wallet.getId(), LocalDateTime.now());
@@ -790,8 +820,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         syndicWalletTransactionRepository.save(transaction);
 
         // Crédite le wallet du prestataire avec le solde final — enregistré dans son grand livre
-        ProviderWallet providerWallet = providerWalletRepository.findByProviderId(request.getSelectedProvider().getId())
-                .orElseThrow(() -> new BadRequestException("Le prestataire n'a pas de wallet"));
+        ProviderWallet providerWallet = getOrCreateProviderWalletForUpdate(request.getSelectedProvider());
 
         ProviderWalletTransaction providerTransaction = new ProviderWalletTransaction();
         providerTransaction.setWallet(providerWallet);

@@ -12,10 +12,19 @@ public interface SyndicService {
     // ===== Création d'un syndic =====
 
     /**
-     * Crée un compte syndic (User + SyndicProfile + SyndicSubscription en attente de paiement).
-     * Le mot de passe temporaire n'est généré et envoyé par email qu'à la confirmation du paiement.
+     * Crée un compte syndic (User ACTIVE + SyndicProfile + SyndicSubscription PENDING) et renvoie
+     * l'URL du pont TouchPay (paymentUrl) : l'abonnement ne devient ACTIVE qu'au callback confirmé.
+     * Un mot de passe temporaire est généré et envoyé par email après le commit de la transaction
+     * (envoi non bloquant, échec journalisé sans donnée sensible).
      */
     CreateSyndicResponseDTO createSyndic(CreateSyndicDTO dto);
+
+    /**
+     * Régénère et renvoie par email les identifiants de connexion (mot de passe temporaire)
+     * d'un syndic existant. L'envoi est non bloquant : un échec de messagerie n'annule pas
+     * l'opération.
+     */
+    void resendSyndicCredentials(Long syndicId);
 
     /**
      * Retourne les formules actives (id + nom), pour la liste déroulante du formulaire "Nouveau syndic".

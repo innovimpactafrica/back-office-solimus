@@ -28,6 +28,7 @@ import com.example.solimus.repositories.SyndicProfileRepository;
 import com.example.solimus.repositories.SyndicSubscriptionRepository;
 import com.example.solimus.repositories.UserRepository;
 import com.example.solimus.services.auth.EmailService;
+import com.example.solimus.utils.AfterCommit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
@@ -938,7 +939,8 @@ public class PlanServiceImpl implements PlanService {
                         "Motif : " + dto.getReason() + "\n\n" +
                         "Pour toute question, veuillez contacter l'administrateur.\n\n" +
                         "Cordialement,\nL'équipe Solimus";
-                emailService.sendEmail(provider.getEmail(), subject, body);
+                // Envoi après commit : un échec SMTP ne peut ni annuler ni ralentir la (dé)suspension
+                AfterCommit.run(() -> emailService.sendEmail(provider.getEmail(), subject, body));
             }
             return;
         }
@@ -966,7 +968,8 @@ public class PlanServiceImpl implements PlanService {
                     "Motif : " + dto.getReason() + "\n\n" +
                     "Pour toute question, veuillez contacter l'administrateur.\n\n" +
                     "Cordialement,\nL'équipe Solimus";
-            emailService.sendEmail(syndic.getEmail(), subject, body);
+            // Envoi après commit : un échec SMTP ne peut ni annuler ni ralentir la (dé)suspension
+            AfterCommit.run(() -> emailService.sendEmail(syndic.getEmail(), subject, body));
         }
     }
 
@@ -1001,7 +1004,8 @@ public class PlanServiceImpl implements PlanService {
                 String body = "Bonjour " + provider.getFirstName() + ",\n\n" +
                         "Votre compte a été réactivé par un administrateur. Vous pouvez de nouveau vous connecter.\n\n" +
                         "Cordialement,\nL'équipe Solimus";
-                emailService.sendEmail(provider.getEmail(), subject, body);
+                // Envoi après commit : un échec SMTP ne peut ni annuler ni ralentir la (dé)suspension
+                AfterCommit.run(() -> emailService.sendEmail(provider.getEmail(), subject, body));
             }
             return;
         }
@@ -1028,7 +1032,8 @@ public class PlanServiceImpl implements PlanService {
             String body = "Bonjour " + syndic.getFirstName() + ",\n\n" +
                     "Votre compte a été réactivé par un administrateur. Vous pouvez de nouveau vous connecter.\n\n" +
                     "Cordialement,\nL'équipe Solimus";
-            emailService.sendEmail(syndic.getEmail(), subject, body);
+            // Envoi après commit : un échec SMTP ne peut ni annuler ni ralentir la (dé)suspension
+            AfterCommit.run(() -> emailService.sendEmail(syndic.getEmail(), subject, body));
         }
     }
 

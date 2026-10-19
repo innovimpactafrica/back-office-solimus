@@ -25,5 +25,11 @@ public class QuoteSummaryDTO {
     @JsonFormat(pattern = "dd/MM/yyyy")
     private LocalDate date;
     private BigDecimal montant;
+
+    // Ventilation TVA (taux 18 % appliqué côté serveur ; devis historiques : TVA 0, HT = TTC)
+    private BigDecimal htAmount;
+    private BigDecimal tvaAmount;
+    private BigDecimal totalAmount; // TTC
+    private BigDecimal taxRate;     // en % (18)
     private QuoteStatus statut;
 }

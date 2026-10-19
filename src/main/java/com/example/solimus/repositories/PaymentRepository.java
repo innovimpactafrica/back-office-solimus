@@ -5,7 +5,9 @@ import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.PaymentType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
@@ -28,6 +30,12 @@ public interface PaymentRepository extends JpaRepository<PaymentProvider, Long> 
      * Récupère un paiement par sa référence unique
      */
     Optional<PaymentProvider> findByReference(String reference);
+
+    // Même recherche, ligne verrouillée jusqu'à la fin de la transaction — utilisée par le callback
+    // TouchPay : deux callbacks rejoués en parallèle ne peuvent pas créditer deux fois le prestataire
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM PaymentProvider p WHERE p.reference = :reference")
+    Optional<PaymentProvider> findByReferenceForUpdate(@Param("reference") String reference);
 
     /**
      * Récupère tous les paiements d'un prestataire triés par date décroissante

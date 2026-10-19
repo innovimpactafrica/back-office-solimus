@@ -54,4 +54,9 @@ public class CoOwnerQuoteDetailDTO {
     private BigDecimal sousTotalMainOeuvre;
 
     private BigDecimal totalTTC;
+
+    // ===== TVA / décomposition du montant =====
+    private BigDecimal taxRate;   // Taux TVA en % (ex: 18)
+    private BigDecimal htAmount;  // Montant HT
+    private BigDecimal tvaAmount; // Montant de la TVA
 }

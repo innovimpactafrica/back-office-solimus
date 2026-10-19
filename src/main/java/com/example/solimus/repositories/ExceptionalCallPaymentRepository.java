@@ -20,6 +20,9 @@ public interface ExceptionalCallPaymentRepository extends JpaRepository<Exceptio
 
     Optional<ExceptionalCallPayment> findFirstByExceptionalCallItemIdOrderByPaidAtDesc(Long exceptionalCallItemId);
 
+    // Quittances d'une ligne : tous ses paiements confirmés, du plus récent au plus ancien
+    List<ExceptionalCallPayment> findByExceptionalCallItemIdAndStatusOrderByPaidAtDesc(Long exceptionalCallItemId, PaymentStatus status);
+
     // Récupère les paiements d'un appel exceptionnel, filtrés par statut, paginés directement en base
     Page<ExceptionalCallPayment> findByExceptionalCallItemExceptionalCallIdAndStatus(
             Long exceptionalCallId, PaymentStatus status, Pageable pageable);

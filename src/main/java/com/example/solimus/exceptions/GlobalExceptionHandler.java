@@ -8,12 +8,20 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.LocalDateTime;
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
+
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -88,6 +96,17 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(error, HttpStatus.CONFLICT);
     }
 
+    @ExceptionHandler(PaymentGatewayException.class)
+    public ResponseEntity<ErrorResponseDTO> handlePaymentGateway(PaymentGatewayException ex) {
+        ErrorResponseDTO error = new ErrorResponseDTO(
+                ex.getMessage(),
+                null,
+                LocalDateTime.now(),
+                HttpStatus.BAD_GATEWAY.value()
+        );
+        return new ResponseEntity<>(error, HttpStatus.BAD_GATEWAY);
+    }
+
     @ExceptionHandler(ForbiddenException.class)
     public ResponseEntity<ErrorResponseDTO> handleForbidden(ForbiddenException ex) {
         ErrorResponseDTO error = new ErrorResponseDTO(
@@ -154,6 +173,61 @@ public class GlobalExceptionHandler {
                 HttpStatus.BAD_REQUEST.value()
         );
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
+    // Corps de requête illisible : JSON mal formé (virgule manquante, nombre 0123...), type
+    // incompatible ("abc" pour un nombre), valeur d'énumération inconnue, body absent. C'est une
+    // erreur du client → 400, avec un message clair et sans détail interne (pas de trace Jackson).
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponseDTO> handleNotReadable(HttpMessageNotReadableException ex) {
+        String detail;
+        Throwable cause = ex.getMostSpecificCause();
+        if (cause instanceof InvalidFormatException ife && !ife.getPath().isEmpty()) {
+            detail = "Valeur invalide pour le champ '" + jsonPath(ife.getPath()) + "'"
+                    + (ife.getTargetType() != null && ife.getTargetType().isEnum()
+                    ? " (valeurs acceptées : " + Arrays.toString(ife.getTargetType().getEnumConstants()) + ")"
+                    : "");
+        } else if (cause instanceof MismatchedInputException mie && !mie.getPath().isEmpty()) {
+            detail = "Type invalide pour le champ '" + jsonPath(mie.getPath()) + "'";
+        } else if (cause instanceof JsonParseException) {
+            detail = "JSON mal formé : vérifiez les virgules, guillemets, accolades et le format des nombres (pas de zéro initial, ex. 123 et non 0123)";
+        } else {
+            detail = "Corps de requête manquant ou illisible";
+        }
+        log.warn("Requête illisible : {}", detail);
+
+        ErrorResponseDTO error = new ErrorResponseDTO(
+                "Requête invalide",
+                List.of(detail),
+                LocalDateTime.now(),
+                HttpStatus.BAD_REQUEST.value()
+        );
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
+    // Paramètre de requête obligatoire absent (ex: ?subscriberType=) → 400 au lieu de 500
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponseDTO> handleMissingParam(MissingServletRequestParameterException ex) {
+        ErrorResponseDTO error = new ErrorResponseDTO(
+                "Paramètre obligatoire manquant : '" + ex.getParameterName() + "'",
+                null,
+                LocalDateTime.now(),
+                HttpStatus.BAD_REQUEST.value()
+        );
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
+    private static String jsonPath(List<JsonMappingException.Reference> path) {
+        StringBuilder sb = new StringBuilder();
+        for (JsonMappingException.Reference ref : path) {
+            if (ref.getFieldName() != null) {
+                if (sb.length() > 0) sb.append('.');
+                sb.append(ref.getFieldName());
+            } else if (ref.getIndex() >= 0) {
+                sb.append('[').append(ref.getIndex()).append(']');
+            }
+        }
+        return sb.toString();
     }
 
     @ExceptionHandler(CoOwnerAlreadyExistsException.class)

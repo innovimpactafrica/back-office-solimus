@@ -34,7 +34,7 @@ public class AdminSyndicController {
 
     @Operation(summary = "Créer un nouveau syndic avec son abonnement")
     @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Syndic créé avec succès"),
+            @ApiResponse(responseCode = "201", description = "Syndic créé (identifiants envoyés par email) — ouvrir paymentUrl pour payer l'abonnement via TouchPay"),
             @ApiResponse(responseCode = "400", description = "La formule choisie ne propose pas de tarif pour la durée demandée (annuel/mensuel)",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Formule d'abonnement introuvable, ou rôle SYNDIC introuvable en base",
@@ -45,6 +45,21 @@ public class AdminSyndicController {
     @PostMapping
     public ResponseEntity<CreateSyndicResponseDTO> createSyndic(@RequestBody @Valid CreateSyndicDTO dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(syndicService.createSyndic(dto));
+    }
+
+    @Operation(summary = "Renvoyer les identifiants de connexion d'un syndic",
+            description = "Régénère un mot de passe temporaire pour le syndic et le lui renvoie par email. L'envoi est non bloquant.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Identifiants renvoyés avec succès"),
+            @ApiResponse(responseCode = "400", description = "Compte suspendu : à réactiver d'abord",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Aucun syndic avec cet id",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @PostMapping("/{syndicId}/renvoyer-identifiants")
+    public ResponseEntity<Void> resendSyndicCredentials(@PathVariable Long syndicId) {
+        syndicService.resendSyndicCredentials(syndicId);
+        return ResponseEntity.ok().build();
     }
 
     @Operation(summary = "Lister les formules disponibles pour la création d'un syndic")

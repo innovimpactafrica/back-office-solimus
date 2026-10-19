@@ -26,6 +26,12 @@ public class SyndicQuoteDetailDTO {
     private BigDecimal sousTotalMateriaux;
     private BigDecimal totalTTC;
 
+    // ===== TVA / décomposition du montant =====
+    private BigDecimal taxRate;   // Taux TVA en % (ex: 18)
+    private BigDecimal htAmount;  // Montant HT
+    private BigDecimal tvaAmount; // Montant de la TVA
+    private BigDecimal totalAmount; // TTC (identique à totalTTC, nommage commun aux profils)
+
     private QuoteStatus status;
 
     // Infos participants (copropriétaire, syndic, prestataire)

@@ -7,6 +7,7 @@ import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.minio.MinioService;
+import com.example.solimus.utils.VatUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -274,6 +275,10 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
                 .appartement(quote.getInterventionRequest().getProperty() != null ? quote.getInterventionRequest().getProperty().getReference() : null)
                 .date(quote.getCreatedAt().toLocalDate())
                 .montant(quote.getTotalAmount())
+                .htAmount(VatUtil.htOf(quote))
+                .tvaAmount(VatUtil.tvaOf(quote))
+                .totalAmount(quote.getTotalAmount())
+                .taxRate(VatUtil.taxRateOf(quote))
                 .statut(quote.getStatus())
                 .build()
         );
@@ -365,6 +370,10 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
                 .mainOeuvre(mainOeuvre)
                 .sousTotalMainOeuvre(sousTotalMainOeuvre)
                 .totalTTC(quote.getTotalAmount())
+                .htAmount(VatUtil.htOf(quote))
+                .tvaAmount(VatUtil.tvaOf(quote))
+                .totalAmount(quote.getTotalAmount())
+                .taxRate(VatUtil.taxRateOf(quote))
                 .notes(quote.getAdditionalComments())
                 .build();
     }

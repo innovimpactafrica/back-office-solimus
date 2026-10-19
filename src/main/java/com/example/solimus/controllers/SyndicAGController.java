@@ -10,6 +10,8 @@ import com.example.solimus.services.syndic.residence.SyndicResidenceService;
 import com.example.solimus.services.syndic.syndicAG.SyndicMeetingService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.solimus.utils.FlexibleLocalDateDeserializer;
+import com.example.solimus.exceptions.BadRequestException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -383,10 +385,40 @@ public class SyndicAGController {
                 .body(syndicMeetingService.createMeetingDocument(dto, file));
     }
 
-    @Operation(summary = "Mettre à jour les métadonnées d'un document AG existant (page Documents générale)")
+    @Operation(summary = "Mettre à jour un document AG existant — body JSON (page Documents générale)",
+            description = "Content-Type application/json. Seuls les champs fournis sont modifiés ; documentDate au format "
+                    + "ISO yyyy-MM-dd (jj/mm/aaaa toléré). Le fichier MinIO existant est conservé.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Document mis à jour avec succès",
                     content = @Content(schema = @Schema(implementation = MeetingDocumentRowDTO.class))),
+            @ApiResponse(responseCode = "400", description = "JSON mal formé ou date invalide",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Document d'une résidence qui ne vous appartient pas",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Document introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @PatchMapping(value = "/documents/{documentId}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<MeetingDocumentRowDTO> updateMeetingDocumentFromJson(
+            @PathVariable Long documentId,
+            @RequestBody UpdateMeetingDocumentDTO dto) {
+
+        return ResponseEntity.ok(syndicMeetingService.updateMeetingDocument(documentId, dto, null));
+    }
+
+    // Contrat historique conservé : query params ou multipart/form-data. La date accepte désormais
+    // l'ISO (yyyy-MM-dd) en plus de jj/mm/aaaa — avant, une date ISO renvoyait 400 et rien n'était
+    // modifié. Un fichier optionnel remplace celui de MinIO ; sans fichier, l'existant est conservé.
+    @Operation(summary = "Mettre à jour un document AG existant — formulaire / query params (page Documents générale)",
+            description = "multipart/form-data ou paramètres de requête. Champ \"file\" optionnel : remplace le fichier "
+                    + "(PDF, DOCX, XLSX, 20 Mo max) ; absent = fichier conservé.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Document mis à jour avec succès",
+                    content = @Content(schema = @Schema(implementation = MeetingDocumentRowDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Date invalide, fichier trop volumineux ou format non autorisé",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "403", description = "Document d'une résidence qui ne vous appartient pas",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Document introuvable",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
     })
@@ -395,19 +427,26 @@ public class SyndicAGController {
             @PathVariable Long documentId,
             @RequestParam(required = false) String title,
             @RequestParam(required = false) String description,
-            @Parameter(description = "Date du document au format jj/mm/aaaa", schema = @Schema(type = "string", example = "15/06/2026"))
-            @RequestParam(required = false)
-            @DateTimeFormat(pattern = "dd/MM/yyyy") LocalDate documentDate,
-            @RequestParam(required = false) MeetingDocumentType documentType) {
+            @Parameter(description = "Date du document : yyyy-MM-dd (ou jj/mm/aaaa)", schema = @Schema(type = "string", example = "2026-06-15"))
+            @RequestParam(required = false) String documentDate,
+            @RequestParam(required = false) MeetingDocumentType documentType,
+            @RequestParam(value = "file", required = false) MultipartFile file) {
+
+        LocalDate parsedDate;
+        try {
+            parsedDate = FlexibleLocalDateDeserializer.parse(documentDate);
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException(e.getMessage());
+        }
 
         UpdateMeetingDocumentDTO dto = UpdateMeetingDocumentDTO.builder()
                 .title(title)
                 .description(description)
-                .documentDate(documentDate)
+                .documentDate(parsedDate)
                 .documentType(documentType)
                 .build();
 
-        return ResponseEntity.ok(syndicMeetingService.updateMeetingDocument(documentId, dto));
+        return ResponseEntity.ok(syndicMeetingService.updateMeetingDocument(documentId, dto, file));
 
     }
 

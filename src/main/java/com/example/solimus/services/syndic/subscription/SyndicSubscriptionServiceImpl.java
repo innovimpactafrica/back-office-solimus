@@ -2,6 +2,7 @@ package com.example.solimus.services.syndic.subscription;
 
 import com.example.solimus.dtos.syndic.subscription.InitiateSyndicPlanChangeDTO;
 import com.example.solimus.dtos.syndic.subscription.MySyndicSubscriptionDTO;
+import com.example.solimus.dtos.syndic.subscription.RenewSyndicSubscriptionDTO;
 import com.example.solimus.dtos.syndic.subscription.SyndicPlanChangeResponseDTO;
 import com.example.solimus.dtos.syndic.subscription.SyndicPlanOptionDTO;
 import com.example.solimus.dtos.syndic.subscription.SyndicSubscriptionHistoryDTO;
@@ -11,6 +12,7 @@ import com.example.solimus.entities.SyndicSubscription;
 import com.example.solimus.entities.User;
 import com.example.solimus.enums.AdminNotificationEventType;
 import com.example.solimus.enums.ERole;
+import com.example.solimus.enums.PaymentMethod;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.SubscriptionDuration;
 import com.example.solimus.enums.SubscriptionStatus;
@@ -141,14 +143,62 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
     public SyndicPlanChangeResponseDTO initiateChangePlan(InitiateSyndicPlanChangeDTO dto) {
 
         // 1. Le syndic connecté est celui qui paie ici, en self-service — pas l'admin
-        User currentSyndic = getCurrentUser();
+        User currentSyndic = getCurrentSyndicForPayment();
 
-        // Double sécurité : ne fait jamais confiance uniquement au @PreAuthorize du contrôleur —
-        // vérifie explicitement ici aussi, pour ne jamais recréer un abonnement syndic sur un
-        // compte qui n'a pas ce rôle, même si la sécurité au niveau des routes est un jour mal configurée
+        // 2. Récupère la formule choisie (sa disponibilité est vérifiée dans initiatePlanPayment)
+        SyndicPlan plan = syndicPlanRepository.findById(dto.getSyndicPlanId())
+                .orElseThrow(() -> new ResourceNotFoundException("Formule d'abonnement introuvable"));
+
+        return initiatePlanPayment(currentSyndic, plan, dto.getDuration(), dto.getMethod(),
+                "Changement de formule initié. Veuillez compléter le paiement via TouchPay.");
+    }
+
+    @Override
+    @Transactional
+    public SyndicPlanChangeResponseDTO initiateRenewal(RenewSyndicSubscriptionDTO dto) {
+
+        User currentSyndic = getCurrentSyndicForPayment();
+
+        // Formule à renouveler : celle de l'abonnement réellement actif, sinon celle du dernier
+        // abonnement PAYÉ (ex: expiré) — jamais une tentative échouée ou en attente
+        SyndicPlan plan = syndicSubscriptionRepository
+                .findFirstBySyndicIdAndStatus(currentSyndic.getId(), SubscriptionStatus.ACTIVE)
+                .filter(SyndicSubscription::isCurrentlyActive)
+                .or(() -> syndicSubscriptionRepository.findFirstBySyndicIdAndPaymentStatusOrderByEndDateDesc(
+                        currentSyndic.getId(), PaymentStatus.COMPLETED))
+                .map(SyndicSubscription::getSyndicPlan)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Aucun abonnement payé à renouveler : choisissez une formule via le changement de formule"));
+
+        // Même durée que l'abonnement courant si le syndic n'en précise pas
+        SubscriptionDuration duration = dto.getDuration() != null
+                ? dto.getDuration()
+                : syndicSubscriptionRepository
+                        .findFirstBySyndicIdAndPaymentStatusOrderByEndDateDesc(currentSyndic.getId(), PaymentStatus.COMPLETED)
+                        .map(SyndicSubscription::getDuration)
+                        .orElse(SubscriptionDuration.MONTHLY);
+
+        return initiatePlanPayment(currentSyndic, plan, duration, dto.getMethod(),
+                "Renouvellement initié. Veuillez compléter le paiement via TouchPay.");
+    }
+
+    // Syndic connecté — double sécurité : ne fait jamais confiance uniquement au @PreAuthorize du
+    // contrôleur, pour ne jamais recréer un abonnement syndic sur un compte qui n'a pas ce rôle
+    private User getCurrentSyndicForPayment() {
+        User currentSyndic = getCurrentUser();
         if (currentSyndic.getRole().getName() != ERole.ROLE_SYNDIC) {
             throw new BadRequestException("Seul un compte syndic peut souscrire à cet abonnement");
         }
+        return currentSyndic;
+    }
+
+    // Flux unique de paiement d'abonnement self-service (changement de formule ET renouvellement) :
+    // crée l'abonnement PENDING (préfixe SYR-) et renvoie l'URL du pont TouchPay. L'abonnement ne
+    // devient ACTIVE qu'au callback confirmé (SolimusCallbackController.handleSyndicPlanChangeCallback),
+    // idempotent sur paymentStatus = COMPLETED ; un paiement abandonné passe FAILED (scheduler 5 min).
+    private SyndicPlanChangeResponseDTO initiatePlanPayment(User currentSyndic, SyndicPlan plan,
+                                                            SubscriptionDuration duration, PaymentMethod method,
+                                                            String message) {
 
         // Bloque une nouvelle tentative tant qu'une autre est déjà en attente de confirmation —
         // évite d'empiler des paiements PENDING en boucle. Il faut attendre soit la confirmation
@@ -158,57 +208,42 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
                     "Un paiement est déjà en attente de confirmation. Veuillez patienter quelques minutes avant de réessayer.");
         }
 
-        // 2. Récupère la formule choisie et vérifie qu'elle est toujours proposée
-        SyndicPlan plan = syndicPlanRepository.findById(dto.getSyndicPlanId())
-                .orElseThrow(() -> new ResourceNotFoundException("Formule d'abonnement introuvable"));
-
         if (!Boolean.TRUE.equals(plan.getActive())) {
             throw new BadRequestException("Cette formule n'est plus disponible");
         }
 
-        // 3. Détermine le montant selon la durée choisie, et vérifie que ce tarif est bien configuré
-        BigDecimal amount = dto.getDuration() == SubscriptionDuration.YEARLY
+        // Détermine le montant selon la durée choisie, et vérifie que ce tarif est bien configuré
+        BigDecimal amount = duration == SubscriptionDuration.YEARLY
                 ? plan.getYearlyPrice()
                 : plan.getMonthlyPrice();
 
         if (amount == null) {
             throw new BadRequestException(
-                    dto.getDuration() == SubscriptionDuration.YEARLY
+                    duration == SubscriptionDuration.YEARLY
                             ? "Cette formule ne propose pas de tarif annuel"
                             : "Cette formule ne propose pas de tarif mensuel");
         }
 
-        // 4. Référence unique préfixée SYR- (self-service), pour que le bridge et le callback la
+        // Référence unique préfixée SYR- (self-service), pour que le bridge et le callback la
         // distinguent de SYN- (création par l'admin) — le callback SYR- ne doit ni régénérer de mot
         // de passe ni renvoyer l'email "compte créé", puisque ce syndic est déjà actif
         String transactionRef = generateReference("SYR");
 
-        // 5. Détermine la date de départ de la nouvelle période :
+        // Date de départ de la nouvelle période :
         // - Renouvellement (même formule, encore active) → prolonge à partir de la date de fin actuelle,
         //   pour ne jamais faire perdre les jours restants déjà payés
         // - Changement vers une autre formule, ou ancien abonnement déjà expiré → démarre maintenant
-
+        // On part de l'abonnement ACTIVE (pas du "plus récent par date de fin", qui peut être une
+        // tentative FAILED dont la date de fin théorique est plus lointaine)
         LocalDateTime now = LocalDateTime.now();
-
-        // Recherche le dernier abonnement du syndic
         LocalDateTime startDate = syndicSubscriptionRepository
-                .findFirstBySyndicIdOrderByEndDateDesc(currentSyndic.getId())
-
-                // Vérifie que cet abonnement est toujours actif
+                .findFirstBySyndicIdAndStatus(currentSyndic.getId(), SubscriptionStatus.ACTIVE)
                 .filter(SyndicSubscription::isCurrentlyActive)
-
-                // Vérifie que c'est le même plan que celui sélectionné
                 .filter(current -> current.getSyndicPlan().getId().equals(plan.getId()))
-
-                // Si c'est le même plan, récupère sa date de fin
                 .map(SyndicSubscription::getEndDate)
-
-                // Sinon, utilise la date actuelle comme date de début du nouvel abonnement
                 .orElse(now);
 
-        // Crée le nouvel abonnement en PENDING — il ne devient ACTIVE, et ne remplace l'ancien,
-        // qu'à la confirmation réelle du paiement (callback TouchPay)
-        LocalDateTime endDate = startDate.plusMonths(dto.getDuration().getMonths());
+        LocalDateTime endDate = startDate.plusMonths(duration.getMonths());
 
         SyndicSubscription subscription = new SyndicSubscription();
         subscription.setSyndic(currentSyndic);
@@ -218,22 +253,22 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
         subscription.setStatus(SubscriptionStatus.PENDING);
         subscription.setPaymentStatus(PaymentStatus.PENDING);
         subscription.setAmountPaid(amount);
-        subscription.setMethod(dto.getMethod());
-        subscription.setDuration(dto.getDuration());
+        subscription.setMethod(method);
+        subscription.setDuration(duration);
         subscription.setTransactionRef(transactionRef);
         subscription.setStartDate(startDate);
         subscription.setEndDate(endDate);
         syndicSubscriptionRepository.save(subscription);
 
-        // 6. Construit l'URL du pont de paiement TouchPay pour cette référence
+        // URL du pont de paiement TouchPay pour cette référence
         String bridgeUrl = String.format(touchPayBridgeUrlTemplate, transactionRef);
 
-        log.info("Changement de formule initié pour syndic {} — nouvelle formule {} — ref: {}",
+        log.info("Paiement d'abonnement initié pour syndic {} — formule {} — ref: {}",
                 currentSyndic.getEmail(), plan.getName(), transactionRef);
 
         return SyndicPlanChangeResponseDTO.builder()
                 .success(true)
-                .message("Changement de formule initié. Veuillez compléter le paiement via TouchPay.")
+                .message(message)
                 .transactionReference(transactionRef)
                 .amount(amount)
                 .paymentUrl(bridgeUrl)

@@ -20,6 +20,7 @@ import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.utils.ChargeAllocationUtil;
+import com.example.solimus.utils.MeetingStatusUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -280,8 +281,8 @@ public class CoOwnerDashboardServiceImpl implements CoOwnerDashboardService {
                     .title(meeting.getTitle())
                     .type(meeting.getType())
                     .typeLabel(meeting.getType().getLabel())
-                    .status(meeting.getStatus())
-                    .statusLabel(meeting.getStatus().getLabel())
+                    .status(MeetingStatusUtil.effectiveStatus(meeting))
+                    .statusLabel(MeetingStatusUtil.effectiveStatus(meeting).getLabel())
                     .meetingDate(meeting.getMeetingDate())
                     .startTime(meeting.getStartTime())
                     .endTime(meeting.getEndTime())

@@ -1,5 +1,6 @@
 package com.example.solimus.dtos.auth;
 
+import com.example.solimus.utils.PasswordValidationUtil;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -18,9 +19,10 @@ public class ActivateAccountRequestDTO {
 
     /** Nouveau mot de passe choisi */
     @NotBlank(message = "Le nouveau mot de passe est obligatoire")
-    @Size(min = 8, message = "Le mot de passe doit contenir au moins 8 caractères")
-    @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$",
-            message = "Le mot de passe doit contenir au moins une minuscule, une majuscule, un chiffre et un caractère spécial")
+    @Size(min = PasswordValidationUtil.MIN_LENGTH,
+            message = "Le mot de passe doit contenir au moins 8 caractères")
+    @Pattern(regexp = PasswordValidationUtil.PASSWORD_REGEX,
+            message = PasswordValidationUtil.PASSWORD_MESSAGE)
     private String password;
 
     /** Confirmation du mot de passe (doit correspondre à password). */

@@ -2716,6 +2716,8 @@ public class ChargeServiceImpl implements ChargeService {
         // Récupère (ou crée) le wallet du syndic
         SyndicWallet wallet = syndicWalletRepository.findBySyndicId(currentSyndic.getId())
                 .orElseGet(() -> syndicWalletRepository.save(SyndicWallet.builder().syndic(currentSyndic).build()));
+        // Verrou sur le wallet : contrôle de solde + débit atomiques face aux autres débits concurrents
+        syndicWalletRepository.findByIdForUpdate(wallet.getId());
 
         // Seule vérification bloquante : le solde du wallet doit couvrir la dépense. Un poste peut,
         // lui, légitimement dépasser son montant prévu — l'écart affiché devient simplement négatif

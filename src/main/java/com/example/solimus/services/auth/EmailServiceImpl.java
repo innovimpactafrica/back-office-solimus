@@ -32,6 +32,11 @@ public class EmailServiceImpl implements EmailService {
     @Value("${app.frontend.activation-url:http://localhost:4200/create-password?token=}")
     private String activationUrl;
 
+    // URL de base de la page web de réinitialisation (le token est concaténé derrière).
+    // Configureable via la propriété sans impacter le code : app.frontend.reset-password-url
+    @Value("${app.frontend.reset-password-url:http://localhost:4200/reset-password?token=}")
+    private String resetPasswordUrl;
+
 
     // =========================================================================
     // EMAIL GÉNÉRIQUE
@@ -77,7 +82,6 @@ public class EmailServiceImpl implements EmailService {
 
         } catch (Exception e) {
             log.error("Erreur lors de l'envoi du code d'activation à {}: {}", email, e.getMessage());
-            log.warn("🔑 [LOCAL/DEV] CODE OTP VÉRIFICATION / 2FA POUR [{}] : {}", email, code);
         }
     }
 
@@ -140,7 +144,6 @@ public class EmailServiceImpl implements EmailService {
 
         } catch (Exception e) {
             log.error("Erreur lors de l'envoi du lien d'activation utilisateur à {} : {}", email, e.getMessage(), e);
-            log.warn("🔑 [LOCAL/DEV] LIEN D'ACTIVATION UTILISATEUR POUR [{}] : {}", email, activationUrl + token);
         }
     }
 
@@ -169,9 +172,64 @@ public class EmailServiceImpl implements EmailService {
 
         } catch (Exception e) {
             log.error("Erreur lors de l'envoi du code de réinitialisation à {}: {}", email, e.getMessage());
-            log.warn("🔑 [LOCAL/DEV] CODE DE RÉINITIALISATION POUR [{}] : {}", email, code);
         }
     }
+
+    // =========================================================================
+    // RÉINITIALISATION — LIEN WEB (admin, syndic, copropriétaire, locataire)
+    // =========================================================================
+    @Override
+    public void sendPasswordResetLink(String email, String token, String firstName) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(mailFrom);
+            helper.setTo(email);
+            helper.setSubject("Réinitialisation de mot de passe - " + appName);
+
+            String resetLink = resetPasswordUrl + token;
+
+            String safeName = HtmlUtils.htmlEscape(firstName != null ? firstName : "");
+            String safeApp = HtmlUtils.htmlEscape(appName);
+            String safeLink = HtmlUtils.htmlEscape(resetLink);
+
+            String textBody = String.format(
+                    "Bonjour %s,%n%n" +
+                            "Vous avez demandé la réinitialisation de votre mot de passe pour %s.%n%n" +
+                            "Pour choisir un nouveau mot de passe, ouvrez ce lien :%n%s%n%n" +
+                            "Ce lien expire dans 15 minutes.%n%n" +
+                            "Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.%n%n" +
+                            "L'équipe %s",
+                    safeName, appName, resetLink, appName);
+
+            String htmlBody = String.format(
+                    "<html><body style=\"font-family:sans-serif;font-size:15px;line-height:1.6;color:#333;\">" +
+                            "<p>Bonjour <strong>%s</strong>,</p>" +
+                            "<p>Vous avez demandé la réinitialisation de votre mot de passe pour <strong>%s</strong>.</p>" +
+                            "<p style=\"margin:28px 0;\">" +
+                            "  <a href=\"%s\" style=\"display:inline-block;padding:13px 28px;background-color:#1a56db;" +
+                            "     color:#ffffff;text-decoration:none;border-radius:8px;font-weight:700;font-size:15px;\">" +
+                            "    Réinitialiser mon mot de passe" +
+                            "  </a>" +
+                            "</p>" +
+                            "<p style=\"font-size:13px;color:#666;\">Si le bouton ne fonctionne pas, copiez cette adresse dans votre navigateur :</p>" +
+                            "<p style=\"word-break:break-all;font-size:12px;color:#444;\">%s</p>" +
+                            "<p style=\"margin-top:20px;\">Ce lien est valable <strong>15 minutes</strong> à partir de sa réception.</p>" +
+                            "<p>Si vous n'êtes pas concerné(e) par ce message, ignorez cet email.</p>" +
+                            "<p>Cordialement,<br>L'équipe <strong>%s</strong></p>" +
+                            "</body></html>",
+                    safeName, safeApp, safeLink, safeLink, safeApp);
+
+            helper.setText(textBody, htmlBody);
+            mailSender.send(message);
+            log.info("Lien de réinitialisation envoyé avec succès à : {}", email);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de l'envoi du lien de réinitialisation à {} : {}", email, e.getMessage(), e);
+        }
+    }
+
     // =========================================================================
     // INTERVENTIONS
     // =========================================================================
@@ -324,7 +382,6 @@ public class EmailServiceImpl implements EmailService {
 
         } catch (Exception e) {
             log.error("Erreur lors de l'envoi des identifiants syndic à {} : {}", email, e.getMessage(), e);
-            log.warn("🔑 [LOCAL/DEV] MOT DE PASSE TEMPORAIRE SYNDIC POUR [{}] : {}", email, temporaryPassword);
         }
     }
 
@@ -370,7 +427,6 @@ public class EmailServiceImpl implements EmailService {
 
         } catch (Exception e) {
             log.error("Erreur lors de l'envoi des identifiants copropriétaire à {} : {}", email, e.getMessage(), e);
-            log.warn("🔑 [LOCAL/DEV] MOT DE PASSE TEMPORAIRE COPROPRIÉTAIRE POUR [{}] : {}", email, temporaryPassword);
         }
     }
 
@@ -416,7 +472,6 @@ public class EmailServiceImpl implements EmailService {
 
         } catch (Exception e) {
             log.error("Erreur lors de l'envoi des identifiants locataire à {} : {}", email, e.getMessage(), e);
-            log.warn("🔑 [LOCAL/DEV] MOT DE PASSE TEMPORAIRE LOCATAIRE POUR [{}] : {}", email, temporaryPassword);
         }
     }
 }

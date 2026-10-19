@@ -50,6 +50,9 @@ public interface SyndicMeetingService {
 
     MeetingDocumentRowDTO updateMeetingDocument(Long documentId, UpdateMeetingDocumentDTO dto);
 
+    // Même mise à jour, avec remplacement optionnel du fichier (null = fichier MinIO conservé)
+    MeetingDocumentRowDTO updateMeetingDocument(Long documentId, UpdateMeetingDocumentDTO dto, MultipartFile file);
+
     void deleteMeetingDocument(Long documentId);
 
     MeetingDocumentListResponseDTO getMeetingDocumentsList(String search, MeetingDocumentType documentType,

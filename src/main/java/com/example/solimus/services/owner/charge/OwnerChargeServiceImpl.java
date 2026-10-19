@@ -521,6 +521,20 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 // Toujours le vrai montant dû, jamais une re-somme du détail — garanti égal par
                 // construction (buildBreakdown redistribue exactement quotePart entre les postes)
                 .breakdownTotal(item.getQuotePart())
+                .amount(item.getTotalDue()) // quote-part + pénalité éventuelle, comme côté syndic
+                .paidAmount(item.getPaidAmount() != null ? item.getPaidAmount() : BigDecimal.ZERO)
+                .receipts(chargeCallPaymentRepository
+                        .findByChargeCallItemIdAndStatusOrderByPaidAtDesc(item.getId(), PaymentStatus.COMPLETED)
+                        .stream()
+                        .map(p -> ChargePaymentReceiptDTO.builder()
+                                .reference(p.getReference())
+                                .chargeTitle("Charges " + buildPeriodLabel(chargeCall))
+                                .amount(p.getAmount())
+                                .method(p.getMethod())
+                                .paidAt(p.getPaidAt())
+                                .status(p.getStatus())
+                                .build())
+                        .toList())
                 .build();
     }
 
@@ -550,6 +564,20 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 // Pas de répartition par poste pour les appels exceptionnels (pas de BudgetItem lié)
                 .breakdown(List.of())
                 .breakdownTotal(item.getQuotePart())
+                .amount(item.getQuotePart())
+                .paidAmount(item.getPaidAmount())
+                .receipts(exceptionalCallPaymentRepository
+                        .findByExceptionalCallItemIdAndStatusOrderByPaidAtDesc(item.getId(), PaymentStatus.COMPLETED)
+                        .stream()
+                        .map(p -> ChargePaymentReceiptDTO.builder()
+                                .reference(p.getReference())
+                                .chargeTitle(exceptionalCall.getTitle())
+                                .amount(p.getAmount())
+                                .method(p.getMethod())
+                                .paidAt(p.getPaidAt())
+                                .status(p.getStatus())
+                                .build())
+                        .toList())
                 .build();
     }
 

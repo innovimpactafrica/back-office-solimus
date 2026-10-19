@@ -5,6 +5,7 @@ import com.example.solimus.dtos.syndic.settings.EstimatedDelayDTO;
 import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
 import com.example.solimus.dtos.syndic.settings.*;
 import com.example.solimus.dtos.syndic.subscription.InitiateSyndicPlanChangeDTO;
+import com.example.solimus.dtos.syndic.subscription.RenewSyndicSubscriptionDTO;
 import com.example.solimus.dtos.syndic.subscription.MySyndicSubscriptionDTO;
 import com.example.solimus.dtos.syndic.subscription.SyndicPlanChangeResponseDTO;
 import com.example.solimus.dtos.syndic.subscription.SyndicPlanOptionDTO;
@@ -484,5 +485,22 @@ public class SyndicSettingsController {
     public SyndicPlanChangeResponseDTO initiateSubscriptionPlanChange(
             @RequestBody @Valid InitiateSyndicPlanChangeDTO dto) {
         return syndicSubscriptionService.initiateChangePlan(dto);
+    }
+
+    @Operation(summary = "Initier le paiement du renouvellement de ma formule actuelle (self-service)",
+            description = "Même flux et même réponse que le changement de formule : renvoie paymentUrl (pont TouchPay). "
+                    + "La période n'est prolongée qu'après confirmation du paiement (callback).")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Paiement initié avec succès",
+                    content = @Content(schema = @Schema(implementation = SyndicPlanChangeResponseDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Formule plus disponible, tarif non configuré, ou un paiement est déjà en attente de confirmation",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Aucun abonnement payé à renouveler",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @PostMapping("/subscription/renew")
+    public SyndicPlanChangeResponseDTO initiateSubscriptionRenewal(
+            @RequestBody @Valid RenewSyndicSubscriptionDTO dto) {
+        return syndicSubscriptionService.initiateRenewal(dto);
     }
 }

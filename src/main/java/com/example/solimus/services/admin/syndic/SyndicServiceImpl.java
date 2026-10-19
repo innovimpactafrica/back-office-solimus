@@ -26,6 +26,7 @@ import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.EmailAlreadyExistsException;
 import com.example.solimus.exceptions.PhoneAlreadyExistsException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
+import com.example.solimus.utils.PasswordGeneratorUtil;
 import com.example.solimus.repositories.ActivityLogRepository;
 import com.example.solimus.repositories.BudgetRepository;
 import com.example.solimus.repositories.ChargeCallItemRepository;
@@ -39,6 +40,7 @@ import com.example.solimus.repositories.SignalementRepository;
 import com.example.solimus.repositories.SyndicCoOwnerRelationRepository;
 import com.example.solimus.repositories.SyndicPlanRepository;
 import com.example.solimus.repositories.SyndicProfileRepository;
+import com.example.solimus.services.auth.EmailService;
 import com.example.solimus.repositories.SyndicSubscriptionRepository;
 import com.example.solimus.repositories.UserRepository;
 import com.example.solimus.services.shared.ActivityLogPresenter;
@@ -50,7 +52,11 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.TransactionSystemException;
+import org.springframework.transaction.support.TransactionSynchronizationAdapter;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -84,6 +90,8 @@ public class SyndicServiceImpl implements SyndicService {
     private final ChargeCallItemRepository chargeCallItemRepository;
     private final ActivityLogRepository activityLogRepository;
     private final ActivityLogPresenter activityLogPresenter;
+    private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
 
     @Value("${app.touchpay.bridge-url}")
     private String touchPayBridgeUrlTemplate;
@@ -134,10 +142,12 @@ public class SyndicServiceImpl implements SyndicService {
         Role syndicRole = roleRepository.findByName(ERole.ROLE_SYNDIC)
                 .orElseThrow(() -> new ResourceNotFoundException("Rôle SYNDIC introuvable en base"));
 
-        // 5. Crée le compte utilisateur — PENDING tant que le paiement n'est pas confirmé.
-        // Le mot de passe reste null : tant que l'abonnement n'est pas payé, le syndic n'a reçu
-        // aucun identifiant et n'a donc aucune raison de tenter de se connecter. Le mot de passe
-        // réel (temporaire) n'est généré et posé qu'au moment du callback TouchPay confirmé.
+        // 5. Crée le compte utilisateur.
+        // L'admin crée le syndic avec une date de début d'abonnement : le compte est ACTIF
+        // immédiatement (statut cohérent avec un abonnement démarré), le syndic peut donc se
+        // connecter dès la création. Un mot de passe temporaire est généré et sera transmis par
+        // email (après le commit de la transaction, sans jamais bloquer la création).
+        String temporaryPassword = PasswordGeneratorUtil.generateTemporaryPassword();
         User user = new User();
         user.setFirstName(dto.getFirstName());
         user.setLastName(dto.getLastName());
@@ -146,8 +156,8 @@ public class SyndicServiceImpl implements SyndicService {
         user.setCity(dto.getCity());
         user.setCountry(dto.getCountry().getLabel());
         user.setRole(syndicRole);
-        user.setPassword(null);
-        user.setStatus(UserStatus.PENDING);
+        user.setPassword(passwordEncoder.encode(temporaryPassword));
+        user.setStatus(UserStatus.ACTIVE);
 
         User savedUser = userRepository.save(user);
 
@@ -161,8 +171,11 @@ public class SyndicServiceImpl implements SyndicService {
         profile.setLongitude(dto.getLongitude() != null ? BigDecimal.valueOf(dto.getLongitude()) : null);
         syndicProfileRepository.save(profile);
 
-        // 7. Crée l'abonnement en PENDING — il ne devient ACTIVE qu'à la confirmation réelle du paiement
-        // (callback TouchPay), jamais directement ici
+        // 7. Crée l'abonnement en PENDING : il ne devient ACTIVE qu'au callback TouchPay confirmé
+        // (SolimusCallbackController.handleSyndicSubscriptionCallback, référence SYN-). Le compte, lui,
+        // est déjà actif et ses identifiants partent par email : un paiement non abouti laisse le
+        // syndic sans abonnement actif (fonctionnalités de formule bloquées), jamais supprimé —
+        // la purge planifiée ne vise que les comptes PENDING.
         LocalDateTime startDate = dto.getStartDate() != null
                 ? dto.getStartDate().atStartOfDay()
                 : LocalDateTime.now();
@@ -171,8 +184,7 @@ public class SyndicServiceImpl implements SyndicService {
         // Référence unique préfixée SYN- pour que le bridge et le callback la reconnaissent
         String transactionRef = generateReference("SYN");
 
-        // L'admin connecté est celui qui va réellement effectuer le paiement TouchPay
-        // (le syndic n'existe pas encore fonctionnellement tant que le paiement n'est pas confirmé)
+        // L'admin connecté est celui qui provisionne le compte syndic
         User currentAdmin = getCurrentUser();
 
         SyndicSubscription subscription = new SyndicSubscription();
@@ -187,12 +199,30 @@ public class SyndicServiceImpl implements SyndicService {
         subscription.setTransactionRef(transactionRef);
         subscription.setStartDate(startDate);
         subscription.setEndDate(endDate);
+        subscription.setNotifyClient(false);
+        subscription.setSendInvoiceEmail(false);
         syndicSubscriptionRepository.save(subscription);
 
-        // 8. Construit l'URL du pont de paiement TouchPay pour cette référence
+        // 8. Envoie les identifiants par email APRÈS le commit de la transaction.
+        // L'envoi est non bloquant : si le mail échoue, la création du syndic est maintenue et
+        // l'erreur est journalisée sans donnée sensible (le mot de passe n'est jamais loggé).
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronizationAdapter() {
+                @Override
+                public void afterCommit() {
+                    sendSyndicCredentials(savedUser.getEmail(), temporaryPassword, savedUser.getFirstName(),
+                            dto.getCompanyName());
+                }
+            });
+        } else {
+            sendSyndicCredentials(savedUser.getEmail(), temporaryPassword, savedUser.getFirstName(),
+                    dto.getCompanyName());
+        }
+
+        // 9. URL du pont de paiement TouchPay pour cette référence (payée par l'admin)
         String bridgeUrl = String.format(touchPayBridgeUrlTemplate, transactionRef);
 
-        log.info("Création syndic initiée (en attente de paiement) : {} ({}) — ref: {}",
+        log.info("Création syndic : {} ({}) — abonnement en attente de paiement, ref: {}",
                 savedUser.getEmail(), dto.getCompanyName(), transactionRef);
 
         return CreateSyndicResponseDTO.builder()
@@ -207,8 +237,67 @@ public class SyndicServiceImpl implements SyndicService {
                 .endDate(endDate)
                 .transactionReference(transactionRef)
                 .paymentUrl(bridgeUrl)
-                .message("Compte syndic en attente de paiement. Veuillez compléter le paiement via TouchPay pour l'activer.")
+                .message("Compte syndic créé, identifiants envoyés par email. Veuillez compléter le paiement "
+                        + "via TouchPay pour activer l'abonnement.")
                 .build();
+    }
+
+    // Envoie les identifiants de connexion à un syndic. Jamais bloquant : les échecs de messagerie
+    // sont journalisés sans le mot de passe et n'annulent pas la création du compte.
+    private void sendSyndicCredentials(String email, String temporaryPassword, String firstName,
+                                       String companyName) {
+        try {
+            emailService.sendSyndicAccountCreated(email, temporaryPassword, firstName, companyName);
+            log.info("Identifiants syndic envoyés par email à : {}", email);
+        } catch (Exception e) {
+            // Échec non bloquant : la création du syndic est maintenue.
+            // Le mot de passe temporaire n'est jamais journalisé en clair.
+            log.error("Échec de l'envoi des identifiants syndic à {} : {}", email, e.getMessage());
+        }
+    }
+
+    // ============================================================================
+    // Renvoi des identifiants de connexion d'un syndic (mot de passe temporaire régénéré)
+    // ============================================================================
+    @Override
+    @Transactional
+    public void resendSyndicCredentials(Long syndicId) {
+        User syndic = userRepository.findById(syndicId)
+                .orElseThrow(() -> new ResourceNotFoundException("Syndic introuvable"));
+
+        if (syndic.getRole() == null || syndic.getRole().getName() != ERole.ROLE_SYNDIC) {
+            throw new ResourceNotFoundException("Syndic introuvable");
+        }
+
+        // Un compte suspendu se réactive uniquement via /reactivate (ADM-SYN-07) : renvoyer des
+        // identifiants ne doit jamais lever une suspension en douce
+        if (syndic.getStatus() == UserStatus.DISABLED) {
+            throw new BadRequestException("Ce compte est suspendu : réactivez-le avant de renvoyer les identifiants.");
+        }
+
+        String temporaryPassword = PasswordGeneratorUtil.generateTemporaryPassword();
+        syndic.setPassword(passwordEncoder.encode(temporaryPassword));
+        // Seuls les syndics créés par l'ancien flux (PENDING, sans mot de passe) passent ACTIVE ici
+        if (syndic.getStatus() == UserStatus.PENDING) {
+            syndic.setStatus(UserStatus.ACTIVE);
+        }
+        userRepository.save(syndic);
+
+        SyndicProfile profile = syndicProfileRepository.findByUserId(syndic.getId()).orElse(null);
+
+        // Envoi après commit, non bloquant, sans log du mot de passe
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronizationAdapter() {
+                @Override
+                public void afterCommit() {
+                    sendSyndicCredentials(syndic.getEmail(), temporaryPassword, syndic.getFirstName(),
+                            profile != null ? profile.getCompanyName() : null);
+                }
+            });
+        } else {
+            sendSyndicCredentials(syndic.getEmail(), temporaryPassword, syndic.getFirstName(),
+                    profile != null ? profile.getCompanyName() : null);
+        }
     }
 
     @Override

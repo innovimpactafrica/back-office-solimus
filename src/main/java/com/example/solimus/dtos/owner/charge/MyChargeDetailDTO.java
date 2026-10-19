@@ -26,4 +26,11 @@ public class MyChargeDetailDTO {
     private String description;
     private List<ChargeBreakdownLineDTO> breakdown; // Répartition par poste
     private BigDecimal breakdownTotal; // Total de la répartition (doit égaler amount)
+
+    // Mêmes montants que côté syndic : dû (quote-part) et déjà payé
+    private BigDecimal amount;
+    private BigDecimal paidAmount;
+
+    // Quittances rattachées : une par paiement confirmé (même contenu que GET /receipt/{reference})
+    private List<ChargePaymentReceiptDTO> receipts;
 }

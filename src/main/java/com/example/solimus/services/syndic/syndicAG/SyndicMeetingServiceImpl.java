@@ -12,6 +12,8 @@ import com.example.solimus.repositories.meeting.MeetingDocumentCount;
 import com.example.solimus.repositories.meeting.MeetingParticipationStats;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.notification.NotificationService;
+import com.example.solimus.utils.AfterCommit;
+import com.example.solimus.utils.MeetingStatusUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -343,8 +345,8 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
                             .title(meeting.getTitle())
                             .residenceName(meeting.getResidence().getName())
                             .residenceId(meeting.getResidence().getId())
-                            .status(meeting.getStatus().name())
-                            .statusLabel(meeting.getStatus().getLabel())
+                            .status(MeetingStatusUtil.effectiveStatus(meeting).name())
+                            .statusLabel(MeetingStatusUtil.effectiveStatus(meeting).getLabel())
                             .type(meeting.getType().name())
                             .typeLabel(meeting.getType().getLabel())
                             .meetingDate(meeting.getMeetingDate())
@@ -442,8 +444,8 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
                 .id(meeting.getId())
                 .title(meeting.getTitle())
                 .residenceName(meeting.getResidence().getName())
-                .status(meeting.getStatus().name())
-                .statusLabel(meeting.getStatus().getLabel())
+                .status(MeetingStatusUtil.effectiveStatus(meeting).name())
+                .statusLabel(MeetingStatusUtil.effectiveStatus(meeting).getLabel())
                 .type(meeting.getType().name())
                 .typeLabel(meeting.getType().getLabel())
                 .meetingDate(meeting.getMeetingDate())
@@ -639,8 +641,12 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
 
         // On ne peut clôturer qu'une réunion en cours — elle doit d'abord être démarrée via
         // startMeeting, jamais un passage direct UPCOMING -> COMPLETED
-        if (meeting.getStatus() != MeetingStatus.IN_PROGRESS) {
-            throw new BadRequestException("Seule une réunion en cours peut être marquée comme terminée");
+        // Une réunion restée "À venir" en base mais dont l'heure de début est passée (non démarrée
+        // manuellement) est aussi clôturable — sinon elle ne pourrait jamais l'être
+        boolean startedByDate = meeting.getStatus() == MeetingStatus.UPCOMING
+                && MeetingStatusUtil.effectiveStatus(meeting) != MeetingStatus.UPCOMING;
+        if (meeting.getStatus() != MeetingStatus.IN_PROGRESS && !startedByDate) {
+            throw new BadRequestException("Seule une réunion en cours (ou dont l'heure de début est passée) peut être marquée comme terminée");
         }
 
         // Passe la réunion en statut "terminée"
@@ -850,6 +856,7 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         // Récupère la réunion, erreur si introuvable
         Meeting meeting = meetingRepository.findById(meetingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Réunion introuvable"));
+        assertMeetingOwnedByCurrentSyndic(meeting);
 
         // ÉTAPE 1 : on valide TOUS les fichiers d'abord, avant d'uploader quoi que ce soit
         for (MultipartFile file : files) {
@@ -1040,6 +1047,27 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
     }
 
     // Vérifie que le nom de fichier se termine par une extension autorisée (insensible a la casse)
+    // Un syndic ne manipule que les documents des réunions de SES résidences
+    private void assertMeetingOwnedByCurrentSyndic(Meeting meeting) {
+        User currentSyndic = getCurrentUser();
+        if (meeting == null || meeting.getSyndic() == null
+                || !meeting.getSyndic().getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException("Vous n'êtes pas autorisé à gérer les documents de cette réunion");
+        }
+    }
+
+    // Taille maximale 20 Mo + extensions PDF, DOCX, XLSX — commun à la création et au remplacement
+    private void validateDocumentFile(MultipartFile file) {
+        long maxSizeBytes = 20L * 1024 * 1024;
+        if (file.getSize() > maxSizeBytes) {
+            throw new BadRequestException("Le fichier dépasse la taille maximale autorisée (20 Mo)");
+        }
+        String originalFileName = file.getOriginalFilename();
+        if (originalFileName == null || !hasAllowedExtension(originalFileName)) {
+            throw new BadRequestException("Format de fichier non autorisé. Formats acceptés : PDF, DOCX, XLSX");
+        }
+    }
+
     private boolean hasAllowedExtension(String fileName) {
         String lowerCaseName = fileName.toLowerCase();
         return lowerCaseName.endsWith(".pdf")
@@ -1158,23 +1186,16 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         // Récupère la réunion, erreur si introuvable
         Meeting meeting = meetingRepository.findById(dto.getMeetingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Réunion introuvable"));
+        assertMeetingOwnedByCurrentSyndic(meeting);
 
         // Vérifie que le fichier n'est pas vide
         if (file == null || file.isEmpty()) {
             throw new BadRequestException("Aucun fichier fourni");
         }
 
-        // Vérifie la taille maximale : 20 Mo
-        long maxSizeBytes = 20L * 1024 * 1024;
-        if (file.getSize() > maxSizeBytes) {
-            throw new BadRequestException("Le fichier dépasse la taille maximale autorisée (20 Mo)");
-        }
-
-        // Vérifie l'extension autorisée
+        // Taille (20 Mo) et extension (PDF, DOCX, XLSX)
+        validateDocumentFile(file);
         String originalFileName = file.getOriginalFilename();
-        if (originalFileName == null || !hasAllowedExtension(originalFileName)) {
-            throw new BadRequestException("Format de fichier non autorisé. Formats acceptés : PDF, DOCX, XLSX");
-        }
 
         // Envoie le fichier vers MinIO, une fois toutes les vérifications passées
         String fileUrl = minioService.uploadFile(file, "meetings");
@@ -1213,10 +1234,30 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
     @Override
     @Transactional
     public MeetingDocumentRowDTO updateMeetingDocument(Long documentId, UpdateMeetingDocumentDTO dto) {
+        return updateMeetingDocument(documentId, dto, null);
+    }
+
+    @Override
+    @Transactional
+    public MeetingDocumentRowDTO updateMeetingDocument(Long documentId, UpdateMeetingDocumentDTO dto, MultipartFile file) {
 
         // Récupère le document, erreur si introuvable
         MeetingDocument doc = meetingDocumentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Document introuvable"));
+        assertMeetingOwnedByCurrentSyndic(doc.getMeeting());
+
+        // Remplacement optionnel du fichier — sans nouveau fichier, celui de MinIO est conservé.
+        // L'ancien fichier n'est supprimé de MinIO qu'après le commit : un rollback ne perd rien.
+        if (file != null && !file.isEmpty()) {
+            validateDocumentFile(file);
+            String oldFileUrl = doc.getFileUrl();
+            doc.setFileUrl(minioService.uploadFile(file, "meetings"));
+            doc.setFileName(file.getOriginalFilename());
+            doc.setFileSizeKb(file.getSize() / 1024);
+            if (oldFileUrl != null) {
+                AfterCommit.run(() -> minioService.deleteFile(oldFileUrl));
+            }
+        }
 
         // Ne modifie que les champs fournis, laisse les autres intacts
         if (dto.getTitle() != null) {
@@ -1258,6 +1299,7 @@ public class SyndicMeetingServiceImpl implements SyndicMeetingService {
         // Récupère le document, erreur si introuvable
         MeetingDocument doc = meetingDocumentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Document introuvable"));
+        assertMeetingOwnedByCurrentSyndic(doc.getMeeting());
 
         // Supprime le fichier de MinIO
         if (doc.getFileUrl() != null) {

@@ -7,6 +7,7 @@ import com.example.solimus.enums.*;
 import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
+import com.example.solimus.utils.VatUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -176,6 +177,9 @@ public class SyndicTravauxDashboardServiceImpl implements SyndicTravauxDashboard
                         .providerName(q.getProvider().getFirstName() + " " + q.getProvider().getLastName())
                         .createdAt(q.getCreatedAt())
                         .totalAmount(q.getTotalAmount())
+                        .taxRate(VatUtil.taxRateOf(q))
+                        .htAmount(VatUtil.htOf(q))
+                        .tvaAmount(VatUtil.tvaOf(q))
                         .status(q.getStatus())
                         .isRetained(q.getStatus() == QuoteStatus.ACCEPTED)
                         .build())
@@ -227,6 +231,10 @@ public class SyndicTravauxDashboardServiceImpl implements SyndicTravauxDashboard
                 .materiaux(materiaux)
                 .sousTotalMateriaux(quote.getMaterialTotalAmount())
                 .totalTTC(quote.getTotalAmount())
+                .taxRate(VatUtil.taxRateOf(quote))
+                .htAmount(VatUtil.htOf(quote))
+                .tvaAmount(VatUtil.tvaOf(quote))
+                .totalAmount(quote.getTotalAmount())
                 .status(quote.getStatus())
                 .participants(buildParticipants(request))
                 .providerCompanyName(profile.getCompanyName())

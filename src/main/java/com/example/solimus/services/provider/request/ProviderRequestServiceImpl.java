@@ -12,6 +12,8 @@ import com.example.solimus.repositories.InterventionRequestRepository;
 import com.example.solimus.repositories.QuoteItemRepository;
 import com.example.solimus.repositories.QuoteRepository;
 import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.utils.VatUtil;
+import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -32,6 +34,7 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
     private final QuoteRepository quoteRepository;
     private final EstimatedDelayRepository estimatedDelayRepository;
     private final QuoteItemRepository quoteItemRepository;
+    private final NotificationService notificationService;
 
     //---------------------------------------------------
     // Demandes de Travaux non assignés
@@ -180,6 +183,7 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
         quote.setInterventionRequest(request);
         quote.setEstimatedDelay(delay);
         quote.setAdditionalComments(dto.getAdditionalComments());
+        quote.setTaxRate(VatUtil.VAT_RATE); // TVA 18 % appliquée côté serveur, jamais saisie par le prestataire
 
         // 7. Gestion du statut (Brouillon vs Envoi Officiel)
         if (dto.isDraft()) {
@@ -208,6 +212,10 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
         // 10. Référence fixée à partir de l'id auto-généré (garanti unique par la base)
         saved.setReference("DEV-" + String.format("%06d", saved.getId()));
         quoteRepository.save(saved);
+
+        if (saved.getStatus() == QuoteStatus.SENT) {
+            notifyQuoteReceived(request, saved, provider);
+        }
     }
 
     // =========================================================================
@@ -241,9 +249,13 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
         if (dto.getAdditionalComments() != null) {
             quote.setAdditionalComments(dto.getAdditionalComments());
         }
+        boolean wasDraft = quote.getStatus() == QuoteStatus.DRAFT;
         if (dto.getIsDraft() != null) {
             quote.setStatus(dto.getIsDraft() ? QuoteStatus.DRAFT : QuoteStatus.SENT);
         }
+        // TVA 18 % réappliquée à chaque modification (y compris un devis historique sans TVA encore
+        // modifiable) — les totaux HT/TVA/TTC sont recalculés par Quote.calculateTotals (@PreUpdate)
+        quote.setTaxRate(VatUtil.VAT_RATE);
         if (dto.getItems() != null) {
             // Supprimer les anciens items via le repository
             quoteItemRepository.deleteByQuoteId(quoteId);
@@ -262,6 +274,26 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
         }
 
         quoteRepository.save(quote);
+
+        // Brouillon envoyé pour la première fois → le demandeur est prévenu, comme à la création
+        if (wasDraft && quote.getStatus() == QuoteStatus.SENT) {
+            notifyQuoteReceived(quote.getInterventionRequest(), quote, provider);
+        }
+    }
+
+    // Prévient le décideur (syndic en mode SYNDIC, copropriétaire en mode OWNER) qu'un devis est
+    // arrivé — mécanisme existant NotificationService.sendPush (ligne Notification + push, sans
+    // jamais faire échouer l'appelant)
+    private void notifyQuoteReceived(InterventionRequest request, Quote quote, User provider) {
+        User recipient = request.getManagementMode() == InterventionManagementMode.SYNDIC
+                ? request.getSyndic()
+                : request.getOwner();
+        if (recipient == null) {
+            return;
+        }
+        notificationService.sendPush(recipient.getId(), "Nouveau devis reçu",
+                provider.getFirstName() + " " + provider.getLastName() + " a envoyé un devis ("
+                        + quote.getTotalAmount() + " FCFA TTC) pour \"" + request.getTitle() + "\".");
     }
 
     @Override

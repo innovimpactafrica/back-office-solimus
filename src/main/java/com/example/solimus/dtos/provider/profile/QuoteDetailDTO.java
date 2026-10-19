@@ -46,6 +46,12 @@ public class QuoteDetailDTO {
         // Total
         private BigDecimal totalTTC;
 
+    // Ventilation TVA (taux 18 % appliqué côté serveur ; devis historiques : TVA 0, HT = TTC)
+    private BigDecimal htAmount;
+    private BigDecimal tvaAmount;
+    private BigDecimal totalAmount; // TTC
+    private BigDecimal taxRate;     // en % (18)
+
     // Notes
     private String notes;
 

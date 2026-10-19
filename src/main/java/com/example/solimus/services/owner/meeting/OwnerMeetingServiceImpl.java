@@ -8,6 +8,7 @@ import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.repositories.meeting.MeetingParticipationStats;
+import com.example.solimus.utils.MeetingStatusUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -66,8 +67,8 @@ public class OwnerMeetingServiceImpl implements OwnerMeetingService {
                     .title(meeting.getTitle())
                     .type(meeting.getType())
                     .typeLabel(meeting.getType().getLabel())
-                    .status(meeting.getStatus())
-                    .statusLabel(meeting.getStatus().getLabel())
+                    .status(MeetingStatusUtil.effectiveStatus(meeting))
+                    .statusLabel(MeetingStatusUtil.effectiveStatus(meeting).getLabel())
                     .meetingDate(meeting.getMeetingDate())
                     .startTime(meeting.getStartTime())
                     .endTime(meeting.getEndTime()) // peut être null si non renseignée
@@ -143,8 +144,8 @@ public class OwnerMeetingServiceImpl implements OwnerMeetingService {
                   .title(meeting.getTitle())
                   .type(meeting.getType())
                   .typeLabel(meeting.getType().getLabel())
-                  .status(meeting.getStatus())
-                  .statusLabel(meeting.getStatus().getLabel())
+                  .status(MeetingStatusUtil.effectiveStatus(meeting))
+                  .statusLabel(MeetingStatusUtil.effectiveStatus(meeting).getLabel())
                   .meetingDate(meeting.getMeetingDate())
                   .startTime(meeting.getStartTime())
                   .endTime(meeting.getEndTime())
@@ -196,8 +197,8 @@ public class OwnerMeetingServiceImpl implements OwnerMeetingService {
                     .title(meeting.getTitle())
                     .type(meeting.getType())
                     .typeLabel(meeting.getType().getLabel())
-                    .status(meeting.getStatus())
-                    .statusLabel(meeting.getStatus().getLabel())
+                    .status(MeetingStatusUtil.effectiveStatus(meeting))
+                    .statusLabel(MeetingStatusUtil.effectiveStatus(meeting).getLabel())
                     .meetingDate(meeting.getMeetingDate())
                     .startTime(meeting.getStartTime())
                     .endTime(meeting.getEndTime())

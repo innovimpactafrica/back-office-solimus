@@ -15,9 +15,19 @@ public interface EmailService {
     void sendActivationCode(String email, String code, String firstName);
 
     /**
-     * Envoie un code de réinitialisation de mot de passe.
+     * Envoie un code de réinitialisation de mot de passe (mobile / prestataire, code à 4 chiffres).
      */
     void sendPasswordResetCode(String email, String code, String firstName);
+
+    /**
+     * Envoie un LIEN de réinitialisation de mot de passe (web : admin, syndic, copropriétaire, locataire).
+     * Le lien contient le token UUID de réinitialisation et expire après 15 minutes.
+     *
+     * @param email     L'email du destinataire.
+     * @param token     Le token UUID de réinitialisation.
+     * @param firstName Le prénom de l'utilisateur (pour personnaliser l'email).
+     */
+    void sendPasswordResetLink(String email, String token, String firstName);
 
     /**
      * Envoie un email libre (sujet + corps texte).

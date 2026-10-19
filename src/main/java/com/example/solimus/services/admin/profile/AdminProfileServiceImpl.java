@@ -3,6 +3,7 @@ package com.example.solimus.services.admin.profile;
 import com.example.solimus.dtos.admin.profile.AdminChangePasswordDTO;
 import com.example.solimus.dtos.admin.profile.AdminProfileDTO;
 import com.example.solimus.dtos.admin.profile.ChangePasswordResultDTO;
+import com.example.solimus.utils.PasswordValidationUtil;
 import com.example.solimus.dtos.admin.profile.UpdateAdminProfileDTO;
 import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
 import com.example.solimus.dtos.owner.dashboard.NotificationRowDTO;
@@ -133,10 +134,9 @@ public class AdminProfileServiceImpl implements AdminProfileService {
             throw new BadRequestException("Mot de passe actuel incorrect");
         }
 
-        // 3. newPassword doit respecter la règle de robustesse déjà en place
-        if (dto.getNewPassword().length() < MIN_PASSWORD_LENGTH) {
-            throw new BadRequestException("Le nouveau mot de passe doit contenir au moins " + MIN_PASSWORD_LENGTH + " caractères");
-        }
+        // 3. newPassword doit respecter la règle centralisée de complexité
+        //    (min 8, majuscule, minuscule, chiffre, caractère spécial)
+        PasswordValidationUtil.validate(dto.getNewPassword());
 
         currentAdmin.setPassword(passwordEncoder.encode(dto.getNewPassword()));
         userRepository.save(currentAdmin);

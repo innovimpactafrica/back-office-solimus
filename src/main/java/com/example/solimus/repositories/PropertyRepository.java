@@ -39,6 +39,11 @@ public interface PropertyRepository extends JpaRepository<Property, Long> {
     // Vérifier si un propriétaire a au moins un bien dans une résidence
     boolean existsByOwnerIdAndResidenceId(Long ownerId, Long residenceId);
 
+    // Messagerie : l'utilisateur est-il copropriétaire OU locataire d'un lot d'une résidence de ce syndic ?
+    @Query("SELECT CASE WHEN COUNT(p) > 0 THEN true ELSE false END FROM Property p " +
+           "WHERE p.residence.syndic.id = :syndicId AND (p.owner.id = :userId OR p.tenant.id = :userId)")
+    boolean existsOccupantInSyndicResidences(@Param("syndicId") Long syndicId, @Param("userId") Long userId);
+
     // Vérifier qu'un bien précis appartient à un propriétaire dans une résidence donnée
     boolean existsByIdAndOwnerIdAndResidenceId(Long id, Long ownerId, Long residenceId);
 

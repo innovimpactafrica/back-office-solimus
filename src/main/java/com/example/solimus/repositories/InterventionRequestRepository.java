@@ -115,11 +115,13 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
             "AND (i.selectedProvider IS NULL OR i.selectedProvider != :provider)")
     List<InterventionRequest> findNotifiedRequestsNotAssignedToMe(@Param("provider") User provider);
 
-    // Cas SANS filtre : toutes les demandes notifiées, non assignées à moi,
-    // peu importe leur statut calculé (REJECTED, QUOTE_SENT, ou PENDING_QUOTE)
+    // Cas SANS filtre (MPR-02) : demandes notifiées encore ouvertes (personne n'a été retenu) —
+    // statut calculé QUOTE_SENT ou PENDING_QUOTE. Une demande attribuée à un AUTRE prestataire
+    // (REJECTED) disparaît de la liste de CE prestataire ; elle reste consultable via le filtre
+    // explicite REJECTED. Celle attribuée à MOI est dans l'écran Travaux.
     @Query("SELECT i FROM InterventionRequest i " +
             "WHERE :provider MEMBER OF i.notifiedProviders " +
-            "AND (i.selectedProvider IS NULL OR i.selectedProvider != :provider) " +
+            "AND i.selectedProvider IS NULL " +
             "AND (:search IS NULL OR LOWER(i.title) LIKE LOWER(CONCAT('%', :search, '%')) " +
             "OR LOWER(i.residence.name) LIKE LOWER(CONCAT('%', :search, '%')))")
     Page<InterventionRequest> findAllNotifiedRequests(

@@ -13,6 +13,7 @@ import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.minio.MinioService;
+import com.example.solimus.utils.PasswordValidationUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -579,10 +580,8 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
             throw new BadRequestException("Le mot de passe actuel est incorrect");
         }
 
-        // Vérifier que confirmPassword correspond à newPassword
-        if (!dto.getConfirmPassword().equals(dto.getNewPassword())) {
-            throw new BadRequestException("La confirmation du mot de passe ne correspond pas");
-        }
+        // Vérifier que confirmPassword correspond à newPassword + règle centralisée de complexité
+        PasswordValidationUtil.validateWithConfirmation(dto.getNewPassword(), dto.getConfirmPassword());
 
         // Encoder et définir le nouveau mot de passe
         currentSyndic.setPassword(passwordEncoder.encode(dto.getNewPassword()));

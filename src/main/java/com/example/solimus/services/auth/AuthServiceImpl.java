@@ -13,6 +13,7 @@ import com.example.solimus.exceptions.BadRequestException;
 import com.example.solimus.exceptions.EmailAlreadyExistsException;
 import com.example.solimus.exceptions.PhoneAlreadyExistsException;
 import com.example.solimus.exceptions.ResourceNotFoundException;
+import com.example.solimus.utils.PasswordValidationUtil;
 import com.example.solimus.repositories.*;
 import com.example.solimus.services.admin.notification.AdminNotificationPreferenceService;
 import lombok.RequiredArgsConstructor;
@@ -237,10 +238,9 @@ public class AuthServiceImpl implements AuthService {
 
         // ---------------------------------------------------------------------
         // Vérification que les deux mots de passe saisis sont identiques
+        // + règle centralisée de complexité (min 8, majuscule, minuscule, chiffre, spécial)
         // ---------------------------------------------------------------------
-        if (!dto.getPassword().equals(dto.getConfirmPassword())) {
-            throw new BadRequestException("Les mots de passe ne correspondent pas.");
-        }
+        PasswordValidationUtil.validateWithConfirmation(dto.getPassword(), dto.getConfirmPassword());
 
         User user = userRepository.findByEmail(dto.getEmail())
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"));
@@ -431,19 +431,21 @@ public class AuthServiceImpl implements AuthService {
 
         // ---------------------------------------------------------------------
         // Génération du code selon la plateforme :
-        // Mobile (Prestataire) → code à 4 chiffres
-        // Web (Syndic / Admin)  → token UUID directement sur le lien
+        // Mobile (Prestataire) → code à 4 chiffres envoyé comme "code"
+        // Web (Syndic / Admin / Copropriétaire / Locataire) → token UUID envoyé
+        //   dans un LIEN cliquable (sendPasswordResetLink) → reset-password?token=
         // ---------------------------------------------------------------------
         String resetToken;
         ERole userRole = user.getRole().getName();
 
         if (userRole == ERole.ROLE_PRESTATAIRE) {
             resetToken = activationCodeService.generateAndStoreResetCodeMobile(user);
+            emailService.sendPasswordResetCode(user.getEmail(), resetToken, user.getFirstName());
         } else {
             resetToken = activationCodeService.generateAndStoreResetToken(user);
+            emailService.sendPasswordResetLink(user.getEmail(), resetToken, user.getFirstName());
         }
 
-        emailService.sendPasswordResetCode(user.getEmail(), resetToken, user.getFirstName());
         log.info("Processus de réinitialisation initié pour : {}", user.getEmail());
     }
 
@@ -504,10 +506,9 @@ public class AuthServiceImpl implements AuthService {
 
         // ---------------------------------------------------------------------
         // Vérification que les deux mots de passe sont identiques
+        // + règle centralisée de complexité (min 8, majuscule, minuscule, chiffre, spécial)
         // ---------------------------------------------------------------------
-        if (!dto.getNewPassword().equals(dto.getConfirmPassword())) {
-            throw new BadRequestException("Les mots de passe ne correspondent pas.");
-        }
+        PasswordValidationUtil.validateWithConfirmation(dto.getNewPassword(), dto.getConfirmPassword());
 
         // ---------------------------------------------------------------------
         // Récupération et validation du token UUID de réinitialisation
@@ -604,10 +605,9 @@ public class AuthServiceImpl implements AuthService {
 
         // ---------------------------------------------------------------------
         // Vérification que les mots de passe correspondent
+        // + règle centralisée de complexité (min 8, majuscule, minuscule, chiffre, spécial)
         // ---------------------------------------------------------------------
-        if (!dto.getPassword().equals(dto.getConfirmPassword())) {
-            throw new BadRequestException("Les mots de passe ne correspondent pas.");
-        }
+        PasswordValidationUtil.validateWithConfirmation(dto.getPassword(), dto.getConfirmPassword());
 
         // ---------------------------------------------------------------------
         // Validation du token d'activation

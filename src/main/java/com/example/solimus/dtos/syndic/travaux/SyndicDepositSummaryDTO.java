@@ -22,4 +22,9 @@ public class SyndicDepositSummaryDTO {
 
     // Libellé du poste déjà choisi (rempli seulement si budgetItemRequired = false)
     private String budgetItemLibelle;
+
+    // Acompte déjà versé au prestataire (crédité dans son wallet) et reste à payer sur le TTC
+    private BigDecimal acompteVerse;
+    private BigDecimal soldeRestant;
+    private boolean depositAlreadyPaid;
 }

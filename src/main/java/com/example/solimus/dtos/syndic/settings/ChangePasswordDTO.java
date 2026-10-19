@@ -1,6 +1,8 @@
 package com.example.solimus.dtos.syndic.settings;
 
+import com.example.solimus.utils.PasswordValidationUtil;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,7 +19,10 @@ public class ChangePasswordDTO {
     private String currentPassword;
     
     @NotBlank(message = "Le nouveau mot de passe est requis")
-    @Size(min = 6, message = "Le nouveau mot de passe doit contenir au moins 6 caractères")
+    @Size(min = PasswordValidationUtil.MIN_LENGTH,
+            message = "Le nouveau mot de passe doit contenir au moins 8 caractères")
+    @Pattern(regexp = PasswordValidationUtil.PASSWORD_REGEX,
+            message = PasswordValidationUtil.PASSWORD_MESSAGE)
     private String newPassword;
     
     @NotBlank(message = "La confirmation du mot de passe est requise")

@@ -17,6 +17,7 @@ import com.example.solimus.enums.WithdrawalStatus;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.services.minio.MinioService;
 import com.example.solimus.services.provider.wallet.WalletBalanceService;
+import com.example.solimus.utils.PasswordValidationUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -255,6 +256,9 @@ public class ProviderServiceImpl implements ProviderService {
         if (passwordEncoder.matches(newPassword, currentProvider.getPassword())) {
             throw new BadRequestException("Le nouveau mot de passe doit être différent de l'actuel.");
         }
+
+        // Règle centralisée de complexité (min 8, majuscule, minuscule, chiffre, caractère spécial)
+        PasswordValidationUtil.validate(newPassword);
 
         // Encoder et mettre à jour le nouveau mot de passe
         currentProvider.setPassword(passwordEncoder.encode(newPassword));
