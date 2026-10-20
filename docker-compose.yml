@@ -64,6 +64,18 @@ services:
       # Credentials Firebase (notifications push) — lus depuis .env, jamais committés
       FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON}
 
+      # API TouchPay GU — paiements directs Wave / Orange Money (MobileMoneyPaymentServiceImpl).
+      # Lus depuis le .env du serveur, jamais committés. Sans eux : 502 "Paiement ... non configuré".
+      GUTOUCH_AGENCY_CODE: ${GUTOUCH_AGENCY_CODE}
+      GUTOUCH_LOGIN_AGENT: ${GUTOUCH_LOGIN_AGENT}
+      GUTOUCH_PASSWORD_AGENT: ${GUTOUCH_PASSWORD_AGENT}
+      GUTOUCH_DIGEST_USERNAME: ${GUTOUCH_DIGEST_USERNAME}
+      GUTOUCH_DIGEST_PASSWORD: ${GUTOUCH_DIGEST_PASSWORD}
+      # Facultatifs (valeurs par défaut dans le code)
+      GUTOUCH_BACKEND_BASE_URL: ${GUTOUCH_BACKEND_BASE_URL:-https://api.solimus.sn}
+      GUTOUCH_SYNDIC_RETURN_URL: ${GUTOUCH_SYNDIC_RETURN_URL:-https://syndic.solimus.sn/app/parametres}
+      GUTOUCH_ADMIN_RETURN_URL: ${GUTOUCH_ADMIN_RETURN_URL:-https://bo.solimus.sn}
+
     ports:
       - "8086:8082"
     restart: unless-stopped
