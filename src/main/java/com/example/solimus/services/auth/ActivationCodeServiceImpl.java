@@ -27,6 +27,7 @@ public class ActivationCodeServiceImpl implements ActivationCodeService {
     private static final int CODE_LENGTH = 6;
     private static final int CODE_LENGTH_MOBILE = 4;
     private static final int EXPIRATION_MINUTES = 15;
+    private static final java.security.SecureRandom SECURE_RANDOM = new java.security.SecureRandom();
     private static final int RESEND_COOLDOWN_SECONDS = 60; // Délai minimum entre deux envois
 
     // ============================================================================
@@ -35,7 +36,7 @@ public class ActivationCodeServiceImpl implements ActivationCodeService {
 
     @Override
     public String generateActivationCode() {
-        Random random = new Random();
+        java.security.SecureRandom random = SECURE_RANDOM; // OTP de sécurité : générateur cryptographique, pas java.util.Random
         StringBuilder code = new StringBuilder();
         for (int i = 0; i < CODE_LENGTH; i++) {
             code.append(random.nextInt(10));
@@ -45,7 +46,7 @@ public class ActivationCodeServiceImpl implements ActivationCodeService {
 
     @Override
     public String generateActivationCodeMobile() {
-        Random random = new Random();
+        java.security.SecureRandom random = SECURE_RANDOM; // OTP de sécurité : générateur cryptographique, pas java.util.Random
         StringBuilder code = new StringBuilder();
         for (int i = 0; i < CODE_LENGTH_MOBILE; i++) {
             code.append(random.nextInt(10));

@@ -431,14 +431,18 @@ public class AuthServiceImpl implements AuthService {
 
         // ---------------------------------------------------------------------
         // Génération du code selon la plateforme :
-        // Mobile (Prestataire) → code à 4 chiffres envoyé comme "code"
-        // Web (Syndic / Admin / Copropriétaire / Locataire) → token UUID envoyé
-        //   dans un LIEN cliquable (sendPasswordResetLink) → reset-password?token=
+        // Mobile (Prestataire / Copropriétaire / Locataire) → OTP à 4 chiffres par email,
+        //   validé par /verify-reset-code (qui renvoie le token de l'étape 3)
+        // Web (Syndic / Admin) → token UUID envoyé dans un LIEN cliquable
+        //   (sendPasswordResetLink) → reset-password?token=
         // ---------------------------------------------------------------------
         String resetToken;
         ERole userRole = user.getRole().getName();
+        boolean mobileProfile = userRole == ERole.ROLE_PRESTATAIRE
+                || userRole == ERole.ROLE_COPROPRIETAIRE
+                || userRole == ERole.ROLE_LOCATAIRE;
 
-        if (userRole == ERole.ROLE_PRESTATAIRE) {
+        if (mobileProfile) {
             resetToken = activationCodeService.generateAndStoreResetCodeMobile(user);
             emailService.sendPasswordResetCode(user.getEmail(), resetToken, user.getFirstName());
         } else {
