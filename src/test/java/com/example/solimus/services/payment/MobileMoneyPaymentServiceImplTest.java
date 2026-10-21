@@ -247,6 +247,41 @@ class MobileMoneyPaymentServiceImplTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void mobileUrls_areKept_andUsedAfterGuVerification() {
+        MobileMoneyPaymentRequestDTO request = new MobileMoneyPaymentRequestDTO();
+        request.setReturnUrl("solimus://payment/success");
+        request.setCancelUrl("https://app.solimus.sn/paiement/annule");
+
+        MobileMoneyPaymentResponseDTO res = service.initiatePayment(REF, MobileMoneyOperator.WAVE, request);
+
+        // GU reçoit toujours le retour public signé du backend (jamais l'URL du mobile, jamais localhost)
+        Map<String, Object> infos = (Map<String, Object>) lastBody.get().get("additionnalInfos");
+        String guReturn = (String) infos.get("return_url");
+        assertThat(guReturn).startsWith("https://api.solimus.sn/api/payments/intouch/gutouch/return?ref=" + REF + "&sig=");
+        assertThat((String) infos.get("cancel_url")).startsWith("https://api.solimus.sn/api/payments/intouch/gutouch/cancel?ref=");
+        // La réponse indique où l'app sera renvoyée
+        assertThat(res.getReturnUrl()).isEqualTo("solimus://payment/success?paymentStatus=success&ref=" + REF);
+        assertThat(res.getCancelUrl()).isEqualTo("https://app.solimus.sn/paiement/annule?paymentStatus=failed&ref=" + REF);
+
+        // Retour : statut vérifié chez GU, paiement appliqué, puis redirection vers l'URL du mobile
+        guStatus = "SUCCEED";
+        String sig = guReturn.substring(guReturn.indexOf("&sig=") + 5);
+        assertThat(service.handleReturn(REF, sig)).isEqualTo("solimus://payment/success?paymentStatus=success&ref=" + REF);
+        verify(confirmation).routeCallbackByPrefix(REF, true);
+    }
+
+    @Test
+    void dangerousMobileUrl_isRejected_beforeAnyGuCall() {
+        MobileMoneyPaymentRequestDTO request = new MobileMoneyPaymentRequestDTO();
+        request.setReturnUrl("javascript:alert(1)");
+        assertThatThrownBy(() -> service.initiatePayment(REF, MobileMoneyOperator.WAVE, request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("return_url");
+        assertThat(lastBody.get()).isNull();
+    }
+
+    @Test
     void orangeMoney_usesMerchantServiceCode() {
         service.initiatePayment(REF, MobileMoneyOperator.ORANGE_MONEY, null);
         assertThat(lastBody.get().get("serviceCode")).isEqualTo("PAIEMENTMARCHANDOM");

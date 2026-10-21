@@ -24,10 +24,10 @@ public interface MobileMoneyPaymentService {
                                                   MobileMoneyPaymentRequestDTO dto);
 
     /**
-     * Contrôle préalable, AVANT de créer une tentative en attente : API configurée et numéro
-     * exploitable (celui fourni, sinon le téléphone du profil de l'utilisateur connecté).
+     * Contrôle préalable, AVANT de créer une tentative en attente : API configurée, numéro
+     * exploitable (celui fourni, sinon le téléphone du profil) et URLs de retour mobile valides.
      */
-    void preflight(String phoneNumber);
+    void preflight(String phoneNumber, String returnUrl, String cancelUrl);
 
     /** Paiement Wave (serviceCode SNPAIEMENTWAVE). */
     MobileMoneyPaymentResponseDTO createPaymentWave(String reference, MobileMoneyPaymentRequestDTO dto);

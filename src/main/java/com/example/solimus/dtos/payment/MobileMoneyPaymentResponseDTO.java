@@ -44,4 +44,12 @@ public class MobileMoneyPaymentResponseDTO {
     @Schema(description = "Page de paiement Wave / Orange Money à ouvrir",
             example = "https://pay.wave.com/c/cos-27zhmjcq811w6?a=1500&c=XOF&m=Touch%20point%20%2A%20Into")
     private String paymentUrl;
+
+    // Où l'application sera renvoyée à la fin (URL fournie par le mobile, sinon page par défaut) —
+    // reçoit ?paymentStatus=success|failed&ref=… : utile pour intercepter la navigation de la WebView
+    @JsonProperty("return_url")
+    private String returnUrl;
+
+    @JsonProperty("cancel_url")
+    private String cancelUrl;
 }

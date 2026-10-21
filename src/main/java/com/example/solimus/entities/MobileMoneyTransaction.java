@@ -47,6 +47,14 @@ public class MobileMoneyTransaction {
     @Column(nullable = false, length = 20)
     private String status;
 
+    // URLs de retour fournies par l'application mobile — la redirection finale se fait vers elles,
+    // jamais vers une URL reçue en paramètre (pas de redirection ouverte)
+    @Column(name = "return_url", length = 500)
+    private String returnUrl;
+
+    @Column(name = "cancel_url", length = 500)
+    private String cancelUrl;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

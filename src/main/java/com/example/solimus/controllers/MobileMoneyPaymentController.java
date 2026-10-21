@@ -11,6 +11,7 @@ import com.example.solimus.dtos.payment.MobileMoneyDepositDTO;
 import com.example.solimus.dtos.payment.MobileMoneyPaymentRequestDTO;
 import com.example.solimus.dtos.payment.MobileMoneyPlanChangeDTO;
 import com.example.solimus.dtos.payment.MobileMoneyProviderSubscriptionDTO;
+import com.example.solimus.dtos.payment.MobileMoneyRedirectDTO;
 import com.example.solimus.dtos.payment.MobileMoneySyndicRenewDTO;
 import com.example.solimus.dtos.payment.MobileMoneyPaymentResponseDTO;
 import com.example.solimus.dtos.provider.subscription.InitiateSubscriptionPaymentDTO;
@@ -133,7 +134,7 @@ public class MobileMoneyPaymentController {
         dto.setStartDate(body.getStartDate());
         dto.setMethod(operator.getPaymentMethod());
         validate(dto);
-        mobileMoneyPaymentService.preflight(phoneNumber);
+        mobileMoneyPaymentService.preflight(phoneNumber, null, null);
         String reference = syndicService.createSyndic(dto).getTransactionReference();
         return ResponseEntity.status(HttpStatus.CREATED).body(pay(reference, operator, phoneNumber));
     }
@@ -157,7 +158,7 @@ public class MobileMoneyPaymentController {
         dto.setSendInvoiceEmail(body.isSendInvoiceEmail());
         dto.setMethod(operator.getPaymentMethod());
         validate(dto);
-        mobileMoneyPaymentService.preflight(phoneNumber);
+        mobileMoneyPaymentService.preflight(phoneNumber, null, null);
         String reference = planService.renewSubscriber(subscriptionId, subscriberType, dto).getTransactionReference();
         return ResponseEntity.ok(pay(reference, operator, phoneNumber));
     }
@@ -175,7 +176,7 @@ public class MobileMoneyPaymentController {
         dto.setDuration(body.getDuration());
         dto.setMethod(operator.getPaymentMethod());
         validate(dto);
-        mobileMoneyPaymentService.preflight(phoneNumber);
+        mobileMoneyPaymentService.preflight(phoneNumber, null, null);
         String reference = syndicSubscriptionService.initiateChangePlan(dto).getTransactionReference();
         return ResponseEntity.ok(pay(reference, operator, phoneNumber));
     }
@@ -192,7 +193,7 @@ public class MobileMoneyPaymentController {
         dto.setDuration(body != null ? body.getDuration() : null);
         dto.setMethod(operator.getPaymentMethod());
         validate(dto);
-        mobileMoneyPaymentService.preflight(phoneNumber);
+        mobileMoneyPaymentService.preflight(phoneNumber, null, null);
         String reference = syndicSubscriptionService.initiateRenewal(dto).getTransactionReference();
         return ResponseEntity.ok(pay(reference, operator, phoneNumber));
     }
@@ -202,7 +203,8 @@ public class MobileMoneyPaymentController {
     // =========================================================================
 
     @Operation(summary = "[Prestataire] Souscrire / renouveler mon abonnement et payer avec Wave / Orange Money",
-            description = "Même logique que POST /api/provider/subscription/initiate.")
+            description = "Même logique que POST /api/provider/subscription/initiate. return_url / cancel_url (facultatives) : "
+                    + "où renvoyer l'app mobile après paiement, avec ?paymentStatus=success|failed&ref=….")
     @PostMapping("/api/provider/subscription/initiate/mobile-money")
     @PreAuthorize("hasAuthority('ROLE_PRESTATAIRE')")
     public ResponseEntity<MobileMoneyPaymentResponseDTO> providerSubscribeAndPay(
@@ -214,9 +216,9 @@ public class MobileMoneyPaymentController {
         dto.setAnnual(body.getAnnual());
         dto.setMethod(operator.getPaymentMethod());
         validate(dto);
-        mobileMoneyPaymentService.preflight(phoneNumber);
+        mobileMoneyPaymentService.preflight(phoneNumber, body.getReturnUrl(), body.getCancelUrl());
         String reference = subscriptionPaymentService.initiatePayment(dto).getTransactionReference();
-        return ResponseEntity.ok(pay(reference, operator, phoneNumber));
+        return ResponseEntity.ok(pay(reference, operator, phoneNumber, body.getReturnUrl(), body.getCancelUrl()));
     }
 
     // =========================================================================
@@ -225,24 +227,27 @@ public class MobileMoneyPaymentController {
 
     @Operation(summary = "[Copropriétaire] Payer une charge (courante ou exceptionnelle) avec Wave / Orange Money",
             description = "Même logique que POST /api/coowner/charges/{type}/{id}/payment (type = REGULAR ou EXCEPTIONAL). "
-                    + "Pas de body : le montant est le reste dû calculé par le serveur.")
+                    + "Le montant est le reste dû calculé par le serveur. Body facultatif : {\"return_url\", \"cancel_url\"} de l'app mobile.")
     @PostMapping("/api/coowner/charges/{type}/{id}/payment/mobile-money")
     @PreAuthorize("hasAuthority('ROLE_COPROPRIETAIRE')")
     public ResponseEntity<MobileMoneyPaymentResponseDTO> payChargeWithMobileMoney(
             @PathVariable ChargeType type,
             @PathVariable Long id,
             @Parameter(description = OPERATOR_DOC) @RequestParam MobileMoneyOperator operator,
-            @Parameter(description = PHONE_DOC) @RequestParam(required = false) String phoneNumber) {
+            @Parameter(description = PHONE_DOC) @RequestParam(required = false) String phoneNumber,
+            @Valid @RequestBody(required = false) MobileMoneyRedirectDTO body) {
+        String returnUrl = body != null ? body.getReturnUrl() : null;
+        String cancelUrl = body != null ? body.getCancelUrl() : null;
         InitierPaiementChargeDTO dto = new InitierPaiementChargeDTO();
         dto.setMethod(operator.getChargePaymentMethod());
-        mobileMoneyPaymentService.preflight(phoneNumber);
+        mobileMoneyPaymentService.preflight(phoneNumber, returnUrl, cancelUrl);
         String reference = ownerChargeService.initierPaiement(type, id, dto).getTransactionReference();
-        return ResponseEntity.ok(pay(reference, operator, phoneNumber));
+        return ResponseEntity.ok(pay(reference, operator, phoneNumber, returnUrl, cancelUrl));
     }
 
     @Operation(summary = "[Copropriétaire] Payer l'acompte de travaux avec Wave / Orange Money",
             description = "Même logique que POST /api/owner/travaux/interventions/{id}/deposit (montant ≤ TTC du devis). "
-                    + "Body : {\"montant\": 10000}.")
+                    + "Body : {\"montant\": 10000, \"return_url\", \"cancel_url\"} (URLs facultatives de l'app mobile).")
     @PostMapping("/api/owner/travaux/interventions/{interventionId}/deposit/mobile-money")
     @PreAuthorize("hasAuthority('ROLE_COPROPRIETAIRE')")
     public ResponseEntity<MobileMoneyPaymentResponseDTO> payOwnerDepositWithMobileMoney(
@@ -254,24 +259,28 @@ public class MobileMoneyPaymentController {
         dto.setMontant(body.getMontant());
         dto.setMethode(operator.getPaymentMethod());
         validate(dto);
-        mobileMoneyPaymentService.preflight(phoneNumber);
+        mobileMoneyPaymentService.preflight(phoneNumber, body.getReturnUrl(), body.getCancelUrl());
         String reference = ownerTravauxService.payDeposit(interventionId, dto).getTransactionReference();
-        return ResponseEntity.ok(pay(reference, operator, phoneNumber));
+        return ResponseEntity.ok(pay(reference, operator, phoneNumber, body.getReturnUrl(), body.getCancelUrl()));
     }
 
     @Operation(summary = "[Copropriétaire] Valider les travaux et payer le solde avec Wave / Orange Money",
-            description = "Même logique que POST /api/owner/travaux/interventions/{id}/balance (solde = TTC − acompte). Pas de body.")
+            description = "Même logique que POST /api/owner/travaux/interventions/{id}/balance (solde = TTC − acompte). "
+                    + "Body facultatif : {\"return_url\", \"cancel_url\"} de l'app mobile.")
     @PostMapping("/api/owner/travaux/interventions/{interventionId}/balance/mobile-money")
     @PreAuthorize("hasAuthority('ROLE_COPROPRIETAIRE')")
     public ResponseEntity<MobileMoneyPaymentResponseDTO> payOwnerBalanceWithMobileMoney(
             @PathVariable Long interventionId,
             @Parameter(description = OPERATOR_DOC) @RequestParam MobileMoneyOperator operator,
-            @Parameter(description = PHONE_DOC) @RequestParam(required = false) String phoneNumber) {
+            @Parameter(description = PHONE_DOC) @RequestParam(required = false) String phoneNumber,
+            @Valid @RequestBody(required = false) MobileMoneyRedirectDTO body) {
+        String returnUrl = body != null ? body.getReturnUrl() : null;
+        String cancelUrl = body != null ? body.getCancelUrl() : null;
         ValiderTravauxDTO dto = new ValiderTravauxDTO();
         dto.setMethode(operator.getPaymentMethod());
-        mobileMoneyPaymentService.preflight(phoneNumber);
+        mobileMoneyPaymentService.preflight(phoneNumber, returnUrl, cancelUrl);
         String reference = ownerTravauxService.validateAndPayBalance(interventionId, dto).getTransactionReference();
-        return ResponseEntity.ok(pay(reference, operator, phoneNumber));
+        return ResponseEntity.ok(pay(reference, operator, phoneNumber, returnUrl, cancelUrl));
     }
 
     // =========================================================================
@@ -332,8 +341,15 @@ public class MobileMoneyPaymentController {
     // =========================================================================
 
     private MobileMoneyPaymentResponseDTO pay(String reference, MobileMoneyOperator operator, String phoneNumber) {
-        return mobileMoneyPaymentService.initiatePayment(reference, operator,
-                MobileMoneyPaymentRequestDTO.builder().phoneNumber(phoneNumber).build());
+        return pay(reference, operator, phoneNumber, null, null);
+    }
+
+    private MobileMoneyPaymentResponseDTO pay(String reference, MobileMoneyOperator operator, String phoneNumber,
+                                              String returnUrl, String cancelUrl) {
+        MobileMoneyPaymentRequestDTO request = MobileMoneyPaymentRequestDTO.builder().phoneNumber(phoneNumber).build();
+        request.setReturnUrl(returnUrl);
+        request.setCancelUrl(cancelUrl);
+        return mobileMoneyPaymentService.initiatePayment(reference, operator, request);
     }
 
     // Validation Bean Validation APRÈS avoir posé le mode de paiement déduit de l'opérateur

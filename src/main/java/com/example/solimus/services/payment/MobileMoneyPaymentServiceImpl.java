@@ -158,9 +158,11 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
     }
 
     @Override
-    public void preflight(String phoneNumber) {
+    public void preflight(String phoneNumber, String returnUrl, String cancelUrl) {
         assertGatewayConfigured();
         normalizePhone(phoneNumber != null ? phoneNumber : getCurrentUser().getPhone());
+        validateClientUrl("return_url", returnUrl);
+        validateClientUrl("cancel_url", cancelUrl);
     }
 
     @Override
@@ -195,6 +197,9 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
         }
 
         String phone = normalizePhone(request.getPhoneNumber() != null ? request.getPhoneNumber() : payable.phone());
+        String clientReturnUrl = validateClientUrl("return_url", request.getReturnUrl());
+        String clientCancelUrl = validateClientUrl("cancel_url", request.getCancelUrl());
+        boolean clientRedirect = clientReturnUrl != null || clientCancelUrl != null;
         long amount = toXof(payable.amount());
 
         Map<String, Object> additionalInfos = new LinkedHashMap<>();
@@ -203,8 +208,8 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
         additionalInfos.put("recipientLastName", payable.lastName());
         additionalInfos.put("destinataire", phone);
         additionalInfos.put("partner_name", partnerName);
-        additionalInfos.put("return_url", returnUrl(reference, true));
-        additionalInfos.put("cancel_url", returnUrl(reference, false));
+        additionalInfos.put("return_url", returnUrl(reference, true, clientRedirect));
+        additionalInfos.put("cancel_url", returnUrl(reference, false, clientRedirect));
         additionalInfos.put("currency", "XOF");
 
         Map<String, Object> body = new LinkedHashMap<>();
@@ -247,6 +252,8 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
             tracked.setAmount(BigDecimal.valueOf(amount));
             tracked.setStatus("INITIATED");
             tracked.setFinalizedAt(null);
+            tracked.setReturnUrl(clientReturnUrl);
+            tracked.setCancelUrl(clientCancelUrl);
             transactionRepository.save(tracked);
         });
 
@@ -264,6 +271,8 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
                 .numTransaction(asString(firstNonNull(response, "numTransaction")))
                 .status(status)
                 .paymentUrl(paymentUrl)
+                .returnUrl(finalRedirect(reference, true, clientReturnUrl, clientCancelUrl))
+                .cancelUrl(finalRedirect(reference, false, clientReturnUrl, clientCancelUrl))
                 .build();
     }
 
@@ -554,17 +563,32 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
         return Audience.MOBILE;
     }
 
-    // Page de l'application où renvoyer l'utilisateur. Mobile : les pages existantes /payment-success
-    // et /payment-failed, que la WebView intercepte déjà (sans paramètre de statut, elles ne
-    // reconfirment rien).
+    // Redirection finale après /return ou /cancel : l'URL fournie par l'application mobile si elle
+    // existe (mémorisée à l'initiation), sinon la page par défaut du parcours
     private String redirectUrl(String reference, boolean success) {
-        String ref = URLEncoder.encode(reference, StandardCharsets.UTF_8);
-        String status = success ? "success" : "failed";
+        MobileMoneyTransaction tracked = transactionRepository.findByReference(reference).orElse(null);
+        return finalRedirect(reference, success,
+                tracked != null ? tracked.getReturnUrl() : null,
+                tracked != null ? tracked.getCancelUrl() : null);
+    }
+
+    // Page vers laquelle l'utilisateur arrive à la fin, avec ?paymentStatus=success|failed&ref=…
+    //  - URLs du mobile : return_url si succès, cancel_url sinon (chacune retombe sur l'autre si absente)
+    //  - sinon : application web syndic / admin, ou pages /payment-success | /payment-failed (WebView)
+    private String finalRedirect(String reference, boolean success, String clientReturnUrl, String clientCancelUrl) {
+        String query = "paymentStatus=" + (success ? "success" : "failed")
+                + "&ref=" + URLEncoder.encode(reference, StandardCharsets.UTF_8);
+        String client = success
+                ? (clientReturnUrl != null ? clientReturnUrl : clientCancelUrl)
+                : (clientCancelUrl != null ? clientCancelUrl : clientReturnUrl);
+        if (client != null) {
+            return appendQuery(client, query);
+        }
         return switch (audienceOf(reference)) {
-            case SYNDIC_WEB -> appendQuery(syndicReturnUrl, "paymentStatus=" + status + "&ref=" + ref);
-            case ADMIN_WEB -> appendQuery(adminReturnUrl, "paymentStatus=" + status + "&ref=" + ref);
+            case SYNDIC_WEB -> appendQuery(syndicReturnUrl, query);
+            case ADMIN_WEB -> appendQuery(adminReturnUrl, query);
             case MOBILE -> backendBaseUrl + "/api/payments/intouch/" + (success ? "payment-success" : "payment-failed")
-                    + "?num_command=" + ref;
+                    + "?num_command=" + URLEncoder.encode(reference, StandardCharsets.UTF_8);
         };
     }
 
@@ -572,24 +596,50 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
         return url + (url.contains("?") ? "&" : "?") + query;
     }
 
-    // Lien de retour signé (HMAC-SHA256 de la référence) : sans la signature, impossible de forger
-    // un retour "payé" pour une autre référence
-    // URL de retour transmise à GU (return_url / cancel_url), toujours publique et en https :
+    // URL de retour transmise à GU (return_url / cancel_url), toujours publique et en https (GU refuse
+    // localhost) :
+    //  - URLs fournies par le mobile, ou parcours mobile : le backend public (/return ou /cancel), qui
+    //    vérifie le statut chez GU, applique le paiement, puis redirige vers l'URL finale (finalRedirect)
     //  - parcours web (syndic SYR-, admin SYN-/SYA-/PRA-) : directement la page de l'application, avec
     //    ref + sig ; l'application appelle ensuite GET /api/payments/intouch/gutouch/confirm?ref&sig
-    //  - parcours mobile : le backend public (/return ou /cancel) qui confirme puis redirige vers les
-    //    pages /payment-success | /payment-failed interceptées par la WebView
-    private String returnUrl(String reference, boolean success) {
+    private String returnUrl(String reference, boolean success, boolean clientRedirect) {
+        if (clientRedirect || audienceOf(reference) == Audience.MOBILE) {
+            return buildSignedUrl(success ? "/api/payments/intouch/gutouch/return"
+                    : "/api/payments/intouch/gutouch/cancel", reference);
+        }
         String query = "paymentStatus=" + (success ? "success" : "cancelled")
                 + "&ref=" + URLEncoder.encode(reference, StandardCharsets.UTF_8) + "&sig=" + sign(reference);
-        return switch (audienceOf(reference)) {
-            case SYNDIC_WEB -> appendQuery(syndicReturnUrl, query);
-            case ADMIN_WEB -> appendQuery(adminReturnUrl, query);
-            case MOBILE -> buildSignedUrl(success ? "/api/payments/intouch/gutouch/return"
-                    : "/api/payments/intouch/gutouch/cancel", reference);
-        };
+        return audienceOf(reference) == Audience.SYNDIC_WEB
+                ? appendQuery(syndicReturnUrl, query)
+                : appendQuery(adminReturnUrl, query);
     }
 
+    // URL de retour fournie par le client : absolue, avec un schéma (https, http ou deep link de l'app),
+    // jamais javascript:/data:/file: — sinon 400. Renvoie null si absente.
+    private static String validateClientUrl(String field, String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        String value = url.trim();
+        if (value.length() > 500) {
+            throw new BadRequestException(field + " : 500 caractères maximum");
+        }
+        URI uri;
+        try {
+            uri = URI.create(value);
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException(field + " invalide : " + value);
+        }
+        String scheme = uri.getScheme() != null ? uri.getScheme().toLowerCase() : null;
+        if (scheme == null || Set.of("javascript", "data", "file", "vbscript").contains(scheme)
+                || ((scheme.equals("http") || scheme.equals("https")) && uri.getHost() == null)) {
+            throw new BadRequestException(field + " invalide (URL absolue ou deep link attendu) : " + value);
+        }
+        return value;
+    }
+
+    // Lien de retour signé (HMAC-SHA256 de la référence) : sans la signature, impossible de forger
+    // un retour pour une autre référence
     private String buildSignedUrl(String path, String reference) {
         return backendBaseUrl + path + "?ref=" + URLEncoder.encode(reference, StandardCharsets.UTF_8)
                 + "&sig=" + sign(reference);
