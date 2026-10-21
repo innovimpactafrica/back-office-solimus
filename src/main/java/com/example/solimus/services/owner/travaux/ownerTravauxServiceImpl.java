@@ -39,6 +39,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -377,82 +378,84 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
 
         User currentOwner = getCurrentUser();
-        // Vérifier via owner direct, propriété, ou copropriétaire dans la résidence
-        boolean isOwner = false;
-        if (request.getOwner() != null && request.getOwner().getId().equals(currentOwner.getId())) {
-            isOwner = true;
-        } else if (request.getProperty() != null && request.getProperty().getOwner() != null
-                && request.getProperty().getOwner().getId().equals(currentOwner.getId())) {
-            isOwner = true;
-        } else if (request.getResidence() != null) {
-            // Vérifier si le copropriétaire a une propriété dans cette résidence
-            isOwner = coOwnerRelationRepository.existsByResidenceIdAndCoOwnerId(
-                    request.getResidence().getId(), currentOwner.getId());
-        }
 
-        // Si managementMode == SYNDIC, le syndic peut voir les devis via la résidence
-        if (request.getManagementMode() == InterventionManagementMode.SYNDIC) {
-            if (request.getResidence() != null && request.getResidence().getSyndic() != null
-                    && request.getResidence().getSyndic().getId().equals(currentOwner.getId())) {
-                isOwner = true;
-            }
-        }
+        // Accès : le demandeur, le propriétaire du lot concerné, ou — pour les PARTIES COMMUNES
+        // gérées par le syndic uniquement — tout copropriétaire ayant un lot dans la résidence.
+        // Les travaux privatifs (mode OWNER) ne sont jamais visibles des autres copropriétaires.
+        boolean isOwner = (request.getOwner() != null && request.getOwner().getId().equals(currentOwner.getId()))
+                || (request.getProperty() != null && request.getProperty().getOwner() != null
+                    && request.getProperty().getOwner().getId().equals(currentOwner.getId()))
+                || (request.getManagementMode() == InterventionManagementMode.SYNDIC && request.getResidence() != null
+                    && coOwnerRelationRepository.existsByResidenceIdAndCoOwnerId(
+                            request.getResidence().getId(), currentOwner.getId()));
 
         if (!isOwner) {
             throw new ForbiddenException("Accès non autorisé à cette intervention");
         }
 
-        // 2. Récupérer uniquement les devis envoyés (pas les brouillons)
-        List<Quote> quotesSend = quoteRepository
-                .findByInterventionRequestAndStatus(request, QuoteStatus.SENT);
+        // 2. Devis visibles : envoyés, acceptés et refusés (jamais les brouillons du prestataire).
+        // Avant : SENT uniquement → la liste devenait vide dès qu'un devis était validé.
+        List<Quote> quotes = quoteRepository.findAllByInterventionRequestOrderByTotalAmountAsc(request).stream()
+                .filter(q -> q.getStatus() != QuoteStatus.DRAFT)
+                .toList();
 
-        if (quotesSend.isEmpty()) {
+        if (quotes.isEmpty()) {
             return Page.empty(PageRequest.of(page, size));
         }
 
-        // 3. Prix max pour normaliser le score prix
-        // Objectif : récupérer le prix le plus élevé parmi tous les devis.
-        // Ce montant servira plus tard à calculer un score relatif (ex: plus le devis
-        // est cher, plus le score est bas).
-        double maxAmount = quotesSend.stream() // ① On parcourt la liste des devis
-                .mapToDouble(q -> q.getTotalAmount().doubleValue()) // ② Pour chaque devis, on prend son total TTC en
-                                                                    // double (ex: 150000.0)
-                .max() // ③ On cherche le maximum de tous ces montants → retourne un OptionalDouble
-                .orElse(1.0); // ④ Si la liste est vide (pas de devis), on met 1.0 par défaut pour éviter une
-                              // division par zéro plus tard.
+        // 3. Prix max pour normaliser le score prix (plus le devis est cher, plus le score est bas)
+        double maxAmount = quotes.stream()
+                .map(Quote::getTotalAmount)
+                .filter(java.util.Objects::nonNull)
+                .mapToDouble(BigDecimal::doubleValue)
+                .max()
+                .orElse(1.0);
 
-        // 4. Mapper chaque devis en carte avec son score calculé
-        List<CoOwnerQuoteCardDTO> cards = quotesSend.stream()
+        // 4. Une carte par devis, avec son score. ArrayList MUTABLE : .toList() renvoie une liste
+        // immuable et le tri ci-dessous levait UnsupportedOperationException (erreur 500)
+        List<CoOwnerQuoteCardDTO> cards = quotes.stream()
                 .map(quote -> mapToQuoteCardDTO(quote, maxAmount))
-                .toList();
+                .collect(Collectors.toCollection(ArrayList::new));
 
-        // 5. Badge RECOMMANDÉ → celui avec le meilleur score final (on effectue une
-        // comparaison)
-        cards.stream()
-                .max(Comparator.comparingDouble(CoOwnerQuoteCardDTO::getScoreFinal))
-                .ifPresent(cardDTO -> cardDTO.setBestOffer(true));
+        // 5. Badge RECOMMANDÉ : meilleur score parmi les devis encore en attente de décision
+        // (aucun badge une fois un devis accepté)
+        boolean decisionTaken = cards.stream().anyMatch(c -> c.getStatus() == QuoteStatus.ACCEPTED);
+        if (!decisionTaken) {
+            cards.stream()
+                    .filter(c -> c.getStatus() == QuoteStatus.SENT)
+                    .max(Comparator.comparingDouble(CoOwnerQuoteCardDTO::getScoreFinal))
+                    .ifPresent(cardDTO -> cardDTO.setBestOffer(true));
+        }
 
-        // 6. Trier par score décroissant → le meilleur en premier
-        cards.sort(Comparator.comparingDouble(CoOwnerQuoteCardDTO::getScoreFinal).reversed());
+        // 6. Ordre : devis accepté, puis devis en attente (meilleur score d'abord), puis refusés
+        cards.sort(Comparator.comparingInt((CoOwnerQuoteCardDTO c) -> statusRank(c.getStatus()))
+                .thenComparing(Comparator.comparingDouble(CoOwnerQuoteCardDTO::getScoreFinal).reversed()));
 
-        // 7. Retourner la page avec les données triées — pagination manuelle
-        // VOLONTAIRE, pas un
-        // raccourci à corriger : scoreFinal dépend de maxAmount (étape 3), lui-même
-        // calculé sur TOUS
-        // les devis de l'intervention. Paginer en base changerait maxAmount (et donc le
-        // score de
-        // chaque devis) selon la page consultée. Le volume par intervention reste
-        // minuscule (quelques
-        // devis maximum), donc pas de vrai risque de perf.
+        // 7. Pagination manuelle VOLONTAIRE : scoreFinal dépend de maxAmount, calculé sur TOUS les
+        // devis de l'intervention (paginer en base changerait le score selon la page). Volume minuscule.
         Pageable pageable = PageRequest.of(page, size);
-        int start = (int) pageable.getOffset();
+        int start = (int) Math.min(pageable.getOffset(), cards.size());
         int end = Math.min(start + pageable.getPageSize(), cards.size());
         List<CoOwnerQuoteCardDTO> pagedCards = cards.subList(start, end);
 
-        // pagedCards -> liste des données à afficher dans cette page
-        // pageable -> infos pagination (numéro page, taille page, tri)
-        // cards.size() -> nombre total d'éléments (pour calculer nombre total de pages)
         return new PageImpl<>(pagedCards, pageable, cards.size());
+    }
+
+    private static String quoteStatusLabel(QuoteStatus status) {
+        if (status == null) return null;
+        return switch (status) {
+            case SENT -> "En attente";
+            case ACCEPTED -> "Accepté";
+            case REJECTED -> "Refusé";
+            case DRAFT -> "Brouillon";
+        };
+    }
+
+    // Ordre d'affichage des devis : accepté (0), en attente (1), refusé (2)
+    private static int statusRank(QuoteStatus status) {
+        if (status == QuoteStatus.ACCEPTED) return 0;
+        if (status == QuoteStatus.SENT) return 1;
+        return 2;
     }
 
     @Override
@@ -544,11 +547,11 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
                 .totalAmount(quote.getTotalAmount())
                 .createdAt(quote.getCreatedAt())
                 .providerName(quote.getProvider().getFirstName() + " " + quote.getProvider().getLastName())
-                .companyName(profil.getCompanyName())
+                .companyName(profil != null ? profil.getCompanyName() : null)
                 .providerPhotoUrl(quote.getProvider().getProfilePhotoUrl())
                 .providerPhone(quote.getProvider().getPhone())
                 .providerEmail(quote.getProvider().getEmail())
-                .providerCity(profil.getInterventionZone())
+                .providerCity(profil != null ? profil.getInterventionZone() : null)
                 .rating(profil.getRating())
                 .reviewCount(profil.getReviewCount() != null ? profil.getReviewCount().intValue() : 0)
                 .interventionCount(profil.getInterventionCount())
@@ -894,17 +897,18 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
     private CoOwnerQuoteCardDTO mapToQuoteCardDTO(Quote quote, double maxAmount) {
 
         // Récupérer le profil prestataire pour avoir rating et interventionZone
-        ProviderProfile profil = providerProfileRepository
-                .findByUser(quote.getProvider())
-                .orElseThrow(() -> new ResourceNotFoundException("Profil prestataire introuvable"));
+        // Profil absent (cas anormal) : la carte s'affiche quand même, sans note ni société —
+        // avant, un seul profil manquant faisait échouer toute la liste
+        ProviderProfile profil = providerProfileRepository.findByUser(quote.getProvider()).orElse(null);
 
         // Utiliser le rating et reviewCount stockés sur le profil
-        double ratingValue = profil.getRating() != null ? profil.getRating() : 0.0;
-        long reviewCount = profil.getReviewCount() != null ? profil.getReviewCount() : 0;
+        double ratingValue = profil != null && profil.getRating() != null ? profil.getRating() : 0.0;
+        long reviewCount = profil != null && profil.getReviewCount() != null ? profil.getReviewCount() : 0;
 
-        // Vérifier si le prestataire a un abonnement actif
+        // Badge "vérifié" : abonnement réellement ACTIF (même règle que SubscriptionFilter), jamais
+        // "le plus récent par date de fin" qui peut être une tentative échouée ou annulée
         boolean isVerified = providerSubscriptionRepository
-                .findFirstByProviderIdOrderByEndDateDesc(quote.getProvider().getId())
+                .findFirstByProviderIdAndStatus(quote.getProvider().getId(), SubscriptionStatus.ACTIVE)
                 .map(ProviderSubscription::isCurrentlyActive)
                 .orElse(false);
 
@@ -913,7 +917,8 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
         // Score prix (40%) : plus le devis (prix) est bas par rapport au max, meilleur
         // est le score
         // Exemple : 75 000 / 120 000 = 0.625 → scorePrix = 1 - 0.625 = 0.375
-        double scorePrix = 1.0 - (quote.getTotalAmount().doubleValue() / maxAmount);
+        double amount = quote.getTotalAmount() != null ? quote.getTotalAmount().doubleValue() : maxAmount;
+        double scorePrix = maxAmount > 0 ? 1.0 - (amount / maxAmount) : 0.0;
 
         // Score note (40%) : 4.8 étoiles / 5 = 0.96 (moyenne des étoiles du prestatire
         // /nombre total d'étoiles)
@@ -922,8 +927,9 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
         // Score délai (20%) : délai de 2 jours (nombre délai)/ 30 (delai max 30 jours)
         // = 0.067 → scoreDelai = 1 - 0.067 = 0.933
         // Plus le délai est court, meilleur est le score
+        // Borné à [0, 1] : un délai au-delà de 30 jours ne doit pas donner un score négatif
         double scoreDelai = quote.getEstimatedDelay() != null
-                ? 1.0 - (quote.getEstimatedDelay().getDays() / 30.0)
+                ? Math.max(0.0, Math.min(1.0, 1.0 - (quote.getEstimatedDelay().getDays() / 30.0)))
                 : 0.0;
 
         // Score final pondéré
@@ -936,9 +942,9 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
                 .id(quote.getId())
                 .providerId(quote.getProvider().getId())
                 .providerName(quote.getProvider().getFirstName() + " " + quote.getProvider().getLastName())
-                .companyName(profil.getCompanyName())
+                .companyName(profil != null ? profil.getCompanyName() : null)
                 .providerPhotoUrl(quote.getProvider().getProfilePhotoUrl())
-                .providerCity(profil.getInterventionZone())
+                .providerCity(profil != null ? profil.getInterventionZone() : null)
                 .providerRating(ratingValue)
                 .reviewCount(reviewCount)
                 .totalAmount(quote.getTotalAmount())
@@ -950,6 +956,8 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
                 .scoreQualitePrix(scoreQualitePrix)
                 .isVerified(isVerified)
                 .isBestOffer(false) // sera mis à true après dans le stream
+                .status(quote.getStatus())
+                .statusLabel(quoteStatusLabel(quote.getStatus()))
                 .build();
 
     }

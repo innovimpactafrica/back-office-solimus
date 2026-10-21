@@ -1,6 +1,7 @@
 package com.example.solimus.dtos.intervention;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.example.solimus.enums.QuoteStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -38,6 +39,10 @@ public class CoOwnerQuoteCardDTO {
     // Badges
     private boolean isVerified;        // Badge "Prestataire vérifié" (si abonnement actif)
     private boolean isBestOffer;       // Badge "RECOMMANDÉ" (meilleur score)
+
+    // Statut du devis : SENT (en attente), ACCEPTED, REJECTED — pour griser / masquer le bouton "Accepter"
+    private QuoteStatus status;
+    private String statusLabel;
     private int scoreQualitePrix;     // Ex: 74 (%)
 
     // Champ interne pour le tri, non exposé au front
