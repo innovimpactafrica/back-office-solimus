@@ -143,4 +143,18 @@ class SyndicTravauxDepositTest {
                 .isInstanceOf(BadRequestException.class);
         verify(providerWalletRepository, never()).findByProviderIdForUpdate(anyLong());
     }
+
+    @Test
+    void syndicCannotPayFromWallet_whenCoOwnerAcceptedTheQuote() {
+        User coOwner = new User();
+        coOwner.setId(69L);
+        request.setQuoteAcceptedBy(coOwner);
+
+        assertThatThrownBy(() -> service.payDeposit(48L,
+                SyndicPayDepositDTO.builder().montant(new BigDecimal("500")).build()))
+                .isInstanceOf(com.example.solimus.exceptions.ForbiddenException.class)
+                .hasMessageContaining("copropriétaire");
+        verify(syndicWalletTransactionRepository, never()).save(any());
+        verify(providerWalletTransactionRepository, never()).save(any());
+    }
 }

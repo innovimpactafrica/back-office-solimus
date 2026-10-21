@@ -435,7 +435,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         User currentSyndic = getCurrentUser();
 
         // Récupère l'intervention, erreur si introuvable
-        InterventionRequest request = interventionRepository.findById(interventionId)
+        InterventionRequest request = interventionRepository.findByIdForUpdate(interventionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
 
         // Vérifie que la résidence appartient bien au syndic connecté
@@ -481,9 +481,22 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         request.setSelectedProvider(acceptedQuote.getProvider());
         request.setQuoteAcceptedAt(LocalDateTime.now());
         request.setTotalAmount(acceptedQuote.getTotalAmount());
+        // Le syndic devient le payeur (acompte et solde depuis son wallet)
+        request.setQuoteAcceptedBy(currentSyndic);
         request.addStatusHistory(InterventionStatus.QUOTE_VALIDATED, currentSyndic);
 
         interventionRepository.save(request);
+    }
+
+    // Le syndic paie depuis son wallet les travaux dont il a validé le devis. Si c'est le copropriétaire
+    // qui a accepté le devis de sa propre demande, c'est lui qui paie (Wave / Orange Money) : jamais les deux.
+    // Interventions antérieures à cette règle (quoteAcceptedBy null) : comportement inchangé.
+    private void assertSyndicIsPayer(InterventionRequest request, User currentSyndic) {
+        User acceptedBy = request.getQuoteAcceptedBy();
+        if (acceptedBy != null && !acceptedBy.getId().equals(currentSyndic.getId())) {
+            throw new ForbiddenException(
+                    "Le devis a été accepté par le copropriétaire : l'acompte et le solde sont payés par lui (Wave / Orange Money).");
+        }
     }
 
     // =========================================================================
@@ -615,6 +628,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         if (!request.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
             throw new ForbiddenException("Vous n'êtes pas autorisé à effectuer ce paiement");
         }
+        assertSyndicIsPayer(request, currentSyndic);
 
         if (request.getSelectedProvider() == null) {
             throw new BadRequestException("Aucun prestataire n'est sélectionné pour cette intervention");
@@ -770,6 +784,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         if (!request.getResidence().getSyndic().getId().equals(currentSyndic.getId())) {
             throw new ForbiddenException("Vous n'êtes pas autorisé à effectuer ce paiement");
         }
+        assertSyndicIsPayer(request, currentSyndic);
 
         if (request.getStatus() != InterventionStatus.FINISHED) {
             throw new BadRequestException("Les travaux ne sont pas encore terminés");

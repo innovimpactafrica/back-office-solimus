@@ -471,10 +471,7 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
             throw new ForbiddenException("Accès non autorisé à cette intervention");
         }
 
-        // 1.Bloquer si l'intervention est gérée par le syndic (partie commune)
-        if (request.getManagementMode() == InterventionManagementMode.SYNDIC) {
-            throw new ForbiddenException("Les devis de cette intervention sont gérés par le syndic.");
-        }
+        // Le copropriétaire consulte les devis de ses propres interventions, quel que soit le mode de gestion
 
         // 2. Récupérer le devis et vérifier qu'il appartient bien à cette intervention
         Quote quote = quoteRepository.findById(quoteId)
@@ -582,10 +579,9 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
             throw new ForbiddenException("Vous n'êtes pas autorisé à accepter un devis sur cette demande");
         }
 
-        // 2.Bloquer si l'intervention est gérée par le syndic (partie commune)
-        if (request.getManagementMode() == InterventionManagementMode.SYNDIC) {
-            throw new ForbiddenException("Les devis de cette intervention sont gérés par le syndic.");
-        }
+        // Règle : le copropriétaire accepte les devis de SES interventions (quel que soit le mode de
+        // gestion) ; le syndic peut aussi valider ceux de ses résidences. Le premier qui accepte
+        // devient le payeur (quoteAcceptedBy) — la ligne est verrouillée (findByIdForUpdate).
 
         // 3. Vérifier qu'aucun prestataire n'est déjà sélectionné
         if (request.getSelectedProvider() != null) {
@@ -620,7 +616,35 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
         request.setSelectedProvider(acceptedQuote.getProvider());
         request.setQuoteAcceptedAt(LocalDateTime.now());
         request.setTotalAmount(acceptedQuote.getTotalAmount());
+        request.setQuoteAcceptedBy(currentOwner);
         request.addStatusHistory(InterventionStatus.QUOTE_VALIDATED, currentOwner);
+
+        // Le syndic de la résidence est informé : c'est le copropriétaire qui paiera ces travaux
+        User syndic = request.getResidence() != null ? request.getResidence().getSyndic() : null;
+        if (syndic != null) {
+            notificationService.sendPush(syndic.getId(), "Devis accepté par un copropriétaire",
+                    currentOwner.getFirstName() + " " + currentOwner.getLastName() + " a accepté le devis de "
+                            + acceptedQuote.getTotalAmount() + " FCFA TTC pour \"" + request.getTitle()
+                            + "\". Acompte et solde seront réglés par le copropriétaire.");
+        }
+    }
+
+    // Le copropriétaire paie l'acompte et le solde des travaux s'il est le demandeur ET qu'il a lui-même
+    // accepté le devis. Interventions antérieures (quoteAcceptedBy null) : règle d'origine — travaux
+    // privatifs gérés par le copropriétaire (mode OWNER, appartement).
+    private void assertOwnerIsPayer(InterventionRequest request, User currentOwner) {
+        if (request.getOwner() == null || !request.getOwner().getId().equals(currentOwner.getId())) {
+            throw new ForbiddenException("Accès non autorisé à cette intervention");
+        }
+        User acceptedBy = request.getQuoteAcceptedBy();
+        boolean ownerPays = acceptedBy != null
+                ? acceptedBy.getId().equals(currentOwner.getId())
+                : request.getManagementMode() == InterventionManagementMode.OWNER
+                    && request.getLocationType() != IncidentLocationType.PARTIE_COMMUNE;
+        if (!ownerPays) {
+            throw new ForbiddenException(
+                    "Le devis de cette intervention a été validé par le syndic : le paiement est effectué par le syndic.");
+        }
     }
 
     @Override
@@ -629,19 +653,11 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
         User currentOwner = getCurrentUser();
 
         // 1. Vérifier que l'intervention existe et appartient au copropriétaire
-        InterventionRequest request = interventionRequestRepository.findById(interventionId)
+        InterventionRequest request = interventionRequestRepository.findByIdForUpdate(interventionId) /* verrou : pas de double initiation */
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
 
-        if (request.getOwner() == null || !request.getOwner().getId().equals(currentOwner.getId())) {
-            throw new ForbiddenException("Accès non autorisé à cette intervention");
-        }
-
-        // 2. Bloquer le paiement si géré par le syndic
-        if (request.getManagementMode() == InterventionManagementMode.SYNDIC
-                || request.getLocationType() == IncidentLocationType.PARTIE_COMMUNE) {
-            throw new ForbiddenException(
-                    "Cette intervention est gérée par le syndic. Le paiement doit être effectué par le syndic.");
-        }
+        // Le copropriétaire ne paie que les travaux dont il a lui-même accepté le devis
+        assertOwnerIsPayer(request, currentOwner);
 
         // 3. Vérifier si un acompte existe déjà pour cette intervention
         Optional<PaymentProvider> existingPayment = paymentRepository
@@ -741,16 +757,8 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
         InterventionRequest request = interventionRequestRepository.findById(interventionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
 
-        if (request.getOwner() == null || !request.getOwner().getId().equals(currentOwner.getId())) {
-            throw new ForbiddenException("Accès non autorisé à cette intervention");
-        }
-
-        // 2. Bloquer si l'intervention est gérée par le syndic (partie commune)
-        if (request.getManagementMode() == InterventionManagementMode.SYNDIC
-                || request.getLocationType() == IncidentLocationType.PARTIE_COMMUNE) {
-            throw new ForbiddenException(
-                    "Cette intervention est gérée par le syndic. Le paiement doit être effectué par le syndic.");
-        }
+        // Le copropriétaire ne paie que les travaux dont il a lui-même accepté le devis
+        assertOwnerIsPayer(request, currentOwner);
 
         // 3. Retourner le récapitulatif financier
         return BalanceSummaryDTO.builder()
@@ -767,19 +775,11 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
         User currentOwner = getCurrentUser();
 
         // 1. Vérifier que l'intervention existe et appartient au copropriétaire
-        InterventionRequest request = interventionRequestRepository.findById(interventionId)
+        InterventionRequest request = interventionRequestRepository.findByIdForUpdate(interventionId) /* verrou : pas de double initiation */
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
 
-        if (request.getOwner() == null || !request.getOwner().getId().equals(currentOwner.getId())) {
-            throw new ForbiddenException("Accès non autorisé à cette intervention");
-        }
-
-        // 2. Bloquer le paiement si géré par le syndic
-        if (request.getManagementMode() == InterventionManagementMode.SYNDIC
-                || request.getLocationType() == IncidentLocationType.PARTIE_COMMUNE) {
-            throw new ForbiddenException(
-                    "Cette intervention est gérée par le syndic. Le paiement doit être effectué par le syndic.");
-        }
+        // Le copropriétaire ne paie que les travaux dont il a lui-même accepté le devis
+        assertOwnerIsPayer(request, currentOwner);
 
         // 3. Vérifier que les travaux sont terminés
         if (request.getStatus() != InterventionStatus.FINISHED) {
@@ -793,9 +793,31 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
         // - Si AUCUN acompte n'a été versé : depositAmount = 0, donc solde = montant
         // total du devis / ex: (remainingAmount = 75 000 (totalAmount) - 0
         // (depositAmount) = 75000 le total)
+        // Un acompte encore en cours de paiement fausserait le solde (TTC − acompte) : on attend son issue
+        paymentRepository.findByInterventionRequestIdAndType(interventionId, PaymentType.ACOMPTE)
+                .filter(p -> p.getStatus() == PaymentStatus.PENDING)
+                .ifPresent(p -> {
+                    throw new BadRequestException("Un paiement d'acompte est en cours : attendez sa confirmation avant de payer le solde");
+                });
+
         BigDecimal solde = request.getRemainingAmount() != null
                 ? request.getRemainingAmount()
                 : BigDecimal.ZERO;
+
+        // Acompte = TTC : rien à payer, les travaux sont validés et l'intervention clôturée directement
+        if (solde.compareTo(BigDecimal.ZERO) <= 0) {
+            request.addStatusHistory(InterventionStatus.FINAL_VALIDATION, currentOwner);
+            request.setValidatedAt(LocalDateTime.now());
+            interventionRequestRepository.save(request);
+            if (request.getResidence() != null) {
+                statusRecalculationService.recalculateResidenceHealthStatus(request.getResidence());
+            }
+            return PaymentResponseDTO.builder()
+                    .success(true)
+                    .message("Travaux validés : aucun solde restant, intervention clôturée.")
+                    .amountToPay(BigDecimal.ZERO)
+                    .build();
+        }
 
         // 5. Vérifier si un solde existe déjà pour cette intervention
         Optional<PaymentProvider> existingPayment = paymentRepository

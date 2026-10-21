@@ -145,6 +145,12 @@ public class InterventionRequest {
     @Column(name = "quote_accepted_at")
     private LocalDateTime quoteAcceptedAt; // Date d'acceptation du devis
 
+    // Qui a accepté le devis — et donc qui paie acompte et solde : le copropriétaire (Wave / Orange
+    // Money) ou le syndic (wallet). Null pour les interventions antérieures à cette règle.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "quote_accepted_by_id")
+    private User quoteAcceptedBy;
+
     // --- Gestion Financière ---
     // Montant total du devis accepté
     @Column(name = "total_amount")

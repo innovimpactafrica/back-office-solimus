@@ -16,6 +16,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import com.example.solimus.entities.ProviderWallet;
+import com.example.solimus.entities.ProviderWalletTransaction;
+import com.example.solimus.enums.ProviderWalletTransactionCategory;
+import com.example.solimus.repositories.ProviderWalletRepository;
+import com.example.solimus.repositories.ProviderWalletTransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,6 +53,8 @@ public class PaymentConfirmationService {
     private final SyndicWalletTransactionRepository syndicWalletTransactionRepository;
     private final ProviderService providerService;
     private final WalletService walletService;
+    private final ProviderWalletRepository providerWalletRepository;
+    private final ProviderWalletTransactionRepository providerWalletTransactionRepository;
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
     private final SyndicSubscriptionRepository syndicSubscriptionRepository;
     private final SyndicProfileRepository syndicProfileRepository;
@@ -160,11 +167,14 @@ public class PaymentConfirmationService {
                     payment.setPaidAt(LocalDateTime.now());
                     paymentRepository.save(payment);
 
-                    // Le paiement provient du Mobile Money (argent externe) → on crédite le wallet du prestataire
-                    walletService.creditWallet(payment.getProvider().getId(), payment.getAmount());
-
                     // Synchronisation financière de la demande d'intervention
                     InterventionRequest req = payment.getInterventionRequest();
+
+                    // Le copropriétaire a payé par Mobile Money (argent externe) → le wallet du prestataire est
+                    // crédité du montant payé, dans son grand livre, rattaché à l'intervention. Wallet créé à la
+                    // volée s'il n'existe pas, et verrouillé (pas de crédit concurrent incohérent). Le paiement
+                    // est déjà COMPLETED ci-dessus : un callback rejoué s'arrête au contrôle anti-doublon.
+                    creditProviderForOwnerPayment(payment, req);
                     if (payment.getType() == PaymentType.ACOMPTE) {
                         // Après acompte : depositAmount = montant acompte versé
                         // remainingAmount = totalAmount - acompte
@@ -940,6 +950,31 @@ public class PaymentConfirmationService {
                                 "message", "Paiement charge exceptionnelle introuvable : " + ref
                         )
                 ));
+    }
+
+    // Crédit du wallet prestataire après confirmation d'un acompte (PAY-) ou d'un solde (SOL-) payé par
+    // le copropriétaire (TouchPay hosted ou Wave / Orange Money via GU) — même grand livre que les
+    // paiements du syndic (catégorie INTERVENTION_PAYMENT = argent mobile money reçu)
+    private void creditProviderForOwnerPayment(PaymentProvider payment, InterventionRequest req) {
+        User provider = payment.getProvider();
+        ProviderWallet wallet = providerWalletRepository.findByProviderIdForUpdate(provider.getId())
+                .orElseGet(() -> providerWalletRepository.save(ProviderWallet.builder().provider(provider).build()));
+
+        String kind = payment.getType() == PaymentType.ACOMPTE ? "Acompte" : "Solde final";
+        ProviderWalletTransaction credit = new ProviderWalletTransaction();
+        credit.setWallet(wallet);
+        credit.setCategory(ProviderWalletTransactionCategory.INTERVENTION_PAYMENT);
+        credit.setAmount(payment.getAmount());
+        credit.setLabel(kind + " — " + (req != null ? req.getTitle() : payment.getReference()));
+        credit.setInterventionRequest(req);
+        credit.setTransactionDate(LocalDateTime.now());
+        providerWalletTransactionRepository.save(credit);
+
+        notificationService.sendPush(provider.getId(), kind + " reçu",
+                payment.getAmount() + " FCFA crédités sur votre wallet"
+                        + (req != null ? " pour \"" + req.getTitle() + "\"" : "") + ".");
+        log.info("Wallet prestataire {} crédité de {} FCFA ({} {})", provider.getId(), payment.getAmount(),
+                kind, payment.getReference());
     }
 
     // =========================================================================

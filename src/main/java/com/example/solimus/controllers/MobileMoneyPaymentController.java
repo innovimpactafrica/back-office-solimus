@@ -17,6 +17,7 @@ import com.example.solimus.dtos.payment.MobileMoneyPaymentResponseDTO;
 import com.example.solimus.dtos.provider.subscription.InitiateSubscriptionPaymentDTO;
 import com.example.solimus.dtos.syndic.subscription.InitiateSyndicPlanChangeDTO;
 import com.example.solimus.dtos.syndic.subscription.RenewSyndicSubscriptionDTO;
+import com.example.solimus.dtos.syndic.PaymentResponseDTO;
 import com.example.solimus.dtos.syndic.travaux.PayDepositDTO;
 import com.example.solimus.enums.ChargeType;
 import com.example.solimus.enums.MobileMoneyOperator;
@@ -279,8 +280,17 @@ public class MobileMoneyPaymentController {
         ValiderTravauxDTO dto = new ValiderTravauxDTO();
         dto.setMethode(operator.getPaymentMethod());
         mobileMoneyPaymentService.preflight(phoneNumber, returnUrl, cancelUrl);
-        String reference = ownerTravauxService.validateAndPayBalance(interventionId, dto).getTransactionReference();
-        return ResponseEntity.ok(pay(reference, operator, phoneNumber, returnUrl, cancelUrl));
+        PaymentResponseDTO balance = ownerTravauxService.validateAndPayBalance(interventionId, dto);
+        if (balance.getTransactionReference() == null) {
+            // Acompte = TTC : intervention clôturée sans paiement, rien à envoyer à Wave / Orange Money
+            return ResponseEntity.ok(MobileMoneyPaymentResponseDTO.builder()
+                    .success(true)
+                    .message(balance.getMessage())
+                    .operator(operator)
+                    .amount(java.math.BigDecimal.ZERO)
+                    .build());
+        }
+        return ResponseEntity.ok(pay(balance.getTransactionReference(), operator, phoneNumber, returnUrl, cancelUrl));
     }
 
     // =========================================================================
