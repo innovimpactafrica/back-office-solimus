@@ -11,10 +11,12 @@ public final class PasswordGeneratorUtil {
     private PasswordGeneratorUtil() {
     }
 
-    private static final String UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    private static final String LOWER = "abcdefghijklmnopqrstuvwxyz";
-    private static final String DIGITS = "0123456789";
-    private static final String SPECIAL = "!@#$%&*";
+    // Sans caractères ambigus à la lecture d'un email (I / l / 1, O / 0) : l'utilisateur recopie le
+    // mot de passe temporaire à la main — un "I" lu comme "l" donnait "Identifiants incorrects"
+    private static final String UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    private static final String LOWER = "abcdefghijkmnopqrstuvwxyz";
+    private static final String DIGITS = "23456789";
+    private static final String SPECIAL = "!@#$%*";
     private static final String ALL_CHARS = UPPER + LOWER + DIGITS + SPECIAL;
     private static final int PASSWORD_LENGTH = 10;
 
