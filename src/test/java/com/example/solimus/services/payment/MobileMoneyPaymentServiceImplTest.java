@@ -153,6 +153,7 @@ class MobileMoneyPaymentServiceImplTest {
         ReflectionTestUtils.setField(service, "backendBaseUrl", "https://api.solimus.sn");
         ReflectionTestUtils.setField(service, "syndicReturnUrl", "https://syndic.solimus.sn/app/parametres");
         ReflectionTestUtils.setField(service, "adminReturnUrl", "https://bo.solimus.sn");
+        ReflectionTestUtils.setField(service, "adminSyndicCreatedReturnUrl", "https://bo.solimus.sn/syndics");
         ReflectionTestUtils.setField(service, "signingKey", "cle-de-test");
 
         syndic = new User();
@@ -279,6 +280,24 @@ class MobileMoneyPaymentServiceImplTest {
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("return_url");
         assertThat(lastBody.get()).isNull();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void adminSyndicCreation_returnsToSyndicsList() {
+        SyndicSubscription sub = new SyndicSubscription();
+        sub.setTransactionRef("SYN-ABC123DEF456");
+        sub.setAmountPaid(new BigDecimal("15000"));
+        sub.setPaymentStatus(PaymentStatus.PENDING);
+        sub.setInitiatedBy(syndic); // payeur courant du test
+        when(syndicSubscriptionRepository.findByTransactionRef("SYN-ABC123DEF456")).thenReturn(Optional.of(sub));
+
+        MobileMoneyPaymentResponseDTO res = service.initiatePayment("SYN-ABC123DEF456", MobileMoneyOperator.WAVE, null);
+
+        Map<String, Object> infos = (Map<String, Object>) lastBody.get().get("additionnalInfos");
+        assertThat((String) infos.get("return_url"))
+                .startsWith("https://bo.solimus.sn/syndics?paymentStatus=success&ref=SYN-ABC123DEF456&sig=");
+        assertThat(res.getReturnUrl()).isEqualTo("https://bo.solimus.sn/syndics?paymentStatus=success&ref=SYN-ABC123DEF456");
     }
 
     @Test

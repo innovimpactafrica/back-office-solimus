@@ -101,6 +101,9 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
     private String syndicReturnUrl;
     @Value("${GUTOUCH_ADMIN_RETURN_URL:https://bo.solimus.sn}")
     private String adminReturnUrl;
+    // Création d'un syndic par l'admin (SYN-) : retour direct sur la liste des syndics
+    @Value("${GUTOUCH_ADMIN_SYNDIC_CREATED_RETURN_URL:https://bo.solimus.sn/syndics}")
+    private String adminSyndicCreatedReturnUrl;
     // Clé de signature des liens de retour (HMAC) — réutilise le secret JWT déjà configuré
     @Value("${jwt.secret}")
     private String signingKey;
@@ -586,7 +589,7 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
         }
         return switch (audienceOf(reference)) {
             case SYNDIC_WEB -> appendQuery(syndicReturnUrl, query);
-            case ADMIN_WEB -> appendQuery(adminReturnUrl, query);
+            case ADMIN_WEB -> appendQuery(adminPage(reference), query);
             case MOBILE -> backendBaseUrl + "/api/payments/intouch/" + (success ? "payment-success" : "payment-failed")
                     + "?num_command=" + URLEncoder.encode(reference, StandardCharsets.UTF_8);
         };
@@ -611,7 +614,13 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
                 + "&ref=" + URLEncoder.encode(reference, StandardCharsets.UTF_8) + "&sig=" + sign(reference);
         return audienceOf(reference) == Audience.SYNDIC_WEB
                 ? appendQuery(syndicReturnUrl, query)
-                : appendQuery(adminReturnUrl, query);
+                : appendQuery(adminPage(reference), query);
+    }
+
+    // Page du back-office admin selon le parcours : liste des syndics après création d'un syndic
+    // (SYN-), sinon la page admin par défaut (renouvellements SYA- / PRA-)
+    private String adminPage(String reference) {
+        return reference.startsWith("SYN-") ? adminSyndicCreatedReturnUrl : adminReturnUrl;
     }
 
     // URL de retour fournie par le client : absolue, avec un schéma (https, http ou deep link de l'app),

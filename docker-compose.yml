@@ -75,6 +75,7 @@ services:
       GUTOUCH_BACKEND_BASE_URL: ${GUTOUCH_BACKEND_BASE_URL:-https://api.solimus.sn}
       GUTOUCH_SYNDIC_RETURN_URL: ${GUTOUCH_SYNDIC_RETURN_URL:-https://syndic.solimus.sn/app/parametres}
       GUTOUCH_ADMIN_RETURN_URL: ${GUTOUCH_ADMIN_RETURN_URL:-https://bo.solimus.sn}
+      GUTOUCH_ADMIN_SYNDIC_CREATED_RETURN_URL: ${GUTOUCH_ADMIN_SYNDIC_CREATED_RETURN_URL:-https://bo.solimus.sn/syndics}
 
     ports:
       - "8086:8082"
