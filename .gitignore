@@ -41,3 +41,4 @@ src/main/resources/firebase-service-account.json
 # Fichiers de crash JVM (générés automatiquement, ne pas committer)
 hs_err_pid*.log
 replay_pid*.log
+prompt.md

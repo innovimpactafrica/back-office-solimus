@@ -17,6 +17,7 @@ import com.example.solimus.repositories.PaymentRepository;
 import com.example.solimus.repositories.ProviderSubscriptionRepository;
 import com.example.solimus.repositories.SyndicSubscriptionRepository;
 import com.example.solimus.repositories.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
@@ -30,6 +31,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -91,6 +93,11 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
     private String httpMethod;
     @Value("${GUTOUCH_PARTNER_NAME:Solimus}")
     private String partnerName;
+    // Codes de service GU par opérateur : modifiables sans redéploiement si GU attribue un autre code à l'agence
+    @Value("${GUTOUCH_SERVICE_CODE_WAVE:}")
+    private String waveServiceCode;
+    @Value("${GUTOUCH_SERVICE_CODE_OM:}")
+    private String orangeMoneyServiceCode;
 
     // --- URLs : backend public (callback + retour), puis pages de l'application après paiement ---
     // URL PUBLIQUE du backend (callback GU, retour mobile). GU refuse les URLs localhost ("Request
@@ -116,7 +123,8 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
                                          UserRepository userRepository,
                                          PaymentConfirmationService paymentConfirmationService,
                                          MobileMoneyTransactionRepository transactionRepository,
-                                         PlatformTransactionManager transactionManager) {
+                                         PlatformTransactionManager transactionManager,
+                                         @Value("${GUTOUCH_READ_TIMEOUT_MS:60000}") int readTimeoutMs) {
         this.syndicSubscriptionRepository = syndicSubscriptionRepository;
         this.providerSubscriptionRepository = providerSubscriptionRepository;
         this.chargeCallPaymentRepository = chargeCallPaymentRepository;
@@ -132,7 +140,8 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
 
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(10_000);
-        factory.setReadTimeout(30_000);
+        // Orange Money : GU attend la réponse de l'opérateur avant de répondre, plus lent que Wave
+        factory.setReadTimeout(readTimeoutMs);
         this.restClient = RestClient.builder().requestFactory(factory).build();
     }
 
@@ -221,9 +230,9 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
         body.put("amount", amount);
         body.put("callback", backendBaseUrl + "/api/payments/intouch/gutouch/callback");
         body.put("recipientNumber", phone);
-        body.put("serviceCode", operator.getServiceCode());
+        body.put("serviceCode", serviceCode(operator));
 
-        Map<String, Object> response = callGateway(reference, body);
+        Map<String, Object> response = callGateway(reference, operator, body);
 
         // Seule une initiation explicitement acceptée par GU est un succès. Tout le reste (ex: HTTP 300
         // "Une operation similaire a ete envoyee il y a moins de 1 minutes", statut numérique d'erreur,
@@ -234,7 +243,8 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
                 && (operator != MobileMoneyOperator.WAVE || paymentUrlCheck != null);
         if (!accepted) {
             String detail = asString(firstNonNull(response, "detailMessage", "message", "description"));
-            log.warn("GU n'a pas initié {} : statut={}, détail={}", reference, status, detail);
+            log.warn("GU n'a pas initié {} ({}) : statut={}, détail={}, réponse={}", reference, operator, status, detail,
+                    truncate(String.valueOf(response)));
             failQuietly(reference);
             throw new PaymentGatewayException(detail != null
                     ? label(operator) + " : " + detail + (detail.toLowerCase().contains("similaire")
@@ -267,7 +277,7 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
                         : "Paiement initié. Validez la demande reçue sur votre téléphone " + label(operator) + ".")
                 .reference(reference)
                 .operator(operator)
-                .serviceCode(operator.getServiceCode())
+                .serviceCode(serviceCode(operator))
                 .amount(BigDecimal.valueOf(amount))
                 .fees(asDecimal(firstNonNull(response, "fees", "honoraires")))
                 .idFromGU(asString(firstNonNull(response, "idFromGU")))
@@ -280,7 +290,7 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
     }
 
     // Initiation (PUT /{agence}/transaction) : toute erreur HTTP libère la tentative et renvoie un 502 clair
-    private Map<String, Object> callGateway(String reference, Map<String, Object> body) {
+    private Map<String, Object> callGateway(String reference, MobileMoneyOperator operator, Map<String, Object> body) {
         try {
             Map<String, Object> response = exchange(HttpMethod.valueOf(httpMethod.trim().toUpperCase()),
                     gatewayUri(), body);
@@ -290,16 +300,23 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
             }
             return response;
         } catch (RestClientResponseException e) {
-            log.error("GU a refusé la transaction {} : HTTP {} — {}", reference, e.getStatusCode().value(),
-                    truncate(e.getResponseBodyAsString()));
+            int code = e.getStatusCode().value();
+            log.error("GU a refusé la transaction {} ({}, serviceCode={}) : HTTP {} — {}", reference, operator,
+                    serviceCode(operator), code, truncate(e.getResponseBodyAsString()));
             failQuietly(reference);
-            throw new PaymentGatewayException(e.getStatusCode().value() == 401
+            String detail = gatewayErrorDetail(e.getResponseBodyAsString());
+            throw new PaymentGatewayException(code == 401
                     ? "Authentification refusée par le service de paiement (HTTP 401) : vérifier GUTOUCH_DIGEST_USERNAME / GUTOUCH_DIGEST_PASSWORD"
-                    : "Le service de paiement a refusé la demande (HTTP " + e.getStatusCode().value() + ")");
+                    : label(operator) + " : " + (detail != null ? detail : "demande refusée par le service de paiement (HTTP " + code + ")"));
         } catch (ResourceAccessException e) {
-            log.error("GU injoignable pour la transaction {} : {}", reference, e.getMessage());
+            log.error("GU injoignable ou trop lent pour la transaction {} ({}) : {}", reference, operator, e.getMessage());
             failQuietly(reference);
-            throw new PaymentGatewayException("Le service de paiement est injoignable, réessayez dans quelques instants");
+            throw new PaymentGatewayException(label(operator) + " : le service de paiement ne répond pas, réessayez dans quelques instants");
+        } catch (RestClientException e) {
+            // Réponse illisible (HTML, texte brut...) : ce n'est pas une erreur interne, mais un refus de GU
+            log.error("Réponse GU illisible pour la transaction {} ({}) : {}", reference, operator, e.getMessage());
+            failQuietly(reference);
+            throw new PaymentGatewayException(label(operator) + " : réponse inattendue du service de paiement, réessayez");
         }
     }
 
@@ -726,6 +743,25 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
         try {
             return new BigDecimal(String.valueOf(value).replace(',', '.').trim());
         } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private String serviceCode(MobileMoneyOperator operator) {
+        String configured = operator == MobileMoneyOperator.WAVE ? waveServiceCode : orangeMoneyServiceCode;
+        return configured != null && !configured.isBlank() ? configured.trim() : operator.getServiceCode();
+    }
+
+    // Message lisible d'une erreur GU (detailMessage / message du JSON), sinon null
+    @SuppressWarnings("unchecked")
+    private static String gatewayErrorDetail(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return null;
+        }
+        try {
+            Map<String, Object> json = new ObjectMapper().readValue(responseBody, Map.class);
+            return asString(firstNonNull(json, "detailMessage", "message", "description", "error"));
+        } catch (Exception e) {
             return null;
         }
     }
