@@ -8,7 +8,7 @@ import lombok.Data;
 
 /**
  * DTO utilisé par l'utilisateur pour définir son mot de passe après avoir cliqué
- * sur le lien d'activation envoyé par l'admin.
+ * sur le lien d'activation envoyé par l'admin (ci dessous).
  */
 @Data
 public class ActivateAccountRequestDTO {
