@@ -4,6 +4,7 @@ import com.example.solimus.entities.ChargeCallPayment;
 import com.example.solimus.entities.ExceptionalCallPayment;
 import com.example.solimus.entities.PaymentProvider;
 import com.example.solimus.entities.SyndicSubscription;
+import com.example.solimus.entities.User;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.SubscriptionStatus;
 import com.example.solimus.repositories.ChargeCallPaymentRepository;
@@ -14,9 +15,12 @@ import com.example.solimus.repositories.SyndicSubscriptionRepository;
 import com.example.solimus.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -32,6 +36,7 @@ public class PaymentSchedulerServiceImpl implements PaymentSchedulerService {
     private final SyndicSubscriptionRepository syndicSubscriptionRepository;
     private final SyndicProfileRepository syndicProfileRepository;
     private final UserRepository userRepository;
+    private final PlatformTransactionManager transactionManager;
 
     /**
      * Fait passer en FAILED les paiements PENDING créés depuis plus de 5 minutes
@@ -151,40 +156,46 @@ public class PaymentSchedulerServiceImpl implements PaymentSchedulerService {
     }
 
     /**
-     * Purge les comptes syndics orphelins : créés en même temps qu'un abonnement dont le paiement
-     * n'a jamais abouti (FAILED, et le syndic n'a donc jamais été activé). On supprime l'abonnement,
-     * le profil société puis le compte utilisateur — dans cet ordre pour respecter les contraintes de
-     * clé étrangère — afin de libérer l'email/téléphone pour une nouvelle tentative de création.
+     * Purge les comptes syndics orphelins : compte jamais activé (PENDING) dont tous les abonnements
+     * sont FAILED (aucun paiement n'a jamais abouti). On supprime TOUS ses abonnements, le profil société
+     * puis le compte utilisateur — dans cet ordre pour respecter les clés étrangères — afin de libérer
+     * l'email/téléphone pour une nouvelle tentative de création.
+     * Chaque compte est purgé dans sa propre transaction : un compte impossible à supprimer (autre
+     * donnée liée) est journalisé et n'empêche pas la purge des suivants.
      * S'exécute toutes les minutes, juste après le passage en FAILED des abonnements expirés.
      */
     @Scheduled(cron = "30 * * * * *") // toutes les minutes, décalé de 30s après l'expiration
-    @Transactional
     public void purgeOrphanedSyndicAccounts() {
 
-        // 1. Récupérer les abonnements FAILED dont le syndic n'a jamais été activé donc dont le paiement n'a jamais abouti, une seule fois, pour ce compte
-        List<SyndicSubscription> orphaned = syndicSubscriptionRepository
-                .findFailedWithNeverActivatedSyndic();
+        // 1. Récupérer les syndics jamais activés dont aucun paiement n'a jamais abouti (une seule fois par compte)
+        List<User> orphaned = syndicSubscriptionRepository.findNeverPaidPendingSyndics();
 
         // Rien à purger si aucun compte orphelin
         if (orphaned.isEmpty()) {
             return;
         }
 
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+
         // 2. Supprimer chaque compte orphelin dans l'ordre imposé par les clés étrangères :
-        // abonnement → profil → utilisateur
-        for (SyndicSubscription subscription : orphaned) {
-            // On garde l'id et l'email avant suppression, pour le log et pour retrouver le profil
-            Long userId = subscription.getSyndic().getId();
-            String email = subscription.getSyndic().getEmail();
-
-            // Supprime d'abord l'abonnement (référence le user, doit partir en premier)
-            syndicSubscriptionRepository.delete(subscription);
-            // Supprime le profil société s'il existe
-            syndicProfileRepository.findByUserId(userId).ifPresent(syndicProfileRepository::delete);
-            // Supprime enfin le compte utilisateur — libère l'email/téléphone pour une nouvelle tentative
-            userRepository.deleteById(userId);
-
-            log.info("Compte syndic orphelin purgé (paiement jamais abouti) : {}", email);
+        // abonnements → profil → utilisateur
+        for (User syndic : orphaned) {
+            Long userId = syndic.getId();
+            String email = syndic.getEmail();
+            try {
+                tx.executeWithoutResult(status -> {
+                    // Tous les abonnements du syndic (il peut y avoir plusieurs tentatives échouées)
+                    syndicSubscriptionRepository.deleteAll(syndicSubscriptionRepository.findBySyndicId(userId));
+                    // Profil société s'il existe
+                    syndicProfileRepository.findByUserId(userId).ifPresent(syndicProfileRepository::delete);
+                    // Enfin le compte utilisateur — libère l'email/téléphone pour une nouvelle tentative
+                    userRepository.deleteById(userId);
+                });
+                log.info("Compte syndic orphelin purgé (paiement jamais abouti) : {}", email);
+            } catch (DataAccessException e) {
+                log.warn("Purge impossible du compte syndic orphelin {} (id={}) : {}",
+                        email, userId, e.getMostSpecificCause().getMessage());
+            }
         }
     }
 }

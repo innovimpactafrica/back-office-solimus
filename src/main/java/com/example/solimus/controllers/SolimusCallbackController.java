@@ -48,6 +48,33 @@ public class SolimusCallbackController {
     @Value("${app.syndic-web-app-redirect-url}")
     private String syndicWebAppRedirectUrl;
 
+    // Back-office admin : liste des syndics après création (SYN-), page par défaut pour les
+    // renouvellements (SYA-/PRA-) — mêmes variables que le parcours GU (MobileMoneyPaymentServiceImpl)
+    @Value("${GUTOUCH_ADMIN_SYNDIC_CREATED_RETURN_URL:https://bo.solimus.sn/syndics}")
+    private String adminSyndicCreatedRedirectUrl;
+    @Value("${GUTOUCH_ADMIN_RETURN_URL:https://bo.solimus.sn}")
+    private String adminWebAppRedirectUrl;
+
+    // URL de l'application web à rouvrir après paiement, ou null pour le mobile (WebView)
+    private String webAppRedirectUrl(String reference) {
+        if (reference.startsWith("SYR-")) return syndicWebAppRedirectUrl;
+        if (reference.startsWith("SYN-")) return adminSyndicCreatedRedirectUrl;
+        if (reference.startsWith("SYA-") || reference.startsWith("PRA-")) return adminWebAppRedirectUrl;
+        return null;
+    }
+
+    private static String redirectPage(String baseUrl, String status, String reference) {
+        String target = baseUrl + (baseUrl.contains("?") ? "&" : "?") + "paymentStatus=" + status
+                + "&ref=" + java.net.URLEncoder.encode(reference, java.nio.charset.StandardCharsets.UTF_8);
+        return "<html><body>" +
+                "<script>window.location.replace(" + jsString(target) + ");</script>" +
+                "</body></html>";
+    }
+
+    private static String jsString(String value) {
+        return "'" + value.replace("\\", "\\\\").replace("'", "\\'").replace("<", "\\u003c") + "'";
+    }
+
 
     // =========================================================================
     // Routes de redirection TouchPay — retour navigateur/WebView.
@@ -82,16 +109,14 @@ public class SolimusCallbackController {
             paymentConfirmationService.routeCallbackByPrefix(reference, true);
         }
 
-        // SYR- vient du self-service syndic sur le web : on renvoie vers l'app Angular, pas vers le
-        // mobile (l'app web n'a pas de WebView interceptant l'URL)
-        if (reference.startsWith("SYR-")) {
-            String webRedirect = syndicWebAppRedirectUrl + "?paymentStatus=success&ref=" + reference;
-            return "<html><body>" +
-                    "<script>window.location.href = '" + webRedirect + "';</script>" +
-                    "</body></html>";
+        // Parcours web (SYR- syndic, SYN-/SYA-/PRA- admin) : on renvoie vers l'application web, pas
+        // vers le mobile (l'app web n'a pas de WebView interceptant l'URL)
+        String webApp = webAppRedirectUrl(reference);
+        if (webApp != null) {
+            return redirectPage(webApp, "success", reference);
         }
 
-        // Mobile (CPY-/ECP-/SYN-/...) : la WebView a déjà intercepté cette URL (contient "payment-success")
+        // Mobile (CPY-/ECP-/SUB-/...) : la WebView a déjà intercepté cette URL (contient "payment-success")
         // avant ce rendu — cette page ne sert que de filet de sécurité si jamais elle s'affiche quand même
         return "<html><body style=\"text-align:center; font-family:sans-serif; margin-top:50px;\">" +
                 "<h1 style=\"color:#0f8a3b;\">Paiement réussi</h1>" +
@@ -125,12 +150,10 @@ public class SolimusCallbackController {
             paymentConfirmationService.routeCallbackByPrefix(reference, false);
         }
 
-        // Même logique que pour le succès : SYR- retourne vers l'app Angular
-        if (reference.startsWith("SYR-")) {
-            String webRedirect = syndicWebAppRedirectUrl + "?paymentStatus=failed&ref=" + reference;
-            return "<html><body>" +
-                    "<script>window.location.href = '" + webRedirect + "';</script>" +
-                    "</body></html>";
+        // Même logique que pour le succès : parcours web → application web
+        String webApp = webAppRedirectUrl(reference);
+        if (webApp != null) {
+            return redirectPage(webApp, "failed", reference);
         }
 
         // Mobile : la WebView a déjà intercepté cette URL (contient "payment-failed") avant ce rendu

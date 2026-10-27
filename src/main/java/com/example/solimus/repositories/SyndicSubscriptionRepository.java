@@ -1,6 +1,7 @@
 package com.example.solimus.repositories;
 
 import com.example.solimus.entities.SyndicSubscription;
+import com.example.solimus.entities.User;
 import com.example.solimus.enums.PaymentStatus;
 import com.example.solimus.enums.SubscriptionStatus;
 import org.springframework.data.domain.Page;
@@ -24,11 +25,22 @@ public interface SyndicSubscriptionRepository extends JpaRepository<SyndicSubscr
     // Abonnements encore PENDING créés avant ce seuil — utilisé par le scheduler d'expiration
     List<SyndicSubscription> findByStatusAndCreatedAtBefore(SubscriptionStatus status, LocalDateTime dateTime);
 
-    // Abonnements FAILED dont le syndic n'a jamais été activé (aucun paiement n'a jamais abouti pour ce compte) —
-    // ce sont des comptes orphelins à purger pour libérer l'email/téléphone
-    //s.syndic.status désigne le champ status de User(userSyndic) (Compte utilisateur)
-    @Query("SELECT s FROM SyndicSubscription s WHERE s.status = 'FAILED' AND s.syndic.status = 'PENDING'")
-    List<SyndicSubscription> findFailedWithNeverActivatedSyndic();
+    // Syndics orphelins à purger pour libérer l'email/téléphone : compte jamais activé (PENDING) dont
+    // TOUS les abonnements sont FAILED. Un seul abonnement non FAILED (payé, actif, expiré, ou une
+    // tentative encore PENDING) suffit à protéger le compte — un renouvellement (SYA-/SYR-) échoué ne
+    // doit jamais faire supprimer un syndic qui a déjà payé. Un syndic n'est renvoyé qu'une fois,
+    // même s'il a plusieurs tentatives échouées.
+    @Query("SELECT DISTINCT s.syndic FROM SyndicSubscription s " +
+           "WHERE s.syndic.status = 'PENDING' " +
+           "AND NOT EXISTS (" +
+           "  SELECT 1 FROM SyndicSubscription s2 " +
+           "  WHERE s2.syndic.id = s.syndic.id " +
+           "  AND (s2.status <> 'FAILED' OR s2.paymentStatus = 'COMPLETED')" +
+           ")")
+    List<User> findNeverPaidPendingSyndics();
+
+    // Toutes les lignes d'abonnement d'un syndic — utilisé par la purge des comptes orphelins
+    List<SyndicSubscription> findBySyndicId(Long syndicId);
 
     // Abonnement le plus récent d'un syndic (par date de fin), TOUS statuts confondus — utilisé
     // uniquement en repli sur la page "Mon abonnement" quand aucun abonnement ACTIVE n'existe
