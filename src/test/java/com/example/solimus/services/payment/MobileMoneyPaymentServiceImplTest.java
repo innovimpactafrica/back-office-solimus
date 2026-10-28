@@ -141,7 +141,7 @@ class MobileMoneyPaymentServiceImplTest {
         service = new MobileMoneyPaymentServiceImpl(syndicSubscriptionRepository,
                 mock(ProviderSubscriptionRepository.class), mock(ChargeCallPaymentRepository.class),
                 mock(ExceptionalCallPaymentRepository.class), mock(PaymentRepository.class),
-                userRepository, confirmation, trackingRepo, tm);
+                userRepository, confirmation, trackingRepo, tm, 30_000);
         ReflectionTestUtils.setField(service, "apiBaseUrl", "http://127.0.0.1:" + gu.getAddress().getPort() + "/v1");
         ReflectionTestUtils.setField(service, "agencyCode", "AGENCE_TEST");
         ReflectionTestUtils.setField(service, "loginAgent", "login_test");
@@ -304,6 +304,22 @@ class MobileMoneyPaymentServiceImplTest {
     void orangeMoney_usesMerchantServiceCode() {
         service.initiatePayment(REF, MobileMoneyOperator.ORANGE_MONEY, null);
         assertThat(lastBody.get().get("serviceCode")).isEqualTo("PAIEMENTMARCHANDOM");
+    }
+
+    @Test
+    void orangeMoney_frenchInitiatedStatus_isAccepted() {
+        // Réponse réelle de GU pour PAIEMENTMARCHANDOM : champs et statut en français, accentué
+        responseBody = """
+                {"idFromClient":"%s","idFromGU":"1793183770853","montant":15,"honoraires":0.225,
+                 "serviceCode":"PAIEMENTMARCHANDOM","Nombre du destinataire":"772002430",
+                 "dateTime":1793183770853,"statut":"INITIÉ","numTransaction":"1793183770853"}
+                """.formatted(REF);
+        MobileMoneyPaymentResponseDTO res = service.initiatePayment(REF, MobileMoneyOperator.ORANGE_MONEY, null);
+        assertThat(res.isSuccess()).isTrue();
+        assertThat(res.getStatus()).isEqualTo("INITIÉ");
+        assertThat(res.getIdFromGU()).isEqualTo("1793183770853");
+        assertThat(res.getPaymentUrl()).isNull();
+        assertThat(tracked.get(REF).getStatus()).isEqualTo("INITIATED");
     }
 
     @Test

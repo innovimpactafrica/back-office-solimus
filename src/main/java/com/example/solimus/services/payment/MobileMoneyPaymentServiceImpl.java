@@ -53,14 +53,18 @@ import java.util.Set;
 @Slf4j
 public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService {
 
-    // Statuts finaux GU (GET /{agence}/transaction/{idFromClient}) : SUCCEED = payé, FAILED = échoué.
-    // Variantes tolérées par prudence ; tout autre statut (INITIATED...) = paiement encore en cours.
+    // Statuts GU, comparés après normalizeStatus (majuscules, sans accents) : GU répond selon le service
+    // en anglais (Wave : "INITIATED", "SUCCEED") ou en français (Orange Money : "INITIÉ", "SUCCÈS", "ÉCHEC").
+    // Statuts finaux (GET /{agence}/transaction/{idFromClient}) : payé ou échoué ; tout autre = en cours.
     private static final Set<String> SUCCESS_STATUSES =
-            Set.of("SUCCEED", "SUCCEEDED", "SUCCESSFUL", "SUCCESSFULL", "SUCCESS", "PAID", "COMPLETED");
+            Set.of("SUCCEED", "SUCCEEDED", "SUCCESSFUL", "SUCCESSFULL", "SUCCESS", "PAID", "COMPLETED",
+                    "SUCCES", "REUSSI", "REUSSIE", "PAYE", "PAYEE", "VALIDE", "VALIDEE");
     // Statuts GU d'une initiation acceptée (le paiement reste à valider par le client)
-    private static final Set<String> INITIATED_STATUSES = Set.of("INITIATED", "PENDING", "SUCCESSFUL", "SUCCESS");
+    private static final Set<String> INITIATED_STATUSES =
+            Set.of("INITIATED", "PENDING", "SUCCESSFUL", "SUCCESS", "INITIE", "INITIEE", "EN COURS", "EN ATTENTE");
     private static final Set<String> FAILURE_STATUSES =
-            Set.of("FAILED", "FAILLED", "FAILURE", "CANCELLED", "CANCELED", "ECHEC", "ÉCHEC", "ERROR", "EXPIRED", "REJECTED");
+            Set.of("FAILED", "FAILLED", "FAILURE", "CANCELLED", "CANCELED", "ECHEC", "ECHOUE", "ECHOUEE", "ERROR",
+                    "ERREUR", "EXPIRED", "EXPIRE", "EXPIREE", "REJECTED", "REJETE", "REJETEE", "ANNULE", "ANNULEE");
 
     private final SyndicSubscriptionRepository syndicSubscriptionRepository;
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
@@ -239,7 +243,7 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
         // ou Wave sans payment_url) est un refus : la tentative est marquée échouée et le message GU renvoyé.
         String status = asString(firstNonNull(response, "status", "statut"));
         String paymentUrlCheck = asString(firstNonNull(response, "payment_url", "paymentUrl"));
-        boolean accepted = status != null && INITIATED_STATUSES.contains(status.trim().toUpperCase())
+        boolean accepted = status != null && INITIATED_STATUSES.contains(normalizeStatus(status))
                 && (operator != MobileMoneyOperator.WAVE || paymentUrlCheck != null);
         if (!accepted) {
             String detail = asString(firstNonNull(response, "detailMessage", "message", "description"));
@@ -412,7 +416,7 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
         if (guStatus == null) {
             return null;
         }
-        String normalized = guStatus.trim().toUpperCase();
+        String normalized = normalizeStatus(guStatus);
         boolean success = SUCCESS_STATUSES.contains(normalized);
         boolean failed = !success && FAILURE_STATUSES.contains(normalized);
 
@@ -764,6 +768,13 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
         } catch (Exception e) {
             return null;
         }
+    }
+
+    // "Initié" → "INITIE", "  succès " → "SUCCES" : les accents et la casse de GU ne comptent pas
+    private static String normalizeStatus(String status) {
+        return java.text.Normalizer.normalize(status.trim(), java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toUpperCase(java.util.Locale.ROOT);
     }
 
     private static String truncate(String s) {
