@@ -1,0 +1,47 @@
+# ════════════════════════════════════════════════════════════════════════════════════════════
+# MySQL LOCAL JETABLE (développement uniquement — jamais en production).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local-db.yml up -d --build
+#
+# Dans .env : DB_HOST=db, DB_PORT=3306, DB_USER=<utilisateur applicatif, PAS root>,
+#             DB_PASSWORD=<...>, DB_ROOT_PASSWORD=<...>
+#
+# Fichier séparé plutôt qu'un profil « local-db » dans docker-compose.yml : compose évalue ${VAR:?}
+# dans TOUS les services, même ceux d'un profil inactif ; DB_ROOT_PASSWORD serait alors exigé aussi
+# en mode base externe. Ajouter ce fichier avec -f joue le rôle du profil.
+# Aucun port publié : MySQL n'est joignable que depuis le réseau local-db.
+# ════════════════════════════════════════════════════════════════════════════════════════════
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      - MYSQL_DATABASE=${DB_NAME:?DB_NAME obligatoire}
+      # L'image mysql refuse MYSQL_USER=root : utilisateur applicatif distinct obligatoire.
+      - MYSQL_USER=${DB_USER:?DB_USER obligatoire (pas root)}
+      - MYSQL_PASSWORD=${DB_PASSWORD:?DB_PASSWORD obligatoire}
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD obligatoire pour le MySQL local}
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - solimus_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - local-db
+
+  app:
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - local-db
+
+volumes:
+  solimus_db_data:
+
+networks:
+  local-db:
