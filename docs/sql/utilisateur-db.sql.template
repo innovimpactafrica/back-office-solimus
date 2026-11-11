@@ -1,0 +1,54 @@
+-- ═══════════════════════════════════════════════════════════════════════════════════════════
+-- Utilisateur MySQL DÉDIÉ à back-office-solimus (api.solimus.sn).
+-- Objectif : ne plus utiliser root, ni le compte du projet voisin (back-office-solimus-gestion).
+--
+-- MODÈLE : NE PAS EXÉCUTER TEL QUEL. Remplacer chaque <PLACEHOLDER>, puis l'exécuter en tant
+-- qu'administrateur sur le serveur MySQL. Ne jamais committer la version remplie.
+--
+--   <SCHEMA>              schéma de ce projet (valeur de DB_NAME), ex. solimus_db
+--   <APP_USER>            nouvel utilisateur, ex. solimus_app (valeur future de DB_USER)
+--   <APP_PASSWORD>        mot de passe long et aléatoire (valeur future de DB_PASSWORD)
+--   <IP_SERVEUR_DEPLOIEMENT>  IP sous laquelle MySQL VOIT les conteneurs Dokploy (voir l'étape 0)
+--
+-- Étape 0 — trouver l'IP réellement vue par MySQL (pendant que l'application tourne encore) :
+--   SELECT DISTINCT SUBSTRING_INDEX(host, ':', 1) AS ip, user
+--   FROM information_schema.processlist WHERE db = '<SCHEMA>';
+-- Si MySQL tourne sur le serveur Dokploy lui-même, cette IP peut être une passerelle Docker
+-- (172.x.x.x) plutôt que l'IP publique : créer l'utilisateur pour l'IP observée.
+-- ═══════════════════════════════════════════════════════════════════════════════════════════
+
+-- 1. Utilisateur limité à l'IP du serveur de déploiement, connexions plafonnées
+--    (pool de 8 x 2 pendant un déploiement « start-first » = 16 ; marge comprise).
+CREATE USER '<APP_USER>'@'<IP_SERVEUR_DEPLOIEMENT>'
+  IDENTIFIED BY '<APP_PASSWORD>'
+  WITH MAX_USER_CONNECTIONS 20;
+
+-- 2. Droits sur SON schéma uniquement.
+--    Données : SELECT, INSERT, UPDATE, DELETE.
+--    DDL : l'application tourne avec spring.jpa.hibernate.ddl-auto=update (pas de Flyway) :
+--    Hibernate crée les tables, colonnes, index et clés étrangères au démarrage
+--    -> CREATE, ALTER, INDEX, REFERENCES.
+--    Vues : une entité est mappée sur une vue (hbm2ddl.extra_physical_table_types=VIEW)
+--    -> SHOW VIEW ; CREATE VIEW seulement si l'équipe la (re)crée avec ce compte.
+GRANT SELECT, INSERT, UPDATE, DELETE,
+      CREATE, ALTER, INDEX, REFERENCES,
+      SHOW VIEW, CREATE VIEW
+  ON `<SCHEMA>`.* TO '<APP_USER>'@'<IP_SERVEUR_DEPLOIEMENT>';
+
+-- DROP n'est PAS accordé : ddl-auto=update ne supprime jamais de table. L'ajouter seulement
+-- pour une opération de maintenance ponctuelle, puis le retirer :
+--   GRANT DROP ON `<SCHEMA>`.* TO '<APP_USER>'@'<IP_SERVEUR_DEPLOIEMENT>';
+
+-- 3. Vérification (doit lister uniquement les droits ci-dessus, sur <SCHEMA> seulement)
+SHOW GRANTS FOR '<APP_USER>'@'<IP_SERVEUR_DEPLOIEMENT>';
+
+-- 4. Bascule, dans cet ordre :
+--    a) Dokploy > Environment : DB_USER=<APP_USER>, DB_PASSWORD=<APP_PASSWORD> ; redéployer ;
+--    b) vérifier /actuator/health/readiness = 200 et le log « identifiants acceptés » ;
+--    c) seulement ensuite, retirer à root l'accès distant s'il n'est plus utilisé par personne :
+--         SELECT user, host FROM mysql.user WHERE user = 'root';
+--       (ne pas toucher root@localhost) — à décider avec le propriétaire du serveur MySQL.
+
+-- 5. Si MySQL a bloqué l'hôte après des échecs répétés (erreur 1129, max_connect_errors) :
+--    FLUSH HOSTS;          -- MySQL < 8.0.23
+--    TRUNCATE TABLE performance_schema.host_cache;   -- MySQL >= 8.0.23
