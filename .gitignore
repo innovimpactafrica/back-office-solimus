@@ -32,8 +32,14 @@ build/
 ### VS Code ###
 .vscode/
 
-# Local environment variables
+# Variables d'environnement locales : jamais committées (seul .env.example l'est)
 .env
+.env.*
+!.env.example
+
+# Logs locaux ou copiés depuis un serveur
+logs.txt
+*.log
 
 # Firebase service account (contains sensitive credentials)
 src/main/resources/firebase-service-account.json
