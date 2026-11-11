@@ -50,7 +50,8 @@ public class SecurityConfig {
                         .requestMatchers("/touchpay-bridge.html").permitAll()
                         .requestMatchers("/api/files/**", "/uploads/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers("/actuator/**").permitAll()
+                        // Sondes Docker / Swarm (liveness, readiness) et info : publiques, détails masqués
+                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                         .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN")
                         .requestMatchers("/api/syndic/**").hasAnyAuthority("ROLE_SYNDIC")
                         .requestMatchers("/api/coowner/**").hasAnyAuthority("ROLE_COPROPRIETAIRE")
