@@ -43,7 +43,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-solimus}
 
       # Dialecte MySQL forcé
-      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.MySQL8Dialect
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.MySQLDialect
 
       # Clé JWT
       JWT_SECRET: ${JWT_SECRET:-your-jwt-secret-example}
