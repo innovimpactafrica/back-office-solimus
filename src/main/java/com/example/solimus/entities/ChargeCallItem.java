@@ -1,5 +1,6 @@
 package com.example.solimus.entities;
 
+import com.example.solimus.enums.ProofStatus;
 import com.example.solimus.enums.ChargeItemPaymentStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -90,6 +91,13 @@ public class ChargeCallItem {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ChargeItemPaymentStatus status = ChargeItemPaymentStatus.PENDING;
+
+    // Statut de la DERNIÈRE preuve de paiement hors plateforme (null = aucune preuve déposée).
+    // N'influence aucun calcul financier : le statut ci-dessus ne passe à PAID qu'à la validation du syndic.
+    // varchar (et non enum MySQL) : de nouvelles valeurs pourront être ajoutées sans migration.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "proof_status", columnDefinition = "varchar(30)")
+    private ProofStatus proofStatus;
 
     // =========================================================================
     // RELANCE / PÉNALITÉ DE RETARD (timeline "Option C" — voir PaymentStatusUtils)

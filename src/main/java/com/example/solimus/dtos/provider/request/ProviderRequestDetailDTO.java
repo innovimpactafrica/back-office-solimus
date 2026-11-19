@@ -43,4 +43,7 @@ public class ProviderRequestDetailDTO {
     // Les 6 étapes du workflow, avec leur état et leur date
     private List<WorkflowStepDTO> workflowSteps;
 
+    // Distance entre le prestataire et la résidence, en km — null si inconnue
+    private Double distanceKm;
+
 }

@@ -23,7 +23,11 @@ public interface ProviderRequestService {
     ProviderRequestsDTO getAvailableRequests(
             ProviderRequestDisplayStatus filterStatus,
             String search,
+            com.example.solimus.enums.ProviderRequestSort sortBy,
             Pageable pageable);
+
+    // Accès du prestataire connecté aux demandes de travaux (solde de wallet minimum)
+    com.example.solimus.dtos.provider.eligibility.ProviderEligibilityDTO getEligibility();
 
     /**
      * Retourne les détails d'une demande pour le prestataire connecté

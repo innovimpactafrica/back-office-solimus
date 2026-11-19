@@ -1,5 +1,6 @@
 package com.example.solimus.services.payment;
 
+import com.example.solimus.services.shared.PaymentChannelPolicy;
 import com.example.solimus.dtos.payment.MobileMoneyPaymentRequestDTO;
 import com.example.solimus.dtos.payment.MobileMoneyPaymentResponseDTO;
 import com.example.solimus.entities.MobileMoneyTransaction;
@@ -74,6 +75,7 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
     private final UserRepository userRepository;
     private final PaymentConfirmationService paymentConfirmationService;
     private final MobileMoneyTransactionRepository transactionRepository;
+    private final PaymentChannelPolicy paymentChannelPolicy;
     private final TransactionTemplate readOnlyTx;
     private final TransactionTemplate writeTx;
     private final RestClient restClient;
@@ -127,6 +129,7 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
                                          UserRepository userRepository,
                                          PaymentConfirmationService paymentConfirmationService,
                                          MobileMoneyTransactionRepository transactionRepository,
+                                         PaymentChannelPolicy paymentChannelPolicy,
                                          PlatformTransactionManager transactionManager,
                                          @Value("${GUTOUCH_READ_TIMEOUT_MS:60000}") int readTimeoutMs) {
         this.syndicSubscriptionRepository = syndicSubscriptionRepository;
@@ -137,6 +140,7 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
         this.userRepository = userRepository;
         this.paymentConfirmationService = paymentConfirmationService;
         this.transactionRepository = transactionRepository;
+        this.paymentChannelPolicy = paymentChannelPolicy;
         this.writeTx = new TransactionTemplate(transactionManager);
 
         this.readOnlyTx = new TransactionTemplate(transactionManager);
@@ -167,6 +171,8 @@ public class MobileMoneyPaymentServiceImpl implements MobileMoneyPaymentService 
         if (operator == null) {
             throw new BadRequestException("L'opérateur est obligatoire (WAVE ou ORANGE_MONEY)");
         }
+        // Charges (CPY-/ECP-) et travaux (PAY-/SOL-) : payés hors plateforme, sur preuve. Abonnements inchangés.
+        paymentChannelPolicy.assertReferencePayableOnline(reference);
         return switch (operator) {
             case WAVE -> createPaymentWave(reference, dto);
             case ORANGE_MONEY -> createPaymentOM(reference, dto);

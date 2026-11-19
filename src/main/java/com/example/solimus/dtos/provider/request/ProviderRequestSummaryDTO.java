@@ -33,4 +33,7 @@ public class ProviderRequestSummaryDTO {
     private LocalDateTime createdAt;
 
     private List<String> photoUrls; // URLs signées des photos pour affichage dans la liste
+
+    // Distance entre le prestataire (GPS récent, sinon zone de référence) et la résidence, en km — null si inconnue
+    private Double distanceKm;
 }

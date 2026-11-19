@@ -17,6 +17,7 @@ public class ProviderProfileDTO {
 
     // Infos affichées en haut
     private String companyName;
+    private Long specialtyId;
     private String specialtyName;
     private String email;
     private String phone;

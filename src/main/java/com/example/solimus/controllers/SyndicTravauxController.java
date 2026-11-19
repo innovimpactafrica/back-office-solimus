@@ -289,7 +289,7 @@ public class SyndicTravauxController {
         return ResponseEntity.ok(syndicTravauxService.getBudgetItemOptions(id));
     }
 
-    @Operation(summary = "Payer un acompte")
+    @Operation(summary = "[Désactivé] Payer un acompte depuis le wallet", deprecated = true, description = "Désactivé : paiement hors plateforme avec preuve (voir les endpoints …/payment-proof). Répond 400 tant que le paiement en ligne est désactivé. ")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Acompte payé avec succès",
                     content = @Content(schema = @Schema(implementation = SyndicPaymentResultDTO.class))),
@@ -322,7 +322,7 @@ public class SyndicTravauxController {
         return ResponseEntity.ok(syndicTravauxService.getBalanceSummary(id));
     }
 
-    @Operation(summary = "Payer le solde final et clôturer")
+    @Operation(summary = "[Désactivé] Payer le solde final depuis le wallet et clôturer", deprecated = true, description = "Désactivé : paiement hors plateforme avec preuve (voir les endpoints …/payment-proof). Répond 400 tant que le paiement en ligne est désactivé. ")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Solde payé et intervention clôturée avec succès",
                     content = @Content(schema = @Schema(implementation = SyndicPaymentResultDTO.class))),

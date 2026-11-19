@@ -1,6 +1,7 @@
 package com.example.solimus.services.syndic.charge;
 
 
+import com.example.solimus.enums.ProofStatus;
 import com.example.solimus.dtos.syndic.charge.*;
 import com.example.solimus.entities.*;
 import com.example.solimus.enums.*;
@@ -2217,6 +2218,10 @@ public class ChargeServiceImpl implements ChargeService {
         List<ChargeCallItem> unpaidItems = chargeCallItemRepository.findAllUnpaidItems();
 
         for (ChargeCallItem item : unpaidItems) {
+            // Paiement déclaré avec preuve, en attente de la validation du syndic : ni relance ni
+            // pénalité tant que le syndic n'a pas statué (rejet -> la timeline reprend normalement)
+            if (item.getProofStatus() == ProofStatus.PENDING_VALIDATION) continue;
+
             LocalDate dueDate = item.getChargeCall().getDueDate();
             if (dueDate == null) continue;
 
@@ -2589,6 +2594,8 @@ public class ChargeServiceImpl implements ChargeService {
         // Lit le statut déjà posé au moment du paiement confirmé — ne recalcule jamais
         if (item.getStatus() == ChargeItemPaymentStatus.PAID) return "PAYE";
         if (item.getStatus() == ChargeItemPaymentStatus.NO_AMOUNT_DUE) return "NON_APPLICABLE";
+        // Preuve de paiement hors plateforme déposée, en attente de la validation du syndic
+        if (item.getProofStatus() == ProofStatus.PENDING_VALIDATION) return "EN_ATTENTE_VALIDATION";
 
         LocalDate dueDate = item.getChargeCall().getDueDate();
         PaymentDelayStatus delayStatus = PaymentStatusUtils.computeDelayStatus(dueDate, false, LocalDate.now());

@@ -235,7 +235,7 @@ public class OwnerTravauxController {
         return ResponseEntity.ok("Devis accepté avec succès");
     }
 
-    @Operation(summary = "Payer un acompte")
+    @Operation(summary = "[Désactivé] Payer un acompte en ligne", deprecated = true, description = "Désactivé : paiement hors plateforme avec preuve (voir les endpoints …/payment-proof). Répond 400 tant que le paiement en ligne est désactivé. ")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Acompte payé avec succès",
                     content = @Content(schema = @Schema(implementation = PaymentResponseDTO.class))),
@@ -270,7 +270,8 @@ public class OwnerTravauxController {
         return ResponseEntity.ok(ownerTraveauxService.getBalanceSummary(interventionId));
     }
 
-    @Operation(summary = "Valider les travaux et payer le solde")
+    @Operation(summary = "Valider les travaux et payer le solde en ligne (désactivé sauf solde nul)", deprecated = true, description = "Désactivé : paiement hors plateforme avec preuve (voir les endpoints …/payment-proof). Répond 400 tant que le paiement en ligne est désactivé. "
+            + "Seul le cas « acompte = TTC, rien à payer » reste traité : l'intervention est clôturée.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Solde payé et travaux validés avec succès",
                     content = @Content(schema = @Schema(implementation = PaymentResponseDTO.class))),

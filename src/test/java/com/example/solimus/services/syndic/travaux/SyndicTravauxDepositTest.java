@@ -1,5 +1,6 @@
 package com.example.solimus.services.syndic.travaux;
 
+import com.example.solimus.services.shared.PaymentChannelPolicy;
 import com.example.solimus.dtos.syndic.travaux.SyndicPayDepositDTO;
 import com.example.solimus.dtos.syndic.travaux.SyndicPaymentResultDTO;
 import com.example.solimus.entities.BudgetItem;
@@ -53,6 +54,8 @@ class SyndicTravauxDepositTest {
     @Mock private ProviderWalletTransactionRepository providerWalletTransactionRepository;
     @Mock private com.example.solimus.repositories.ActivityLogRepository activityLogRepository;
 
+    // Canal de paiement en ligne autorisé (mock sans effet) : ce test couvre la logique du paiement wallet
+    @Mock private PaymentChannelPolicy paymentChannelPolicy;
     @InjectMocks private SyndicTravauxServiceImpl service;
 
     private User syndic;

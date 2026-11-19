@@ -56,6 +56,11 @@ public class ExceptionalCallPayment {
 
     private LocalDateTime paidAt;
 
+    // true : paiement effectué HORS de Solimus et confirmé sur preuve (aucun fonds n'a transité par
+    // la plateforme, aucun wallet n'est mouvementé). null/false : paiement en ligne (TouchPay / GU).
+    @Column(name = "off_platform")
+    private Boolean offPlatform;
+
     @CreationTimestamp
     private LocalDateTime createdAt;
 }

@@ -226,7 +226,7 @@ public class MobileMoneyPaymentController {
     // COPROPRIÉTAIRE : CHARGES ET TRAVAUX
     // =========================================================================
 
-    @Operation(summary = "[Copropriétaire] Payer une charge (courante ou exceptionnelle) avec Wave / Orange Money",
+    @Operation(deprecated = true, summary = "[Désactivé] [Copropriétaire] Payer une charge (courante ou exceptionnelle) avec Wave / Orange Money",
             description = "Même logique que POST /api/coowner/charges/{type}/{id}/payment (type = REGULAR ou EXCEPTIONAL). "
                     + "Le montant est le reste dû calculé par le serveur. Body facultatif : {\"return_url\", \"cancel_url\"} de l'app mobile.")
     @PostMapping("/api/coowner/charges/{type}/{id}/payment/mobile-money")
@@ -246,7 +246,7 @@ public class MobileMoneyPaymentController {
         return ResponseEntity.ok(pay(reference, operator, phoneNumber, returnUrl, cancelUrl));
     }
 
-    @Operation(summary = "[Copropriétaire] Payer l'acompte de travaux avec Wave / Orange Money",
+    @Operation(deprecated = true, summary = "[Désactivé] [Copropriétaire] Payer l'acompte de travaux avec Wave / Orange Money",
             description = "Même logique que POST /api/owner/travaux/interventions/{id}/deposit (montant ≤ TTC du devis). "
                     + "Body : {\"montant\": 10000, \"return_url\", \"cancel_url\"} (URLs facultatives de l'app mobile).")
     @PostMapping("/api/owner/travaux/interventions/{interventionId}/deposit/mobile-money")
@@ -265,7 +265,7 @@ public class MobileMoneyPaymentController {
         return ResponseEntity.ok(pay(reference, operator, phoneNumber, body.getReturnUrl(), body.getCancelUrl()));
     }
 
-    @Operation(summary = "[Copropriétaire] Valider les travaux et payer le solde avec Wave / Orange Money",
+    @Operation(deprecated = true, summary = "[Désactivé] [Copropriétaire] Valider les travaux et payer le solde avec Wave / Orange Money",
             description = "Même logique que POST /api/owner/travaux/interventions/{id}/balance (solde = TTC − acompte). "
                     + "Body facultatif : {\"return_url\", \"cancel_url\"} de l'app mobile.")
     @PostMapping("/api/owner/travaux/interventions/{interventionId}/balance/mobile-money")

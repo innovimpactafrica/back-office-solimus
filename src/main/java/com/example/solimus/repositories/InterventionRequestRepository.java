@@ -173,6 +173,18 @@ public interface InterventionRequestRepository extends JpaRepository<Interventio
     long countAllNotifiedRequests(@Param("provider") User provider);
 
 
+    // Demandes dont la diffusion progressive doit avancer d'un palier : diffusées, encore sans
+    // prestataire choisi, toujours ouvertes aux devis, dernier palier plus ancien que le seuil,
+    // diffusion commencée après notBefore (au-delà, plus d'élargissement)
+    @Query("SELECT i.id FROM InterventionRequest i " +
+           "WHERE i.broadcastStartedAt IS NOT NULL AND i.broadcastStartedAt >= :notBefore " +
+           "AND i.selectedProvider IS NULL " +
+           "AND i.status IN :openStatuses " +
+           "AND i.lastBroadcastAt <= :threshold")
+    List<Long> findBroadcastIdsDue(@Param("openStatuses") java.util.Collection<InterventionStatus> openStatuses,
+                                   @Param("threshold") LocalDateTime threshold,
+                                   @Param("notBefore") LocalDateTime notBefore);
+
     // Récupère une demande précise UNIQUEMENT si ce prestataire fait partie de la liste des notifiés
     Optional<InterventionRequest> findByIdAndNotifiedProvidersContaining(Long id, User provider);
 

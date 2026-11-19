@@ -103,6 +103,9 @@ class OwnerTravauxPaymentFlowTest {
         ReflectionTestUtils.setField(service, "paymentRepository", paymentRepo);
         ReflectionTestUtils.setField(service, "notificationService", mock(NotificationService.class));
         ReflectionTestUtils.setField(service, "touchPayBridgeUrlTemplate", "https://bridge/%s");
+        // Paiement en ligne des travaux autorisé : ce test couvre le flux en ligne d'origine
+        ReflectionTestUtils.setField(service, "paymentChannelPolicy",
+                new com.example.solimus.services.shared.PaymentChannelPolicy(true, true));
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("copro@example.test", null, List.of()));
