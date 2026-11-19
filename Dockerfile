@@ -31,10 +31,9 @@ ENV JAVA_OPTS="-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Duser.timezo
 # Port d'écoute de l'API dans le conteneur : c'est CE port que le domaine Dokploy doit viser.
 EXPOSE 8082
 
-# Liveness seulement (ni base, ni SMTP, ni MinIO) : Swarm ne route que vers un conteneur sain,
-# et une lenteur de la base partagée ne fait pas tuer l'API. start-period : démarrage ~40 s + marge.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
-    CMD wget -qO- http://127.0.0.1:8082/actuator/health/liveness || exit 1
+# Pas de HEALTHCHECK dans l'image : Traefik ignore un conteneur « starting » ou « unhealthy »
+# (réponse « no available server »). Sonde disponible pour un contrôle manuel ou Dokploy :
+#   wget -qO- http://127.0.0.1:8082/actuator/health/liveness
 
 # exec : Java reçoit directement SIGTERM, l'arrêt gracieux (server.shutdown=graceful) s'applique.
 # Le profil « docker » est le profil de production.

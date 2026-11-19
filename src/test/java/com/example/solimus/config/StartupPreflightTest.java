@@ -26,7 +26,8 @@ class StartupPreflightTest {
                 .withProperty("DB_NAME", "fake")
                 .withProperty("DB_USER", "fake")
                 .withProperty("DB_PASSWORD", "fake")
-                .withProperty("JWT_SECRET", "fake-secret-fake-secret-fake-secret-42");
+                .withProperty("JWT_SECRET", "fake-secret-fake-secret-fake-secret-42")
+                .withProperty("APP_STARTUP_FAIL_FAST", "true");
         environment.setActiveProfiles("docker");
         return environment;
     }
@@ -65,6 +66,16 @@ class StartupPreflightTest {
         assertThatThrownBy(() -> new StartupPreflight().initialize(context(environment)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Base MySQL injoignable sur 127.0.0.1:" + closedPort);
+    }
+
+    @Test
+    void onlyDiagnosesByDefault_startupGoesOnLikeBefore() {
+        MockEnvironment environment = production()
+                .withProperty("APP_STARTUP_FAIL_FAST", "false")
+                .withProperty("JWT_SECRET", "")
+                .withProperty("APP_STARTUP_DB_CHECK", "false");
+
+        assertThatCode(() -> new StartupPreflight().initialize(context(environment))).doesNotThrowAnyException();
     }
 
     @Test

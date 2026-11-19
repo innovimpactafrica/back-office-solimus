@@ -30,7 +30,9 @@ import java.util.regex.Pattern;
  *       connexion JDBC. L'erreur MySQL est traduite par son code (1045, 1040, 1129, 1049…). Ni le
  *       message brut, qui contient le nom d'utilisateur, ni les identifiants ne sont journalisés.</li>
  * </ol>
- * En cas d'échec, l'application s'arrête (code de sortie 1) : Swarm la redémarre, et le log dit pourquoi.
+ * Par défaut, ces contrôles DIAGNOSTIQUENT seulement : un échec écrit une ligne ERROR et le démarrage
+ * continue exactement comme sans eux (une base vraiment injoignable fait ensuite échouer Hibernate, comme
+ * avant). {@code APP_STARTUP_FAIL_FAST=true} arrête l'application dès le premier échec.
  * Contrôle de la base désactivable par {@code APP_STARTUP_DB_CHECK=false}.
  */
 @Slf4j
@@ -46,6 +48,18 @@ public class StartupPreflight implements ApplicationContextInitializer<Configura
     @Override
     public void initialize(ConfigurableApplicationContext context) {
         ConfigurableEnvironment environment = context.getEnvironment();
+        try {
+            run(environment);
+        } catch (RuntimeException e) {
+            // La cause est déjà journalisée en ERROR par le contrôle lui-même
+            if (environment.getProperty("APP_STARTUP_FAIL_FAST", Boolean.class, false)) {
+                throw e;
+            }
+            log.warn("Contrôle de démarrage en échec ({}) : démarrage poursuivi (APP_STARTUP_FAIL_FAST=false).", e.getMessage());
+        }
+    }
+
+    void run(ConfigurableEnvironment environment) {
         boolean production = Arrays.asList(environment.getActiveProfiles()).contains("docker");
 
         if (production) {
@@ -66,7 +80,7 @@ public class StartupPreflight implements ApplicationContextInitializer<Configura
         }
         if (!missing.isEmpty()) {
             String names = String.join(", ", missing);
-            log.error("Démarrage impossible : variables d'environnement obligatoires vides ou absentes : {}. "
+            log.error("Configuration incomplète : variables d'environnement obligatoires vides ou absentes : {}. "
                     + "Renseignez-les dans Dokploy (onglet Environment de l'application), puis redéployez.", names);
             throw new IllegalStateException("Variables obligatoires manquantes : " + names);
         }
@@ -82,7 +96,7 @@ public class StartupPreflight implements ApplicationContextInitializer<Configura
             url = environment.getProperty("spring.datasource.url", "");
         } catch (IllegalArgumentException e) {
             // Placeholder non résolu : la variable manquante est nommée par le message de Spring.
-            log.error("Démarrage impossible : spring.datasource.url ne peut pas être construite ({}).", e.getMessage());
+            log.error("Problème de démarrage : spring.datasource.url ne peut pas être construite ({}).", e.getMessage());
             throw new IllegalStateException("URL de base de données incomplète", e);
         }
         Matcher matcher = MYSQL_URL.matcher(url);
@@ -106,7 +120,7 @@ public class StartupPreflight implements ApplicationContextInitializer<Configura
             }
         }
         if (tcpError != null) {
-            log.error("Démarrage impossible : la base MySQL {}:{} (DB_HOST / DB_PORT) ne répond pas depuis ce conteneur ({}). "
+            log.error("Problème de démarrage : la base MySQL {}:{} (DB_HOST / DB_PORT) ne répond pas depuis ce conteneur ({}). "
                     + "« timed out » : un pare-feu ignore ce serveur, autorisez son IP publique sur le port {} du serveur MySQL. "
                     + "« refused » : MySQL est arrêté ou n'écoute pas sur ce port. « UnknownHost » : DB_HOST est mal écrit.",
                     host, port, tcpError, port);
@@ -114,17 +128,29 @@ public class StartupPreflight implements ApplicationContextInitializer<Configura
         }
 
         Properties properties = new Properties();
-        properties.setProperty("user", environment.getProperty("spring.datasource.username", ""));
-        properties.setProperty("password", environment.getProperty("spring.datasource.password", ""));
+        properties.setProperty("user", requiredDatasourceProperty(environment, "spring.datasource.username", "DB_USER"));
+        properties.setProperty("password", requiredDatasourceProperty(environment, "spring.datasource.password", "DB_PASSWORD"));
         properties.setProperty("connectTimeout", String.valueOf(timeoutSeconds * 1000));
         properties.setProperty("socketTimeout", String.valueOf(timeoutSeconds * 1000));
         try (Connection ignored = DriverManager.getConnection(url, properties)) {
             log.info("Base MySQL joignable et identifiants acceptés sur {}:{}.", host, port);
         } catch (SQLException e) {
             String cause = explain(e);
-            log.error("Démarrage impossible : MySQL {}:{} répond mais refuse la connexion — code {} / SQLState {} : {}",
+            log.error("Problème de démarrage : MySQL {}:{} répond mais refuse la connexion — code {} / SQLState {} : {}",
                     host, port, e.getErrorCode(), e.getSQLState(), cause);
             throw new IllegalStateException("Connexion MySQL refusée (code " + e.getErrorCode() + ")");
+        }
+    }
+
+    // Identifiant / mot de passe de la base : une variable absente (ex. .env non chargé en local) donne une
+    // ligne ERROR qui la nomme, au lieu d'une pile d'appels « Could not resolve placeholder ».
+    private static String requiredDatasourceProperty(ConfigurableEnvironment environment, String property, String variable) {
+        try {
+            return environment.getProperty(property, "");
+        } catch (IllegalArgumentException e) {
+            log.error("Problème de démarrage : la variable {} n'est pas définie. En local, chargez le .env "
+                    + "(./run-local.sh, ou : set -a; source .env; set +a), puis relancez.", variable);
+            throw new IllegalStateException("Variable " + variable + " manquante");
         }
     }
 
