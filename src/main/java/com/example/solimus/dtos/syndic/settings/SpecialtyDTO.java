@@ -23,4 +23,10 @@ public class SpecialtyDTO {
      * Nom de l'icône pour l'affichage frontend (ex: "plumbing", "electrical")
      */
     private String icon;
+
+    /**
+     * URL publique de l'icône quand elle a été téléversée (fichier MinIO), sinon null :
+     * l'application affiche alors l'icône locale correspondant à « icon ».
+     */
+    private String iconUrl;
 }

@@ -33,4 +33,13 @@ public class MyChargeDetailDTO {
 
     // Quittances rattachées : une par paiement confirmé (même contenu que GET /receipt/{reference})
     private List<ChargePaymentReceiptDTO> receipts;
+
+    // Code du statut affiché : PENDING, PENDING_VALIDATION, PAID, NO_AMOUNT_DUE
+    private String statusCode;
+
+    // true : le copropriétaire peut envoyer une preuve de paiement (POST .../payment-proof)
+    private boolean canSubmitProof;
+
+    // Dernière preuve de paiement déposée (null si aucune) — historique complet : GET .../payment-proofs
+    private com.example.solimus.dtos.payment.proof.ChargePaymentProofDTO latestProof;
 }

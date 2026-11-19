@@ -164,6 +164,18 @@ public class InterventionRequest {
     @Column(name = "remaining_amount")
     private BigDecimal remainingAmount = BigDecimal.ZERO; // Solde restant à payer
 
+    // =========================================================================
+    // DIFFUSION PROGRESSIVE AUX PRESTATAIRES (rayon élargi par paliers, voir InterventionBroadcastService)
+    // =========================================================================
+    @Column(name = "broadcast_started_at")
+    private LocalDateTime broadcastStartedAt; // Début de la diffusion (null = jamais diffusée)
+
+    @Column(name = "broadcast_radius_km")
+    private Double broadcastRadiusKm; // Rayon atteint par la diffusion, en km
+
+    @Column(name = "last_broadcast_at")
+    private LocalDateTime lastBroadcastAt; // Dernier palier de diffusion
+
     // Calcul automatique du solde restant avant persistance
     //Avant de sauvegarder ou modifier l’intervention, on recalcule automatiquement le solde restant
     @PrePersist

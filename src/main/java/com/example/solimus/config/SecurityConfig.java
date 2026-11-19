@@ -46,6 +46,8 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
+                        // Référentiels publics en lecture seule (inscription mobile) : GET uniquement
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/public/**").permitAll()
                         .requestMatchers("/api/payments/bridge/**", "/api/payments/intouch/**").permitAll()
                         .requestMatchers("/touchpay-bridge.html").permitAll()
                         .requestMatchers("/api/files/**", "/uploads/**").permitAll()

@@ -1,5 +1,8 @@
 package com.example.solimus.repositories;
 
+import java.util.Optional;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import com.example.solimus.entities.ChargeCallItem;
 import com.example.solimus.entities.User;
 import com.example.solimus.enums.ChargeItemPaymentStatus;
@@ -16,6 +19,12 @@ import java.util.List;
 
 @Repository
 public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, Long> {
+
+    // Verrou en écriture : dépôt d'une preuve et validation ne s'exécutent jamais en parallèle sur la même ligne
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT i FROM ChargeCallItem i WHERE i.id = :id")
+    Optional<ChargeCallItem> findByIdForUpdate(@Param("id") Long id);
+
 
     /**
      * Récupère les charges courantes d'un copropriétaire
@@ -339,6 +348,9 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     // OwnerChargeServiceImpl.buildPeriodLabel). L'affichage final reste construit en Java, uniquement
     // sur les lignes de la page déjà récupérée — une seule source de vérité pour le libellé affiché.
 
+    // status_raw = statut AFFICHÉ (ChargeDisplayStatus) : PENDING devient PENDING_VALIDATION quand une
+    // preuve de paiement hors plateforme attend la validation du syndic. Le statut financier stocké
+    // (cci.status / eci.status) reste PENDING jusqu'à la validation.
     String MY_CHARGES_CHARGE_BRANCH =
             "SELECT 'CHARGE' AS source_type, " +
             "cci.id AS id, " +
@@ -350,7 +362,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
             "   WHERE p.owner_id = cci.coowner_id AND p.residence_id = r.id) AS property_reference, " +
             "(cci.quote_part + COALESCE(cci.penalty_amount, 0) - COALESCE(cci.paid_amount, 0)) AS remaining_amount, " +
             "cc.due_date AS due_date, " +
-            "cci.status AS status_raw, " +
+            "(CASE WHEN cci.status = 'PENDING' AND cci.proof_status = 'PENDING_VALIDATION' THEN 'PENDING_VALIDATION' ELSE cci.status END) AS status_raw, " +
             "(b.status = 'CLOSED') AS payment_blocked, " +
             "cc.frequency AS frequency, " +
             "cc.period_number AS period_number, " +
@@ -368,7 +380,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
             "WHERE cci.coowner_id = :coOwnerId " +
             "AND (:residenceId IS NULL OR r.id = :residenceId) " +
             "AND (:type IS NULL OR :type = 'REGULAR') " +
-            "AND (:statusRaw IS NULL OR cci.status = :statusRaw) ";
+            "AND (:statusRaw IS NULL OR (CASE WHEN cci.status = 'PENDING' AND cci.proof_status = 'PENDING_VALIDATION' THEN 'PENDING_VALIDATION' ELSE cci.status END) = :statusRaw) ";
 
     String MY_CHARGES_EXCEPTIONAL_BRANCH =
             "SELECT 'EXCEPTIONAL' AS source_type, " +
@@ -381,7 +393,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
             "   WHERE p2.owner_id = eci.co_owner_id AND p2.residence_id = r2.id) AS property_reference, " +
             "(eci.quote_part - COALESCE(eci.paid_amount, 0)) AS remaining_amount, " +
             "NULL AS due_date, " +
-            "eci.status AS status_raw, " +
+            "(CASE WHEN eci.status = 'PENDING' AND eci.proof_status = 'PENDING_VALIDATION' THEN 'PENDING_VALIDATION' ELSE eci.status END) AS status_raw, " +
             "(ec.status = 'CLOSED') AS payment_blocked, " +
             "NULL AS frequency, " +
             "NULL AS period_number, " +
@@ -393,7 +405,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
             "WHERE eci.co_owner_id = :coOwnerId " +
             "AND (:residenceId IS NULL OR r2.id = :residenceId) " +
             "AND (:type IS NULL OR :type = 'EXCEPTIONAL') " +
-            "AND (:statusRaw IS NULL OR eci.status = :statusRaw) ";
+            "AND (:statusRaw IS NULL OR (CASE WHEN eci.status = 'PENDING' AND eci.proof_status = 'PENDING_VALIDATION' THEN 'PENDING_VALIDATION' ELSE eci.status END) = :statusRaw) ";
 
     // Page de "mes charges" (courantes + exceptionnelles fusionnées), triée par échéance croissante
     // (NULL en dernier, comme Comparator.nullsLast), LIMIT/OFFSET géré par la base

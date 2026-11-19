@@ -12,6 +12,14 @@ import com.example.solimus.repositories.InterventionRequestRepository;
 import com.example.solimus.repositories.QuoteItemRepository;
 import com.example.solimus.repositories.QuoteRepository;
 import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.repositories.ProviderProfileRepository;
+import com.example.solimus.dtos.provider.eligibility.ProviderEligibilityDTO;
+import com.example.solimus.services.provider.eligibility.ProviderEligibilityService;
+import com.example.solimus.services.travaux.InterventionBroadcastService;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.JpaSort;
+import java.util.Locale;
 import com.example.solimus.utils.VatUtil;
 import com.example.solimus.services.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -35,14 +43,40 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
     private final EstimatedDelayRepository estimatedDelayRepository;
     private final QuoteItemRepository quoteItemRepository;
     private final NotificationService notificationService;
+    private final ProviderEligibilityService eligibilityService;
+    private final InterventionBroadcastService broadcastService;
+    private final ProviderProfileRepository providerProfileRepository;
 
     //---------------------------------------------------
     // Demandes de Travaux non assignés
     //----------------------------------------------------
     @Override
-    public ProviderRequestsDTO getAvailableRequests(ProviderRequestDisplayStatus filterStatus, String search, Pageable pageable) {
+    @Transactional(readOnly = true)
+    public ProviderRequestsDTO getAvailableRequests(ProviderRequestDisplayStatus filterStatus, String search,
+                                                    ProviderRequestSort sortBy, Pageable requestedPage) {
 
         User currentProvider = getCurrentUser();
+        ProviderRequestSort sort = sortBy != null ? sortBy : ProviderRequestSort.DISTANCE;
+
+        // Accès réservé aux prestataires dont le wallet dépasse le seuil : sinon liste vide + raison
+        ProviderEligibilityDTO eligibility = eligibilityService.getEligibility(currentProvider);
+        if (!eligibility.isEligible()) {
+            return ProviderRequestsDTO.builder()
+                    .totalReceivedRequests(interventionRequestRepository.countAllNotifiedRequests(currentProvider))
+                    .requests(Page.empty(requestedPage))
+                    .eligible(false)
+                    .walletBalance(eligibility.getWalletBalance())
+                    .minimumWalletBalanceExclusive(eligibility.getMinimumBalanceExclusive())
+                    .eligibilityMessage(eligibility.getMessage())
+                    .sortBy(sort)
+                    .build();
+        }
+
+        // Position du prestataire : GPS récent, sinon zone de référence de son profil
+        ProviderProfile profile = providerProfileRepository.findByUser(currentProvider).orElse(null);
+        Optional<double[]> position = profile != null ? broadcastService.providerPosition(profile) : Optional.empty();
+        Pageable pageable = PageRequest.of(requestedPage.getPageNumber(), requestedPage.getPageSize(),
+                buildSort(sort, position));
 
         // Normalisation : null si vide, trim sinon
         String normalizedSearch = (search == null || search.isBlank()) ? null : search.trim();
@@ -87,12 +121,18 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
                     .statusLabel(status.getLabel())
                     .createdAt(request.getCreatedAt())
                     .photoUrls(photoUrls)
+                    .distanceKm(broadcastService.distanceKm(profile, request.getResidence()))
                     .build();
         });
 
         return ProviderRequestsDTO.builder()
                 .totalReceivedRequests(totalReceivedRequests)
                 .requests(dtoPage)
+                .eligible(true)
+                .walletBalance(eligibility.getWalletBalance())
+                .minimumWalletBalanceExclusive(eligibility.getMinimumBalanceExclusive())
+                .eligibilityMessage(eligibility.getMessage())
+                .sortBy(sort)
                 .build();
     }
 
@@ -101,6 +141,9 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
 
         // 1. Récupérer le prestataire connecté
         User currentProvider = getCurrentUser();
+
+        // Accès réservé aux prestataires dont le wallet dépasse le seuil
+        eligibilityService.assertEligible(currentProvider);
 
         // 2. Récupérer la demande UNIQUEMENT si ce prestataire est dans la liste des notifiés
         // — un prestataire ne peut pas consulter une demande qui ne lui a pas été diffusée
@@ -143,6 +186,9 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
                 .contactPhone(contact != null ? contact.getPhone() : "N/A")
                 .contactEmail(contact != null ? contact.getEmail() : "N/A")
                 .workflowSteps(buildWorkflowSteps(request))
+                .distanceKm(providerProfileRepository.findByUser(currentProvider)
+                        .map(p -> broadcastService.distanceKm(p, request.getResidence()))
+                        .orElse(null))
                 .build();
     }
 
@@ -155,6 +201,9 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
     public void createQuote(CreateQuoteDTO dto) {
         // 1. Récupérer le prestataire connecté
         User provider = getCurrentUser();
+
+        // Envoyer un devis suppose de voir la demande : même seuil de wallet
+        eligibilityService.assertEligible(provider);
 
         // 2. Récupération sécurisée : on ne trouve la demande QUE si le prestataire y
         // est rattaché
@@ -344,6 +393,30 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
     //----------------------------------------------------
 
     //***** Récupérer l'utilisateur connecté *****//
+    @Override
+    @Transactional(readOnly = true)
+    public ProviderEligibilityDTO getEligibility() {
+        return eligibilityService.getEligibility(getCurrentUser());
+    }
+
+    // Tri DISTANCE : distance au carré (approximation équirectangulaire, monotone avec la vraie distance
+    // à l'échelle d'une ville) calculée en base, puis la plus récente. Valeurs numériques issues de la
+    // position du prestataire (jamais d'une saisie utilisateur), formatées en Locale.ROOT.
+    private static Sort buildSort(ProviderRequestSort sort, Optional<double[]> position) {
+        Sort recent = Sort.by(Sort.Direction.DESC, "createdAt");
+        if (sort != ProviderRequestSort.DISTANCE || position.isEmpty()) {
+            return recent;
+        }
+        double lat = position.get()[0];
+        double lon = position.get()[1];
+        double cosLat = Math.cos(Math.toRadians(lat));
+        String dLat = String.format(Locale.ROOT, "(i.residence.latitude - (%.7f))", lat);
+        String dLon = String.format(Locale.ROOT, "((i.residence.longitude - (%.7f)) * %.7f)", lon, cosLat);
+        return JpaSort.unsafe(Sort.Direction.ASC, "(CASE WHEN i.residence.latitude IS NULL THEN 1 ELSE 0 END)")
+                .and(JpaSort.unsafe(Sort.Direction.ASC, "(" + dLat + " * " + dLat + " + " + dLon + " * " + dLon + ")"))
+                .and(recent);
+    }
+
     private User getCurrentUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByEmail(email)

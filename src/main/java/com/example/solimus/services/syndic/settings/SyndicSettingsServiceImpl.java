@@ -1,5 +1,6 @@
 package com.example.solimus.services.syndic.settings;
 
+import com.example.solimus.services.specialty.SpecialtyCatalogService;
 import com.example.solimus.dtos.syndic.settings.EstimatedDelayDTO;
 import com.example.solimus.dtos.owner.dashboard.NotificationListResponseDTO;
 import com.example.solimus.dtos.owner.dashboard.NotificationRowDTO;
@@ -38,6 +39,7 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     private final FacilityTypeRepository facilityTypeRepository;
     private final CommonFacilityRepository commonFacilityRepository;
     private final SpecialtyRepository specialtyRepository;
+    private final SpecialtyCatalogService specialtyCatalogService;
     private final PropertyTypeRepository propertyTypeRepository;
     private final SecurityFeatureRepository securityFeatureRepository;
     private final EstimatedDelayRepository estimatedDelayRepository;
@@ -162,13 +164,17 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
     public Page<SpecialtyDTO> getAllSpecialties(int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("name").ascending());
         return specialtyRepository.findAll(pageable)
-                .map(s -> new SpecialtyDTO(s.getId(), s.getName(), s.getDescription(), s.getIcon()));
+                .map(specialtyCatalogService::toDto);
     }
 
     //Création
     @Override
     @Transactional
     public void createSpecialty(String name, String description, MultipartFile icon) {
+        name = normalizeSpecialtyName(name);
+        if (name == null) {
+            throw new BadRequestException("Le nom de la spécialité est obligatoire");
+        }
         if (specialtyRepository.existsByNameIgnoreCase(name)) {
             throw new BadRequestException("La spécialité '" + name + "' existe déjà.");
         }
@@ -190,6 +196,13 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
         //Vérifier que la spécialité existe
         Specialty specialty = specialtyRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Spécialité non trouvée"));
+        // Nom fourni mais vide : refusé (un nom absent laisse le nom actuel)
+        if (name != null) {
+            name = normalizeSpecialtyName(name);
+            if (name == null) {
+                throw new BadRequestException("Le nom de la spécialité ne peut pas être vide");
+            }
+        }
         //Vérifier que le nom de la spécialité n'est pas déjà utilisé
         if (name != null
                 && !specialty.getName().equalsIgnoreCase(name)
@@ -204,6 +217,23 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
         }
         specialtyRepository.save(specialty);
         log.info("Spécialité modifiée : {}", specialty.getName());
+    }
+
+    // Nom nettoyé (espaces superflus retirés), null si vide ; 100 caractères maximum
+    private static String normalizeSpecialtyName(String name) {
+        if (name == null) return null;
+        String clean = name.trim().replaceAll("\\s+", " ");
+        if (clean.isEmpty()) return null;
+        if (clean.length() > 100) {
+            throw new BadRequestException("Le nom de la spécialité ne doit pas dépasser 100 caractères");
+        }
+        return clean;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SpecialtyDTO getSpecialty(Long id) {
+        return specialtyCatalogService.getById(id);
     }
 
     //Suppression

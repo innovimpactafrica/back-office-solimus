@@ -21,6 +21,10 @@ public class UpdateProviderProfileDTO {
     private String phone;
     private String email;
 
+    // Spécialité (catégorie de travaux) : modifiable — le prestataire ne reçoit que les demandes de cette spécialité.
+    // Liste des valeurs : GET /api/public/specialties
+    private Long specialtyId;
+
     // Affichage uniquement (non modifiable)
     private String profilePhotoUrl;
     private String specialtyName;

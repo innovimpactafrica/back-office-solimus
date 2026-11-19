@@ -20,7 +20,12 @@ import com.example.solimus.repositories.ExceptionalCallItemRepository;
 import com.example.solimus.repositories.ExceptionalCallPaymentRepository;
 import com.example.solimus.repositories.PropertyRepository;
 import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.services.shared.PaymentChannelPolicy;
+import com.example.solimus.services.charge.proof.ChargePaymentProofService;
+import com.example.solimus.dtos.payment.proof.ChargePaymentProofDTO;
+import com.example.solimus.enums.ChargeDisplayStatus;
 import com.example.solimus.utils.ChargeAllocationUtil;
+import com.example.solimus.utils.ChargePeriodLabelUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
@@ -49,6 +54,8 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
     private final PropertyRepository propertyRepository;
     private final ChargeCallPaymentRepository chargeCallPaymentRepository;
     private final ExceptionalCallPaymentRepository exceptionalCallPaymentRepository;
+    private final PaymentChannelPolicy paymentChannelPolicy;
+    private final ChargePaymentProofService chargePaymentProofService;
 
     // Template d'URL pour le pont de paiement TouchPay
     @Value("${app.touchpay.bridge-url}")
@@ -167,6 +174,9 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
     @Override
     @Transactional
     public ChargePaymentResponseDTO initierPaiement(ChargeType type, Long id, InitierPaiementChargeDTO dto) {
+
+        // Charges payées hors plateforme : envoyer une preuve de paiement (…/payment-proof)
+        paymentChannelPolicy.assertChargesOnlineEnabled();
 
         User currentOwner = getCurrentUser();
 
@@ -402,6 +412,12 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .build();
     }
 
+    // Dernière preuve de paiement hors plateforme de cette charge (null si aucune)
+    private ChargePaymentProofDTO latestProof(ChargeType type, Long chargeId) {
+        List<ChargePaymentProofDTO> proofs = chargePaymentProofService.getMyProofs(type, chargeId);
+        return proofs.isEmpty() ? null : proofs.get(0);
+    }
+
     // Récupère l'utilisateur actuellement authentifié via le SecurityContext
     private User getCurrentUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -414,13 +430,9 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
     // directement le nom brut par tolérance. Aucun statut connu ne correspond → traité comme "pas de
     // filtre" (permissif), plutôt que de risquer de masquer silencieusement toutes les lignes.
     private String resolveStatusFilter(String status) {
-        if (status == null || status.isBlank()) return null;
-        for (ChargeItemPaymentStatus s : ChargeItemPaymentStatus.values()) {
-            if (s.getLabel().equalsIgnoreCase(status) || s.name().equalsIgnoreCase(status)) {
-                return s.name();
-            }
-        }
-        return null;
+        // Statut AFFICHÉ, « En attente de validation » (PENDING_VALIDATION) compris
+        ChargeDisplayStatus displayStatus = ChargeDisplayStatus.parse(status);
+        return displayStatus != null ? displayStatus.name() : null;
     }
 
     // Construit une carte "Mes charges" à partir d'une ligne brute de findMyChargesUnion — voir l'ordre
@@ -432,7 +444,8 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
 
         String sourceType = (String) row[0];
         ChargeType chargeType = ChargeType.valueOf((String) row[3]);
-        ChargeItemPaymentStatus statusEnum = ChargeItemPaymentStatus.valueOf((String) row[9]);
+        // status_raw = statut AFFICHÉ (PENDING_VALIDATION possible, voir findMyChargesUnion)
+        ChargeDisplayStatus statusEnum = ChargeDisplayStatus.valueOf((String) row[9]);
 
         // Le titre des charges courantes n'est jamais stocké : reconstruit ici, sur cette seule ligne
         // de la page déjà récupérée (jamais sur toute la liste) — buildPeriodLabel reste l'unique
@@ -456,6 +469,7 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .remainingAmount((BigDecimal) row[7])
                 .dueDate(toLocalDate(row[8]))
                 .status(statusEnum.getLabel())
+                .statusCode(statusEnum.name())
                 .paymentBlocked(((Number) row[10]).intValue() == 1)
                 .build();
     }
@@ -515,7 +529,12 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .propertyReference(propertyRef)
                 .period(buildPeriodLabel(chargeCall))
                 .issuedDate(chargeCall.getSentDate())
-                .status(item.getStatus().getLabel())
+                .status(ChargeDisplayStatus.of(item.getStatus(), item.getProofStatus()).getLabel())
+                .statusCode(ChargeDisplayStatus.of(item.getStatus(), item.getProofStatus()).name())
+                .canSubmitProof(budget.getStatus() != BudgetStatus.CLOSED
+                        && ChargeDisplayStatus.of(item.getStatus(), item.getProofStatus()) == ChargeDisplayStatus.PENDING
+                        && item.getRemainingAmount().compareTo(BigDecimal.ZERO) > 0)
+                .latestProof(latestProof(ChargeType.REGULAR, item.getId()))
                 .paymentBlocked(budget.getStatus() == BudgetStatus.CLOSED)
                 .breakdown(breakdown)
                 // Toujours le vrai montant dû, jamais une re-somme du détail — garanti égal par
@@ -559,7 +578,12 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
                 .propertyReference(propertyRef)
                 .period(String.valueOf(exceptionalCall.getCreatedAt().getYear()))
                 .issuedDate(exceptionalCall.getCreatedAt().toLocalDate())
-                .status(item.getStatus().getLabel())
+                .status(ChargeDisplayStatus.of(item.getStatus(), item.getProofStatus()).getLabel())
+                .statusCode(ChargeDisplayStatus.of(item.getStatus(), item.getProofStatus()).name())
+                .canSubmitProof(exceptionalCall.getStatus() != ExceptionalCallStatus.CLOSED
+                        && ChargeDisplayStatus.of(item.getStatus(), item.getProofStatus()) == ChargeDisplayStatus.PENDING
+                        && remainingAmount.compareTo(BigDecimal.ZERO) > 0)
+                .latestProof(latestProof(ChargeType.EXCEPTIONAL, item.getId()))
                 .paymentBlocked(exceptionalCall.getStatus() == ExceptionalCallStatus.CLOSED)
                 // Pas de répartition par poste pour les appels exceptionnels (pas de BudgetItem lié)
                 .breakdown(List.of())
@@ -624,18 +648,7 @@ public class OwnerChargeServiceImpl implements OwnerChargeService {
     // reconstruire le titre d'une ligne issue de findMyChargesUnion (voir buildCardFromRow), seule
     // autre source de vérité pour ce libellé (jamais dupliqué ailleurs pour l'affichage)
     private String buildPeriodLabel(String frequency, int periodNumber, int year) {
-        if (ChargeFrequency.MENSUEL.name().equals(frequency)) {
-            String[] monthNames = {"Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
-                    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"};
-            int index = periodNumber - 1;
-            String monthLabel = (index >= 0 && index < monthNames.length) ? monthNames[index] : "";
-            return monthLabel + " " + year;
-        }
-
-        String[] quarterLabels = {"Jan-Mar", "Avr-Jun", "Jul-Sep", "Oct-Dec"};
-        int index = periodNumber - 1;
-        String quarterLabel = (index >= 0 && index < quarterLabels.length) ? quarterLabels[index] : "";
-        return "T" + periodNumber + " " + year + " (" + quarterLabel + ")";
+        return ChargePeriodLabelUtil.periodLabel(frequency, periodNumber, year);
     }
 
 }

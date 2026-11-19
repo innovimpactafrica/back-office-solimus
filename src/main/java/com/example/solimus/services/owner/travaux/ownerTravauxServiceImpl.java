@@ -1,5 +1,7 @@
 package com.example.solimus.services.owner.travaux;
 
+import com.example.solimus.services.travaux.InterventionBroadcastService;
+import com.example.solimus.services.shared.PaymentChannelPolicy;
 import com.example.solimus.dtos.intervention.CoOwnerQuoteCardDTO;
 import com.example.solimus.dtos.syndic.travaux.PayDepositDTO;
 import com.example.solimus.dtos.syndic.PaymentResponseDTO;
@@ -60,6 +62,8 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
     private final QuoteRepository quoteRepository;
     private final PaymentRepository paymentRepository;
     private final GeolocationService geolocationService;
+    private final InterventionBroadcastService interventionBroadcastService;
+    private final PaymentChannelPolicy paymentChannelPolicy;
     private final EmailService emailService;
     private final NotificationService notificationService;
     private final ReviewRepository reviewRepository;
@@ -242,8 +246,6 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
             request.setProperty(property);
             request.setCommonFacility(null);
 
-            // Diffuser la demande aux prestataires proches (géré par le copropriétaire)
-            notifyNearbyProvidersForApartmentRequest(request, residence, specialty);
         }
 
         // Sauvegarder la demande d'intervention
@@ -251,7 +253,13 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
 
         // Référence fixée à partir de l'id auto-généré (garanti unique par la base)
         saved.setReference("TRV-" + String.format("%06d", saved.getId()));
-        interventionRequestRepository.save(saved);
+        saved = interventionRequestRepository.save(saved);
+
+        // Appartement (géré par le copropriétaire) : diffusion progressive aux prestataires les plus
+        // proches d'abord (5 km, puis élargie par paliers) — voir InterventionBroadcastService
+        if (saved.getManagementMode() == InterventionManagementMode.OWNER) {
+            interventionBroadcastService.startBroadcast(saved);
+        }
 
         // Une intervention URGENT active peut faire passer la résidence en CRITIQUE
         statusRecalculationService.recalculateResidenceHealthStatus(residence);
@@ -652,6 +660,9 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
     public PaymentResponseDTO payDeposit(Long interventionId, PayDepositDTO dto) {
         User currentOwner = getCurrentUser();
 
+        // Travaux payés hors plateforme : déclarer l'acompte avec sa preuve (…/deposit/payment-proof)
+        paymentChannelPolicy.assertTravauxOnlineEnabled();
+
         // 1. Vérifier que l'intervention existe et appartient au copropriétaire
         InterventionRequest request = interventionRequestRepository.findByIdForUpdate(interventionId) /* verrou : pas de double initiation */
                 .orElseThrow(() -> new ResourceNotFoundException("Intervention introuvable"));
@@ -818,6 +829,10 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
                     .amountToPay(BigDecimal.ZERO)
                     .build();
         }
+
+        // Un solde reste à payer : paiement hors plateforme, à déclarer avec sa preuve
+        // (…/balance/payment-proof). Le cas « rien à payer » ci-dessus reste traité ici.
+        paymentChannelPolicy.assertTravauxOnlineEnabled();
 
         // 5. Vérifier si un solde existe déjà pour cette intervention
         Optional<PaymentProvider> existingPayment = paymentRepository
@@ -1050,90 +1065,6 @@ public class ownerTravauxServiceImpl implements ownerTravauxService {
                 request.getTitle(),
                 residence.getName(),
                 ownerName);
-    }
-
-    /**
-     * Diffuse une demande de travaux sur appartement aux prestataires proches.
-     * Suit la même logique que le syndic : filtre par spécialité, abonnement actif,
-     * et distance GPS.
-     */
-    private void notifyNearbyProvidersForApartmentRequest(InterventionRequest request, Residence residence,
-            Specialty specialty) {
-        // Vérifier que la résidence a des coordonnées GPS pour calculer les distances
-        if (residence.getLatitude() == null || residence.getLongitude() == null) {
-            throw new BadRequestException(
-                    "La résidence n'a pas de coordonnées GPS, impossible de trouver des prestataires proches");
-        }
-
-        // Étape 1 : récupérer les prestataires actifs pour cette spécialité
-        List<ProviderProfile> candidates = providerProfileRepository
-                .findActiveProvidersBySpecialty(specialty.getId());
-
-        // Étape 2 : ne garder que les prestataires avec un abonnement actuellement
-        // actif
-        List<ProviderProfile> activeSubscribers = candidates.stream()
-                .filter(profile -> providerSubscriptionRepository
-                        .findFirstByProviderIdOrderByEndDateDesc(profile.getUser().getId())
-                        .map(ProviderSubscription::isCurrentlyActive)
-                        .orElse(false))
-                .toList();
-
-        // Étape 3 : calculer la distance et ne garder que les prestataires dans le
-        // rayon autorisé
-        List<ProviderProfile> nearbyProviders = new ArrayList<>();
-        LocalDateTime gpsFreshnessThreshold = LocalDateTime.now().minusMinutes(gpsFreshnessMinutes);
-
-        for (ProviderProfile profile : activeSubscribers) {
-            // Vérifier si le GPS du prestataire est récent et valide
-            boolean gpsValid = profile.getGpsLatitude() != null
-                    && profile.getGpsLongitude() != null
-                    && profile.getGpsUpdatedAt() != null
-                    && profile.getGpsUpdatedAt().isAfter(gpsFreshnessThreshold);
-
-            // Utiliser le GPS récent si valide, sinon la zone de référence d'inscription
-            double providerLat = gpsValid
-                    ? profile.getGpsLatitude().doubleValue()
-                    : profile.getLatitude().doubleValue();
-
-            double providerLon = gpsValid
-                    ? profile.getGpsLongitude().doubleValue()
-                    : profile.getLongitude().doubleValue();
-
-            // Calculer la distance entre la résidence et le prestataire
-            double distance = geolocationService.calculateDistance(
-                    residence.getLatitude().doubleValue(),
-                    residence.getLongitude().doubleValue(),
-                    providerLat,
-                    providerLon);
-
-            // Ne garder que les prestataires dans le rayon de recherche
-            if (distance <= searchRadiusKm) {
-                nearbyProviders.add(profile);
-            }
-        }
-
-        // Étape 4 : notifier chaque prestataire trouvé et l'ajouter à la liste des
-        // notifiés
-        for (ProviderProfile profile : nearbyProviders) {
-            User provider = profile.getUser();
-
-            // Envoyer notification push et email si activés
-            if (provider.isNotificationsEnabled()) {
-                notificationService.sendPush(
-                        provider.getId(),
-                        "Nouvelle demande de travaux",
-                        "Une nouvelle demande correspond à votre spécialité : " + request.getTitle());
-
-                emailService.sendInterventionNotification(
-                        provider.getEmail(),
-                        provider.getFirstName(),
-                        request.getTitle(),
-                        residence.getName());
-            }
-
-            // Ajouter le prestataire à la liste des notifiés pour cette demande
-            request.getNotifiedProviders().add(provider);
-        }
     }
 
     private OwnerInterventionSummaryDTO mapToSummaryDTO(InterventionRequest intervention) {

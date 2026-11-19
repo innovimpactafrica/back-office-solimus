@@ -88,6 +88,9 @@ public class RegisterRequestDTO {
      * ID de la spécialité :
      * Plomberie, Électricité, Climatisation, etc.
      */
+    @io.swagger.v3.oas.annotations.media.Schema(description = "Prestataire : id de sa spécialité (obligatoire). "
+            + "Liste sans connexion : GET /api/public/specialties. Il ne recevra que les demandes de travaux de cette spécialité.",
+            example = "1")
     private Long specialtyId;
 
     /**

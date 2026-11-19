@@ -1,5 +1,8 @@
 package com.example.solimus.services.syndic.travaux;
 
+import com.example.solimus.services.specialty.SpecialtyCatalogService;
+import com.example.solimus.services.travaux.InterventionBroadcastService;
+import com.example.solimus.services.shared.PaymentChannelPolicy;
 import com.example.solimus.dtos.syndic.residence.CommonFacilityDTO;
 import com.example.solimus.dtos.syndic.residence.PropertyDTO;
 import com.example.solimus.dtos.syndic.settings.SpecialtyDTO;
@@ -64,6 +67,9 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     private final ProviderProfileRepository providerProfileRepository;
 
     private final GeolocationService geolocationService;
+    private final InterventionBroadcastService interventionBroadcastService;
+    private final SpecialtyCatalogService specialtyCatalogService;
+    private final PaymentChannelPolicy paymentChannelPolicy;
     private final EmailService emailService;
     private final NotificationService notificationService;
     private final ReviewRepository reviewRepository;
@@ -185,12 +191,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         Page<Specialty> specialtyPage = specialtyRepository.findAll(pageable);
 
         List<SpecialtyDTO> dtos = specialtyPage.getContent().stream()
-                .map(specialty -> SpecialtyDTO.builder()
-                        .id(specialty.getId())
-                        .name(specialty.getName())
-                        .description(specialty.getDescription())
-                        .icon(specialty.getIcon())
-                        .build())
+                .map(specialtyCatalogService::toDto)
                 .collect(Collectors.toList());
 
         return new PageImpl<>(dtos, pageable, specialtyPage.getTotalElements());
@@ -321,8 +322,9 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
             throw new ForbiddenException("Vous n'êtes pas autorisé à gérer cette demande");
         }
 
-        // Vérifier que la demande n'a pas déjà été envoyée aux prestataires
-        if (!request.getNotifiedProviders().isEmpty()) {
+        // Vérifier que la demande n'a pas déjà été envoyée aux prestataires (diffusion progressive :
+        // le premier rayon peut ne contenir encore aucun prestataire)
+        if (InterventionBroadcastService.isBroadcast(request)) {
             throw new BadRequestException("Cette demande a déjà été envoyée aux prestataires");
         }
 
@@ -351,14 +353,16 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                 && request.getManagementMode() == InterventionManagementMode.SYNDIC;
 
         boolean isPending = request.getStatus() == InterventionStatus.PENDING;
-        boolean alreadySent = request.getNotifiedProviders() != null && !request.getNotifiedProviders().isEmpty();
+        boolean alreadySent = InterventionBroadcastService.isBroadcast(request);
         int count = request.getNotifiedProviders() != null ? request.getNotifiedProviders().size() : 0;
 
         boolean canSend = isPartieCommuneSyndic && isPending && !alreadySent;
 
         String message;
         if (alreadySent) {
-            message = "La demande a déjà été envoyée à " + count + " prestataire(s).";
+            message = "La demande a déjà été envoyée à " + count + " prestataire(s), dans un rayon de "
+                    + (request.getBroadcastRadiusKm() != null ? request.getBroadcastRadiusKm() : interventionBroadcastService.initialRadiusKm())
+                    + " km (élargi automatiquement jusqu'à " + interventionBroadcastService.maxRadiusKm() + " km).";
         } else if (!isPartieCommuneSyndic) {
             message = "Cette demande n'est pas une demande de partie commune gérée par le syndic.";
         } else if (!isPending) {
@@ -371,6 +375,8 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
                 .interventionId(interventionId)
                 .sentToProviders(alreadySent)
                 .notifiedProvidersCount(count)
+                .broadcastRadiusKm(request.getBroadcastRadiusKm())
+                .maxBroadcastRadiusKm(interventionBroadcastService.maxRadiusKm())
                 .canSend(canSend)
                 .message(message)
                 .build();
@@ -618,6 +624,9 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     @Transactional
     public SyndicPaymentResultDTO payDeposit(Long interventionId, SyndicPayDepositDTO dto) {
 
+        // Travaux payés hors plateforme : déclarer le paiement avec sa preuve (…/payment-proof)
+        paymentChannelPolicy.assertTravauxOnlineEnabled();
+
         User currentSyndic = getCurrentUser();
 
         // Verrou en écriture sur l'intervention jusqu'à la fin de la transaction : deux clics / deux
@@ -773,6 +782,9 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     @Override
     @Transactional
     public SyndicPaymentResultDTO payBalanceAndClose(Long interventionId, SyndicPayDepositDTO dto) {
+
+        // Travaux payés hors plateforme : déclarer le paiement avec sa preuve (…/payment-proof)
+        paymentChannelPolicy.assertTravauxOnlineEnabled();
 
         User currentSyndic = getCurrentUser();
 
@@ -1000,83 +1012,12 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     }
 
     /**
-     * Diffuse une demande d'intervention aux prestataires proches.
+     * Diffuse une demande d'intervention aux prestataires, au plus proche d'abord : premier rayon de
+     * 5 km, puis élargi par paliers par InterventionBroadcastService (job planifié).
      * Réutilisé pour les demandes créées par le syndic et celles créées par le owner.
      */
     private void notifyNearbyProviders(InterventionRequest request, Residence residence, Specialty specialty) {
-        // Vérifier que la résidence a des coordonnées GPS
-        if (residence.getLatitude() == null || residence.getLongitude() == null) {
-            throw new BadRequestException("La résidence n'a pas de coordonnées GPS, impossible de trouver des prestataires proches");
-        }
-
-        // Récupérer les prestataires proches
-        List<ProviderProfile> candidates = providerProfileRepository
-                .findActiveProvidersBySpecialty(specialty.getId());
-
-        // Filtrer les prestataires avec abonnement actif
-        List<ProviderProfile> abonnesActifs = candidates.stream()
-                .filter(profile -> providerSubscriptionRepository
-                        .findFirstByProviderIdOrderByEndDateDesc(profile.getUser().getId())
-                        .map(ProviderSubscription::isCurrentlyActive)
-                        .orElse(false))
-                .toList();
-
-        // Calculer la distance et garder ceux dans le rayon autorisé
-        List<ProviderProfile> candidatsProches = new ArrayList<>();
-        // Calculer le seuil de fraîcheur GPS : position valide si mise à jour il y a moins de X minutes
-        LocalDateTime seuilFraicheur = LocalDateTime.now().minusMinutes(gpsFreshnessMinutes);
-
-        for (ProviderProfile profile : abonnesActifs) {
-            // Vérifier si le prestataire a une position GPS récente et valide
-            boolean gpsValide = profile.getGpsLatitude() != null
-                    && profile.getGpsLongitude() != null
-                    && profile.getGpsUpdatedAt() != null
-                    && profile.getGpsUpdatedAt().isAfter(seuilFraicheur);
-
-            // Utiliser la position GPS récente si valide, sinon la position de référence saisie à l'inscription
-            double providerLat = gpsValide
-                    ? profile.getGpsLatitude().doubleValue()
-                    : profile.getLatitude().doubleValue();
-
-            double providerLon = gpsValide
-                    ? profile.getGpsLongitude().doubleValue()
-                    : profile.getLongitude().doubleValue();
-
-            // Calculer la distance entre la résidence et le prestataire
-            double distance = geolocationService.calculateDistance(
-                    residence.getLatitude().doubleValue(),
-                    residence.getLongitude().doubleValue(),
-                    providerLat,
-                    providerLon
-            );
-
-            // Garder uniquement les prestataires dans le rayon autorisé (30km par défaut)
-            if (distance <= searchRadiusKm) {
-                candidatsProches.add(profile);
-            }
-        }
-
-        // Notifier chaque prestataire trouvé
-        for (ProviderProfile profil : candidatsProches) {
-            User user = profil.getUser();
-
-            if (user.isNotificationsEnabled()) {
-                notificationService.sendPush(
-                        user.getId(),
-                        "Nouvelle demande de travaux",
-                        "Une nouvelle demande correspond à votre spécialité : " + request.getTitle()
-                );
-
-                emailService.sendInterventionNotification(
-                        user.getEmail(),
-                        user.getFirstName(),
-                        request.getTitle(),
-                        residence.getName()
-                );
-            }
-
-            request.getNotifiedProviders().add(user);
-        }
+        interventionBroadcastService.startBroadcast(request);
     }
     // =========================================================================
     // UTILITAIRES ET MAPPERS

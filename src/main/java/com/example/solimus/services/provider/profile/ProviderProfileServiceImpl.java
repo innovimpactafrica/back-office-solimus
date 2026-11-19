@@ -30,6 +30,7 @@ import java.util.Optional;
 public class ProviderProfileServiceImpl implements ProviderProfileService {
 
     private final ProviderProfileRepository providerProfileRepository;
+    private final com.example.solimus.repositories.SpecialtyRepository specialtyRepository;
     private final UserRepository userRepository;
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
     private final QuoteRepository quoteRepository;
@@ -98,6 +99,7 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
         // 4. Construire et retourner le DTO avec les informations du profil
         return ProviderProfileDTO.builder()
                 .companyName(profile.getCompanyName() != null ? profile.getCompanyName() : currentProvider.getFirstName() + " " + currentProvider.getLastName())
+                .specialtyId(profile.getSpecialty() != null ? profile.getSpecialty().getId() : null)
                 .specialtyName(profile.getSpecialty() != null ? profile.getSpecialty().getName() : "N/A")
                 .email(currentProvider.getEmail())
                 .phone(currentProvider.getPhone())
@@ -125,6 +127,7 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
                 .phone(currentProvider.getPhone())
                 .email(currentProvider.getEmail())
                 .profilePhotoUrl(currentProvider.getProfilePhotoUrl())
+                .specialtyId(profile.getSpecialty() != null ? profile.getSpecialty().getId() : null)
                 .specialtyName(profile.getSpecialty() != null ? profile.getSpecialty().getName() : "N/A")
                 .interventionZone(profile.getInterventionZone())
                 .build();
@@ -160,6 +163,12 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
                 throw new BadRequestException("Cet email est déjà utilisé par un autre compte.");
             }
             currentProvider.setEmail(dto.getEmail());
+        }
+
+        // Changement de spécialité : les prochaines demandes diffusées seront celles de la nouvelle spécialité
+        if (dto.getSpecialtyId() != null) {
+            profile.setSpecialty(specialtyRepository.findById(dto.getSpecialtyId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Spécialité non trouvée")));
         }
 
         // 5. Sauvegarder les modifications

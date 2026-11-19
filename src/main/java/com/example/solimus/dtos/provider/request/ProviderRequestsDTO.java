@@ -19,4 +19,13 @@ public class ProviderRequestsDTO {
 
     // La page actuelle de résultats, qui elle DÉPEND du filtre sélectionné par l'utilisateur
     private Page<ProviderRequestSummaryDTO> requests;
+
+    // Accès aux demandes : wallet strictement supérieur au seuil. false -> 'requests' est vide.
+    private boolean eligible;
+    private java.math.BigDecimal walletBalance;
+    private java.math.BigDecimal minimumWalletBalanceExclusive;
+    private String eligibilityMessage;
+
+    // Tri appliqué (DISTANCE par défaut : la plus proche d'abord)
+    private com.example.solimus.enums.ProviderRequestSort sortBy;
 }

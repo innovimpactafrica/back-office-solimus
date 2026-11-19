@@ -21,4 +21,7 @@ public class MyChargeCardDTO {
     private LocalDate dueDate;
     private String status; // "En attente", "Payé", "Rien à payer"
     private Boolean paymentBlocked; // true si le budget (charge courante) ou l'appel (exceptionnelle) est clôturé — plus aucun paiement possible
+
+    // Code du statut affiché : PENDING, PENDING_VALIDATION (preuve envoyée, attend le syndic), PAID, NO_AMOUNT_DUE
+    private String statusCode;
 }

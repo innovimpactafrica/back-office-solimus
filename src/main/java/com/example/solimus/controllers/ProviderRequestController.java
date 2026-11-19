@@ -1,5 +1,7 @@
 package com.example.solimus.controllers;
 
+import com.example.solimus.enums.ProviderRequestSort;
+import com.example.solimus.dtos.provider.eligibility.ProviderEligibilityDTO;
 import com.example.solimus.dtos.auth.ErrorResponseDTO;
 import com.example.solimus.dtos.syndic.settings.EstimatedDelayDTO;
 import com.example.solimus.dtos.provider.request.CreateQuoteDTO;
@@ -34,7 +36,11 @@ public class ProviderRequestController {
 
     private final ProviderRequestService providerRequestService;
 
-    @Operation(summary = "Lister mes demandes de travaux (notifiées, non assignées)")
+    @Operation(summary = "Lister mes demandes de travaux (notifiées, non assignées)",
+            description = "Triées par distance (la plus proche d'abord, distanceKm sur chaque ligne) ou par date. "
+                    + "Accès réservé aux prestataires dont le wallet dépasse le seuil (1000 FCFA) : sinon eligible=false, "
+                    + "liste vide et eligibilityMessage. Les demandes sont diffusées au plus proche d'abord (5 km), "
+                    + "puis le rayon s'élargit par paliers.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Liste renvoyée avec succès",
                     content = @Content(schema = @Schema(implementation = ProviderRequestsDTO.class)))
@@ -48,23 +54,36 @@ public class ProviderRequestController {
             // Recherche par titre de la demande ou nom de la résidence — si absent, pas de filtre
             @RequestParam(required = false) String search,
 
+            // Tri : DISTANCE (défaut, la plus proche d'abord) ou RECENT (la plus récente d'abord)
+            @RequestParam(defaultValue = "DISTANCE") ProviderRequestSort sortBy,
+
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
 
-        // On trie par date de création, la plus récente en premier
-        PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        PageRequest pageable = PageRequest.of(page, size);
 
         ProviderRequestsDTO result = providerRequestService
-                .getAvailableRequests(status, search, pageable);
+                .getAvailableRequests(status, search, sortBy, pageable);
 
         return ResponseEntity.ok(result);
+    }
+
+    @Operation(summary = "Vérifier mon accès aux demandes de travaux",
+            description = "Solde du wallet, seuil (strictement supérieur à 1000 FCFA) et montant manquant.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Accès renvoyé",
+                    content = @Content(schema = @Schema(implementation = ProviderEligibilityDTO.class)))
+    })
+    @GetMapping("/eligibility")
+    public ResponseEntity<ProviderEligibilityDTO> getEligibility() {
+        return ResponseEntity.ok(providerRequestService.getEligibility());
     }
 
     @Operation(summary = "Voir les détails d'une demande de travaux")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Détail renvoyé avec succès",
                     content = @Content(schema = @Schema(implementation = ProviderRequestDetailDTO.class))),
-            @ApiResponse(responseCode = "403", description = "Un autre prestataire a été sélectionné pour cette intervention, vous ne pouvez plus consulter ses détails",
+            @ApiResponse(responseCode = "403", description = "Un autre prestataire a été sélectionné pour cette intervention, ou solde du wallet insuffisant (≤ 1000 FCFA)",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Demande introuvable",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))

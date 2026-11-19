@@ -18,6 +18,10 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface QuoteRepository extends JpaRepository<Quote, Long> {
+
+    // Nombre de devis reçus pour une demande — arrête l'élargissement de la diffusion (InterventionBroadcastService)
+    long countByInterventionRequestId(Long interventionRequestId);
+
     
     // Lister les devis pour une demande spécifique, triés par prix croissant (du moins cher au plus cher)
     List<Quote> findAllByInterventionRequestOrderByTotalAmountAsc(InterventionRequest request);

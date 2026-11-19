@@ -206,6 +206,28 @@ public class GlobalExceptionHandler {
     }
 
     // Paramètre de requête obligatoire absent (ex: ?subscriberType=) → 400 au lieu de 500
+    // Contraintes sur les paramètres de méthode (@NotBlank sur un @RequestParam, etc.) — sans ce handler,
+    // Spring 6.1 lève HandlerMethodValidationException et la requête finissait en 500
+    @ExceptionHandler(org.springframework.web.method.annotation.HandlerMethodValidationException.class)
+    public ResponseEntity<ErrorResponseDTO> handleMethodValidation(
+            org.springframework.web.method.annotation.HandlerMethodValidationException ex) {
+        java.util.List<String> details = ex.getAllValidationResults().stream()
+                .flatMap(result -> result.getResolvableErrors().stream()
+                        .map(error -> {
+                            String name = result.getMethodParameter().getParameterName();
+                            String reason = error.getDefaultMessage() != null ? error.getDefaultMessage() : "valeur invalide";
+                            return (name != null ? name : "paramètre") + " : " + reason;
+                        }))
+                .toList();
+        ErrorResponseDTO error = new ErrorResponseDTO(
+                "Paramètre invalide" + (details.isEmpty() ? "" : " — " + String.join(", ", details)),
+                details.isEmpty() ? null : details,
+                LocalDateTime.now(),
+                HttpStatus.BAD_REQUEST.value()
+        );
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<ErrorResponseDTO> handleMissingParam(MissingServletRequestParameterException ex) {
         ErrorResponseDTO error = new ErrorResponseDTO(

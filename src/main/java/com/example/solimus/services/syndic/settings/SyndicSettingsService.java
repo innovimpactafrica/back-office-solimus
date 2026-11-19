@@ -26,6 +26,8 @@ public interface SyndicSettingsService {
     //--------------------------------------------------
     Page<SpecialtyDTO> getAllSpecialties(int page, int size);
 
+    SpecialtyDTO getSpecialty(Long id);
+
     void createSpecialty(String name, String description, MultipartFile icon);
 
     void updateSpecialty(Long id, String name, String description, MultipartFile icon);

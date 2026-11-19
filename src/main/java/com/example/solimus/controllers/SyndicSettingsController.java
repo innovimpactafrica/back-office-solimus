@@ -120,15 +120,31 @@ public class SyndicSettingsController {
         return ResponseEntity.ok(syndicSettingsService.getAllSpecialties(page, size));
     }
 
-    @Operation(summary = "Créer une spécialité")
+    @Operation(summary = "Détail d'une spécialité")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Spécialité renvoyée",
+                    content = @Content(schema = @Schema(implementation = SpecialtyDTO.class))),
+            @ApiResponse(responseCode = "404", description = "Spécialité introuvable",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
+    })
+    @GetMapping("/specialties/{id}")
+    public ResponseEntity<SpecialtyDTO> getSpecialty(@PathVariable Long id) {
+        return ResponseEntity.ok(syndicSettingsService.getSpecialty(id));
+    }
+
+    @Operation(summary = "Créer une spécialité (catégorie de travaux)",
+            description = "Ex. Plomberie, Menuiserie. Catalogue commun à tous les syndics : le prestataire la choisit à "
+                    + "l'inscription (GET /api/public/specialties) et ne reçoit que les demandes de cette spécialité. "
+                    + "Nom unique (sans tenir compte de la casse), 100 caractères maximum ; icône facultative (fichier).")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Spécialité créée avec succès"),
-            @ApiResponse(responseCode = "400", description = "Cette spécialité existe déjà",
+            @ApiResponse(responseCode = "400", description = "Cette spécialité existe déjà, ou nom vide",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
     })
     @PostMapping(value = "/specialties", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Void> createSpecialty(
-            @RequestParam("name") @NotBlank String name,
+            // Nom vide : 400 explicite renvoyé par le service (plus de 500 sur la validation du paramètre)
+            @RequestParam("name") String name,
             @RequestParam(value = "description", required = false) String description,
             @RequestPart(value = "icon", required = false) MultipartFile icon) {
         syndicSettingsService.createSpecialty(name, description, icon);
@@ -138,7 +154,7 @@ public class SyndicSettingsController {
     @Operation(summary = "Mettre à jour une spécialité")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Spécialité mise à jour avec succès"),
-            @ApiResponse(responseCode = "400", description = "Cette spécialité existe déjà",
+            @ApiResponse(responseCode = "400", description = "Cette spécialité existe déjà, ou nom vide",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Spécialité introuvable",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
@@ -153,9 +169,12 @@ public class SyndicSettingsController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "Supprimer une spécialité")
+    @Operation(summary = "Supprimer une spécialité",
+            description = "Refusée tant qu'un prestataire ou une demande de travaux l'utilise.")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Spécialité supprimée avec succès"),
+            @ApiResponse(responseCode = "400", description = "Spécialité utilisée par des prestataires ou des interventions",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class))),
             @ApiResponse(responseCode = "404", description = "Spécialité introuvable",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDTO.class)))
     })

@@ -1,5 +1,6 @@
 package com.example.solimus.services.payment;
 
+import com.example.solimus.services.shared.PaymentChannelPolicy;
 import com.example.solimus.dtos.payment.MobileMoneyPaymentRequestDTO;
 import com.example.solimus.dtos.payment.MobileMoneyPaymentResponseDTO;
 import com.example.solimus.entities.MobileMoneyTransaction;
@@ -141,7 +142,8 @@ class MobileMoneyPaymentServiceImplTest {
         service = new MobileMoneyPaymentServiceImpl(syndicSubscriptionRepository,
                 mock(ProviderSubscriptionRepository.class), mock(ChargeCallPaymentRepository.class),
                 mock(ExceptionalCallPaymentRepository.class), mock(PaymentRepository.class),
-                userRepository, confirmation, trackingRepo, tm, 30_000);
+                userRepository, confirmation, trackingRepo,
+                new PaymentChannelPolicy(true, true), tm, 30_000);
         ReflectionTestUtils.setField(service, "apiBaseUrl", "http://127.0.0.1:" + gu.getAddress().getPort() + "/v1");
         ReflectionTestUtils.setField(service, "agencyCode", "AGENCE_TEST");
         ReflectionTestUtils.setField(service, "loginAgent", "login_test");
