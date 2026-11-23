@@ -36,8 +36,11 @@ public class ProviderWalletTransaction {
     @JoinColumn(name = "wallet_id", nullable = false)
     private ProviderWallet wallet;
 
+    // varchar (et non ENUM MySQL) : la liste des catégories peut s'étendre sans ALTER manuel.
+    // Une base existante où la colonne est encore un ENUM est convertie au démarrage
+    // (ProviderWalletCategoryColumnMigration).
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "varchar(40)")
     private ProviderWalletTransactionCategory category;
 
     // Positif pour un crédit (INTERVENTION_PAYMENT, TRAVAUX), négatif pour un retrait (RETRAIT)

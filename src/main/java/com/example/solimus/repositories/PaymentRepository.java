@@ -55,7 +55,7 @@ public interface PaymentRepository extends JpaRepository<PaymentProvider, Long> 
     Optional<PaymentProvider> findByInterventionRequestIdAndType(Long requestId, PaymentType type);
 
     /**
-     * Historique fusionné paiements + retraits d'un prestataire ("Mon Wallet" → onglet Transactions),
+     * Historique fusionné paiements + retraits + recharges + commissions d'un prestataire ("Mon Wallet" → onglet Transactions),
      * paginé directement en base via UNION ALL natif
      */
     @Query(value =
@@ -82,11 +82,37 @@ public interface PaymentRepository extends JpaRepository<PaymentProvider, Long> 
             "    w.created_at AS transaction_date " +
             "  FROM withdrawal_requests w " +
             "  WHERE w.provider_id = :providerId " +
+            "  UNION ALL " +
+            // Recharges du compte (preuve envoyée ou crédit direct de l'admin)
+            "  SELECT " +
+            "    CONCAT('Recharge du compte ', COALESCE(rc.reference, '')) AS label, " +
+            "    rc.amount AS amount, " +
+            "    'ENTREE' AS type, " +
+            "    CASE WHEN rc.status = 'VALIDATED' THEN 'Reçu' " +
+            "         WHEN rc.status = 'REJECTED' THEN 'Refusé' " +
+            "         ELSE 'En attente' END AS status, " +
+            "    rc.submitted_at AS transaction_date " +
+            "  FROM provider_wallet_recharges rc " +
+            "  WHERE rc.provider_id = :providerId " +
+            "  UNION ALL " +
+            // Commissions Solimus prélevées sur les paiements de travaux
+            "  SELECT " +
+            "    CONCAT('Commission Solimus ', TRIM(TRAILING '.00' FROM CAST(pc.commission_rate AS CHAR)), ' % — ', " +
+            "           COALESCE(pir.title, 'Travaux')) AS label, " +
+            "    -pc.amount AS amount, " +
+            "    'SORTIE' AS type, " +
+            "    'Effectué' AS status, " +
+            "    pc.transaction_date AS transaction_date " +
+            "  FROM platform_wallet_transactions pc " +
+            "  LEFT JOIN intervention_requests pir ON pir.id = pc.intervention_request_id " +
+            "  WHERE pc.provider_id = :providerId " +
             ") AS combined " +
             "ORDER BY transaction_date DESC",
             countQuery =
             "SELECT (SELECT COUNT(*) FROM payments p WHERE p.provider_id = :providerId) " +
-            "     + (SELECT COUNT(*) FROM withdrawal_requests w WHERE w.provider_id = :providerId)",
+            "     + (SELECT COUNT(*) FROM withdrawal_requests w WHERE w.provider_id = :providerId) " +
+            "     + (SELECT COUNT(*) FROM provider_wallet_recharges rc WHERE rc.provider_id = :providerId) " +
+            "     + (SELECT COUNT(*) FROM platform_wallet_transactions pc WHERE pc.provider_id = :providerId)",
             nativeQuery = true)
     Page<Object[]> findProviderWalletTransactionsUnion(@Param("providerId") Long providerId, Pageable pageable);
 }

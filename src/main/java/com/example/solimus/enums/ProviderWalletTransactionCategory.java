@@ -5,7 +5,8 @@ public enum ProviderWalletTransactionCategory {
 
     INTERVENTION_PAYMENT("Paiement d'intervention"), // Paiement mobile money reçu pour un travaux (via TouchPay)
     TRAVAUX("Paiement de travaux"), // Paiement reçu d'un syndic pour des travaux (transfert depuis son wallet)
-    RETRAIT("Retrait"); // Retrait validé COMPLETED (montant négatif) — voir WithdrawalRequestServiceImpl.validateWithdrawalRequest
+    RETRAIT("Retrait"), // Retrait validé COMPLETED (montant négatif) — voir WithdrawalRequestServiceImpl.validateWithdrawalRequest
+    RECHARGE("Recharge du compte"); // Recharge validée par l'admin (preuve de paiement ou crédit direct)
 
     private final String label;
 

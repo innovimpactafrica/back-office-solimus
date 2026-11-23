@@ -54,7 +54,8 @@ public class ProviderEligibilityService {
                 .message(eligible
                         ? "Vous avez accès aux demandes de travaux."
                         : "Solde insuffisant : votre wallet doit dépasser " + minimumBalanceExclusive.toPlainString()
-                          + " FCFA pour voir les demandes de travaux (il manque " + missing.toPlainString() + " FCFA).")
+                          + " FCFA pour voir les demandes de travaux (il manque " + missing.toPlainString() + " FCFA). "
+                          + "Rechargez votre compte depuis votre wallet.")
                 .build();
     }
 
