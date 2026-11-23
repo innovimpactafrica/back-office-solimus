@@ -82,6 +82,7 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
     private final PaymentRepository paymentRepository;
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
     private final BudgetItemRepository budgetItemRepository;
+    private final com.example.solimus.services.platform.TravauxCommissionService travauxCommissionService;
 
     @Value("${solimus.geolocation.search-radius-km:30.0}")
     private double searchRadiusKm;//Rayon de recherche des prestataires
@@ -698,14 +699,10 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         // le solde n'est plus jamais stocké directement sur ProviderWallet
         ProviderWallet providerWallet = getOrCreateProviderWalletForUpdate(request.getSelectedProvider());
 
-        ProviderWalletTransaction providerTransaction = new ProviderWalletTransaction();
-        providerTransaction.setWallet(providerWallet);
-        providerTransaction.setCategory(ProviderWalletTransactionCategory.TRAVAUX);
-        providerTransaction.setAmount(dto.getMontant());
-        providerTransaction.setLabel("Acompte — " + request.getTitle());
-        providerTransaction.setInterventionRequest(request);
-        providerTransaction.setTransactionDate(LocalDateTime.now());
-        providerWalletTransactionRepository.save(providerTransaction);
+        // Commission Solimus retenue avant le crédit : le prestataire reçoit le net
+        travauxCommissionService.creditProviderNet(providerWallet, request, dto.getMontant(),
+                ProviderWalletTransactionCategory.TRAVAUX, "Acompte — " + request.getTitle(), null,
+                com.example.solimus.enums.CommissionSource.WALLET_SYNDIC);
 
         // Met à jour l'intervention (depositAmount, remainingAmount recalculé automatiquement via @PrePersist/@PreUpdate)
         request.setDepositAmount(dto.getMontant());
@@ -849,14 +846,10 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         // Crédite le wallet du prestataire avec le solde final — enregistré dans son grand livre
         ProviderWallet providerWallet = getOrCreateProviderWalletForUpdate(request.getSelectedProvider());
 
-        ProviderWalletTransaction providerTransaction = new ProviderWalletTransaction();
-        providerTransaction.setWallet(providerWallet);
-        providerTransaction.setCategory(ProviderWalletTransactionCategory.TRAVAUX);
-        providerTransaction.setAmount(solde);
-        providerTransaction.setLabel("Solde final — " + request.getTitle());
-        providerTransaction.setInterventionRequest(request);
-        providerTransaction.setTransactionDate(LocalDateTime.now());
-        providerWalletTransactionRepository.save(providerTransaction);
+        // Commission Solimus retenue avant le crédit : le prestataire reçoit le net
+        travauxCommissionService.creditProviderNet(providerWallet, request, solde,
+                ProviderWalletTransactionCategory.TRAVAUX, "Solde final — " + request.getTitle(), null,
+                com.example.solimus.enums.CommissionSource.WALLET_SYNDIC);
 
         // Met à jour le montant payé et clôture l'intervention
         request.setDepositAmount(request.getTotalAmount()); // tout est désormais payé

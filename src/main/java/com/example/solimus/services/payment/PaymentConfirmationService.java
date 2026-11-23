@@ -55,6 +55,7 @@ public class PaymentConfirmationService {
     private final WalletService walletService;
     private final ProviderWalletRepository providerWalletRepository;
     private final ProviderWalletTransactionRepository providerWalletTransactionRepository;
+    private final com.example.solimus.services.platform.TravauxCommissionService travauxCommissionService;
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
     private final SyndicSubscriptionRepository syndicSubscriptionRepository;
     private final SyndicProfileRepository syndicProfileRepository;
@@ -961,20 +962,18 @@ public class PaymentConfirmationService {
                 .orElseGet(() -> providerWalletRepository.save(ProviderWallet.builder().provider(provider).build()));
 
         String kind = payment.getType() == PaymentType.ACOMPTE ? "Acompte" : "Solde final";
-        ProviderWalletTransaction credit = new ProviderWalletTransaction();
-        credit.setWallet(wallet);
-        credit.setCategory(ProviderWalletTransactionCategory.INTERVENTION_PAYMENT);
-        credit.setAmount(payment.getAmount());
-        credit.setLabel(kind + " — " + (req != null ? req.getTitle() : payment.getReference()));
-        credit.setInterventionRequest(req);
-        credit.setTransactionDate(LocalDateTime.now());
-        providerWalletTransactionRepository.save(credit);
+        // Commission Solimus retenue AVANT le crédit : le wallet reçoit le net, la plateforme la commission
+        var split = travauxCommissionService.creditProviderNet(wallet, req, payment.getAmount(),
+                ProviderWalletTransactionCategory.INTERVENTION_PAYMENT,
+                kind + " — " + (req != null ? req.getTitle() : payment.getReference()),
+                payment.getReference(), com.example.solimus.enums.CommissionSource.PAIEMENT_EN_LIGNE);
 
         notificationService.sendPush(provider.getId(), kind + " reçu",
-                payment.getAmount() + " FCFA crédités sur votre wallet"
+                split.net() + " FCFA crédités sur votre wallet"
+                        + (split.hasCommission() ? " (commission Solimus " + split.commission() + " FCFA déduite)" : "")
                         + (req != null ? " pour \"" + req.getTitle() + "\"" : "") + ".");
-        log.info("Wallet prestataire {} crédité de {} FCFA ({} {})", provider.getId(), payment.getAmount(),
-                kind, payment.getReference());
+        log.info("Wallet prestataire {} crédité de {} FCFA net ({} brut, {} {})", provider.getId(), split.net(),
+                payment.getAmount(), kind, payment.getReference());
     }
 
     // =========================================================================

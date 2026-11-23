@@ -6,6 +6,7 @@ import com.example.solimus.enums.SubscriptionStatus;
 import com.example.solimus.enums.SyndicPlanFeature;
 import com.example.solimus.repositories.SyndicSubscriptionRepository;
 import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.services.shared.SubscriptionPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -20,8 +21,14 @@ public class PlanFeatureGuard {
 
     private final SyndicSubscriptionRepository syndicSubscriptionRepository;
     private final UserRepository userRepository;
+    private final SubscriptionPolicy subscriptionPolicy;
 
     public boolean hasFeature(String featureName) {
+
+        // Abonnements suspendus : toutes les fonctionnalités sont ouvertes à tout syndic
+        if (!subscriptionPolicy.isEnabled()) {
+            return true;
+        }
 
         // Récupère le syndic actuellement authentifié
         String email = SecurityContextHolder.getContext().getAuthentication().getName();

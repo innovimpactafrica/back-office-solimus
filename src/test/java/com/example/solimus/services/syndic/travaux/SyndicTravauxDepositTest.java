@@ -64,6 +64,12 @@ class SyndicTravauxDepositTest {
 
     @BeforeEach
     void setUp() {
+        // Aucun taux configuré (0 %) : crédit intégral du prestataire, comportement d'origine
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "travauxCommissionService",
+                new com.example.solimus.services.platform.TravauxCommissionService(
+                        org.mockito.Mockito.mock(com.example.solimus.repositories.SyndicFinancialSettingsRepository.class),
+                        org.mockito.Mockito.mock(com.example.solimus.repositories.PlatformWalletTransactionRepository.class),
+                        providerWalletRepository, providerWalletTransactionRepository, java.math.BigDecimal.ZERO, true));
         syndic = new User();
         syndic.setId(65L);
         syndic.setEmail("syndic@example.test");

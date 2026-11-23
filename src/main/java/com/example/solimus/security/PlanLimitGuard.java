@@ -9,6 +9,7 @@ import com.example.solimus.exceptions.ForbiddenException;
 import com.example.solimus.repositories.PropertyRepository;
 import com.example.solimus.repositories.ResidenceRepository;
 import com.example.solimus.repositories.SyndicSubscriptionRepository;
+import com.example.solimus.services.shared.SubscriptionPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -26,8 +27,12 @@ public class PlanLimitGuard {
     private final SyndicSubscriptionRepository syndicSubscriptionRepository;
     private final ResidenceRepository residenceRepository;
     private final PropertyRepository propertyRepository;
+    private final SubscriptionPolicy subscriptionPolicy; // abonnements suspendus = aucune limite
 
     public void assertCanAddResidence(User syndic) {
+        if (!subscriptionPolicy.isEnabled()) {
+            return;
+        }
 
         // Récupère la formule d'abonnement actuellement active du syndic
         SyndicPlan plan = getActivePlan(syndic);
@@ -52,6 +57,9 @@ public class PlanLimitGuard {
     // lots sur le point d'être ajoutés (pas un par un), pour bloquer d'un coup un ajout groupé
     // qui dépasserait la limite, plutôt que d'en laisser passer une partie
     public void assertCanAddApartments(User syndic, int countToAdd) {
+        if (!subscriptionPolicy.isEnabled()) {
+            return;
+        }
 
         // Récupère la formule d'abonnement actuellement active du syndic
         SyndicPlan plan = getActivePlan(syndic);

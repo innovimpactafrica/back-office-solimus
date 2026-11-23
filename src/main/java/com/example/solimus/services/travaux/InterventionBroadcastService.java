@@ -68,6 +68,7 @@ public class InterventionBroadcastService {
     private final InterventionRequestRepository interventionRepository;
     private final ProviderProfileRepository providerProfileRepository;
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
+    private final com.example.solimus.services.shared.SubscriptionPolicy subscriptionPolicy;
     private final QuoteRepository quoteRepository;
     private final ProviderEligibilityService eligibilityService;
     private final GeolocationService geolocationService;
@@ -85,6 +86,7 @@ public class InterventionBroadcastService {
     public InterventionBroadcastService(InterventionRequestRepository interventionRepository,
                                         ProviderProfileRepository providerProfileRepository,
                                         ProviderSubscriptionRepository providerSubscriptionRepository,
+                                        com.example.solimus.services.shared.SubscriptionPolicy subscriptionPolicy,
                                         QuoteRepository quoteRepository,
                                         ProviderEligibilityService eligibilityService,
                                         GeolocationService geolocationService,
@@ -100,6 +102,7 @@ public class InterventionBroadcastService {
         this.interventionRepository = interventionRepository;
         this.providerProfileRepository = providerProfileRepository;
         this.providerSubscriptionRepository = providerSubscriptionRepository;
+        this.subscriptionPolicy = subscriptionPolicy;
         this.quoteRepository = quoteRepository;
         this.eligibilityService = eligibilityService;
         this.geolocationService = geolocationService;
@@ -273,6 +276,8 @@ public class InterventionBroadcastService {
     }
 
     private boolean hasActiveSubscription(User provider) {
+        // Abonnements suspendus : tout prestataire de la bonne spécialité peut être notifié
+        if (!subscriptionPolicy.isEnabled()) return true;
         return providerSubscriptionRepository.findFirstByProviderIdOrderByEndDateDesc(provider.getId())
                 .map(ProviderSubscription::isCurrentlyActive)
                 .orElse(false);

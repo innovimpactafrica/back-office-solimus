@@ -178,6 +178,12 @@ class OwnerTravauxPaymentFlowTest {
         ReflectionTestUtils.setField(confirmation, "interventionRepository", interventionRepo);
         ReflectionTestUtils.setField(confirmation, "providerWalletRepository", walletRepo);
         ReflectionTestUtils.setField(confirmation, "providerWalletTransactionRepository", ledger);
+        // Aucun taux configuré (0 %) : crédit intégral, comportement d'origine
+        ReflectionTestUtils.setField(confirmation, "travauxCommissionService",
+                new com.example.solimus.services.platform.TravauxCommissionService(
+                        mock(com.example.solimus.repositories.SyndicFinancialSettingsRepository.class),
+                        mock(com.example.solimus.repositories.PlatformWalletTransactionRepository.class),
+                        walletRepo, ledger, BigDecimal.ZERO, true));
         ReflectionTestUtils.setField(confirmation, "notificationService", mock(NotificationService.class));
         ReflectionTestUtils.setField(confirmation, "activityLogRepository", mock(ActivityLogRepository.class));
         ReflectionTestUtils.setField(confirmation, "statusRecalculationService", mock(StatusRecalculationService.class));

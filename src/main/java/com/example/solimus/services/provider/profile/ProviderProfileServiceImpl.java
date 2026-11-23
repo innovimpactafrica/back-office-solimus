@@ -33,6 +33,7 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
     private final com.example.solimus.repositories.SpecialtyRepository specialtyRepository;
     private final UserRepository userRepository;
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
+    private final com.example.solimus.services.shared.SubscriptionPolicy subscriptionPolicy;
     private final QuoteRepository quoteRepository;
     private final MinioService minioService;
 
@@ -183,6 +184,16 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
      */
     @Override
     public MySubscriptionDTO getMySubscription(Pageable pageable) {
+
+        // Abonnements suspendus : accès complet sans formule ni paiement
+        if (!subscriptionPolicy.isEnabled()) {
+            return MySubscriptionDTO.builder()
+                    .planName("Accès complet")
+                    .active(true)
+                    .status("Actif")
+                    .paymentHistory(Page.empty())
+                    .build();
+        }
 
         // 1. Récupérer le prestataire connecté via son JWT
         User currentProvider = getCurrentUser();

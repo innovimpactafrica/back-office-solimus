@@ -4,6 +4,7 @@ import com.example.solimus.entities.User;
 import com.example.solimus.enums.SubscriptionStatus;
 import com.example.solimus.repositories.ProviderSubscriptionRepository;
 import com.example.solimus.repositories.UserRepository;
+import com.example.solimus.services.shared.SubscriptionPolicy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -29,6 +30,7 @@ public class SubscriptionFilter extends OncePerRequestFilter {
     private final UserRepository userRepository;
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
     private final ObjectMapper objectMapper; // pour écrire la réponse JSON en cas de blocage
+    private final SubscriptionPolicy subscriptionPolicy; // abonnements suspendus = aucun blocage
 
     // routes /api/provider/** accessibles sans abonnement actif
     private static final List<String> EXCLUDED_PATHS = List.of(
@@ -47,8 +49,9 @@ public class SubscriptionFilter extends OncePerRequestFilter {
 
         String path = request.getRequestURI(); // on récupère l'URL de la requête entrante
 
-        // si la route ne commence pas par /api/provider/, on laisse passer sans vérification
-        if (!path.startsWith("/api/provider/")) {
+        // si la route ne commence pas par /api/provider/, ou si les abonnements sont suspendus,
+        // on laisse passer sans vérification
+        if (!path.startsWith("/api/provider/") || !subscriptionPolicy.isEnabled()) {
             filterChain.doFilter(request, response);
             return;
         }

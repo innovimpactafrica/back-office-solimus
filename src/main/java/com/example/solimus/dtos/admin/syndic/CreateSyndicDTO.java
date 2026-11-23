@@ -48,15 +48,14 @@ public class CreateSyndicDTO {
     private Double latitude;   // rempli via l'autocomplète Google Places, optionnel
     private Double longitude;  // rempli via l'autocomplète Google Places, optionnel
 
-    // Abonnement
-    @NotNull(message = "La formule d'abonnement est obligatoire")
+    // Abonnement — IGNORÉ tant que les abonnements sont suspendus (app.subscriptions.enabled=false) :
+    // le syndic est créé sans formule ni paiement. Obligatoires seulement si les abonnements sont réactivés
+    // (contrôle dans SyndicServiceImpl.createSyndic).
     private Long syndicPlanId;
 
-    @NotNull(message = "La durée de l'abonnement est obligatoire")
     private SubscriptionDuration duration;
 
     // Choisi par l'admin dans son propre formulaire avant la redirection TouchPay
-    @NotNull(message = "Le mode de paiement est obligatoire")
     private PaymentMethod method;
 
     private LocalDate startDate; // optionnel — aujourd'hui si non fourni

@@ -57,6 +57,7 @@ public class PlanServiceImpl implements PlanService {
     private final SyndicProfileRepository syndicProfileRepository;
     private final UserRepository userRepository;
     private final EmailService emailService;
+    private final com.example.solimus.services.shared.SubscriptionPolicy subscriptionPolicy;
 
     @Value("${app.touchpay.bridge-url}")
     private String touchPayBridgeUrlTemplate;
@@ -1044,6 +1045,11 @@ public class PlanServiceImpl implements PlanService {
     @Transactional
     public SyndicPlanChangeResponseDTO renewSubscriber(Long subscriptionId, SubscriberType subscriberType,
                                                          AdminRenewSubscriptionDTO dto) {
+
+        // Abonnements suspendus : aucun renouvellement payant
+        if (subscriptionPolicy != null) {
+            subscriptionPolicy.assertEnabled();
+        }
 
         User currentAdmin = getCurrentAdmin();
 

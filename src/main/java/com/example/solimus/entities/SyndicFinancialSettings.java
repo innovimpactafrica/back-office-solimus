@@ -81,6 +81,17 @@ public class SyndicFinancialSettings {
     private BigDecimal reserveFundPercentage = new BigDecimal("5");
 
     // =========================================================================
+    // COMMISSION SOLIMUS SUR LES TRAVAUX
+    // =========================================================================
+
+    // Taux (%) prélevé sur chaque paiement de travaux (acompte, solde) avant crédit du wallet du
+    // prestataire, et versé au wallet de la plateforme (PlatformWalletTransaction). Ex : 5 pour 5 %.
+    // Nullable : colonne ajoutée sur une table existante ; null = taux par défaut de la plateforme
+    // (app.travaux.commission.default-rate).
+    @Column(name = "travaux_commission_rate", precision = 5, scale = 2)
+    private BigDecimal travauxCommissionRate;
+
+    // =========================================================================
     // AUDIT (DATES AUTOMATIQUES)
     // =========================================================================
 

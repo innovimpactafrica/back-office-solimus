@@ -92,6 +92,7 @@ public class SyndicServiceImpl implements SyndicService {
     private final ActivityLogPresenter activityLogPresenter;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+    private final com.example.solimus.services.shared.SubscriptionPolicy subscriptionPolicy;
 
     @Value("${app.touchpay.bridge-url}")
     private String touchPayBridgeUrlTemplate;
@@ -121,17 +122,27 @@ public class SyndicServiceImpl implements SyndicService {
             throw new PhoneAlreadyExistsException("Un compte avec ce téléphone existe déjà : " + dto.getPhone());
         }
 
-        // 2. Récupère la formule d'abonnement choisie
-        SyndicPlan plan = syndicPlanRepository.findById(dto.getSyndicPlanId())
-                .orElseThrow(() -> new ResourceNotFoundException("Formule d'abonnement introuvable"));
+        // 2. Formule et montant : seulement si les abonnements sont actifs. Suspendus, le syndic est
+        // créé sans formule ni paiement, et a accès à toutes les fonctionnalités (PlanFeatureGuard).
+        boolean withSubscription = subscriptionPolicy.isEnabled();
+        SyndicPlan plan = null;
+        BigDecimal amountPaid = null;
+        if (withSubscription) {
+            if (dto.getSyndicPlanId() == null || dto.getDuration() == null || dto.getMethod() == null) {
+                throw new BadRequestException("Formule (syndicPlanId), durée (duration) et mode de paiement (method) "
+                        + "sont obligatoires tant que les abonnements sont actifs");
+            }
+            plan = syndicPlanRepository.findById(dto.getSyndicPlanId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Formule d'abonnement introuvable"));
 
-        // 3. Détermine le montant selon la durée choisie (annuel ou mensuel)
-        BigDecimal amountPaid = dto.getDuration() == SubscriptionDuration.YEARLY
-                ? plan.getYearlyPrice()
-                : plan.getMonthlyPrice();
+            // 3. Détermine le montant selon la durée choisie (annuel ou mensuel)
+            amountPaid = dto.getDuration() == SubscriptionDuration.YEARLY
+                    ? plan.getYearlyPrice()
+                    : plan.getMonthlyPrice();
+        }
 
         // Si l'admin n'a jamais configuré ce tarif pour la formule, on refuse plutôt que de facturer 0/null
-        if (amountPaid == null) {
+        if (withSubscription && amountPaid == null) {
             throw new BadRequestException(
                     dto.getDuration() == SubscriptionDuration.YEARLY
                             ? "Cette formule ne propose pas de tarif annuel"
@@ -171,37 +182,43 @@ public class SyndicServiceImpl implements SyndicService {
         profile.setLongitude(dto.getLongitude() != null ? BigDecimal.valueOf(dto.getLongitude()) : null);
         syndicProfileRepository.save(profile);
 
-        // 7. Crée l'abonnement en PENDING : il ne devient ACTIVE qu'au callback TouchPay confirmé
-        // (SolimusCallbackController.handleSyndicSubscriptionCallback, référence SYN-). Le compte, lui,
-        // est déjà actif et ses identifiants partent par email : un paiement non abouti laisse le
-        // syndic sans abonnement actif (fonctionnalités de formule bloquées), jamais supprimé —
-        // la purge planifiée ne vise que les comptes PENDING.
-        LocalDateTime startDate = dto.getStartDate() != null
-                ? dto.getStartDate().atStartOfDay()
-                : LocalDateTime.now();
-        LocalDateTime endDate = startDate.plusMonths(dto.getDuration().getMonths());
+        // 7. Abonnement suspendu : compte prêt à l'emploi, pas de référence ni de paiement
+        String transactionRef = null;
+        LocalDateTime startDate = null;
+        LocalDateTime endDate = null;
+        if (withSubscription) {
+            // 7. Crée l'abonnement en PENDING : il ne devient ACTIVE qu'au callback TouchPay confirmé
+            // (SolimusCallbackController.handleSyndicSubscriptionCallback, référence SYN-). Le compte, lui,
+            // est déjà actif et ses identifiants partent par email : un paiement non abouti laisse le
+            // syndic sans abonnement actif (fonctionnalités de formule bloquées), jamais supprimé —
+            // la purge planifiée ne vise que les comptes PENDING.
+            startDate = dto.getStartDate() != null
+                    ? dto.getStartDate().atStartOfDay()
+                    : LocalDateTime.now();
+            endDate = startDate.plusMonths(dto.getDuration().getMonths());
 
-        // Référence unique préfixée SYN- pour que le bridge et le callback la reconnaissent
-        String transactionRef = generateReference("SYN");
+            // Référence unique préfixée SYN- pour que le bridge et le callback la reconnaissent
+            transactionRef = generateReference("SYN");
 
-        // L'admin connecté est celui qui provisionne le compte syndic
-        User currentAdmin = getCurrentUser();
+            // L'admin connecté est celui qui provisionne le compte syndic
+            User currentAdmin = getCurrentUser();
 
-        SyndicSubscription subscription = new SyndicSubscription();
-        subscription.setSyndic(savedUser);
-        subscription.setInitiatedBy(currentAdmin);
-        subscription.setSyndicPlan(plan);
-        subscription.setStatus(SubscriptionStatus.PENDING);
-        subscription.setPaymentStatus(PaymentStatus.PENDING);
-        subscription.setAmountPaid(amountPaid);
-        subscription.setMethod(dto.getMethod());
-        subscription.setDuration(dto.getDuration());
-        subscription.setTransactionRef(transactionRef);
-        subscription.setStartDate(startDate);
-        subscription.setEndDate(endDate);
-        subscription.setNotifyClient(false);
-        subscription.setSendInvoiceEmail(false);
-        syndicSubscriptionRepository.save(subscription);
+            SyndicSubscription subscription = new SyndicSubscription();
+            subscription.setSyndic(savedUser);
+            subscription.setInitiatedBy(currentAdmin);
+            subscription.setSyndicPlan(plan);
+            subscription.setStatus(SubscriptionStatus.PENDING);
+            subscription.setPaymentStatus(PaymentStatus.PENDING);
+            subscription.setAmountPaid(amountPaid);
+            subscription.setMethod(dto.getMethod());
+            subscription.setDuration(dto.getDuration());
+            subscription.setTransactionRef(transactionRef);
+            subscription.setStartDate(startDate);
+            subscription.setEndDate(endDate);
+            subscription.setNotifyClient(false);
+            subscription.setSendInvoiceEmail(false);
+            syndicSubscriptionRepository.save(subscription);
+        }
 
         // 8. Envoie les identifiants par email APRÈS le commit de la transaction.
         // L'envoi est non bloquant : si le mail échoue, la création du syndic est maintenue et
@@ -217,6 +234,20 @@ public class SyndicServiceImpl implements SyndicService {
         } else {
             sendSyndicCredentials(savedUser.getEmail(), temporaryPassword, savedUser.getFirstName(),
                     dto.getCompanyName());
+        }
+
+        if (!withSubscription) {
+            log.info("Création syndic : {} ({}) — sans abonnement (abonnements suspendus)",
+                    savedUser.getEmail(), dto.getCompanyName());
+            return CreateSyndicResponseDTO.builder()
+                    .userId(savedUser.getId())
+                    .firstName(savedUser.getFirstName())
+                    .lastName(savedUser.getLastName())
+                    .email(savedUser.getEmail())
+                    .companyName(dto.getCompanyName())
+                    .message("Compte syndic créé et actif, identifiants envoyés par email. "
+                            + "Accès à toutes les fonctionnalités, aucun abonnement à payer.")
+                    .build();
         }
 
         // 9. URL du pont de paiement TouchPay pour cette référence (payée par l'admin)

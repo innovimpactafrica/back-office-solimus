@@ -75,6 +75,7 @@ public class MobileMoneyPaymentController {
     private final OwnerChargeService ownerChargeService;
     private final ownerTravauxService ownerTravauxService;
     private final Validator validator;
+    private final com.example.solimus.services.shared.SubscriptionPolicy subscriptionPolicy;
 
     private static final String OPERATOR_DOC = "WAVE ou ORANGE_MONEY";
     private static final String PHONE_DOC = "Numéro Wave / Orange Money à débiter (9 chiffres) — défaut : téléphone du profil";
@@ -119,6 +120,8 @@ public class MobileMoneyPaymentController {
             @Parameter(description = OPERATOR_DOC) @RequestParam MobileMoneyOperator operator,
             @Parameter(description = PHONE_DOC) @RequestParam(required = false) String phoneNumber,
             @Valid @RequestBody MobileMoneyCreateSyndicDTO body) {
+        // Abonnements suspendus : rien à payer, utiliser POST /api/admin/syndics
+        subscriptionPolicy.assertEnabled();
         CreateSyndicDTO dto = new CreateSyndicDTO();
         dto.setFirstName(body.getFirstName());
         dto.setLastName(body.getLastName());

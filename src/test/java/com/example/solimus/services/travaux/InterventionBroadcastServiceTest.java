@@ -43,6 +43,7 @@ class InterventionBroadcastServiceTest {
         PlatformTransactionManager tm = mock(PlatformTransactionManager.class);
         when(tm.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         service = new InterventionBroadcastService(interventionRepository, profileRepository, subscriptionRepository,
+                new com.example.solimus.services.shared.SubscriptionPolicy(true),
                 quoteRepository, eligibility, new GeolocationService(), mock(NotificationService.class),
                 mock(EmailService.class), tm, "10, 5, 20", 10, 3, 72, 60, true);
 

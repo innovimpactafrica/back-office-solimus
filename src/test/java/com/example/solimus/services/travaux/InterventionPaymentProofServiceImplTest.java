@@ -46,6 +46,7 @@ class InterventionPaymentProofServiceImplTest {
     @Mock private StatusRecalculationService statusRecalculationService;
     @Mock private NotificationService notificationService;
     @Mock private PaymentProofDocumentService documentService;
+    @Mock private com.example.solimus.services.platform.TravauxCommissionService travauxCommissionService;
     @InjectMocks private InterventionPaymentProofServiceImpl service;
 
     private User owner;

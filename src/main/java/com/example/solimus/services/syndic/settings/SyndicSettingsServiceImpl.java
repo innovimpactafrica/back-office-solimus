@@ -36,6 +36,10 @@ import java.util.stream.Collectors;
 @Slf4j
 public class SyndicSettingsServiceImpl implements SyndicSettingsService {
 
+    // Taux affiché tant que le syndic n'a pas défini le sien (même défaut que TravauxCommissionService)
+    @org.springframework.beans.factory.annotation.Value("${app.travaux.commission.default-rate:0}")
+    private BigDecimal defaultTravauxCommissionRate = BigDecimal.ZERO;
+
     private final FacilityTypeRepository facilityTypeRepository;
     private final CommonFacilityRepository commonFacilityRepository;
     private final SpecialtyRepository specialtyRepository;
@@ -534,6 +538,9 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
         if (dto.getReserveFundPercentage() != null) {
             settings.setReserveFundPercentage(dto.getReserveFundPercentage());
         }
+        if (dto.getTravauxCommissionRate() != null) {
+            settings.setTravauxCommissionRate(dto.getTravauxCommissionRate());
+        }
 
         syndicFinancialSettingsRepository.save(settings);
     }
@@ -754,6 +761,7 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
                 .reminderDelayDays(30)
                 .penaltyGracePeriodDays(15)
                 .reserveFundPercentage(BigDecimal.valueOf(5))
+                .travauxCommissionRate(defaultTravauxCommissionRate)
                 .build();
     }
 
@@ -765,6 +773,8 @@ public class SyndicSettingsServiceImpl implements SyndicSettingsService {
                 .reminderDelayDays(settings.getReminderDelayDays())
                 .penaltyGracePeriodDays(settings.getPenaltyGracePeriodDays())
                 .reserveFundPercentage(settings.getReserveFundPercentage())
+                .travauxCommissionRate(settings.getTravauxCommissionRate() != null
+                        ? settings.getTravauxCommissionRate() : defaultTravauxCommissionRate)
                 .build();
     }
 

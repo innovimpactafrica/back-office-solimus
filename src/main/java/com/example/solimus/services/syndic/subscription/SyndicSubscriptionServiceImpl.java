@@ -53,6 +53,7 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
     private final NotificationService notificationService;
     private final SyndicProfileRepository syndicProfileRepository;
     private final AdminNotificationPreferenceService adminNotificationPreferenceService;
+    private final com.example.solimus.services.shared.SubscriptionPolicy subscriptionPolicy;
 
     @Value("${app.touchpay.bridge-url}")
     private String touchPayBridgeUrlTemplate;
@@ -60,6 +61,22 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
     @Override
     @Transactional(readOnly = true)
     public MySyndicSubscriptionDTO getMySubscription() {
+
+        // Abonnements suspendus : accès complet, toutes les fonctionnalités, aucune limite ni échéance.
+        // Le front qui construit ses menus à partir de featureCodes affiche donc tous les menus.
+        if (!subscriptionPolicy.isEnabled()) {
+            return MySyndicSubscriptionDTO.builder()
+                    .planName("Accès complet")
+                    .description("Les abonnements sont suspendus : toutes les fonctionnalités sont incluses.")
+                    .active(true)
+                    .statusLabel("Actif")
+                    .features(java.util.Arrays.stream(SyndicPlanFeature.values()).map(SyndicPlanFeature::getLabel).toList())
+                    .featureCodes(java.util.Arrays.stream(SyndicPlanFeature.values()).map(Enum::name).toList())
+                    .maxResidences(null)
+                    .maxApartments(null)
+                    .nextRenewal("Aucun renouvellement")
+                    .build();
+        }
 
         // Le syndic connecté ne peut consulter que son propre abonnement
         User currentSyndic = getCurrentUser();
@@ -141,6 +158,7 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
     @Override
     @Transactional
     public SyndicPlanChangeResponseDTO initiateChangePlan(InitiateSyndicPlanChangeDTO dto) {
+        subscriptionPolicy.assertEnabled();
 
         // 1. Le syndic connecté est celui qui paie ici, en self-service — pas l'admin
         User currentSyndic = getCurrentSyndicForPayment();
@@ -156,6 +174,7 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
     @Override
     @Transactional
     public SyndicPlanChangeResponseDTO initiateRenewal(RenewSyndicSubscriptionDTO dto) {
+        subscriptionPolicy.assertEnabled();
 
         User currentSyndic = getCurrentSyndicForPayment();
 
@@ -286,6 +305,7 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
     @Scheduled(cron = "0 0 * * * *") // toutes les heures, à la minute 0
     @Transactional
     public void expireOutdatedSyndicSubscriptions() {
+        if (!subscriptionPolicy.isEnabled()) return; // abonnements suspendus : rien n'expire
 
         List<SyndicSubscription> expired = syndicSubscriptionRepository
                 .findByStatusAndEndDateBefore(SubscriptionStatus.ACTIVE, LocalDateTime.now());
@@ -325,6 +345,7 @@ public class SyndicSubscriptionServiceImpl implements SyndicSubscriptionService 
      @Scheduled(cron = "0 0 8 * * *") // Exécute cette tâche automatiquement tous les jours à 8h
      @Transactional(readOnly = true)
      public void remindSyndicsOfUpcomingExpiration() {
+        if (!subscriptionPolicy.isEnabled()) return; // aucun rappel d'expiration à envoyer
 
        // Calcule la date située 10 jours après aujourd'hui
        LocalDate targetDate = LocalDate.now().plusDays(10);

@@ -38,6 +38,7 @@ import java.util.UUID;
 public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentService {
 
     private final ProviderPlanRepository providerPlanRepository;
+    private final com.example.solimus.services.shared.SubscriptionPolicy subscriptionPolicy;
     private final ProviderSubscriptionRepository providerSubscriptionRepository;
     private final UserRepository userRepository;
     private final ProviderProfileRepository providerProfileRepository;
@@ -52,6 +53,7 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
     @Override
     @Transactional
     public SubscriptionPaymentResponseDTO initiatePayment(InitiateSubscriptionPaymentDTO dto) {
+        subscriptionPolicy.assertEnabled();
 
         // On identifie le prestataire connecté grâce à son JWT
         User currentProvider = getCurrentUser();
@@ -186,6 +188,7 @@ public class SubscriptionPaymentServiceImpl implements SubscriptionPaymentServic
     @Scheduled(cron = "0 0 * * * *") // toutes les heures, à la minute 0
     @Transactional
     public void expireOutdatedSubscriptions() {
+        if (!subscriptionPolicy.isEnabled()) return; // abonnements suspendus : rien n'expire
 
         // On récupère toutes les Subscription encore marquées ACTIVE
         // mais dont la date de fin est déjà passée par rapport à maintenant

@@ -46,4 +46,10 @@ public class SyndicFinancialSettingsDTO {
     @DecimalMin(value = "0.0", message = "Le pourcentage ne peut pas être négatif")
     @DecimalMax(value = "100.0", message = "Le pourcentage ne peut pas dépasser 100%")
     private BigDecimal reserveFundPercentage;
+
+    // Commission Solimus (%) prélevée sur chaque paiement de travaux avant crédit du prestataire
+    @DecimalMin(value = "0.0", message = "Le taux de commission ne peut pas être négatif")
+    @DecimalMax(value = "100.0", message = "Le taux de commission ne peut pas dépasser 100%")
+    @io.swagger.v3.oas.annotations.media.Schema(example = "5", description = "Taux de commission Solimus sur les travaux, en %")
+    private BigDecimal travauxCommissionRate;
 }
