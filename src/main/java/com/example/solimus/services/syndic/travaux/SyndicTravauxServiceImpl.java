@@ -699,10 +699,9 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         // le solde n'est plus jamais stocké directement sur ProviderWallet
         ProviderWallet providerWallet = getOrCreateProviderWalletForUpdate(request.getSelectedProvider());
 
-        // Commission Solimus retenue avant le crédit : le prestataire reçoit le net
-        travauxCommissionService.creditProviderNet(providerWallet, request, dto.getMontant(),
-                ProviderWalletTransactionCategory.TRAVAUX, "Acompte — " + request.getTitle(), null,
-                com.example.solimus.enums.CommissionSource.WALLET_SYNDIC);
+        // Crédit intégral : la commission Solimus est prélevée une seule fois, à la fin des travaux
+        travauxCommissionService.creditProvider(providerWallet, request, dto.getMontant(),
+                ProviderWalletTransactionCategory.TRAVAUX, "Acompte — " + request.getTitle(), null);
 
         // Met à jour l'intervention (depositAmount, remainingAmount recalculé automatiquement via @PrePersist/@PreUpdate)
         request.setDepositAmount(dto.getMontant());
@@ -846,10 +845,9 @@ public class SyndicTravauxServiceImpl implements SyndicTravauxService {
         // Crédite le wallet du prestataire avec le solde final — enregistré dans son grand livre
         ProviderWallet providerWallet = getOrCreateProviderWalletForUpdate(request.getSelectedProvider());
 
-        // Commission Solimus retenue avant le crédit : le prestataire reçoit le net
-        travauxCommissionService.creditProviderNet(providerWallet, request, solde,
-                ProviderWalletTransactionCategory.TRAVAUX, "Solde final — " + request.getTitle(), null,
-                com.example.solimus.enums.CommissionSource.WALLET_SYNDIC);
+        // Crédit intégral : la commission Solimus est prélevée une seule fois, à la fin des travaux
+        travauxCommissionService.creditProvider(providerWallet, request, solde,
+                ProviderWalletTransactionCategory.TRAVAUX, "Solde final — " + request.getTitle(), null);
 
         // Met à jour le montant payé et clôture l'intervention
         request.setDepositAmount(request.getTotalAmount()); // tout est désormais payé

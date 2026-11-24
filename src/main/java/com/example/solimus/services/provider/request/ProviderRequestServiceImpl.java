@@ -46,6 +46,7 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
     private final ProviderEligibilityService eligibilityService;
     private final InterventionBroadcastService broadcastService;
     private final ProviderProfileRepository providerProfileRepository;
+    private final com.example.solimus.services.platform.TravauxCommissionService travauxCommissionService;
 
     //---------------------------------------------------
     // Demandes de Travaux non assignés
@@ -258,6 +259,12 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
         // 9. Sauvegarde finale (Hibernate calculera les totaux via @PrePersist)
         Quote saved = quoteRepository.save(quote);
 
+        // 9 bis. Un devis envoyé doit être couvert par le wallet : la commission Solimus de ce devis sera
+        // débitée automatiquement à la fin des travaux (rollback complet si le solde est insuffisant)
+        if (saved.getStatus() == QuoteStatus.SENT) {
+            travauxCommissionService.assertProviderCanCover(provider, request, saved.getTotalAmount());
+        }
+
         // 10. Référence fixée à partir de l'id auto-généré (garanti unique par la base)
         saved.setReference("DEV-" + String.format("%06d", saved.getId()));
         quoteRepository.save(saved);
@@ -323,6 +330,11 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
         }
 
         quoteRepository.save(quote);
+        // Totaux TTC recalculés ici (sans attendre le @PreUpdate du flush) pour contrôler la commission
+        if (quote.getStatus() == QuoteStatus.SENT) {
+            quote.calculateTotals();
+            travauxCommissionService.assertProviderCanCover(provider, quote.getInterventionRequest(), quote.getTotalAmount());
+        }
 
         // Brouillon envoyé pour la première fois → le demandeur est prévenu, comme à la création
         if (wasDraft && quote.getStatus() == QuoteStatus.SENT) {
@@ -397,6 +409,37 @@ public class ProviderRequestServiceImpl implements  ProviderRequestService{
     @Transactional(readOnly = true)
     public ProviderEligibilityDTO getEligibility() {
         return eligibilityService.getEligibility(getCurrentUser());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.example.solimus.dtos.provider.eligibility.CommissionEstimateDTO estimateCommission(Long requestId,
+                                                                                                 java.math.BigDecimal amount) {
+        User provider = getCurrentUser();
+        if (amount == null || amount.signum() < 0) {
+            throw new BadRequestException("Le montant TTC du devis doit être positif ou nul");
+        }
+        // Même périmètre que le détail : seulement une demande proposée à ce prestataire
+        InterventionRequest request = interventionRequestRepository
+                .findByIdAndNotifiedProvidersContaining(requestId, provider)
+                .orElseThrow(() -> new ResourceNotFoundException("Demande introuvable"));
+        var split = travauxCommissionService.split(request, amount);
+        java.math.BigDecimal balance = travauxCommissionService.walletBalanceOf(provider.getId());
+        boolean sufficient = balance.compareTo(split.commission()) >= 0;
+        java.math.BigDecimal missing = sufficient ? java.math.BigDecimal.ZERO : split.commission().subtract(balance);
+        return com.example.solimus.dtos.provider.eligibility.CommissionEstimateDTO.builder()
+                .commissionRate(split.rate())
+                .quoteAmount(split.gross())
+                .commission(split.commission())
+                .walletBalance(balance)
+                .sufficient(sufficient)
+                .missingAmount(missing)
+                .message(sufficient
+                        ? "Commission Solimus de " + split.commission().toPlainString()
+                          + " FCFA, débitée automatiquement de votre wallet à la fin des travaux."
+                        : "Solde insuffisant : rechargez votre compte d'au moins " + missing.toPlainString()
+                          + " FCFA pour envoyer ce devis.")
+                .build();
     }
 
     // Tri DISTANCE : distance au carré (approximation équirectangulaire, monotone avec la vraie distance

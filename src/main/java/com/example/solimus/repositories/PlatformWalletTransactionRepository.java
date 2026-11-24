@@ -13,6 +13,9 @@ import java.time.LocalDateTime;
 
 public interface PlatformWalletTransactionRepository extends JpaRepository<PlatformWalletTransaction, Long> {
 
+    boolean existsByInterventionRequestIdAndCategory(Long interventionRequestId,
+                                                     com.example.solimus.enums.PlatformWalletTransactionCategory category);
+
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM PlatformWalletTransaction t")
     BigDecimal sumAll();
 

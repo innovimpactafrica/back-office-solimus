@@ -41,6 +41,7 @@ public class ProviderTravauxServiceImpl implements ProviderTravauxService {
     private final QuoteRepository quoteRepository;
     private final MinioService minioService;
     private final ActivityLogRepository activityLogRepository;
+    private final com.example.solimus.services.platform.TravauxCommissionService travauxCommissionService;
 
     // =========================================================================
     // LISTER MES TRAVAUX (devis accepté → travaux)
@@ -163,6 +164,9 @@ public class ProviderTravauxServiceImpl implements ProviderTravauxService {
         request.addStatusHistory(InterventionStatus.FINISHED, currentProvider);
         request.setFinishedAt(LocalDateTime.now());
         interventionRequestRepository.save(request);
+
+        // Commission Solimus débitée automatiquement du wallet du prestataire vers le wallet Solimus
+        travauxCommissionService.chargeOnCompletion(request);
 
         // Trace la résolution dans le journal d'activité
         ActivityLog log = new ActivityLog();

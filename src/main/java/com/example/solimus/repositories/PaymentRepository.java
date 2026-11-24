@@ -58,13 +58,16 @@ public interface PaymentRepository extends JpaRepository<PaymentProvider, Long> 
      * Historique fusionné paiements + retraits + recharges + commissions d'un prestataire ("Mon Wallet" → onglet Transactions),
      * paginé directement en base via UNION ALL natif
      */
+    // Collation forcée sur chaque colonne texte : les tables anciennes sont en utf8mb4_unicode_ci, les
+    // tables créées depuis par Hibernate prennent la collation par défaut de la base (utf8mb4_0900_ai_ci),
+    // et MySQL refuse un UNION entre collations différentes ("Illegal mix of collations").
     @Query(value =
             "SELECT * FROM ( " +
             "  SELECT " +
-            "    CONCAT(COALESCE(r.name, 'Résidence'), ' - ', COALESCE(s.name, 'Intervention')) AS label, " +
+            "    CONVERT(CONCAT(COALESCE(r.name, 'Résidence'), ' - ', COALESCE(s.name, 'Intervention')) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS label, " +
             "    p.amount AS amount, " +
-            "    'ENTREE' AS type, " +
-            "    CASE WHEN p.status = 'COMPLETED' THEN 'Reçu' ELSE 'En attente' END AS status, " +
+            "    CONVERT('ENTREE' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS type, " +
+            "    CONVERT(CASE WHEN p.status = 'COMPLETED' THEN 'Reçu' ELSE 'En attente' END USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
             "    p.created_at AS transaction_date " +
             "  FROM payments p " +
             "  LEFT JOIN intervention_requests ir ON ir.id = p.intervention_request_id " +
@@ -73,35 +76,35 @@ public interface PaymentRepository extends JpaRepository<PaymentProvider, Long> 
             "  WHERE p.provider_id = :providerId " +
             "  UNION ALL " +
             "  SELECT " +
-            "    CONCAT('Retrait ', COALESCE(w.method, 'N/A')) AS label, " +
+            "    CONVERT(CONCAT('Retrait ', COALESCE(w.method, 'N/A')) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS label, " +
             "    -w.amount AS amount, " +
-            "    'SORTIE' AS type, " +
-            "    CASE WHEN w.status = 'COMPLETED' THEN 'Effectué' " +
+            "    CONVERT('SORTIE' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS type, " +
+            "    CONVERT(CASE WHEN w.status = 'COMPLETED' THEN 'Effectué' " +
             "         WHEN w.status = 'REJECTED' THEN 'Refusé' " +
-            "         ELSE 'En attente' END AS status, " +
+            "         ELSE 'En attente' END USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
             "    w.created_at AS transaction_date " +
             "  FROM withdrawal_requests w " +
             "  WHERE w.provider_id = :providerId " +
             "  UNION ALL " +
             // Recharges du compte (preuve envoyée ou crédit direct de l'admin)
             "  SELECT " +
-            "    CONCAT('Recharge du compte ', COALESCE(rc.reference, '')) AS label, " +
+            "    CONVERT(CONCAT('Recharge du compte ', COALESCE(rc.reference, '')) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS label, " +
             "    rc.amount AS amount, " +
-            "    'ENTREE' AS type, " +
-            "    CASE WHEN rc.status = 'VALIDATED' THEN 'Reçu' " +
+            "    CONVERT('ENTREE' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS type, " +
+            "    CONVERT(CASE WHEN rc.status = 'VALIDATED' THEN 'Reçu' " +
             "         WHEN rc.status = 'REJECTED' THEN 'Refusé' " +
-            "         ELSE 'En attente' END AS status, " +
+            "         ELSE 'En attente' END USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
             "    rc.submitted_at AS transaction_date " +
             "  FROM provider_wallet_recharges rc " +
             "  WHERE rc.provider_id = :providerId " +
             "  UNION ALL " +
-            // Commissions Solimus prélevées sur les paiements de travaux
+            // Commissions Solimus prélevées sur les travaux
             "  SELECT " +
-            "    CONCAT('Commission Solimus ', TRIM(TRAILING '.00' FROM CAST(pc.commission_rate AS CHAR)), ' % — ', " +
-            "           COALESCE(pir.title, 'Travaux')) AS label, " +
+            "    CONVERT(CONCAT('Commission Solimus ', TRIM(TRAILING '.00' FROM CAST(pc.commission_rate AS CHAR)), ' % — ', " +
+            "           COALESCE(pir.title, 'Travaux')) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS label, " +
             "    -pc.amount AS amount, " +
-            "    'SORTIE' AS type, " +
-            "    'Effectué' AS status, " +
+            "    CONVERT('SORTIE' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS type, " +
+            "    CONVERT('Effectué' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
             "    pc.transaction_date AS transaction_date " +
             "  FROM platform_wallet_transactions pc " +
             "  LEFT JOIN intervention_requests pir ON pir.id = pc.intervention_request_id " +

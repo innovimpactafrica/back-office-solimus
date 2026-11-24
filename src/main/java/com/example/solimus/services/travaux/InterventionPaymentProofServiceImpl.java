@@ -47,8 +47,8 @@ import java.util.Set;
  *       acompte en attente de confirmation.</li>
  *   <li>Une seule preuve en attente par intervention et par type.</li>
  *   <li>Confirmation par le prestataire sélectionné uniquement : l'acompte est enregistré ; le solde
- *       clôture l'intervention (FINAL_VALIDATION). Les fonds ne transitent pas par Solimus : seule la
- *       commission Solimus est débitée du wallet du prestataire et versée au wallet plateforme.</li>
+ *       clôture l'intervention (FINAL_VALIDATION). Aucun wallet n'est mouvementé (fonds hors Solimus) ;
+ *       la commission Solimus est prélevée à la fin des travaux (TravauxCommissionService.chargeOnCompletion).</li>
  * </ul>
  */
 @Slf4j
@@ -68,7 +68,6 @@ public class InterventionPaymentProofServiceImpl implements InterventionPaymentP
     private final StatusRecalculationService statusRecalculationService;
     private final NotificationService notificationService;
     private final PaymentProofDocumentService documentService;
-    private final com.example.solimus.services.platform.TravauxCommissionService travauxCommissionService;
 
     // =========================================================================
     // PAYEUR : DÉCLARATIONS
@@ -319,10 +318,6 @@ public class InterventionPaymentProofServiceImpl implements InterventionPaymentP
             logActivity(request, proof.getPayer(), ActivityType.INTERVENTION_RESOLVED, "INTERVENTION", request.getId(),
                     "Intervention clôturée après paiement — " + request.getTitle(), null);
         }
-
-        // Commission Solimus : débitée du wallet du prestataire (il a reçu le montant entier hors Solimus)
-        travauxCommissionService.chargeOffPlatformCommission(provider, request, amount,
-                typeLabel(proof.getType()) + " — " + request.getTitle(), payment.getReference());
 
         proof.setStatus(ProofStatus.VALIDATED);
         proof.setReviewedAt(LocalDateTime.now());

@@ -7,7 +7,9 @@ public enum CommissionSource {
     /** Payé par le syndic depuis son wallet : commission retenue avant crédit du wallet prestataire. */
     WALLET_SYNDIC("Wallet du syndic"),
     /** Payé hors Solimus (preuve confirmée) : commission débitée du wallet prestataire. */
-    HORS_PLATEFORME("Paiement hors plateforme");
+    HORS_PLATEFORME("Paiement hors plateforme"),
+    /** Prélevée sur le wallet prestataire quand il termine les travaux (règle actuelle). */
+    FIN_DE_TRAVAUX("Fin des travaux");
 
     private final String label;
 

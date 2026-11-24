@@ -29,6 +29,9 @@ public interface ProviderRequestService {
     // Accès du prestataire connecté aux demandes de travaux (solde de wallet minimum)
     com.example.solimus.dtos.provider.eligibility.ProviderEligibilityDTO getEligibility();
 
+    // Commission Solimus d'un devis de ce montant TTC pour cette demande, et couverture par le wallet
+    com.example.solimus.dtos.provider.eligibility.CommissionEstimateDTO estimateCommission(Long requestId, java.math.BigDecimal amount);
+
     /**
      * Retourne les détails d'une demande pour le prestataire connecté
      */

@@ -79,6 +79,17 @@ public class ProviderRequestController {
         return ResponseEntity.ok(providerRequestService.getEligibility());
     }
 
+    @Operation(summary = "Estimer la commission Solimus d'un devis",
+            description = "À appeler dans le formulaire de devis quand le total TTC change. La commission est débitée "
+                    + "automatiquement du wallet à la fin des travaux ; un devis n'est accepté que si le wallet la couvre.")
+    @GetMapping("/{id}/commission-estimate")
+    public ResponseEntity<com.example.solimus.dtos.provider.eligibility.CommissionEstimateDTO> estimateCommission(
+            @PathVariable Long id,
+            @io.swagger.v3.oas.annotations.Parameter(description = "Montant TTC du devis (FCFA)", required = true)
+            @RequestParam java.math.BigDecimal amount) {
+        return ResponseEntity.ok(providerRequestService.estimateCommission(id, amount));
+    }
+
     @Operation(summary = "Voir les détails d'une demande de travaux")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Détail renvoyé avec succès",
