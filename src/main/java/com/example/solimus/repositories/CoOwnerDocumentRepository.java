@@ -25,9 +25,9 @@ public interface CoOwnerDocumentRepository extends JpaRepository<MeetingDocument
                             "JOIN meeting_participants mp ON mp.meeting_id = md.meeting_id " +
                             "WHERE mp.user_id = :userId " +
                             // Recherche optionnelle sur le nom du fichier, insensible à la casse
-                            "AND (:search IS NULL OR LOWER(md.file_name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+                            "AND (CAST(:search AS VARCHAR) IS NULL OR LOWER(md.file_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
                             // Filtre optionnel sur la catégorie, correspondance exacte (même valeur de secours appliquée ici)
-                            "AND (:category IS NULL OR COALESCE(md.document_type, 'PV_AG') = :category) " +
+                            "AND (CAST(:category AS VARCHAR) IS NULL OR COALESCE(md.document_type, 'PV_AG') = CAST(:category AS VARCHAR)) " +
 
                             "UNION ALL " +
 
@@ -41,9 +41,9 @@ public interface CoOwnerDocumentRepository extends JpaRepository<MeetingDocument
                             "JOIN exceptional_call_items eci ON eci.exceptional_call_id = ecd.exceptional_call_id " +
                             "WHERE eci.co_owner_id = :userId " +
                             // Même recherche appliquée à cette source
-                            "AND (:search IS NULL OR LOWER(ecd.file_name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+                            "AND (CAST(:search AS VARCHAR) IS NULL OR LOWER(ecd.file_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
                             // Même filtre appliqué à cette source
-                            "AND (:category IS NULL OR 'Charges' = :category) " +
+                            "AND (CAST(:category AS VARCHAR) IS NULL OR 'Charges' = CAST(:category AS VARCHAR)) " +
 
                             // Les 2 sources fusionnées sont triées ensemble, du plus récent au plus ancien
                             "ORDER BY created_at DESC",
@@ -55,14 +55,14 @@ public interface CoOwnerDocumentRepository extends JpaRepository<MeetingDocument
                             "  SELECT md.id FROM meeting_documents md " +
                             "  JOIN meeting_participants mp ON mp.meeting_id = md.meeting_id " +
                             "  WHERE mp.user_id = :userId " +
-                            "  AND (:search IS NULL OR LOWER(md.file_name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-                            "  AND (:category IS NULL OR COALESCE(md.document_type, 'PV_AG') = :category) " +
+                            "  AND (CAST(:search AS VARCHAR) IS NULL OR LOWER(md.file_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
+                            "  AND (CAST(:category AS VARCHAR) IS NULL OR COALESCE(md.document_type, 'PV_AG') = CAST(:category AS VARCHAR)) " +
                             "  UNION ALL " +
                             "  SELECT ecd.id FROM exceptional_call_documents ecd " +
                             "  JOIN exceptional_call_items eci ON eci.exceptional_call_id = ecd.exceptional_call_id " +
                             "  WHERE eci.co_owner_id = :userId " +
-                            "  AND (:search IS NULL OR LOWER(ecd.file_name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-                            "  AND (:category IS NULL OR 'Charges' = :category) " +
+                            "  AND (CAST(:search AS VARCHAR) IS NULL OR LOWER(ecd.file_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
+                            "  AND (CAST(:category AS VARCHAR) IS NULL OR 'Charges' = CAST(:category AS VARCHAR)) " +
                             ") AS combined",
 
             // Requête SQL brute (pas du JPQL) car UNION n'est pas supporté par Hibernate directement

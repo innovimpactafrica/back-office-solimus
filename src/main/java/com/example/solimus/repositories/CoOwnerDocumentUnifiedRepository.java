@@ -20,9 +20,9 @@ public interface CoOwnerDocumentUnifiedRepository extends JpaRepository<CoOwnerD
                 "FROM co_owner_documents cod " +
                 "WHERE cod.co_owner_id = :coOwnerId " +
                 // Recherche optionnelle sur le titre du document manuel
-                "AND (:search IS NULL OR LOWER(cod.title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+                "AND (CAST(:search AS VARCHAR) IS NULL OR LOWER(cod.title) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
                 // Filtre optionnel sur la catégorie, correspondance exacte
-                "AND (:category IS NULL OR cod.category = :category) " +
+                "AND (CAST(:category AS VARCHAR) IS NULL OR cod.category = CAST(:category AS VARCHAR)) " +
 
                 "UNION ALL " +
 
@@ -38,9 +38,9 @@ public interface CoOwnerDocumentUnifiedRepository extends JpaRepository<CoOwnerD
                 "JOIN meeting_participants mp ON mp.meeting_id = md.meeting_id " +
                 "WHERE mp.user_id = :coOwnerId " +
                 // Recherche élargie : sur le nom du fichier OU le titre
-                "AND (:search IS NULL OR LOWER(md.file_name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "     OR LOWER(md.title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-                "AND (:category IS NULL OR COALESCE(md.document_type, 'PV_AG') = :category) " +
+                "AND (CAST(:search AS VARCHAR) IS NULL OR LOWER(md.file_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "     OR LOWER(md.title) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
+                "AND (CAST(:category AS VARCHAR) IS NULL OR COALESCE(md.document_type, 'PV_AG') = CAST(:category AS VARCHAR)) " +
 
                 "UNION ALL " +
 
@@ -53,8 +53,8 @@ public interface CoOwnerDocumentUnifiedRepository extends JpaRepository<CoOwnerD
                 // On rejoint la table des items pour ne garder que les documents concernant ce copropriétaire
                 "JOIN exceptional_call_items eci ON eci.exceptional_call_id = ecd.exceptional_call_id " +
                 "WHERE eci.co_owner_id = :coOwnerId " +
-                "AND (:search IS NULL OR LOWER(ecd.file_name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-                "AND (:category IS NULL OR 'Charges' = :category) " +
+                "AND (CAST(:search AS VARCHAR) IS NULL OR LOWER(ecd.file_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
+                "AND (CAST(:category AS VARCHAR) IS NULL OR 'Charges' = CAST(:category AS VARCHAR)) " +
 
                 // Les 3 sources fusionnées sont triées ensemble, du plus récent au plus ancien
                 "ORDER BY created_at DESC",
@@ -65,21 +65,21 @@ public interface CoOwnerDocumentUnifiedRepository extends JpaRepository<CoOwnerD
                 "SELECT COUNT(*) FROM (" +
                 "  SELECT cod.id FROM co_owner_documents cod " +
                 "  WHERE cod.co_owner_id = :coOwnerId " +
-                "  AND (:search IS NULL OR LOWER(cod.title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-                "  AND (:category IS NULL OR cod.category = :category) " +
+                "  AND (CAST(:search AS VARCHAR) IS NULL OR LOWER(cod.title) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
+                "  AND (CAST(:category AS VARCHAR) IS NULL OR cod.category = CAST(:category AS VARCHAR)) " +
                 "  UNION ALL " +
                 "  SELECT md.id FROM meeting_documents md " +
                 "  JOIN meeting_participants mp ON mp.meeting_id = md.meeting_id " +
                 "  WHERE mp.user_id = :coOwnerId " +
-                "  AND (:search IS NULL OR LOWER(md.file_name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "       OR LOWER(md.title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-                "  AND (:category IS NULL OR COALESCE(md.document_type, 'PV_AG') = :category) " +
+                "  AND (CAST(:search AS VARCHAR) IS NULL OR LOWER(md.file_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "       OR LOWER(md.title) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
+                "  AND (CAST(:category AS VARCHAR) IS NULL OR COALESCE(md.document_type, 'PV_AG') = CAST(:category AS VARCHAR)) " +
                 "  UNION ALL " +
                 "  SELECT ecd.id FROM exceptional_call_documents ecd " +
                 "  JOIN exceptional_call_items eci ON eci.exceptional_call_id = ecd.exceptional_call_id " +
                 "  WHERE eci.co_owner_id = :coOwnerId " +
-                "  AND (:search IS NULL OR LOWER(ecd.file_name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-                "  AND (:category IS NULL OR 'Charges' = :category) " +
+                "  AND (CAST(:search AS VARCHAR) IS NULL OR LOWER(ecd.file_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
+                "  AND (CAST(:category AS VARCHAR) IS NULL OR 'Charges' = CAST(:category AS VARCHAR)) " +
                 ") AS combined",
 
         // Requête SQL brute (pas du JPQL) car UNION n'est pas supporté par Hibernate directement

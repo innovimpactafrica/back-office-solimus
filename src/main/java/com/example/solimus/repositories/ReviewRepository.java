@@ -55,7 +55,7 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
      * Calcule le temps moyen d'intervention en minutes.
      * Retourne null s'il n'a encore aucune intervention terminée.
      */
-    @Query(value = "SELECT AVG(TIMESTAMPDIFF(MINUTE, i.started_at, i.finished_at)) " +
+    @Query(value = "SELECT AVG(EXTRACT(EPOCH FROM (i.finished_at - i.started_at)) / 60) " +
            "FROM intervention_requests i " +
            "WHERE i.selected_provider_id = :providerId " +
            "AND i.started_at IS NOT NULL AND i.finished_at IS NOT NULL", nativeQuery = true)

@@ -127,12 +127,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
                 ") " +
                 "SELECT u.id AS user_id, u.first_name AS first_name, u.last_name AS last_name, " +
                 "       u.email AS email, " +
-                "       CONVERT(spr.company_name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS company_name, " +
+                "       CAST(spr.company_name AS VARCHAR) AS company_name, " +
                 "       (SELECT COUNT(*) FROM residences r WHERE r.syndic_id = u.id) AS residences_count, " +
                 "       (SELECT COUNT(*) FROM syndic_coowner_relation scr WHERE scr.syndic_id = u.id) AS coowners_count, " +
-                "       CONVERT(sp.name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS plan_name, " +
+                "       CAST(sp.name AS VARCHAR) AS plan_name, " +
                 "       sl.end_date AS expiration_date, " +
-                "       CONVERT(sl.status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS subscription_status, " +
+                "       CAST(sl.status AS VARCHAR) AS subscription_status, " +
                 "       u.phone AS phone " +
                 "FROM users u " +
                 "JOIN roles ro ON ro.id = u.role_id " +
@@ -140,12 +140,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
                 "LEFT JOIN syndic_latest sl ON sl.syndic_id = u.id AND sl.rn = 1 " +
                 "LEFT JOIN syndic_plan sp ON sp.id = sl.syndic_plan_id " +
                 "WHERE ro.name = 'ROLE_SYNDIC' " +
-                "AND (:search IS NULL OR :search = '' " +
-                "     OR LOWER(u.first_name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "     OR LOWER(u.last_name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "     OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "     OR LOWER(spr.company_name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-                "AND (:status IS NULL OR sl.status = :status) " +
+                "AND (CAST(:search AS VARCHAR) IS NULL OR CAST(:search AS VARCHAR) = '' " +
+                "     OR LOWER(u.first_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "     OR LOWER(u.last_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "     OR LOWER(u.email) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "     OR LOWER(spr.company_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
+                "AND (CAST(:status AS VARCHAR) IS NULL OR sl.status = CAST(:status AS VARCHAR)) " +
                 "ORDER BY u.created_at DESC",
 
         countQuery =
@@ -163,12 +163,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
                 "LEFT JOIN syndic_profiles spr ON spr.user_id = u.id " +
                 "LEFT JOIN syndic_latest sl ON sl.syndic_id = u.id AND sl.rn = 1 " +
                 "WHERE ro.name = 'ROLE_SYNDIC' " +
-                "AND (:search IS NULL OR :search = '' " +
-                "     OR LOWER(u.first_name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "     OR LOWER(u.last_name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "     OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "     OR LOWER(spr.company_name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-                "AND (:status IS NULL OR sl.status = :status)",
+                "AND (CAST(:search AS VARCHAR) IS NULL OR CAST(:search AS VARCHAR) = '' " +
+                "     OR LOWER(u.first_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "     OR LOWER(u.last_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "     OR LOWER(u.email) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "     OR LOWER(spr.company_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
+                "AND (CAST(:status AS VARCHAR) IS NULL OR sl.status = CAST(:status AS VARCHAR))",
 
         // Requête SQL brute (pas du JPQL) car ROW_NUMBER() n'est pas supporté par Hibernate
         nativeQuery = true
@@ -196,13 +196,13 @@ public interface UserRepository extends JpaRepository<User, Long> {
                 ") " +
                 "SELECT u.id AS user_id, u.first_name AS first_name, u.last_name AS last_name, " +
                 "       u.email AS email, u.phone AS phone, u.city AS city, u.country AS country, " +
-                "       CONVERT(pp.company_name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS company_name, " +
-                "       CONVERT(sp.name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS specialty_name, " +
+                "       CAST(pp.company_name AS VARCHAR) AS company_name, " +
+                "       CAST(sp.name AS VARCHAR) AS specialty_name, " +
                 "       (SELECT COUNT(*) FROM intervention_requests ir WHERE ir.selected_provider_id = u.id " +
                 "            AND ir.status IN ('FINISHED', 'FINAL_VALIDATION')) AS missions_count, " +
-                "       CONVERT(plan.name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS plan_name, " +
+                "       CAST(plan.name AS VARCHAR) AS plan_name, " +
                 "       pl.end_date AS expiration_date, " +
-                "       CONVERT(pl.status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS subscription_status " +
+                "       CAST(pl.status AS VARCHAR) AS subscription_status " +
                 "FROM users u " +
                 "JOIN roles ro ON ro.id = u.role_id " +
                 "LEFT JOIN provider_profiles pp ON pp.user_id = u.id " +
@@ -210,12 +210,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
                 "LEFT JOIN provider_latest pl ON pl.provider_id = u.id AND pl.rn = 1 " +
                 "LEFT JOIN provider_plan plan ON plan.id = pl.provider_plan_id " +
                 "WHERE ro.name = 'ROLE_PRESTATAIRE' " +
-                "AND (:search IS NULL OR :search = '' " +
-                "     OR LOWER(u.first_name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "     OR LOWER(u.last_name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "     OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "     OR LOWER(pp.company_name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-                "AND (:status IS NULL OR pl.status = :status) " +
+                "AND (CAST(:search AS VARCHAR) IS NULL OR CAST(:search AS VARCHAR) = '' " +
+                "     OR LOWER(u.first_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "     OR LOWER(u.last_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "     OR LOWER(u.email) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "     OR LOWER(pp.company_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
+                "AND (CAST(:status AS VARCHAR) IS NULL OR pl.status = CAST(:status AS VARCHAR)) " +
                 "ORDER BY u.created_at DESC",
 
         countQuery =
@@ -233,12 +233,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
                 "LEFT JOIN provider_profiles pp ON pp.user_id = u.id " +
                 "LEFT JOIN provider_latest pl ON pl.provider_id = u.id AND pl.rn = 1 " +
                 "WHERE ro.name = 'ROLE_PRESTATAIRE' " +
-                "AND (:search IS NULL OR :search = '' " +
-                "     OR LOWER(u.first_name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "     OR LOWER(u.last_name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "     OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "     OR LOWER(pp.company_name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-                "AND (:status IS NULL OR pl.status = :status)",
+                "AND (CAST(:search AS VARCHAR) IS NULL OR CAST(:search AS VARCHAR) = '' " +
+                "     OR LOWER(u.first_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "     OR LOWER(u.last_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "     OR LOWER(u.email) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "     OR LOWER(pp.company_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
+                "AND (CAST(:status AS VARCHAR) IS NULL OR pl.status = CAST(:status AS VARCHAR))",
 
         // Requête SQL brute (pas du JPQL) car ROW_NUMBER() n'est pas supporté par Hibernate
         nativeQuery = true

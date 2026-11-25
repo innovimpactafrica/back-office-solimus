@@ -93,13 +93,13 @@ public interface SyndicWalletTransactionRepository extends JpaRepository<SyndicW
     // Somme mensuelle d'une catégorie, sur une période donnée, optionnellement filtré par résidence
    // Utilisée pour construire le graphique "Recettes vs Dépenses" (6 derniers mois glissants)
     @Query(value =
-            "SELECT DATE_FORMAT(t.transaction_date, '%Y-%m') AS period_key, " +
+            "SELECT TO_CHAR(t.transaction_date, 'YYYY-MM') AS period_key, " +
                     "       COALESCE(SUM(t.amount), 0) AS total " +
                     "FROM syndic_wallet_transactions t " +
                     "WHERE t.wallet_id = :walletId " +
                     "AND t.category = :category " +
                     "AND t.transaction_date >= :startDate " +
-                    "AND (:residenceId IS NULL OR t.residence_id = :residenceId) " +
+                    "AND (CAST(:residenceId AS BIGINT) IS NULL OR t.residence_id = CAST(:residenceId AS BIGINT)) " +
                     "GROUP BY period_key " +
                     "ORDER BY period_key ASC",
             nativeQuery = true)
@@ -111,13 +111,13 @@ public interface SyndicWalletTransactionRepository extends JpaRepository<SyndicW
     // Somme trimestrielle d'une catégorie, sur une période donnée, optionnellement filtré par résidence
     // Utilisée pour la vue trimestrielle du graphique "Recettes vs Dépenses" (4 trimestres de l'année en cours)
     @Query(value =
-            "SELECT CONCAT(YEAR(t.transaction_date), '-Q', QUARTER(t.transaction_date)) AS period_key, " +
+            "SELECT CONCAT(CAST(EXTRACT(YEAR FROM t.transaction_date) AS INTEGER), '-Q', CAST(EXTRACT(QUARTER FROM t.transaction_date) AS INTEGER)) AS period_key, " +
             "       COALESCE(SUM(t.amount), 0) AS total " +
             "FROM syndic_wallet_transactions t " +
             "WHERE t.wallet_id = :walletId " +
             "AND t.category = :category " +
             "AND t.transaction_date >= :startDate " +
-            "AND (:residenceId IS NULL OR t.residence_id = :residenceId) " +
+            "AND (CAST(:residenceId AS BIGINT) IS NULL OR t.residence_id = CAST(:residenceId AS BIGINT)) " +
             "GROUP BY period_key " +
             "ORDER BY period_key ASC",
             nativeQuery = true)

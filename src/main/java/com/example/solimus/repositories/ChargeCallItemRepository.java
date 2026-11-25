@@ -208,7 +208,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     // Récupère le nombre de jours de retard le plus important parmi tous les ChargeCallItem non soldés
     // de ce copropriétaire, restreint aux résidences de ce syndic. Retourne null si aucun item en retard.
     // Statut PENDING uniquement désormais : PARTIALLY_PAID supprimé, aucun paiement partiel autorisé.
-    @Query("SELECT MAX(DATEDIFF(CURRENT_DATE, i.chargeCall.dueDate)) FROM ChargeCallItem i " +
+    @Query("SELECT CAST(MAX((CURRENT_DATE - i.chargeCall.dueDate) by day) AS Integer) FROM ChargeCallItem i " +
             "WHERE i.coOwner.id = :coOwnerId " +
             "AND i.chargeCall.budget.syndic.id = :syndicId " +
             "AND i.status = 'PENDING' " +
@@ -325,7 +325,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     @Query("SELECT COUNT(i) FROM ChargeCallItem i " +
            "WHERE i.chargeCall.budget.syndic.id = :syndicId " +
            "AND i.status = 'PENDING' " +
-           "AND DATEDIFF(CURRENT_DATE, i.chargeCall.dueDate) BETWEEN 1 AND 30")
+           "AND ((CURRENT_DATE - i.chargeCall.dueDate) by day) BETWEEN 1 AND 30")
     long countLateBySyndicId(@Param("syndicId") Long syndicId);
 
     // Compte les lignes impayées (plus de 30 jours après échéance) et non soldées pour un syndic —
@@ -333,7 +333,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
     @Query("SELECT COUNT(i) FROM ChargeCallItem i " +
            "WHERE i.chargeCall.budget.syndic.id = :syndicId " +
            "AND i.status = 'PENDING' " +
-           "AND DATEDIFF(CURRENT_DATE, i.chargeCall.dueDate) > 30")
+           "AND ((CURRENT_DATE - i.chargeCall.dueDate) by day) > 30")
     long countUnpaidBySyndicId(@Param("syndicId") Long syndicId);
 
     // countPartiallyPaidBySyndicId supprimée — PARTIALLY_PAID n'existe plus, plus aucun paiement
@@ -358,7 +358,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
             "'REGULAR' AS type_code, " +
             "r.name AS residence_name, " +
             "r.id AS residence_id, " +
-            "(SELECT GROUP_CONCAT(p.reference SEPARATOR ', ') FROM properties p " +
+            "(SELECT STRING_AGG(p.reference, ', ') FROM properties p " +
             "   WHERE p.owner_id = cci.coowner_id AND p.residence_id = r.id) AS property_reference, " +
             "(cci.quote_part + COALESCE(cci.penalty_amount, 0) - COALESCE(cci.paid_amount, 0)) AS remaining_amount, " +
             "cc.due_date AS due_date, " +
@@ -369,18 +369,18 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
             "cc.annee AS year, " +
             "CONCAT('Charges ', " +
             "  CASE WHEN cc.frequency = 'MENSUEL' THEN " +
-            "    ELT(cc.period_number, 'Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre') " +
+            "    (ARRAY['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'])[cc.period_number] " +
             "  ELSE " +
-            "    CONCAT('T', cc.period_number, ' (', ELT(cc.period_number, 'Jan-Mar','Avr-Jun','Jul-Sep','Oct-Dec'), ')') " +
+            "    CONCAT('T', cc.period_number, ' (', (ARRAY['Jan-Mar','Avr-Jun','Jul-Sep','Oct-Dec'])[cc.period_number], ')') " +
             "  END, ' ', cc.annee) AS search_title " +
             "FROM charge_call_items cci " +
             "JOIN charge_calls cc ON cc.id = cci.charge_call_id " +
             "JOIN budgets b ON b.id = cc.budget_id " +
             "JOIN residences r ON r.id = b.residence_id " +
             "WHERE cci.coowner_id = :coOwnerId " +
-            "AND (:residenceId IS NULL OR r.id = :residenceId) " +
-            "AND (:type IS NULL OR :type = 'REGULAR') " +
-            "AND (:statusRaw IS NULL OR (CASE WHEN cci.status = 'PENDING' AND cci.proof_status = 'PENDING_VALIDATION' THEN 'PENDING_VALIDATION' ELSE cci.status END) = :statusRaw) ";
+            "AND (CAST(:residenceId AS BIGINT) IS NULL OR r.id = CAST(:residenceId AS BIGINT)) " +
+            "AND (CAST(:type AS VARCHAR) IS NULL OR CAST(:type AS VARCHAR) = 'REGULAR') " +
+            "AND (CAST(:statusRaw AS VARCHAR) IS NULL OR (CASE WHEN cci.status = 'PENDING' AND cci.proof_status = 'PENDING_VALIDATION' THEN 'PENDING_VALIDATION' ELSE cci.status END) = CAST(:statusRaw AS VARCHAR)) ";
 
     String MY_CHARGES_EXCEPTIONAL_BRANCH =
             "SELECT 'EXCEPTIONAL' AS source_type, " +
@@ -389,7 +389,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
             "'EXCEPTIONAL' AS type_code, " +
             "r2.name AS residence_name, " +
             "r2.id AS residence_id, " +
-            "(SELECT GROUP_CONCAT(p2.reference SEPARATOR ', ') FROM properties p2 " +
+            "(SELECT STRING_AGG(p2.reference, ', ') FROM properties p2 " +
             "   WHERE p2.owner_id = eci.co_owner_id AND p2.residence_id = r2.id) AS property_reference, " +
             "(eci.quote_part - COALESCE(eci.paid_amount, 0)) AS remaining_amount, " +
             "NULL AS due_date, " +
@@ -403,19 +403,19 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
             "JOIN exceptional_calls ec ON ec.id = eci.exceptional_call_id " +
             "JOIN residences r2 ON r2.id = ec.residence_id " +
             "WHERE eci.co_owner_id = :coOwnerId " +
-            "AND (:residenceId IS NULL OR r2.id = :residenceId) " +
-            "AND (:type IS NULL OR :type = 'EXCEPTIONAL') " +
-            "AND (:statusRaw IS NULL OR (CASE WHEN eci.status = 'PENDING' AND eci.proof_status = 'PENDING_VALIDATION' THEN 'PENDING_VALIDATION' ELSE eci.status END) = :statusRaw) ";
+            "AND (CAST(:residenceId AS BIGINT) IS NULL OR r2.id = CAST(:residenceId AS BIGINT)) " +
+            "AND (CAST(:type AS VARCHAR) IS NULL OR CAST(:type AS VARCHAR) = 'EXCEPTIONAL') " +
+            "AND (CAST(:statusRaw AS VARCHAR) IS NULL OR (CASE WHEN eci.status = 'PENDING' AND eci.proof_status = 'PENDING_VALIDATION' THEN 'PENDING_VALIDATION' ELSE eci.status END) = CAST(:statusRaw AS VARCHAR)) ";
 
     // Page de "mes charges" (courantes + exceptionnelles fusionnées), triée par échéance croissante
     // (NULL en dernier, comme Comparator.nullsLast), LIMIT/OFFSET géré par la base
     @Query(value =
             "SELECT * FROM (" + MY_CHARGES_CHARGE_BRANCH + " UNION ALL " + MY_CHARGES_EXCEPTIONAL_BRANCH + ") AS combined " +
-            "WHERE (:search IS NULL OR :search = '' OR LOWER(search_title) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+            "WHERE (CAST(:search AS VARCHAR) IS NULL OR CAST(:search AS VARCHAR) = '' OR LOWER(search_title) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
             "ORDER BY due_date IS NULL, due_date ASC",
             countQuery =
             "SELECT COUNT(*) FROM (" + MY_CHARGES_CHARGE_BRANCH + " UNION ALL " + MY_CHARGES_EXCEPTIONAL_BRANCH + ") AS combined " +
-            "WHERE (:search IS NULL OR :search = '' OR LOWER(search_title) LIKE LOWER(CONCAT('%', :search, '%')))",
+            "WHERE (CAST(:search AS VARCHAR) IS NULL OR CAST(:search AS VARCHAR) = '' OR LOWER(search_title) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')))",
             nativeQuery = true)
     Page<Object[]> findMyChargesUnion(@Param("coOwnerId") Long coOwnerId,
                                        @Param("residenceId") Long residenceId,
@@ -431,7 +431,7 @@ public interface ChargeCallItemRepository extends JpaRepository<ChargeCallItem, 
             "       COALESCE(SUM(CASE WHEN remaining_amount > 0 THEN 1 ELSE 0 END), 0) AS pending_count, " +
             "       MIN(CASE WHEN remaining_amount > 0 THEN due_date ELSE NULL END) AS next_due_date " +
             "FROM (" + MY_CHARGES_CHARGE_BRANCH + " UNION ALL " + MY_CHARGES_EXCEPTIONAL_BRANCH + ") AS combined " +
-            "WHERE (:search IS NULL OR :search = '' OR LOWER(search_title) LIKE LOWER(CONCAT('%', :search, '%')))",
+            "WHERE (CAST(:search AS VARCHAR) IS NULL OR CAST(:search AS VARCHAR) = '' OR LOWER(search_title) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')))",
             nativeQuery = true)
     List<Object[]> sumMyChargesSummary(@Param("coOwnerId") Long coOwnerId,
                                         @Param("residenceId") Long residenceId,

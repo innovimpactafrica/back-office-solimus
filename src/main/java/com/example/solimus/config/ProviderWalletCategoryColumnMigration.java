@@ -32,6 +32,11 @@ public class ProviderWalletCategoryColumnMigration {
     @EventListener(ApplicationReadyEvent.class)
     public void migrate() {
         try {
+            // Propre à MySQL (colonnes ENUM) : sans objet sur PostgreSQL, où la colonne est créée en VARCHAR
+            String product = jdbcTemplate.execute((java.sql.Connection c) -> c.getMetaData().getDatabaseProductName());
+            if (product == null || !product.toLowerCase(java.util.Locale.ROOT).contains("mysql")) {
+                return;
+            }
             List<String> types = jdbcTemplate.queryForList(
                     "SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
                             + "AND TABLE_NAME = 'provider_wallet_transactions' AND COLUMN_NAME = 'category'",

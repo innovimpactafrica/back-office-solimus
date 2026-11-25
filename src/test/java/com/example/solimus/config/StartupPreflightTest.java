@@ -65,7 +65,7 @@ class StartupPreflightTest {
 
         assertThatThrownBy(() -> new StartupPreflight().initialize(context(environment)))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("Base MySQL injoignable sur 127.0.0.1:" + closedPort);
+                .hasMessage("Base de données injoignable sur 127.0.0.1:" + closedPort);
     }
 
     @Test

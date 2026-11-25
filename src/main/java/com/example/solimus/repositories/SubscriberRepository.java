@@ -18,14 +18,14 @@ public interface SubscriberRepository extends JpaRepository<SyndicSubscription, 
     @Query(
         value =
                 "WITH syndic_latest AS (" +
-                "  SELECT CONVERT('SYNDIC' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS subscriber_type, ss.id AS subscription_id, " +
-                "         CONVERT(COALESCE(spr.company_name, CONCAT(u.first_name, ' ', u.last_name)) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_name, " +
-                "         CONVERT(u.email USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_email, " +
-                "         CONVERT(u.city USING utf8mb4) COLLATE utf8mb4_unicode_ci AS city, " +
-                "         CONVERT(u.country USING utf8mb4) COLLATE utf8mb4_unicode_ci AS country, " +
-                "         CONVERT(sp.name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS plan_name, ss.amount_paid AS amount, " +
+                "  SELECT CAST('SYNDIC' AS VARCHAR) AS subscriber_type, ss.id AS subscription_id, " +
+                "         CAST(COALESCE(spr.company_name, CONCAT(u.first_name, ' ', u.last_name)) AS VARCHAR) AS client_name, " +
+                "         CAST(u.email AS VARCHAR) AS client_email, " +
+                "         CAST(u.city AS VARCHAR) AS city, " +
+                "         CAST(u.country AS VARCHAR) AS country, " +
+                "         CAST(sp.name AS VARCHAR) AS plan_name, ss.amount_paid AS amount, " +
                 "         ss.start_date AS start_date, ss.end_date AS end_date, " +
-                "         CONVERT(ss.status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
+                "         CAST(ss.status AS VARCHAR) AS status, " +
                 "         ROW_NUMBER() OVER (" +
                 "             PARTITION BY ss.syndic_id " +
                 "             ORDER BY CASE WHEN ss.status = 'ACTIVE' THEN 0 ELSE 1 END, ss.created_at DESC" +
@@ -36,14 +36,14 @@ public interface SubscriberRepository extends JpaRepository<SyndicSubscription, 
                 "  LEFT JOIN syndic_profiles spr ON spr.user_id = u.id " +
                 "), " +
                 "provider_latest AS (" +
-                "  SELECT CONVERT('PRESTATAIRE' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS subscriber_type, s.id AS subscription_id, " +
-                "         CONVERT(COALESCE(ppr.company_name, CONCAT(u.first_name, ' ', u.last_name)) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_name, " +
-                "         CONVERT(u.email USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_email, " +
-                "         CONVERT(u.city USING utf8mb4) COLLATE utf8mb4_unicode_ci AS city, " +
-                "         CONVERT(u.country USING utf8mb4) COLLATE utf8mb4_unicode_ci AS country, " +
-                "         CONVERT(pp.name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS plan_name, s.amount_paid AS amount, " +
+                "  SELECT CAST('PRESTATAIRE' AS VARCHAR) AS subscriber_type, s.id AS subscription_id, " +
+                "         CAST(COALESCE(ppr.company_name, CONCAT(u.first_name, ' ', u.last_name)) AS VARCHAR) AS client_name, " +
+                "         CAST(u.email AS VARCHAR) AS client_email, " +
+                "         CAST(u.city AS VARCHAR) AS city, " +
+                "         CAST(u.country AS VARCHAR) AS country, " +
+                "         CAST(pp.name AS VARCHAR) AS plan_name, s.amount_paid AS amount, " +
                 "         s.start_date AS start_date, s.end_date AS end_date, " +
-                "         CONVERT(s.status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
+                "         CAST(s.status AS VARCHAR) AS status, " +
                 "         ROW_NUMBER() OVER (" +
                 "             PARTITION BY s.provider_id " +
                 "             ORDER BY CASE WHEN s.status = 'ACTIVE' THEN 0 ELSE 1 END, s.created_at DESC" +
@@ -60,20 +60,20 @@ public interface SubscriberRepository extends JpaRepository<SyndicSubscription, 
                 "  UNION ALL " +
                 "  SELECT * FROM provider_latest WHERE rn = 1" +
                 ") combined " +
-                "WHERE (:search IS NULL OR LOWER(client_name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "       OR LOWER(client_email) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-                "AND (:status IS NULL OR status = :status) " +
-                "AND (:subscriberType IS NULL OR subscriber_type = :subscriberType) " +
+                "WHERE (CAST(:search AS VARCHAR) IS NULL OR LOWER(client_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "       OR LOWER(client_email) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
+                "AND (CAST(:status AS VARCHAR) IS NULL OR status = CAST(:status AS VARCHAR)) " +
+                "AND (CAST(:subscriberType AS VARCHAR) IS NULL OR subscriber_type = CAST(:subscriberType AS VARCHAR)) " +
                 "ORDER BY start_date DESC",
 
         // Requête séparée pour compter le nombre total de résultats (nécessaire pour la pagination),
         // avec exactement les mêmes filtres et le même dédoublonnage que la requête principale
         countQuery =
                 "WITH syndic_latest AS (" +
-                "  SELECT CONVERT('SYNDIC' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS subscriber_type, " +
-                "         CONVERT(COALESCE(spr.company_name, CONCAT(u.first_name, ' ', u.last_name)) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_name, " +
-                "         CONVERT(u.email USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_email, " +
-                "         CONVERT(ss.status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
+                "  SELECT CAST('SYNDIC' AS VARCHAR) AS subscriber_type, " +
+                "         CAST(COALESCE(spr.company_name, CONCAT(u.first_name, ' ', u.last_name)) AS VARCHAR) AS client_name, " +
+                "         CAST(u.email AS VARCHAR) AS client_email, " +
+                "         CAST(ss.status AS VARCHAR) AS status, " +
                 "         ROW_NUMBER() OVER (" +
                 "             PARTITION BY ss.syndic_id " +
                 "             ORDER BY CASE WHEN ss.status = 'ACTIVE' THEN 0 ELSE 1 END, ss.created_at DESC" +
@@ -83,10 +83,10 @@ public interface SubscriberRepository extends JpaRepository<SyndicSubscription, 
                 "  LEFT JOIN syndic_profiles spr ON spr.user_id = u.id " +
                 "), " +
                 "provider_latest AS (" +
-                "  SELECT CONVERT('PRESTATAIRE' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS subscriber_type, " +
-                "         CONVERT(COALESCE(ppr.company_name, CONCAT(u.first_name, ' ', u.last_name)) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_name, " +
-                "         CONVERT(u.email USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_email, " +
-                "         CONVERT(s.status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
+                "  SELECT CAST('PRESTATAIRE' AS VARCHAR) AS subscriber_type, " +
+                "         CAST(COALESCE(ppr.company_name, CONCAT(u.first_name, ' ', u.last_name)) AS VARCHAR) AS client_name, " +
+                "         CAST(u.email AS VARCHAR) AS client_email, " +
+                "         CAST(s.status AS VARCHAR) AS status, " +
                 "         ROW_NUMBER() OVER (" +
                 "             PARTITION BY s.provider_id " +
                 "             ORDER BY CASE WHEN s.status = 'ACTIVE' THEN 0 ELSE 1 END, s.created_at DESC" +
@@ -100,10 +100,10 @@ public interface SubscriberRepository extends JpaRepository<SyndicSubscription, 
                 "  UNION ALL " +
                 "  SELECT * FROM provider_latest WHERE rn = 1" +
                 ") combined " +
-                "WHERE (:search IS NULL OR LOWER(client_name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-                "       OR LOWER(client_email) LIKE LOWER(CONCAT('%', :search, '%'))) " +
-                "AND (:status IS NULL OR status = :status) " +
-                "AND (:subscriberType IS NULL OR subscriber_type = :subscriberType)",
+                "WHERE (CAST(:search AS VARCHAR) IS NULL OR LOWER(client_name) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%')) " +
+                "       OR LOWER(client_email) LIKE LOWER(CONCAT('%', CAST(:search AS VARCHAR), '%'))) " +
+                "AND (CAST(:status AS VARCHAR) IS NULL OR status = CAST(:status AS VARCHAR)) " +
+                "AND (CAST(:subscriberType AS VARCHAR) IS NULL OR subscriber_type = CAST(:subscriberType AS VARCHAR))",
 
         // Requête SQL brute (pas du JPQL) car UNION et les fonctions fenêtre ne sont pas supportées par Hibernate
         nativeQuery = true
@@ -124,12 +124,12 @@ public interface SubscriberRepository extends JpaRepository<SyndicSubscription, 
         value =
                 "WITH syndic_tx AS (" +
                 "  SELECT ss.transaction_ref AS reference, " +
-                "         CONVERT(COALESCE(spr.company_name, CONCAT(u.first_name, ' ', u.last_name)) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_name, " +
-                "         CONVERT('SYNDIC' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS type, " +
-                "         CONVERT(sp.name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS plan_name, " +
+                "         CAST(COALESCE(spr.company_name, CONCAT(u.first_name, ' ', u.last_name)) AS VARCHAR) AS client_name, " +
+                "         CAST('SYNDIC' AS VARCHAR) AS type, " +
+                "         CAST(sp.name AS VARCHAR) AS plan_name, " +
                 "         ss.amount_paid AS amount, " +
-                "         CONVERT(ss.payment_method USING utf8mb4) COLLATE utf8mb4_unicode_ci AS payment_method, " +
-                "         CONVERT(ss.payment_status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
+                "         CAST(ss.payment_method AS VARCHAR) AS payment_method, " +
+                "         CAST(ss.payment_status AS VARCHAR) AS status, " +
                 "         ss.created_at AS created_at " +
                 "  FROM syndic_subscriptions ss " +
                 "  JOIN users u ON u.id = ss.syndic_id " +
@@ -138,12 +138,12 @@ public interface SubscriberRepository extends JpaRepository<SyndicSubscription, 
                 "), " +
                 "provider_tx AS (" +
                 "  SELECT s.transaction_ref AS reference, " +
-                "         CONVERT(COALESCE(ppr.company_name, CONCAT(u.first_name, ' ', u.last_name)) USING utf8mb4) COLLATE utf8mb4_unicode_ci AS client_name, " +
-                "         CONVERT('PRESTATAIRE' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS type, " +
-                "         CONVERT(pp.name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS plan_name, " +
+                "         CAST(COALESCE(ppr.company_name, CONCAT(u.first_name, ' ', u.last_name)) AS VARCHAR) AS client_name, " +
+                "         CAST('PRESTATAIRE' AS VARCHAR) AS type, " +
+                "         CAST(pp.name AS VARCHAR) AS plan_name, " +
                 "         s.amount_paid AS amount, " +
-                "         CONVERT(s.payment_method USING utf8mb4) COLLATE utf8mb4_unicode_ci AS payment_method, " +
-                "         CONVERT(s.payment_status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status, " +
+                "         CAST(s.payment_method AS VARCHAR) AS payment_method, " +
+                "         CAST(s.payment_status AS VARCHAR) AS status, " +
                 "         s.created_at AS created_at " +
                 "  FROM subscriptions s " +
                 "  JOIN users u ON u.id = s.provider_id " +
@@ -156,23 +156,23 @@ public interface SubscriberRepository extends JpaRepository<SyndicSubscription, 
                 "  UNION ALL " +
                 "  SELECT * FROM provider_tx" +
                 ") combined " +
-                "WHERE (:type IS NULL OR type = :type) " +
-                "AND (:planName IS NULL OR plan_name = :planName) " +
-                "AND (:status IS NULL OR status = :status) " +
+                "WHERE (CAST(:type AS VARCHAR) IS NULL OR type = CAST(:type AS VARCHAR)) " +
+                "AND (CAST(:planName AS VARCHAR) IS NULL OR plan_name = CAST(:planName AS VARCHAR)) " +
+                "AND (CAST(:status AS VARCHAR) IS NULL OR status = CAST(:status AS VARCHAR)) " +
                 "ORDER BY created_at DESC",
 
         countQuery =
                 "WITH syndic_tx AS (" +
-                "  SELECT CONVERT('SYNDIC' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS type, " +
-                "         CONVERT(sp.name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS plan_name, " +
-                "         CONVERT(ss.payment_status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status " +
+                "  SELECT CAST('SYNDIC' AS VARCHAR) AS type, " +
+                "         CAST(sp.name AS VARCHAR) AS plan_name, " +
+                "         CAST(ss.payment_status AS VARCHAR) AS status " +
                 "  FROM syndic_subscriptions ss " +
                 "  JOIN syndic_plan sp ON sp.id = ss.syndic_plan_id " +
                 "), " +
                 "provider_tx AS (" +
-                "  SELECT CONVERT('PRESTATAIRE' USING utf8mb4) COLLATE utf8mb4_unicode_ci AS type, " +
-                "         CONVERT(pp.name USING utf8mb4) COLLATE utf8mb4_unicode_ci AS plan_name, " +
-                "         CONVERT(s.payment_status USING utf8mb4) COLLATE utf8mb4_unicode_ci AS status " +
+                "  SELECT CAST('PRESTATAIRE' AS VARCHAR) AS type, " +
+                "         CAST(pp.name AS VARCHAR) AS plan_name, " +
+                "         CAST(s.payment_status AS VARCHAR) AS status " +
                 "  FROM subscriptions s " +
                 "  JOIN provider_plan pp ON pp.id = s.provider_plan_id " +
                 ") " +
@@ -181,9 +181,9 @@ public interface SubscriberRepository extends JpaRepository<SyndicSubscription, 
                 "  UNION ALL " +
                 "  SELECT * FROM provider_tx" +
                 ") combined " +
-                "WHERE (:type IS NULL OR type = :type) " +
-                "AND (:planName IS NULL OR plan_name = :planName) " +
-                "AND (:status IS NULL OR status = :status)",
+                "WHERE (CAST(:type AS VARCHAR) IS NULL OR type = CAST(:type AS VARCHAR)) " +
+                "AND (CAST(:planName AS VARCHAR) IS NULL OR plan_name = CAST(:planName AS VARCHAR)) " +
+                "AND (CAST(:status AS VARCHAR) IS NULL OR status = CAST(:status AS VARCHAR))",
 
         // Requête SQL brute (pas du JPQL) car UNION n'est pas supporté par Hibernate
         nativeQuery = true

@@ -29,7 +29,7 @@ public interface MeetingPresenceRepository extends JpaRepository<MeetingPresence
            "WHERE mpr.meetingParticipant.user.id = :userId " +
            "AND mpr.meetingParticipant.meeting.residence.id = :residenceId " +
            "AND (:type IS NULL OR mpr.meetingParticipant.meeting.type = :type) " +
-           "AND (:year IS NULL OR FUNCTION('YEAR', mpr.meetingParticipant.meeting.meetingDate) = :year) " +
+           "AND (:year IS NULL OR YEAR(mpr.meetingParticipant.meeting.meetingDate) = :year) " +
            "ORDER BY mpr.meetingParticipant.meeting.meetingDate DESC")
     Page<MeetingPresence> searchOwnerMeetingHistory(@Param("userId") Long userId,
                                                       @Param("residenceId") Long residenceId,
